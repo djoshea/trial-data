@@ -7,46 +7,103 @@ classdef TrialData
 % will be done via copy-on-write, so that changes will not propagate to another
 % TrialData instance.
     
-    % will eventually change to Access=protected
-    properties(SetAccess=protected)
-        tdi % TrialDataInterface handle: to original trial data
+    % Obtained from TrialDataInterface
+    properties% (SetAccess=protected)
+        initialized = false; % has initialize() been called yet?
+
+        trialDataInterfaceClass = '';
+
+        data = struct();  % standardized format nTrials x 1 struct with all trial data  
+
+        datasetName = ''; % string describing entire collection of trials dataset
+
+        datasetMeta = struct();
+        
+        channelDescriptors % struct with ChannelDescriptor for each channel, by name
+        
+        channelNames % cell array of channel names
     end
 
-    properties(Dependent) % Read-through to TrialDataInterface 
-        meta  
-        name 
+    properties(Dependent) 
         nTrials
-        channels
-        channelDescriptors
+        nChannels
     end
     
     methods % get. accessors for above properties which simply refer to tdi.?
-        function meta = get.meta(td)
-            meta = td.tdi.meta;
-        end
-        
-        function name = get.name(td)
-            name = td.tdi.name;
-        end
-
         function nTrials = get.nTrials(td)
-            nTrials = td.tdi.nTrials;
+            nTrials = numel(td.data);
         end
 
-        function channels = get.channels(td)
-            channels = td.tdi.channels;
-        end
-
-        function channelDescriptors = get.channelDescriptors(td)
-            channelDescriptors = td.tdi.channelDescriptors;
+        function nChannels = get.nChannels(td)
+            nChannels = numel(td.channelDescriptors);
         end
     end
     
     methods
-        function ts = TrialData(tdi)
-            assert(isa(tdi, 'TrialDataInterace'), 'Argument must be a TrialDataInterface instance');
-                ts.tdi = tdi;
-            else
+        function td = TrialData(varargin)
+            if ~isempty(varargin)
+                td.initialize(varargin{:});
+            end
+
+        % copy everything over from the TrialDataInterface
+        function initialize(varargin)
+            p = inputParser();
+            p.addOptional('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
+            p.parse(varargin);
+            tdi = p.Results.trialDataInterface;
+            
+            % copy over basic details from the TrialDataInterface
+            td.trialDataInterfaceClass = class(tdi);
+            td.datasetName = tdi.getDatasetName();
+            td.datasetMeta = tdi.getDatasetMeta();
+            td.timeUnitName = tdi.getTimeUnitName();
+            td.timeUnitsPerSecond = tdi.getTimeUnitsPerSecond();
+            
+            % request channel descriptors for both special params and regular channels
+            specialParams = makecol(tdi.getSpecialParamChannelDescriptors());
+            specialNames = {specialParams.name};
+            regularChannels = makecol(tdi.getChannelDescriptors());
+            regularNames = {regularChannels.name};
+
+            % check for reserved channel names
+            overlap = intersect(specialNames, regularNames);
+            if ~isempty(overlap)
+                error('getChannelDescriptors() returned the following reserved channel names: %s', strjoin(overlap, ', '));
+            end
+
+            % combine all channelDescriptors together
+            td.channelDescriptors = [specialParams; regularChannels];
+
+            nTrials = tdi.getTrialCount();
+            nChannels = numel(td.channelDescriptors);
+
+            % request all channel data at once
+            td.channelNames = {td.channelDescriptors.name};
+            data = tdi.getChannelData(td.channelNames); 
+
+            % loop over channels and verify
+            for iChannel = 1:nChannels
+                chd = td.channelDescriptors(iChannel); 
+                name = chd.name;
+
+                % check for main field
+                assert(isfield(data, name), 'getChannelData missing field %s', name);
+                
+                % these are the data subfields for this channel
+                chExtraFields = chd.getExtraDataFields();
+                for iEx = 1:numel(chExtraFields)
+                    subfield = sprintf('%s_%s', name, chExtraFields{iEx});
+                    assert(isfield(data, subfield), 'getChannelData missing field %s', subfield);
+                end
+            end
+
+            % TODO:
+            % Replace empty values with defaults?
+            % Convert from storage type to data type?
+
+            td.data = data;
+
+            td.initialized = true;
         end
     end
     
