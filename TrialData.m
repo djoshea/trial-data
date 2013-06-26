@@ -17,9 +17,23 @@ classdef TrialData
 
         datasetName = ''; % string describing entire collection of trials dataset
 
-        datasetMeta = struct();
+        datasetMeta
+        
+        timeUnitName
+        
+        timeUnitsPerSecond
         
         channelDescriptors % struct with ChannelDescriptor for each channel, by name
+        
+        analogChannelMask
+        eventChannelMask
+        paramChannelMask
+        
+        analogChannelNames
+        eventChannelNames
+        paramChannelNames
+        
+        channelDescriptorsByName
         
         channelNames % cell array of channel names
     end
@@ -29,27 +43,19 @@ classdef TrialData
         nChannels
     end
     
-    methods % get. accessors for above properties which simply refer to tdi.?
-        function nTrials = get.nTrials(td)
-            nTrials = numel(td.data);
-        end
-
-        function nChannels = get.nChannels(td)
-            nChannels = numel(td.channelDescriptors);
-        end
-    end
-    
+    % Initializing and building
     methods
         function td = TrialData(varargin)
             if ~isempty(varargin)
-                td.initialize(varargin{:});
+                td = td.initialize(varargin{:});
             end
+        end
 
         % copy everything over from the TrialDataInterface
-        function initialize(varargin)
+        function td = initialize(td, varargin)
             p = inputParser();
-            p.addOptional('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
-            p.parse(varargin);
+            p.addOptional('trialDataInterface', [], @(tdi) isa(tdi, 'TrialDataInterface'));
+            p.parse(varargin{:});
             tdi = p.Results.trialDataInterface;
             
             % copy over basic details from the TrialDataInterface
@@ -79,7 +85,7 @@ classdef TrialData
 
             % request all channel data at once
             td.channelNames = {td.channelDescriptors.name};
-            data = tdi.getChannelData(td.channelNames); 
+            data = tdi.getChannelData(td.channelDescriptors); 
 
             % loop over channels and verify
             for iChannel = 1:nChannels
@@ -88,6 +94,15 @@ classdef TrialData
 
                 % check for main field
                 assert(isfield(data, name), 'getChannelData missing field %s', name);
+
+                % replace empty values with default
+                if ~isempty(chd.defaultValue)
+                    emptyMask = cellfun(@isempty, {data.(name)});
+                    [data(emptyMask).(name)] = deal(chd.defaultValue);
+                 end
+
+                % convert to appropriate type
+                data = structConvertFieldValues(data, chd.dataClass, chd.name);
                 
                 % these are the data subfields for this channel
                 chExtraFields = chd.getExtraDataFields();
@@ -97,13 +112,71 @@ classdef TrialData
                 end
             end
 
-            % TODO:
-            % Replace empty values with defaults?
-            % Convert from storage type to data type?
-
             td.data = data;
-
+            
+            % build masks for each channel type
+            td.analogChannelMask = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), td.channelDescriptors);
+            td.eventChannelMask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), td.channelDescriptors);
+            td.paramChannelMask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), td.channelDescriptors);
+            
+            % collect names of channels by type
+            td.analogChannelNames = {td.channelDescriptors(td.analogChannelMask).name};
+            td.eventChannelNames = {td.channelDescriptors(td.eventChannelMask).name};
+            td.paramChannelNames = {td.channelDescriptors(td.paramChannelMask).name};
+        
+            % build channelDescriptorByName
+            td.channelDescriptorsByName = struct();
+            for i = 1:numel(td.channelDescriptors)
+                td.channelDescriptorsByName.(td.channelDescriptors(i).name) = td.channelDescriptors(i);
+            end
+            
             td.initialized = true;
+        end
+    end
+    
+    % Dependent property implementations
+    methods % get. accessors for above properties which simply refer to tdi.?
+        function nTrials = get.nTrials(td)
+            nTrials = numel(td.data);
+        end
+
+        function nChannels = get.nChannels(td)
+            nChannels = numel(td.channelDescriptors);
+        end
+    end
+
+    % Data access methods
+    methods
+        % LIST CHANNEL NAMES BY TYPE
+        function names = listAnalog(td)
+            names = td.analogNames;
+        end
+
+        function names = listEvent(td)
+            names = td.eventNames;
+        end
+
+        function names = listParam(td)
+            names = td.paramNames;
+        end
+
+        % Basic access methods, very fast
+        function values = getParam(td, name)
+            values = {td.data.(name)}';
+            % if this channel is marked as a scalar, convert to a numeric array
+            if td.channelDescriptorsByName.(name).scalar
+                values = cell2mat(values);
+            end
+        end
+        
+        function [data time] = getAnalog(td, name)
+            data = {td.data.(name)}';
+            time = {td.data.([name '_time'])}';
+        end
+        
+        function [times tags] = getEvent(td, name)
+            times = {td.data.(name)}';
+            tags = {td.data.([name '_tags'])}';
         end
     end
     

@@ -15,6 +15,8 @@ classdef ParamChannelDescriptor < ChannelDescriptor
 
         function cd = ParamChannelDescriptor(varargin)
             cd = cd@ChannelDescriptor(varargin{:});
+            cd.defaultValue = NaN;
+            cd.scalar = true; % by default, change this if not true
         end
     end
 

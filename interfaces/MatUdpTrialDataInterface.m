@@ -51,7 +51,7 @@ classdef MatUdpTrialDataInterface < TrialDataInterface
 
         % return the name of the time unit used by this interface
         function timeUnitName = getTimeUnitName(tdi, varargin)
-            timeUnitName = td.tUnits;
+            timeUnitName = tdi.tUnits;
         end
 
         % return the time conversion factor, i.e. number of time units in 1 second
@@ -71,9 +71,19 @@ classdef MatUdpTrialDataInterface < TrialDataInterface
         % Describe the channels present in the dataset 
         % channelDescriptors: scalar struct. fields are channel names, values are ChannelDescriptor 
         function channelDescriptors = getChannelDescriptors(tdi, varargin)
-            nFields = numel(tdi.fieldInfo);
+            fieldInfo = tdi.fieldInfo;
+
+            % remove special fields
+            maskSpecial = ismember({fieldInfo.name}, ...
+                {'subject', 'protocol', 'protocolVersion', 'trialId', 'duration', ...
+                 'saveTag', 'tsStartWallclock', 'tsStopWallclock', 'tsSamplingInterval', ...
+                 'tUnits', 'version', 'time', 'issues'});
+            fieldInfo = fieldInfo(~maskSpecial);
+
+            nFields = numel(fieldInfo);
             for iF = 1:nFields
-                info = tdi.fieldInfo(iF);
+                info = fieldInfo(iF);
+
                 switch(info.type)
                     case 'analog'
                         cd = AnalogChannelDescriptor(info.name);
@@ -89,6 +99,33 @@ classdef MatUdpTrialDataInterface < TrialDataInterface
 
                 % store original field name to ease lookup in getDataForChannel()
                 cd.meta.originalField = info.originalField;
+
+                fieldValues = {tdi.R.(info.originalField)};
+                emptyMask = cellfun(@isempty, fieldValues);
+
+                if ismember(info.type, {'analog', 'param'})
+                    if all(emptyMask)
+                        warning('R struct contains no non-empty values for %s, assuming class double', info.name);
+                        cd.storageDataClass = 'double';
+                    else
+                        % determine original class in R struct
+                        classes = unique(cellfun(@class, fieldValues(~emptyMask), 'UniformOutput', false));
+                        if numel(classes) > 1
+                            warning('R struct contains multiple classes for %s : %s\n', cd.name, strjoin(classes, ', ')); 
+                        end
+                        cd.storageDataClass = classes{1};
+                    end
+                else
+                    % default for timestamps
+                    cd.storageDataClass = 'uint32';
+                end
+
+                % determine if all values are scalar
+                if strcmp(info.type, 'param')
+                    cd.scalar = all(cellfun(@(x) isempty(x) || isscalar(x), fieldValues));
+                else
+                    cd.scalar = false;
+                end
 
                 channelDescriptors(iF) = cd;
             end
@@ -112,15 +149,39 @@ classdef MatUdpTrialDataInterface < TrialDataInterface
         %   protocolVersion: numeric version identifier for that protocol
         %   saveTag : a numeric identifier for the containing block of trials
         %   duration : time length of each trial in tUnits
-        %   tStartWallclock : wallclock datenum indicating when this trial began
-        %   tStopWallclock : wallclock datenum indicating when this trial ended
+        %   timeStartWallclock : wallclock datenum indicating when this trial began
+        %   timeStopWallclock : wallclock datenum indicating when this trial ended
         %
         function channelData = getChannelData(tdi, channelDescriptors, varargin)
             channelData = [];
             for iC = 1:length(channelDescriptors)
                 cd = channelDescriptors(iC);
 
-                origField = cd.meta.originalField;
+                if cd.special
+                    switch(cd.name)
+                        case {'subject', 'protocol', 'protocolVersion', 'duration', 'trialId'} 
+                            origField = cd.name;
+                        case 'timeStartWallclock'
+                            origField = 'tsStartWallclock';
+                        case 'timeStopWallclock'
+                            if ~isfield(tdi.R, 'tsStopWallclock')
+                                % create tsStopWallclock if it doesn't exist
+                                tsStopWallclock = double([tdi.R.tsStartWallclock]) + ...
+                                    double([tdi.R.duration]) / tdi.getTimeUnitsPerSecond() / 24 / 3600; 
+                                tdi.R = assignIntoStructArray(tdi.R, 'tsStopWallclock', num2cell(tsStopWallclock));
+                            end
+                            origField = 'tsStopWallclock';
+                        case 'saveTag'
+                            % if no save tag field, create it, and set all to 1
+                            if ~isfield(tdi.R, 'saveTag')
+                                tdi.R = assignIntoStructArray(tdi.R, 'saveTag', 1);
+                            end
+                            origField = 'saveTag';
+                    end
+                else
+                    origField = cd.meta.originalField;
+                end
+
                 newField = cd.name;
                 
                 if strcmp(newField, 'handX')

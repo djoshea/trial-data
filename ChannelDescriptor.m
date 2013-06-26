@@ -8,17 +8,25 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         units = ''; % string describing units
         
-        Fs = NaN; % sampling frequency in Hz 
-        
         meta % anything you'd like
+
+        Fs = NaN; % sampling frequency in Hz 
 
         storageDataClass = 'double'; % original class name, for storage purposes
 
-        dataClass = 'double'; % classname, e.g. 'double' or 'char'
+        datenum = false; % if true, treat as datenum value 
 
-        defaultValue = NaN;
+        scalar = true; % if true, this will be treated as a scalar quantity
+
+        defaultValue = [];
 
         special = false; % whether this channel is a "special" identifier channel used by TrialData
+    end
+
+    properties(Dependent)
+        dataClass
+        numeric
+        string
     end
 
     methods(Abstract)
@@ -37,6 +45,23 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             p.parse(varargin{:});
             
             cd.name = p.Results.name;
+        end
+
+        function tf = get.numeric(cd)
+            tf = ismember(cd.storageDataClass, {'double', 'single', 'logical', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64'});
+        end
+
+        function get.string(cd)
+            tf = strcmp(cd.storageDataClass, 'char');
+        end
+
+        % convert all numeric types to double
+        function cls = get.dataClass(cd)
+            if ismember(cd.storageDataClass, {'double', 'single', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64'});
+                cls = 'double';
+            else 
+                cls = cd.storageDataClass;
+            end
         end
     end
 end

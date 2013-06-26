@@ -1,4 +1,4 @@
-classdef StringParamChannelDescriptor < ChannelDescriptor
+classdef StringParamChannelDescriptor < ParamChannelDescriptor
 
     methods
         function type = getType(cdesc)
@@ -9,10 +9,9 @@ classdef StringParamChannelDescriptor < ChannelDescriptor
             str = sprintf('StringParam');  
         end
 
-        function cd = ParamChannelDescriptor(varargin)
-            cd = cd@ChannelDescriptor(varargin{:});
+        function cd = StringParamChannelDescriptor(varargin)
+            cd = cd@ParamChannelDescriptor(varargin{:});
 
-            cd.dataClass = 'char';
             cd.storageDataClass = 'char';
             cd.defaultValue = '';
         end

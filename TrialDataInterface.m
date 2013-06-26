@@ -51,11 +51,10 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
         % build ParamChannelDescriptors around each of the special param names
         % .special will be marked as true
         function cds = getSpecialParamChannelDescriptors(tdi)
-            cds = [];
             
             cd = StringParamChannelDescriptor('subject');
             cd.special = true;
-            cds(end+1) = cd;
+            cds = cd;
 
             cd = StringParamChannelDescriptor('protocol');
             cd.special = true;
