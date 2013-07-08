@@ -20,4 +20,23 @@ classdef ParamChannelDescriptor < ChannelDescriptor
         end
     end
 
+    methods(Static) % infer channel descriptor from values
+        function [cd cleanedValues] = inferFromValues(values)
+            cd = ParamChannelDescriptor();
+            assert(isvector(values), 'Values must be a vector');
+            
+            if ~iscell(values)
+                cd.scalar = true;
+            else
+                % TODO deal with numeric vector type
+                [cd.scalar mat] = isScalarCell(values);
+                if cd.scalar
+                    values = mat;
+                end
+            end
+
+            cd.storageDataClass = class(values);
+        end
+
+    end
 end

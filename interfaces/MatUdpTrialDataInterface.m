@@ -232,7 +232,6 @@ classdef MatUdpTrialDataInterface < TrialDataInterface
     end
 
     methods
-
         function parseChannelInfo(td)
             fields = fieldnames(td.R);
             td.fieldsAll = fields;
@@ -323,14 +322,6 @@ classdef MatUdpTrialDataInterface < TrialDataInterface
             if ~ismember(field, td.fieldsAll)
                 % no time field specified, use trial default
                 field = 'time';
-            end
-        end
-        
-        function v = convertToDouble(td, v)
-            if iscell(v)
-                v = cellfun(@double, v, 'UniformOutput', false);
-            else
-                v = double(v);
             end
         end
     end

@@ -102,7 +102,7 @@ classdef TrialData
                  end
 
                 % convert to appropriate type
-                data = structConvertFieldValues(data, chd.dataClass, chd.name);
+                %data = structConvertFieldValues(data, chd.dataClass, chd.name);
                 
                 % these are the data subfields for this channel
                 chExtraFields = chd.getExtraDataFields();
@@ -145,8 +145,38 @@ classdef TrialData
         end
     end
 
-    % Data access methods
-    methods
+    methods % Trial selection
+        % All masking or selecting of the .data array must go through this method
+        % not much to do here, but be sure to override this in subclasses
+        % so that they can update derivative computations
+        function td = selectTrials(td, mask)
+            td.warnIfNoArgOut(nargout);
+            td.data = td.data(mask);
+        end
+    end
+
+    methods(Access=protected) % Utility methods
+        function warnIfNoArgOut(obj, nargOut)
+            if nargOut == 0 && ~isa(obj, 'handle')
+                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                    class(obj));
+                expr = sprintf('debug(''%s'')', message);
+                evalin('caller', expr); 
+            end
+        end
+        
+        function obj = copyIfHandle(obj)
+            if isa(obj, 'handle')
+                obj = obj.copy();
+            end
+        end
+    end
+
+    methods % Data access methods
+        function tf = hasChannel(td, name)
+            tf = ismember(name, td.channelNames);
+        end
+            
         % LIST CHANNEL NAMES BY TYPE
         function names = listAnalog(td)
             names = td.analogNames;
@@ -174,11 +204,85 @@ classdef TrialData
             time = {td.data.([name '_time'])}';
         end
         
-        function [times tags] = getEvent(td, name)
-            times = {td.data.(name)}';
+        function [timesCell tags] = getEvent(td, name)
+            timesCell = {td.data.(name)}';
             tags = {td.data.([name '_tags'])}';
         end
     end
+
+    methods % Add data methods
+        function td = updatePostDataChange(td)
+            td.warnIfNoArgOut(nargout);
+
+        end
+
+        function td = addParam(td, name, values, varargin)
+            td.warnIfNoArgOut(nargout);
+
+            p = inputParser;
+            p.addRequired('name', @ischar);
+            p.addRequired('values', @isvector);
+            p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            p.parse(name, values, varargin{:});
+            name = p.Results.name;
+            values = p.Results.values;
+            cd = p.Results.channelDescriptor;
+
+            assert(~tf.hasChannel(name), 'TrialData already has channel with name %s', name);
+            assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
+
+            if isempty(cd)
+                cd = ParamChannelDescriptor.inferFromValues(values);
+            end
+            cd.name = name;
+
+            td.channelDescriptors(end+1) = cd;
+            td.channelDescriptorsByName.(name) = cd;
+
+            td.data = assignIntoStructArray(td.data, name, values);
+
+            td = td.updatePostDataChange();
+        end
+    end
+
+    methods % Special event access
+        function counts = getEventCount(td, name)
+            counts = cellfun(@numel, td.getEvent(name));
+        end
+
+        function tfList = getEventOccurred(td, name)
+            tfList = ~cellfun(@isempty, td.getEvent(name));
+        end
+
+        function [times] = getEventNth(td, name, n)
+            timesCell = td.getEvent(name);
+            
+            function t = getNth(times)
+                if numel(times) >= n
+                    t = times(n);
+                else
+                    t = NaN;
+                end
+            end
+        end
+
+        function times = getEventFirst(td, name)  
+            times = getEventNthOccurrence(td, name, 1);
+        end
+
+        function times = getEventLast(td, name)  
+            timesCell = td.getEvent(name);
+            
+            function t = getLast(times)
+                if ~isempty(times)
+                    t = times(end);
+                else
+                    t = NaN;
+                end
+            end
+        end
+    end
     
+
 end
 
