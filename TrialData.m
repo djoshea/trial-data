@@ -102,7 +102,7 @@ classdef TrialData
                  end
 
                 % convert to appropriate type
-                %data = structConvertFieldValues(data, chd.dataClass, chd.name);
+                data = structConvertFieldValues(data, chd.dataClass, chd.name);
                 
                 % these are the data subfields for this channel
                 chExtraFields = chd.getExtraDataFields();
@@ -179,15 +179,15 @@ classdef TrialData
             
         % LIST CHANNEL NAMES BY TYPE
         function names = listAnalog(td)
-            names = td.analogNames;
+            names = td.analogChannelNames;
         end
 
-        function names = listEvent(td)
-            names = td.eventNames;
+        function names = listEvents(td)
+            names = td.eventChannelNames;
         end
 
-        function names = listParam(td)
-            names = td.paramNames;
+        function names = listParams(td)
+            names = td.paramChannelNames;
         end
 
         % Basic access methods, very fast
@@ -207,6 +207,14 @@ classdef TrialData
         function [timesCell tags] = getEvent(td, name)
             timesCell = {td.data.(name)}';
             tags = {td.data.([name '_tags'])}';
+        end
+        
+        function timesCell = getEvents(td, nameCell)
+            nEvents = numel(nameCell);
+            timesCell = cell(td.nTrials, nEvents); 
+            for iEv = 1:nEvents
+                timesCell(:, iEv) = td.getEvent(nameCell{iEv});
+            end
         end
     end
 

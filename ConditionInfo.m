@@ -239,7 +239,9 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
                 if ~iscell(valueList)
                     valueList = num2cell(valueList);
                 end
-                valueList = {valueList};
+                if ~iscell(valueList)
+                    valueList = {valueList};
+                end
             end
             if ~iscell(values) 
                 values = num2cell(values);
@@ -287,7 +289,7 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
                 ci.values = cell(ci.nTrials, nAttrAdd);
             else
                 % expand the existing ci.values array
-                ci.values(:, nAttrOld+1:nAttrOld+nAttrAdd-1) = cell(nTrialsAdd, nAttrAdd);
+                ci.values(:, nAttrOld+1:nAttrOld+nAttrAdd) = cell(nTrialsAdd, nAttrAdd);
             end
             
             ci.values(:, nAttrOld+1:nAttrOld+nAttrAdd) = values;

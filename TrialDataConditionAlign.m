@@ -70,7 +70,7 @@ classdef TrialDataConditionAlign < TrialData
             for i = 1:numel(paramList)
                 param = paramList{i};
                 matrix = td.channelDescriptorsByName.(param).scalar;
-                td.conditionInfo.addAttribute(paramList(addMask), 'matrix', matrix);
+                td.conditionInfo.addAttribute(paramList{i}, 'matrix', matrix);
             end
         end
 
