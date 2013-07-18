@@ -24,6 +24,8 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
         getAttributeValueFn = @ConditionInfo.defaultGetAttributeFn;
         
         usingManualAttributeValues = false; 
+        
+        bound = false; 
     end
     
     properties(SetAccess=protected)
@@ -71,8 +73,13 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
                 ci.bindTrialData(p.Results.trialData);
             end
         end
+        
+        function bind(ci, td)
+            ci.bindTrialData(td);
+        end
 
         function bindTrialData(ci, td)
+            ci.bound = true;
             ci.trialData = td;
             ci.updateFromTrialData();
         end
@@ -886,19 +893,20 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
 
     methods(Static) 
         % Building from a condition descriptor with an accessor method
-        function ci = fromConditionDescriptor(cd, data, varargin)
+        function ci = fromConditionDescriptor(cd, varargin)
             p = inputParser;
+            p.addOptional('trialData', [], @(x) true);
             p.addParamValue('getAttributeFn', @ConditionInfo.defaultGetAttributeFn, @(x) isa(x, 'function_handle'));
             p.parse(varargin{:});
             
             % build up the condition info
             ci = ConditionInfo();
-            % bind the trialData
-            ci.trialData = data;
             % Have conditionDescriptor copy over the important details
             ci = ConditionDescriptor.fromConditionDescriptor(cd, ci);
-            % collect attribute values from trialData
-            ci.updateFromTrialData();
+            % bind the trialData
+            if ~isempty(p.Results.trialData
+                ci.bind(p.Results.trialData);
+            end
         end
 
         % return a scalar struct with one field for each attribute containing the attribute values
