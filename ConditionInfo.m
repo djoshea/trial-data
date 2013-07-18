@@ -904,7 +904,7 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
             % Have conditionDescriptor copy over the important details
             ci = ConditionDescriptor.fromConditionDescriptor(cd, ci);
             % bind the trialData
-            if ~isempty(p.Results.trialData
+            if ~isempty(p.Results.trialData)
                 ci.bind(p.Results.trialData);
             end
         end
