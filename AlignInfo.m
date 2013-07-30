@@ -13,11 +13,16 @@ classdef AlignInfo < AlignDescriptor
         % as well as .start and .stop timestamps for each trial
         timeInfo 
 
-        bound = false; 
+        % valid is a merger of these two
+        computedValid
+        manualInvalid
+
+        applied = false; 
     end
     
     properties(Dependent)
         valid
+        nTrials
     end
     
     methods(Static) % construct from another align descriptor, used primarily by AlignInfo
@@ -28,7 +33,15 @@ classdef AlignInfo < AlignDescriptor
                 adNew = AlignInfo();
             end
             adNew = AlignDescriptor.fromAlignDescriptor(ad, adNew);
-            adNew.bound = false;
+            adNew.applied = false;
+        end
+        
+        function nTrials = getNTrialsFromData(R)
+            if isa(R, 'TrialData')
+                nTrials = R.nTrials;
+            else                
+                nTrials = numel(R);
+            end
         end
     end
     
@@ -56,28 +69,44 @@ classdef AlignInfo < AlignDescriptor
 %         end
 
         % bind this AlignInfo to a set of trials
-        function ad = bind(ad, R)
+        function ad = applyToTrialData(ad, R)
             ad.warnIfNoArgOut(nargout);
-            ad.timeInfo = ad.getTimeInfo(R, ad.padWindow);
-            ad.bound = true;
+            [ad.timeInfo ad.computedValid] = ad.getTimeInfo(R, ad.padWindow);
+            ad.applied = true;
+            ad.manualInvalid = falsevec(ad.nTrials);
+        end
+        
+        function nt = get.nTrials(ad)
+            if ~ad.applied
+                nt = 0;
+            else
+                nt = numel(ad.timeInfo);
+            end
         end
         
         function ad = markInvalid(ad, invalid)
             ad.warnIfNoArgOut(nargout);
-            [ad.timeInfo(invalid).valid] = deal(false);
+            ad.manualInvalid(invalid) = false;
+        end
+
+        function ad = setInvalid(ad, mask)
+            ad.warnIfNoArgOut(nargout);
+            ad.manualInvalid = mask;
         end
         
         function valid = get.valid(ad)
             if isempty(ad.timeInfo)
                 valid = [];
             else
-                valid = [ad.timeInfo.valid];
+                valid = ad.computedValid & ~ad.manualInvalid;
             end
         end
 
         function ad = selectTrials(ad, mask)
             ad.warnIfNoArgOut(nargout);
             ad.timeInfo = ad.timeInfo(mask);
+            ad.manualInvalid = ad.manualInvalid(mask);
+            ad.computedValid = ad.computedValid(mask);
         end
         
         % internal use function that simply grabs the event times relative to the trial
@@ -149,7 +178,7 @@ classdef AlignInfo < AlignDescriptor
             % each entry is guaranteed to have a NaN instead of being empty
             firstTimesFromNameFn = @(event) cellfun(@(x) x(1), allTimesFromNameFn(event));
             
-            nTrials = numel(R);
+            nTrials = ad.getNTrialsFromData(R);
             t.valid = truevec(nTrials);
             t.start = ceil(firstTimesFromNameFn(ad.startEvent) + ad.startOffset);
             t.stop = ceil(firstTimesFromNameFn(ad.stopEvent) + ad.stopOffset);
@@ -207,6 +236,8 @@ classdef AlignInfo < AlignDescriptor
             t.zero(~t.valid) = NaN;
         
             % now build the final timeInfo struct
+            valid = t.valid;
+            t = rmfield(t, 'valid');
             timeInfo = structOfArraysToStructArray(t);
             
             % include the mark times
@@ -214,7 +245,7 @@ classdef AlignInfo < AlignDescriptor
                 %times = floor(timesFromNameFn(ad.markEvents{iEv}) + ad.markOffsets(iEv));
                 times = allTimesFromNameFn(ad.markEvents{iEv});
                 for iTrial = 1:nTrials
-                    if timeInfo(iTrial).valid
+                    if valid(iTrial)
                         timeInfo(iTrial).mark{iEv} = floor(times{iTrial}) + ad.markOffsets(iEv);
                     else
                         timeInfo(iTrial).mark{iEv} = NaN;
@@ -227,7 +258,7 @@ classdef AlignInfo < AlignDescriptor
                 startTimes = allTimesFromNameFn(ad.intervalEvents{iInt, 1});
                 stopTimes = allTimesFromNameFn(ad.intervalEvents{iInt, 2});
                 for iTrial = 1:nTrials
-                    if timeInfo(iTrial).valid
+                    if valid(iTrial)
                         timeInfo(iTrial).interval{iInt} = cat(2, ...
                             floor(startTimes{iTrial}) + ad.intervalOffsets(iInt, 1), ...
                             floor(stopTimes{iTrial}) + ad.intervalOffsets(iInt, 2));
@@ -238,8 +269,6 @@ classdef AlignInfo < AlignDescriptor
             end
             
             timeInfo = structMerge(timeInfo, eventInfo);
-            
-            valid = [t.valid];
         end
     end
 
@@ -475,16 +504,16 @@ classdef AlignInfo < AlignDescriptor
                     makecol(num2cell([timeInfo.zero])), ...
                     'UniformOutput', false);
                 
-            alignedTimes(~[timeInfo.valid]) = {[]};
+            alignedTimes(~ad.valid) = {[]};
             
             function [alignedTimes, mask] = fn(rawTimes, tStart, tEnd, tZero)
-                mask = rawTimes >= tStart & rawTimes < tEnd;
+                mask = rawTimes >= tStart & rawTimes <= tEnd;
                 alignedTimes = rawTimes(mask) - tZero;
             end
         end
         
-        function [alignedData alignedTime valid] = getAlignedTimeseries(ad, timeInfo, dataCell, timeCell, varargin)
-            [alignedTime timeInfo valid rawTimesMask] = ad.getAlignedTimes(timeInfo, timeCell, varargin{:});
+        function [alignedData alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, varargin)
+            [alignedTime rawTimesMask] = ad.getAlignedTimes(timeCell, varargin{:});
             %dataCell = cellfun(@makecol, dataCell, 'UniformOutput', false);
             alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, 'UniformOutput', false);
         end
@@ -658,9 +687,10 @@ classdef AlignInfo < AlignDescriptor
             end
             nEvents = length(eventName);
 
+            nTrials = AlignInfo.getNTrialsFromData(R);
             if isstruct(R)
                 % simply access the events by name
-                nTrials = numel(R);
+                
                 times = cell(nTrials, nEvents);
 
                 for iEv = 1:nEvents
@@ -668,8 +698,7 @@ classdef AlignInfo < AlignDescriptor
                 end
 
             elseif isa(R, 'TrialData')
-                nTrials = R.nTrials;
-                times = R.getEvents(eventName);
+                times = R.getEventsStartAligned(eventName);
 
             else
                 error('Unsupported trial data type, please specify .getEventTimesFn');
@@ -677,15 +706,15 @@ classdef AlignInfo < AlignDescriptor
         end
        
         function [startMs stopMs] = getTrialLengths(R)
+            nTrials = AlignInfo.getNTrialsFromData(R);
             if isstruct(R)
-                nTrials = numel(R);
+                
                 startMs = zeros(nTrials, 1);
                 stopMs = [R.length];
 
                 assert(numel(stopMs) == nTrials, 'R.length does not contain a value in all trials');
 
             elseif isa(R, 'TrialData')
-                nTrials = R.nTrials;
                 startMs = zeros(nTrials, 1);
                 stopMs = R.getParam('duration');
 

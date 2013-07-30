@@ -63,5 +63,13 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 cls = cd.storageDataClass;
             end
         end
+
+        function str = getAxisLabel(cd)
+            if isempty(cd.units)
+                str = sprintf('%s', cd.name);
+            else
+                str = sprintf('%s (%s)', cd.name, cd.units);
+            end
+        end
     end
 end

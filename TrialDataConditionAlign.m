@@ -1,12 +1,13 @@
 classdef TrialDataConditionAlign < TrialData
 
-    properties 
+    properties(SetAccess=protected)
         conditionInfo
         alignInfo
     end
 
     % Properties which read through to ConditionInfo
-    properties
+    properties(Dependent)
+        nConditions
         listByCondition
         conditionIdx
         conditionSubs
@@ -20,22 +21,42 @@ classdef TrialDataConditionAlign < TrialData
         function td = TrialDataConditionAlign(varargin)
             td = td@TrialData(varargin{:});
             td = td.initializeConditionInfo();
+            td = td.initializeAlignInfo();
+            td = td.updateValid();
         end
     end
     
     methods
         function disp(td)
+            td.printDescription();
+            fprintf('\n');
+            
+            td.alignInfo.printOneLineDescription();
+            fprintf('\n');
             td.conditionInfo.printDescription();
+            
+            fprintf('\n');
             builtin('disp', td);
+        end
+
+        function td = updateValid(td);
+            td.warnIfNoArgOut(nargout);
+            cvalid = td.conditionInfo.valid;
+            avalid = td.alignInfo.valid;
+
+            % combine and update the validity masks 
+            td.valid = cvalid & avalid;
+            td.conditionInfo.setInvalid(~td.valid);
+            td.alignInfo = td.alignInfo.setInvalid(~td.valid);
         end
     end
 
-    % ConditionInfo
+    % ConditionInfo control
     methods
         function td = initializeConditionInfo(td)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = ConditionInfo(td.data);
-            td.conditionInfo.getAttributeValueFn = @TrialDataConditionAlign.getAttributeFn;
+            td.conditionInfo = ConditionInfo();
+            td.conditionInfo.applyToTrialData(td);
         end
 
         function td = createCopyConditionInfo(td)
@@ -47,33 +68,10 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = selectTrials@TrialData(td, mask);
             td = td.createCopyConditionInfo();
-            td.conditionInfo.resampleTrials(mask);
+            td.conditionInfo.selectTrials(mask);
+            td.alignInfo = td.alignInfo.selectTrials(mask);
         end
         
-        function td = addAttributeToConditionInfo(td, paramList, createCopy)
-            td.warnIfNoArgOut(nargout);
-            if nargin < 3
-                createCopy = true;
-            end
-            if createCopy
-                % TrialData are not handle classes, copy conditionInfo
-                td = td.createCopyConditionInfo();
-            end
-
-            if ischar(paramList)
-                paramList = {paramList};
-            end
-
-            addMask = ~td.conditionInfo.hasAttribute(paramList);
-            paramList = paramList(addMask);
-
-            for i = 1:numel(paramList)
-                param = paramList{i};
-                matrix = td.channelDescriptorsByName.(param).scalar;
-                td.conditionInfo.addAttribute(paramList{i}, 'matrix', matrix);
-            end
-        end
-
         function td = groupBy(td, paramList, varargin)
             td.warnIfNoArgOut(nargout);
             p = inputParser;
@@ -85,12 +83,21 @@ classdef TrialDataConditionAlign < TrialData
                 paramList = {paramList};
             end
 
-            % TrialData are not handle classes, copy conditionInfo
-            td = td.createCopyConditionInfo();
-
-            td = addAttributeToConditionInfo(td, paramList, false);
-
+            % TrialData are not handle classes, copy conditionInfo to
+            % achieve independence
+            td.conditionInfo = ConditionInfo();
+            td.conditionInfo.noUpdateCache = true;
+            
+            for iAttr = 1:numel(paramList)
+                td.conditionInfo.addAttribute(paramList{iAttr});
+            end
             td.conditionInfo.groupBy(paramList);
+            td.conditionInfo.applyToTrialData(td);
+            
+            td.conditionInfo.noUpdateCache = false;
+            td.conditionInfo.updateCache();
+
+            td = td.updateValid();
         end
 
         % filter trials that are valid based on ConditionInfo
@@ -129,6 +136,10 @@ classdef TrialDataConditionAlign < TrialData
             v = td.conditionInfo.conditions;
         end
 
+        function n = get.nConditions(td)
+            n = td.conditionInfo.nConditions;
+        end
+
         function v = get.conditionNames(td)
             v = td.conditionInfo.names;
         end
@@ -150,17 +161,96 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
 
-    % ConditionInfo callback methods, not bound to this class
-    methods(Static)
-        % return a scalar struct with one field for each attribute containing the attribute values
-        % as a cell array or numeric vector
-        function valueStruct = getAttributeFn(data, attributeNames, varargin)
-            %debug('fetching attributes %s\n', strjoin(attributeNames));
-            assert(isstruct(data), 'getAttributeFn expects data as struct()');
-            for iAttr = 1:length(attributeNames)
-                attr = attributeNames{iAttr};
-                [valueStruct(1:numel(data)).(attr)] = data.(attr);
+    % Data access by group via ConditionInfo
+    methods
+        % given a cellvec or nmeric vector, group its elements
+        function varargout = groupElements(td, varargin)
+            for i = 1:numel(varargin)
+                data = varargin{i};
+                assert(isvector(data) && numel(data) == td.nTrials, ...
+                    'Data must be a vector with length == number of trials');
+                varargout{i} = cellfun(@(idx) data(idx), td.listByCondition, 'UniformOutput', false);
             end
+        end
+
+        function [dCell tCell] = getAnalogGrouped(td, name)
+            [dataCell, timeCell] = td.getAnalog(name);
+            [dCell, tCell] = td.groupElements(dataCell, timeCell);
+        end
+
+        function dCell = getEventGrouped(td, name)
+            dCell = td.groupElements(td.getAnalog(name));
+        end
+
+        function dCell = getParamGrouped(td, name)
+            dCell = td.groupElements(td.getParam(name));
+        end
+    end
+
+    % AlignInfo control
+    methods
+        function td = initializeAlignInfo(td)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = AlignInfo();
+            td.alignInfo = td.alignInfo.applyToTrialData(td);
+        end
+
+        function td = align(td, ad)
+            td.warnIfNoArgOut(nargout);
+            if ischar(ad)
+                ad = AlignInfo(ad);
+            else
+                assert(isa(ad, 'AlignDescriptor'));
+                if ~isa(ad, 'AlignInfo')
+                    ad = AlignInfo.fromAlignDescriptor(ad);
+                end
+            end
+
+            td.alignInfo = ad.applyToTrialData(td);
+            td = td.updateValid();
+        end
+    end
+    
+    % AlignInfo data access
+    methods
+        % return aligned analog channel
+        function [data time] = getAnalog(td, name)
+            [data time] = getAnalog@TrialData(td, name);
+            [data time] = td.alignInfo.getAlignedTimeseries(data, time);
+        end
+        
+        function [timesCell tags] = getEvent(td, name)
+            [timesCell tags] = getEvent@TrialData(td, name);
+            timesCell = td.alignInfo.getAlignedTimes(timesCell);
+        end
+    end
+
+    % Plotting
+    methods
+        function plotAnalogGroupedEachTrial(td, name, varargin) 
+            p = inputParser();
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.KeepUnmatched;
+            p.parse(varargin{:});
+
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+
+            [dataByGroup timeByGroup] = td.getAnalogGrouped(name);     
+            app = td.conditionAppearances;
+
+            for iCond = 1:td.nConditions
+                dataCell = dataByGroup{iCond};
+                timeCell = timeByGroup{iCond};
+                for iTrial = 1:numel(dataCell)
+                    plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', 'Color', app(iCond).color, ...
+                        'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    if iTrial == 1, hold(axh, 'on'); end
+                end
+            end
+            box(axh, 'off');
+            
+            xlabel(td.getTimeAxisLabel());
+            ylabel(td.getAxisLabelForChannel(name));
         end
     end
 

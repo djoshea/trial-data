@@ -5,12 +5,6 @@
 % case is already bound to a specific set of trial data.
 classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
 
-    properties(Transient)
-        % trialData from which all attribute values are derived, not
-        % altered in any way to prevent copying
-        trialData
-    end
-    
     properties
         % function with signature:
         % valuesByAttribute = getAttributeValueFn(trialData, attributeNames)
@@ -23,15 +17,18 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
         % 
         getAttributeValueFn = @ConditionInfo.defaultGetAttributeFn;
         
-        usingManualAttributeValues = false; 
+        getNTrialsFn = @ConditionInfo.defaultGetNTrialsFn;
         
-        bound = false; 
+        % has apply to trial data already been called?
+        applied = false; 
     end
     
     properties(SetAccess=protected)
         % T is number of trials
         % A is number of attributes
         values = {}; % T x A cell array : value of attribute a on trial t
+        
+        attributeValueListAuto % A logical array: is the value list for attribute automatically computed?
 
         % a mask over trials (T x 1). A trial is valid if all of its attribute values are in the
         % value lists for those attributes, AND manualInvalid(i) == 0
@@ -70,25 +67,8 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
             p.parse(varargin{:});
 
             if ~isempty(p.Results.trialData)
-                ci.bindTrialData(p.Results.trialData);
+                ci.applyToTrialData(p.Results.trialData);
             end
-        end
-        
-        function bind(ci, td)
-            ci.bindTrialData(td);
-        end
-
-        function bindTrialData(ci, td)
-            ci.bound = true;
-            ci.trialData = td;
-            ci.updateFromTrialData();
-        end
-
-        % allows 'attributes' paramValue to be specified in which only specific
-        % attributes have been changed
-        function updateTrialData(ci, td, varargin)
-            ci.trialData = td;
-            ci.updateFromTrialData(varargin);
         end
     end
     
@@ -125,18 +105,12 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
     methods(Access=protected)
         function ci = maskAttributes(ci, mask)
             ci = maskAttributes@ConditionDescriptor(ci, mask);
+            ci.attributeValueListAuto = ci.attributeValueListAuto(mask);
             ci.values = ci.values(:, mask);
         end 
     end
 
     methods
-        function set.usingManualAttributeValues(ci, value)
-            if value
-                % dump trialData
-                ci.trialData = [];
-            end
-        end
-
         function conditionIdx = get.conditionIdx(ci)
             if isempty(ci.conditionIdx)
                 if ci.nTrials > 0
@@ -158,10 +132,10 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
 
         function filterValidTrials(ci)
             % drop all invalid trials
-            ci.resampleTrials(ci.valid);
+            ci.selectTrials(ci.valid);
         end
-
-        function resampleTrials(ci, selector)
+        
+        function selectTrials(ci, selector)
             assert(isvector(selector), 'Selector must be vector of indices or vector mask');
             ci.values = ci.values(selector, :);
             ci.manualInvalid = false(nnz(selector), 1);
@@ -171,142 +145,31 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
             ci.listByCondition = [];
         end
         
-        function updateFromTrialData(ci, varargin)
-            % entirely refresh the internal attribute value cache (and number of trials)
-            % from .trialData. Optionally refresh only specific attributes 
-            p = inputParser;
-            p.addOptional('attributes', {}, @iscellstr);
-            p.parse(varargin{:});
+        function applyToTrialData(ci, td)
+            % build the internal attribute value list (and number of trials)
+            % from td.
             
-            attributes = p.Results.attributes;
-            if isempty(attributes)
-                partialUpdate = false;
-                attributes = ci.attributeNames;
-            else
-                partialUpdate = true;
-            end
-            
-            if ci.usingManualAttributeValues
-                error('This ConditionInfo has .usingManualAttributeValues == true');
-            end
-            
-            if isempty(ci.trialData)
-                warning('Cannot update from trialData because .trialData is empty');
-                return;
-            end
-            
-            % update trialCount to match length(trialData)
-            nTrials = numel(ci.trialData);
-            if ~partialUpdate
-                ci.initializeWithNTrials(nTrials);
-            else
-                assert(nTrials == ci.nTrials, 'Number of trials must match');
-            end
+            % set trialCount to match length(trialData)
+            nTrials = ci.getNTrialsFn(td);
+            ci.initializeWithNTrials(nTrials);
 
             if ci.nAttributes > 0 && ci.nTrials > 0
-                attrInds = find(strcmp(attributes, ci.attributeNames));
-                
                 % fetch valuesByAttribute using callback function
-                valueStruct = ci.requestAttributeValues(attributes);
+                valueStruct = ci.requestAttributeValues(td, ci.attributeNames);
                 valueCell = struct2cell(valueStruct)';
                 
                 % store in .values cell
-                ci.values(:, attrInds) = valueCell;
-            end
-            
-            ci.updateCache();
-        end
-        
-        function addAttribute(ci, name, varargin)
-            % calls ConditionDescriptor.addAttribute but also accepts a vector of
-            % attribute values as paramValue 'values', values, ...
-            %
-            % The unique set of values in this list, excluding
-            % NaN and '', will constitute the valueList for that attribute, unless
-            % 'valueList', valueList is manually specified as a paramValue
-            p = inputParser;
-            p.addRequired('name', @(x) ischar(x) || iscell(x));
-            p.addParamValue('requestAs', '', @(x) ischar(x) || iscell(x)); % if specified, the attribute value will be requested as this instead of `name`
-            p.addParamValue('values', {}, @(x) true);
-            p.addParamValue('valueList', {}, @(x) true); % cell of values for this attribute, or cell of cells for multiple attributes
-            p.addParamValue('matrix', [], @(x) islogical(x));
-            p.KeepUnmatched = true;
-            p.parse(name, varargin{:});
-            values = p.Results.values;
-            valueList = p.Results.valueList;
-            requestAs = p.Results.requestAs;
-            matrix = p.Results.matrix;
-            if isempty(requestAs)
-                requestAs = name;
-            end
+                ci.values = valueCell;
+                
+                % update valueLists for each attribute where these aren't
+                % manually specified
+                if any(~ci.attributeValueListSpecified)
+                    for iAttr = 1:ci.nAttributes
+                        if ci.attributeValueListSpecified(iAttr)
+                            continue;
+                        end
 
-            if ~iscell(name)
-                name = {name};
-                % make valueList a cell of cells
-                if ~iscell(valueList)
-                    valueList = num2cell(valueList);
-                end
-                if ~iscell(valueList)
-                    valueList = {valueList};
-                end
-            end
-            if ~iscell(values) 
-                values = num2cell(values);
-            end
-            if ~iscell(requestAs)
-                requestAs = {requestAs};
-            end
-            
-            nAttrAdd = numel(name);
-            assert(numel(name) == numel(requestAs), 'List of name and requestAs must be same length');
-            
-            % check whether values was provided iff .usingManualAttributeValues
-            if isempty(values)
-                if ci.usingManualAttributeValues
-                    error('.usingManualAttributeValues == true, please provide ''values'' param with the values for each attribute');
-                end
-                nTrialsAdd = numel(ci.trialData);
-            else
-                if ~ci.usingManualAttributeValues
-                    error('.usingManualAttributeValues == false, ''values'' param should not be provided');
-                end
-                nTrialsAdd = size(values, 1);
-                % check size of provided values 
-                if ~isempty(ci.values)
-                    % if the number of trials is already determined
-                    assert(nTrialAdd == ci.nTrials, 'Values must be nTrials x number of new attributes cell array');
-                end
-                assert(size(values, 2) ==  nAttrAdd, 'Values must be nTrials x number of new attributes cell array');
-            end
-            
-            % request the values first before making any modifications
-            % in case something goes wrong
-            if ~ci.usingManualAttributeValues
-                valueStruct = ci.requestAttributeValues(name, requestAs);
-                valueStruct = orderfields(valueStruct, requestAs);
-                values = struct2cell(valueStruct);
-            end
-
-            % initialize/expand the ci.values array to the correct size
-            nAttrOld = ci.nAttributes;
-            if isempty(ci.values)
-                % initialize the ci.values array
-                % nTrialsAdd may be 0
-                ci.initializeWithNTrials(nTrialsAdd);
-                ci.values = cell(ci.nTrials, nAttrAdd);
-            else
-                % expand the existing ci.values array
-                ci.values(:, nAttrOld+1:nAttrOld+nAttrAdd) = cell(nTrialsAdd, nAttrAdd);
-            end
-            
-            ci.values(:, nAttrOld+1:nAttrOld+nAttrAdd) = values;
-            
-            % auto compute unique value lists?
-            if isempty(valueList)
-                valueList = cellvec(nAttrAdd);
-                if ci.nTrials > 0
-                    for iA = 1:nAttrAdd
-                        valuesThis = values(iA, :);
+                        valuesThis = ci.values(:, iAttr);
                         % use different behavior depending on whether all values are scalars
                         [tf mat] = isScalarCell(valuesThis);
                         if tf 
@@ -314,44 +177,54 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
                         else
                             valueUnique = setdiff(unique(valuesThis), {''});
                         end
-                        valueList{iA} = makecol(valueUnique);
+
+                        valueList = makecol(valueUnique);
+                        ci = ci.setValueList(iAttr, valueList);
                     end
                 end
-            else
-                assert(numel(valueList) == nAttrAdd, 'ValueList must be a cell of cells with length nAttrAdd');
             end
             
-            % defer to ConditionDescriptor to add the attributes to the remaining lists
-            for i = 1:numel(name)
-                ci = addAttribute@ConditionDescriptor(ci, name{i}, 'valueList', valueList{i}, 'requestAs', requestAs{i}, p.Unmatched);
-            end
+            ci.applied = true;
+            ci.updateCache();
         end
         
-        function valueStruct = requestAttributeValues(ci, attrNames, requestAs)
+        function assertNotApplied(ci)
+            if ci.applied
+                error('You must unbind this ConditionInfo before adding attributes');
+            end
+        end
+
+        function ci = addAttribute(ci, varargin)
+            ci.assertNotApplied();
+            ci = addAttribute@ConditionDescriptor(ci, varargin{:});
+        end
+        
+        function valueStruct = requestAttributeValues(ci, td, attrNames, requestAs)
             % lookup requestAs name if not specified
-            if nargin < 3
+            if nargin < 4
                 inds = find(strcmp(ci.attributeNames, attrNames));
                 requestAs = ci.attributeRequestAs(inds);
             end
                 
             % translate into request as names
-            if numel(ci.trialData) == 0
+            if ci.getNTrialsFn(td) == 0
                 valueStruct = struct();
-            end
-            
-            
-            valueStructRequestAs = ci.getAttributeValueFn(ci.trialData, requestAs);
-            
-            % check the returned size and field names
-            assert(numel(valueStructRequestAs) == numel(ci.trialData), 'Number of elements returned by getAttributeFn must match nTrials');
-            assert(all(isfield(valueStructRequestAs, requestAs)), 'Number of elements returned by getAttributeFn must match nTrials');
-            
-            % translate back into attribute names
-            valueStruct = mvfield(valueStructRequestAs, requestAs, attrNames);
-            valueStruct = orderfields(valueStruct, attrNames);
-            valueStruct = makecol(valueStruct);
-        end
+            else
+                valueStructRequestAs = ci.getAttributeValueFn(td, requestAs);
 
+                % check the returned size and field names
+                assert(numel(valueStructRequestAs) == ci.nTrials, 'Number of elements returned by getAttributeFn must match nTrials');
+                assert(all(isfield(valueStructRequestAs, requestAs)), 'Number of elements returned by getAttributeFn must match nTrials');
+
+                % translate back into attribute names
+                valueStruct = mvfield(valueStructRequestAs, requestAs, attrNames);
+                valueStruct = orderfields(valueStruct, attrNames);
+                valueStruct = makecol(valueStruct);
+            end
+        end
+    end
+    
+    methods
         function subsMat = get.conditionSubs(ci)
             %subsMat = TensorUtils.ind2subAsMat(ci.conditionsSize, ci.conditionIdx);
             if isempty(ci.conditionSubs)
@@ -388,7 +261,7 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
                             attr = ci.attributeNames{iA};
                             if ~ismember(attr, ci.groupByList)
                                 values = ci.values(:, iA);
-                                invalid = ~ismember(values, ci.attributeValueList{iA});
+                                invalid = ~ismemberCell(values, ci.attributeValueList{iA});
                                 subsMat(invalid, :) = NaN;
                             end
                         end
@@ -437,6 +310,13 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
 
         function markInvalid(ci, invalid)
             ci.manualInvalid(invalid) = true;
+            ci.updateCache();
+        end
+        
+        function setInvalid(ci, invalid)
+            assert(isvector(invalid) & numel(invalid) == ci.nTrials, 'Size mismatch');
+            ci.manualInvalid = makecol(invalid);
+            ci.updateCache();
         end
 
         function valid = get.valid(ci)
@@ -924,6 +804,20 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
                 end
             end
             values = structOfArraysToStructArray(valuesByAttribute);
+        end
+        
+        function nTrials = defaultGetNTrialsFn(data, varargin)
+            if isempty(data)
+                nTrials = 0;
+                return;
+            end
+            
+            assert(isstruct(data) || isa(data, 'TrialData'), 'Please provide getNTrialsFn if data is not struct or TrialData');
+            if isstruct(data)
+                nTrials = numel(data);
+            else
+                nTrials = data.nTrials;
+            end
         end
         
         % same as ConditionDescriptor, except skips conditions with no

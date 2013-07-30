@@ -39,6 +39,8 @@ classdef(HandleCompatible) ConditionDescriptor
         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value?
         attributeValueList = {}; % A x 1 cell array of permitted values for this attribute 
+        
+        attributeValueListSpecified = []; % A x 1 logical array: was a non-empty value list provided for this attribute
     end
 
     properties(Dependent)
@@ -222,7 +224,11 @@ classdef(HandleCompatible) ConditionDescriptor
             
             idxList = nan(length(name), 1);
             for i = 1:length(name)
-                idx = find(strcmp(ci.attributeNames, name{i}), 1);
+                if ischar(name{i})
+                    idx = find(strcmp(ci.attributeNames, name{i}), 1);
+                else
+                    idx = name{i};
+                end
                 if isempty(idx)
                     error('Cannot find attribute named %s', name{i});
                 end
@@ -267,68 +273,70 @@ classdef(HandleCompatible) ConditionDescriptor
         end
 
         function printDescription(ci) 
-            tcprintf('yellow', '%s: \n', class(ci));
+            tcprintf('yellow', '%s: ', class(ci));
             nAttr = ci.nAttributes;
             % print full list
-            fprintf('Grouped by    : ');
+            str = sprintf('{bright blue}Group by ');
             if nAttr > 0
                 % print attribute list with value list counts
                 for i = 1:ci.nAttributesGroupBy
                     if i > 1
-                        tcprintf('dark gray', ' x ');
+                        str = [str '{dark gray} x '];
                     end
-                    tcprintf('inline', '{bright blue}%s {gray}({white}%d{gray}) ', ...
-                        ci.groupByList{i}, ci.nValuesByAttributeGroupBy(i));
-                end
-                fprintf('\n');
-            else
-                tcprintf('dark gray', 'no group by attributes\n');
-            end
-            
-            fprintf('\nAll attributes: ');
-            if nAttr > 0
-                % print attribute list with value list counts
-                for i = 1:ci.nAttributes
-                    % bright color if we're grouping on this
-                    if ci.isAttributeInGroupByList(i) 
-                        nameColorStr = '{bright blue}';
-                    else
-                        nameColorStr = '{blue}';
-                    end
-                    % is the requestAs the same as the attribute name?
-                    if strcmp(ci.attributeNames{i}, ci.attributeRequestAs{i})
-                        nameStr = sprintf('%s%s', nameColorStr, ci.attributeNames{i});
-                    else
-                        nameStr = sprintf('%s%s as %s', nameColorStr, ci.attributeNames{i}, ci.attributeRequestAs{i});
-                    end
-                    tcprintf('inline', strcat(nameStr, '{gray} ({white}%d{gray}) '), ci.nValuesByAttribute(i));
-
-                    if i < ci.nAttributes
-                        tcprintf('dark gray', ' x ');
-                    end
+                    str = [str sprintf('{white}%s {bright blue}(%d) ', ...
+                        ci.groupByList{i}, ci.nValuesByAttributeGroupBy(i))];
                 end
                 
-                fprintf('\n');
+            else
+                str = '{bright blue}no group by attributes';
+            end
+            str = [str '\n'];
+            tcprintf('inline', str);
+            
+%             fprintf('All attributes: ');
+             if nAttr > 0
+%                 % print attribute list with value list counts
+%                 for i = 1:ci.nAttributes
+%                     % bright color if we're grouping on this
+%                     if ci.isAttributeInGroupByList(i) 
+%                         nameColorStr = '{bright blue}';
+%                     else
+%                         nameColorStr = '{blue}';
+%                     end
+%                     % is the requestAs the same as the attribute name?
+%                     if strcmp(ci.attributeNames{i}, ci.attributeRequestAs{i})
+%                         nameStr = sprintf('%s%s', nameColorStr, ci.attributeNames{i});
+%                     else
+%                         nameStr = sprintf('%s%s as %s', nameColorStr, ci.attributeNames{i}, ci.attributeRequestAs{i});
+%                     end
+%                     tcprintf('inline', strcat(nameStr, '{gray} ({white}%d{gray}) '), ci.nValuesByAttribute(i));
+% 
+%                     if i < ci.nAttributes
+%                         tcprintf('dark gray', ' x ');
+%                     end
+%                 end
+%                 
+%                 fprintf('\n');
+
                 % print attribute value lists on each line
                 for i = 1:ci.nAttributes
                     if ci.isAttributeInGroupByList(i) 
-                        tcprintf('inline', '\t{bright blue}%s: {white}%s\n', ...
+                        tcprintf('inline', '\t{gray}%s: {white}%s\n', ...
                             ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
                     else
-                        tcprintf('inline', '\t{blue}%s: {none}%s\n', ...
+                        tcprintf('inline', '\t{gray}%s: {none}%s\n', ...
                             ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
                     end
                 end
             else
-                tcprintf('dark gray', 'no attributes\n');
+                %tcprintf('dark gray', 'no attributes\n');
             end
-
-            fprintf('\n');
 
         end
 
         function disp(ci)
             ci.printDescription();
+            fprintf('\n');
             builtin('disp', ci);
         end
     end
@@ -361,10 +369,16 @@ classdef(HandleCompatible) ConditionDescriptor
             ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList); 
             ci.attributeRequestAs{iAttr} = requestAs;
             
-            if ~iscell(valueList)
-                valueList = num2cell(valueList);
+            if isempty(valueList)
+                ci.attributeValueList{iAttr} = {};
+                ci.attributeValueListSpecified(iAttr) = false;
+            else
+                if ~iscell(valueList)
+                    valueList = num2cell(valueList);
+                end
+                ci.attributeValueList{iAttr} = valueList;
+                ci.attributeValueListSpecified(iAttr) = true;
             end
-            ci.attributeValueList{iAttr} = valueList;
             
             if p.Results.groupBy
                 ci.groupByList{end+1} = name;
@@ -372,12 +386,45 @@ classdef(HandleCompatible) ConditionDescriptor
             
             ci = ci.updateCache();
         end
+
+%         function ci = removeAttribute(ci, name)
+%             ci.warnIfNoArgOut(nargout);
+% 
+%             if ~ci.hasAttribute(name)
+%                 error('ConditionDescriptor has no attribute %s', name);
+%             end
+%             
+%             iAttr = ci.getAttributeIdx(name);
+%             maskOther = true(ci.nAttributes, 1);
+%             maskOther(iAttr) = false;
+%             ci.attributeNames = ci.attributeNames(maskOther);
+%             ci.attributeNumeric = ci.attributeNumeric(maskOther); 
+%             ci.attributeRequestAs = ci.attributeRequestAs(maskOther);
+%             ci.attributeValueList = ci.attributeValueList(maskOther);
+%             ci.attributeValueListSpecified = ci.attributeValueListSpecified(maskOther);
+%             
+%             ci.groupByList = setdiff(ci.groupByList, name);
+%             
+%             ci = ci.updateCache();
+%         end
         
         function ci = setValueList(ci, name, valueList)
             ci.warnIfNoArgOut(nargout);
+            
             iAttr = ci.getAttributeIdx(name);
-            ci.attributeValueList{iAttr} = valueList;
+            
             ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
+            if isempty(valueList)
+                ci.attributeValueList{iAttr} = {};
+                ci.attributeValueListSpecified(iAttr) = false;
+            else
+                if ~iscell(valueList)
+                    valueList = num2cell(valueList);
+                end
+                ci.attributeValueList{iAttr} = valueList;
+                ci.attributeValueListSpecified(iAttr) = true;
+            end
+                       
             ci = ci.updateCache();
         end
         
@@ -477,6 +524,7 @@ classdef(HandleCompatible) ConditionDescriptor
             ci.attributeNames = ci.attributeNames(mask);
             ci.attributeNumeric = ci.attributeNumeric(mask);
             ci.attributeValueList = ci.attributeValueList(mask);
+            ci.attributeValueListSpecified = ci.attributeValueListSpecified(mask);
         end 
     end
 
@@ -679,6 +727,13 @@ classdef(HandleCompatible) ConditionDescriptor
             for iAttr = 1:length(attr)
                 include = false;
                 val = attrValues.(attr{iAttr});
+                
+                if ~isscalar(val)
+                    % skip attributes where more than one value is
+                    % specified, they won't be part of the condition name
+                    continue;
+                end
+                
                 if isnumeric(val)
                     if isscalar(val)
                         val = num2str(val);

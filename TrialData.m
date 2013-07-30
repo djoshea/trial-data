@@ -14,6 +14,8 @@ classdef TrialData
         trialDataInterfaceClass = '';
 
         data = struct();  % standardized format nTrials x 1 struct with all trial data  
+        
+        valid
 
         datasetName = ''; % string describing entire collection of trials dataset
 
@@ -40,6 +42,7 @@ classdef TrialData
 
     properties(Dependent) 
         nTrials
+        nTrialsValid
         nChannels
     end
     
@@ -130,7 +133,18 @@ classdef TrialData
                 td.channelDescriptorsByName.(td.channelDescriptors(i).name) = td.channelDescriptors(i);
             end
             
+            td.valid = truevec(td.nTrials);
             td.initialized = true;
+        end
+
+        function printDescription(td)
+            tcprintf('inline', '{yellow}%s: {bright blue}%d trials (%d valid) with %d channels\n', ...
+                class(td), td.nTrials, td.nTrialsValid, td.nChannels);
+        end
+
+        function disp(td)
+            td.printDescription();
+            fprintf('\n');
         end
     end
     
@@ -138,6 +152,10 @@ classdef TrialData
     methods % get. accessors for above properties which simply refer to tdi.?
         function nTrials = get.nTrials(td)
             nTrials = numel(td.data);
+        end
+
+        function nTrials = get.nTrialsValid(td)
+            nTrials = nnz(td.valid);
         end
 
         function nChannels = get.nChannels(td)
@@ -152,6 +170,17 @@ classdef TrialData
         function td = selectTrials(td, mask)
             td.warnIfNoArgOut(nargout);
             td.data = td.data(mask);
+            td.valid = td.valid(mask);
+        end
+        
+        function td = selectValidTrials(td)
+             td.warnIfNoArgOut(nargout);
+             td = td.selectTrials(td.valid);
+        end
+
+        function td = markInvalid(td, mask)
+            td.warnIfNoArgOut(nargout);
+            td.valid(mask) = false;
         end
     end
 
@@ -208,12 +237,25 @@ classdef TrialData
             timesCell = {td.data.(name)}';
             tags = {td.data.([name '_tags'])}';
         end
+
+        function [timesCell tags] = getEventStartAligned(td, name)
+            timesCell = {td.data.(name)}';
+            tags = {td.data.([name '_tags'])}';
+        end
         
         function timesCell = getEvents(td, nameCell)
             nEvents = numel(nameCell);
             timesCell = cell(td.nTrials, nEvents); 
             for iEv = 1:nEvents
                 timesCell(:, iEv) = td.getEvent(nameCell{iEv});
+            end
+        end
+
+        function timesCell = getEventsStartAligned(td, nameCell)
+            nEvents = numel(nameCell);
+            timesCell = cell(td.nTrials, nEvents); 
+            for iEv = 1:nEvents
+                timesCell(:, iEv) = td.getEventStartAligned(nameCell{iEv});
             end
         end
     end
@@ -290,7 +332,61 @@ classdef TrialData
             end
         end
     end
-    
+
+    methods % Plotting functions
+        function str = getAxisLabelForChannel(td, name)
+            str = td.channelDescriptorsByName.(name).getAxisLabel();
+        end
+
+        function str = getTimeAxisLabel(td)
+           str = sprintf('Time (%s)',  td.timeUnitName);
+        end
+
+        % general utility to send plots to the correct axis
+        function axh = getRequestedPlotAxis(td, varargin)
+            p = inputParser();
+            p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
+            p.addParamValue('cla', false, @islogical); 
+            p.KeepUnmatched;
+            p.parse(varargin{:});
+
+            % default to gca
+            if isempty(p.Results.axh)
+                axh = gca;
+            else
+                axh = p.Results.axh;
+            end
+
+            % optionally clear axis
+            if p.Results.cla
+                cla(axh);
+            end
+        end
+
+        function plotAnalogEachTrial(td, name, varargin) 
+            p = inputParser();
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.KeepUnmatched;
+            p.parse(varargin{:});
+
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+
+            [dataCell timeCell] = td.getAnalog(name);     
+
+            dataCell = dataCell(td.valid);
+            timeCell = timeCell(td.valid);
+
+            for i = 1:td.nTrialsValid
+                plot(axh, double(timeCell{i}), dataCell{i}, '-', 'Color', 0.5*ones(3,1), ...
+                    p.Results.plotOptions{:});
+                if i == 1, hold(axh, 'on'); end
+            end
+            box(axh, 'off');
+            
+            xlabel(td.getTimeAxisLabel());
+            ylabel(td.getAxisLabelForChannel(name));
+        end
+    end
 
 end
 

@@ -25,7 +25,8 @@ classdef AlignDescriptor
         autoAbbreviateMakeUpper = true;
         
         % description
-        name
+        name % set manually, or will be auto-populated
+        nameDefault = true; % false if name has been set manually
         
         % how to handle the window falling outside of the trial
         outsideOfTrialMode = AlignDescriptor.INVALIDATE; % TRUNCATE or INVALIDATE or IGNORE
@@ -46,25 +47,28 @@ classdef AlignDescriptor
 
     properties(Hidden) % SetAccess=protected
         % slice times >= t_startEvent + startOffset
-        startEvent  = '';
+        startEvent;
         startOffset = 0;
         startLabel = ''; 
         startInfo
         startMarkData % mark this point on a data trace in drawOnData
+        startDefault = true;
 
         % slice times <= t_stopEvent + stopOffset
-        stopEvent = '';
+        stopEvent;
         stopOffset = 0;
         stopLabel = '';
         stopInfo
         stopMarkData 
+        stopDefault = true;
 
         % shift time such that t_zeroEvent + zeroOffset is t=0
-        zeroEvent = '';
+        zeroEvent;
         zeroOffset = 0;
         zeroLabel = '';
         zeroInfo
         zeroMarkData
+        zeroDefault = true;
 
         % move interval start forward in time to avoid these times
         truncateBeforeEvents = {};
@@ -165,6 +169,11 @@ classdef AlignDescriptor
             end
         end
         
+        function ad = set.name(ad, name)
+            ad.name = name;
+            ad.nameDefault = isempty(name);
+        end
+        
         % auto fill in default labels
         function str = get.startLabel(ad)
             if isempty(ad.startLabel)
@@ -230,6 +239,10 @@ classdef AlignDescriptor
         function ad = AlignDescriptor(varargin)
             ad.eventAbbrevLookup = ValueMap('KeyType', 'char', 'ValueType', 'char');
             
+            ad.startEvent  = 'start';
+            ad.stopEvent = 'end';
+            ad.zeroEvent = 'start';
+            
             % either use named property value pairs or string syntax
             if nargin == 1 && ischar(varargin{1});
                 ad = ad.parseDescriptionString(varargin{1});
@@ -270,6 +283,7 @@ classdef AlignDescriptor
             end
 
             ad.startInfo = p.Unmatched;
+            ad.startDefault = false;
 
             % if no zero is specified, determine it from the start event
             ad = ad.setDefaultZero();
@@ -298,6 +312,7 @@ classdef AlignDescriptor
                 ad.stopLabel = p.Results.as;
             end
             ad.stopInfo = p.Unmatched;
+            ad.stopDefault = true;
         end
 
         function ad = zero(ad, eventName, varargin)
@@ -323,6 +338,7 @@ classdef AlignDescriptor
                 ad.zeroLabel = p.Results.as;
             end
             ad.zeroInfo = p.Unmatched;
+            ad.zeroDefault = true;
         end
 
         function ad = interval(ad, eventNameStart, offsetStart, eventNameStop, offsetStop, varargin)
@@ -456,7 +472,7 @@ classdef AlignDescriptor
         function ad = setDefaultZero(ad)
             ad.warnIfNoArgOut(nargout);
             % if no zero specified, make zero the start event with no offset
-            if isempty(ad.zeroEvent)
+            if isempty(ad.zeroEvent) || ad.zeroDefault
                 ad.zeroEvent = ad.startEvent;
                 ad.zeroOffset = 0;
             end
@@ -475,19 +491,32 @@ classdef AlignDescriptor
             info = regexp(startStopZero, pat, 'names', 'once');
 
             if isempty(info) || isempty(info.start) || isempty(info.stop)
-                error('Error parsing align descriptor %s', string);
+                % Try parsing it as just a single event, which would be
+                % come the zero
+                try 
+                    [ad.zeroEvent ad.zeroOffset ad.zeroLabel] = ad.parseEventOffsetString(startStopZero);
+                    ad.zeroDefault = false;
+                catch exc
+                    % otherwise just fail
+                    error('Error parsing align descriptor %s', string);
+                end
             end
 
-            % parse each of the start, stop, and zero strings
-            [ad.startEvent ad.startOffset ad.startLabel] = ad.parseEventOffsetString(info.start, 'start');
-            [ad.stopEvent ad.stopOffset ad.stopLabel] = ad.parseEventOffsetString(info.stop, 'stop');
+            if ad.zeroDefault
+                % parse each of the start, stop, and zero strings
+                [ad.startEvent ad.startOffset ad.startLabel] = ad.parseEventOffsetString(info.start, 'start');
+                ad.startDefault = true;
+                [ad.stopEvent ad.stopOffset ad.stopLabel] = ad.parseEventOffsetString(info.stop, 'stop');
+                ad.stopDefault = true;
 
-            if isfield(info, 'zero') && ~isempty(info.zero)
-                % zero specified explicitly
-                info.zero = strtrim(info.zero(2:end)); % remove the leading @
-                [ad.zeroEvent ad.zeroOffset ad.zeroLabel] = ad.parseEventOffsetString(info.zero, 'zero');
-            else
-                ad = ad.setDefaultZero();
+                if isfield(info, 'zero') && ~isempty(info.zero)
+                    % zero specified explicitly
+                    info.zero = strtrim(info.zero(2:end)); % remove the leading @
+                    [ad.zeroEvent ad.zeroOffset ad.zeroLabel] = ad.parseEventOffsetString(info.zero, 'zero');
+                    ad.zeroDefault = false;
+                else
+                    ad = ad.setDefaultZero();
+                end
             end
 
             % parse the remainder strings one by one to get after, before, mark
@@ -633,10 +662,18 @@ classdef AlignDescriptor
             str = sprintf('%s : %s @ %s', sStart, sStop, sZero);
         end
         
-        function disp(ad)
-            tcprintf('inline', '{yellow}%s: {white}%s\n', class(ad), ad.name);
+        function printOneLineDescription(ad)
             desc = ad.getStartStopZeroDescription();
-            tcprintf('inline', '\t{bright blue}%s\n', desc);
+            if ~ad.nameDefault
+                tcprintf('inline', '{yellow}%s: {white}%s : {bright blue}%s\n', class(ad), ad.name, desc);
+            else
+                % name will just match desc, so don't print it twice
+                tcprintf('inline', '{yellow}%s: {bright blue}%s\n', class(ad), desc);
+            end
+        end
+        
+        function disp(ad)
+            ad.printOneLineDescription();
 
             for i = 1:length(ad.markEvents);
                 tcprintf('inline', '\tmark {white}%s%+.0f{none} as {bright blue}%s\n', ad.markEvents{i}, ...
