@@ -25,25 +25,14 @@ classdef TrialData
         
         timeUnitsPerSecond
         
-        channelDescriptors % struct with ChannelDescriptor for each channel, by name
-        
-        analogChannelMask
-        eventChannelMask
-        paramChannelMask
-        
-        analogChannelNames
-        eventChannelNames
-        paramChannelNames
-        
-        channelDescriptorsByName
-        
-        channelNames % cell array of channel names
+        channelDescriptorsByName % struct with ChannelDescriptor for each channel, by name
     end
 
     properties(Dependent) 
         nTrials
         nTrialsValid
         nChannels
+        channelNames % cell array of channel names
     end
     
     % Initializing and building
@@ -57,7 +46,7 @@ classdef TrialData
         % copy everything over from the TrialDataInterface
         function td = initialize(td, varargin)
             p = inputParser();
-            p.addOptional('trialDataInterface', [], @(tdi) isa(tdi, 'TrialDataInterface'));
+            p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
             p.parse(varargin{:});
             tdi = p.Results.trialDataInterface;
             
@@ -81,69 +70,67 @@ classdef TrialData
             end
 
             % combine all channelDescriptors together
-            td.channelDescriptors = [specialParams; regularChannels];
+            channelDescriptors = [specialParams; regularChannels];
 
             nTrials = tdi.getTrialCount();
-            nChannels = numel(td.channelDescriptors);
+            nChannels = numel(channelDescriptors);
 
             % request all channel data at once
-            td.channelNames = {td.channelDescriptors.name};
-            data = tdi.getChannelData(td.channelDescriptors); 
+            data = tdi.getChannelData(channelDescriptors); 
 
             % loop over channels and verify
+            fprintf('Validating channel data...\n');
+            ok = falsevec(nChannels);
+            msg = cellvec(nChannels);
             for iChannel = 1:nChannels
-                chd = td.channelDescriptors(iChannel); 
-                name = chd.name;
+                chd = channelDescriptors(iChannel); 
 
-                % check for main field
-                assert(isfield(data, name), 'getChannelData missing field %s', name);
+                % check to make sure all fields were provided as expected 
+                [ok(iChannel), msg{iChannel}] = chd.checkData(data);
+            end
 
-                % replace empty values with default
-                if ~isempty(chd.defaultValue)
-                    emptyMask = cellfun(@isempty, {data.(name)});
-                    [data(emptyMask).(name)] = deal(chd.defaultValue);
-                 end
-
-                % convert to appropriate type
-                data = structConvertFieldValues(data, chd.dataClass, chd.name);
-                
-                % these are the data subfields for this channel
-                chExtraFields = chd.getExtraDataFields();
-                for iEx = 1:numel(chExtraFields)
-                    subfield = sprintf('%s_%s', name, chExtraFields{iEx});
-                    assert(isfield(data, subfield), 'getChannelData missing field %s', subfield);
+            if any(~ok)
+                msg = msg(~ok);
+                fprintf('Error: some data was missing from getChannelData():\n');
+                for i = 1:length(msg)
+                    fprintf('\t%s\n', msg{i});
                 end
+                error('Missing data provided by getChannelData');
+            end
+
+            fprintf('Repairing and converting channel data...\n');
+            for iChannel = 1:nChannels
+                chd = channelDescriptors(iChannel); 
+                data = chd.repairData(data);
+                data = chd.convertData(data);
             end
 
             td.data = data;
-            
-            % build masks for each channel type
-            td.analogChannelMask = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), td.channelDescriptors);
-            td.eventChannelMask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), td.channelDescriptors);
-            td.paramChannelMask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), td.channelDescriptors);
-            
-            % collect names of channels by type
-            td.analogChannelNames = {td.channelDescriptors(td.analogChannelMask).name};
-            td.eventChannelNames = {td.channelDescriptors(td.eventChannelMask).name};
-            td.paramChannelNames = {td.channelDescriptors(td.paramChannelMask).name};
         
             % build channelDescriptorByName
             td.channelDescriptorsByName = struct();
-            for i = 1:numel(td.channelDescriptors)
-                td.channelDescriptorsByName.(td.channelDescriptors(i).name) = td.channelDescriptors(i);
+            for i = 1:numel(channelDescriptors)
+                td.channelDescriptorsByName.(channelDescriptors(i).name) = channelDescriptors(i);
             end
             
             td.valid = truevec(td.nTrials);
             td.initialized = true;
         end
 
-        function printDescription(td)
+        function printDescriptionShort(td)
             tcprintf('inline', '{yellow}%s: {bright blue}%d trials (%d valid) with %d channels\n', ...
                 class(td), td.nTrials, td.nTrialsValid, td.nChannels);
         end
+        
+        function printChannelInfo(td)
+            tcprintf('inline', '{bright cyan}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Event : {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Param : {none}%s\n', strjoin(td.listParamChannels(), ', '));
+        end
 
         function disp(td)
-            td.printDescription();
+            td.printDescriptionShort();
+            td.printChannelInfo();
             fprintf('\n');
         end
     end
@@ -159,7 +146,11 @@ classdef TrialData
         end
 
         function nChannels = get.nChannels(td)
-            nChannels = numel(td.channelDescriptors);
+            nChannels = numel(td.channelNames);
+        end
+        
+        function names = get.channelNames(td)
+            names = fieldnames(td.channelDescriptorsByName);
         end
     end
 
@@ -205,42 +196,44 @@ classdef TrialData
         function tf = hasChannel(td, name)
             tf = ismember(name, td.channelNames);
         end
-            
-        % LIST CHANNEL NAMES BY TYPE
-        function names = listAnalog(td)
-            names = td.analogChannelNames;
-        end
-
-        function names = listEvents(td)
-            names = td.eventChannelNames;
-        end
-
-        function names = listParams(td)
-            names = td.paramChannelNames;
-        end
-
-        % Basic access methods, very fast
-        function values = getParam(td, name)
-            values = {td.data.(name)}';
-            % if this channel is marked as a scalar, convert to a numeric array
-            if td.channelDescriptorsByName.(name).scalar
-                values = cell2mat(values);
+        
+        function cds = getChannelDescriptorArray(td)
+            fields = fieldnames(td.channelDescriptorsByName);
+            for iF = 1:length(fields)
+                cds(iF) = td.channelDescriptorsByName.(fields{iF});
             end
         end
-        
-        function [data time] = getAnalog(td, name)
-            data = {td.data.(name)}';
-            time = {td.data.([name '_time'])}';
+    end
+    
+    methods % Analog channel methods
+        function names = listAnalogChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), channelDescriptors);
+            names = {channelDescriptors(mask).name};
         end
         
-        function [timesCell tags] = getEvent(td, name)
-            timesCell = {td.data.(name)}';
-            tags = {td.data.([name '_tags'])}';
+        function [data, time] = getAnalog(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            data = {td.data.(name)}';
+            time = {td.data.(cd.timeField)}';
+        end
+    end
+    
+    methods % Event channel methods
+        function names = listEventChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), channelDescriptors);
+            names = {channelDescriptors(mask).name};
         end
 
-        function [timesCell tags] = getEventStartAligned(td, name)
+        function timesCell = getEvent(td, name)
             timesCell = {td.data.(name)}';
-            tags = {td.data.([name '_tags'])}';
+        end
+        
+        % used mainly by AlignInfo to make sure it can access unaligned
+        % event info
+        function eventStruct = getRawEventStruct(td)
+            eventStruct = copyStructField(td.data, [], td.listEventChannels());
         end
         
         function timesCell = getEvents(td, nameCell)
@@ -251,11 +244,61 @@ classdef TrialData
             end
         end
 
-        function timesCell = getEventsStartAligned(td, nameCell)
-            nEvents = numel(nameCell);
-            timesCell = cell(td.nTrials, nEvents); 
-            for iEv = 1:nEvents
-                timesCell(:, iEv) = td.getEventStartAligned(nameCell{iEv});
+        function counts = getEventCount(td, name)
+            counts = cellfun(@numel, td.getEvent(name));
+        end
+
+        function tfList = getEventOccurred(td, name)
+            tfList = ~cellfun(@isempty, td.getEvent(name));
+        end
+
+        function times = getEventNth(td, name, n)
+            if strcmp(n, 'end')
+                times = td.getEventLast(name);
+                return;
+            end
+            
+            times = cellfun(@getNth, td.getEvent(name));
+            
+            function t = getNth(times)
+                if numel(times) >= n
+                    t = times(n);
+                else
+                    t = NaN;
+                end
+            end
+        end
+
+        function times = getEventFirst(td, name)  
+            times = getEventNthOccurrence(td, name, 1);
+        end
+
+        function times = getEventLast(td, name)  
+            times = cellfun(@getLast, td.getEvent(name));
+
+            function t = getLast(times)
+                if ~isempty(times)
+                    t = times(end);
+                else
+                    t = NaN;
+                end
+            end
+        end
+    end
+    
+    methods % Param channel methods
+        function names = listParamChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), channelDescriptors);
+            names = {channelDescriptors(mask).name};
+        end
+        
+        % Basic access methods, very fast
+        function values = getParam(td, name)
+            values = {td.data.(name)}';
+            % if this channel is marked as a scalar, convert to a numeric array
+            if ~td.channelDescriptorsByName.(name).collectAsCell
+                values = cell2mat(values);
             end
         end
     end
@@ -263,7 +306,6 @@ classdef TrialData
     methods % Add data methods
         function td = updatePostDataChange(td)
             td.warnIfNoArgOut(nargout);
-
         end
 
         function td = addParam(td, name, values, varargin)
@@ -292,44 +334,6 @@ classdef TrialData
             td.data = assignIntoStructArray(td.data, name, values);
 
             td = td.updatePostDataChange();
-        end
-    end
-
-    methods % Special event access
-        function counts = getEventCount(td, name)
-            counts = cellfun(@numel, td.getEvent(name));
-        end
-
-        function tfList = getEventOccurred(td, name)
-            tfList = ~cellfun(@isempty, td.getEvent(name));
-        end
-
-        function [times] = getEventNth(td, name, n)
-            timesCell = td.getEvent(name);
-            
-            function t = getNth(times)
-                if numel(times) >= n
-                    t = times(n);
-                else
-                    t = NaN;
-                end
-            end
-        end
-
-        function times = getEventFirst(td, name)  
-            times = getEventNthOccurrence(td, name, 1);
-        end
-
-        function times = getEventLast(td, name)  
-            timesCell = td.getEvent(name);
-            
-            function t = getLast(times)
-                if ~isempty(times)
-                    t = times(end);
-                else
-                    t = NaN;
-                end
-            end
         end
     end
 

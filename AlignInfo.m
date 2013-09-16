@@ -3,17 +3,33 @@ classdef AlignInfo < AlignDescriptor
 % where the events have actual timestamps by trial.
 
     properties
+        % marks not using the same event as zero will be surrounded by < > 
+        % to indicate the mean time is being plotted. if false, they will
+        % not be plotted at all.
+        markPlotMedians = true;
+        
+        % for such marks, if the range of relative event times (in either 
+        % direction is less than this threshold, the < > marks will be omitted.
+        markRelativeDeltaIgnore = 7.5;
+
         % this function maps (R, eventList) --> eventTimes array nTrials x nEvents
         getEventTimesFn = @AlignInfo.getEventTimes;
-        
-        % this function maps R --> [startMs stopMs] arrays nTrials x 1
-        getTrialLengthFn = @AlignInfo.getTrialLengths;
 
-        % struct array of nTrials x 1 containing the times of each event
-        % as well as .start and .stop timestamps for each trial
+        eventTimeRoundFn = @ceil;
+        
+        % struct array of nTrials x 1 containing the absolute times of each event
+        % for the trials, as returned by getEventTimesFn
+        eventInfo 
+
+        % struct array of nTrials x 1 containing the absolute times of the
+        % start, stop, zero events, as well as intervals and marks 
         timeInfo 
 
-        % valid is a merger of these two
+        % struct where each .eventName carries summary info about that event's relative
+        % timing with respect to 0. Derives from timeInfo but speeds up plotting / labeling operations 
+        summaryInfo
+
+        % valid is a dependent property formed by merging these two
         computedValid
         manualInvalid
 
@@ -35,14 +51,6 @@ classdef AlignInfo < AlignDescriptor
             adNew = AlignDescriptor.fromAlignDescriptor(ad, adNew);
             adNew.applied = false;
         end
-        
-        function nTrials = getNTrialsFromData(R)
-            if isa(R, 'TrialData')
-                nTrials = R.nTrials;
-            else                
-                nTrials = numel(R);
-            end
-        end
     end
     
     methods % build a AlignDescriptor back from this AlignInfo
@@ -57,21 +65,12 @@ classdef AlignInfo < AlignDescriptor
             ad = ad@AlignDescriptor(varargin{:});
         end
 
-        % the pad window is a [pre post] vector which adds additional temporal
-        % padding to the beginning and end of each aligned window. This window
-        % affects the .valid validity of each trial, because trials are marked
-        % as valid only if they are long enough to accommodate fully the pad window
-        %
-        % The pad window will also affect the aligned event times returned by some methods below 
-%         function ad = setPadWindow(ad, padWindow)
-%             ad.warnIfNoArgout(nargout);
-%             ad.padWindow = padWindow;
-%         end
-
         % bind this AlignInfo to a set of trials
         function ad = applyToTrialData(ad, R)
             ad.warnIfNoArgOut(nargout);
-            [ad.timeInfo ad.computedValid] = ad.getTimeInfo(R, ad.padWindow);
+            ad.eventInfo = ad.requestEventInfo(R);
+            [ad.timeInfo, ad.computedValid] = ad.buildTimeInfo();
+            %ad.summary = ad.summarizeTimeInfo(ad.timeInfo);
             ad.applied = true;
             ad.manualInvalid = falsevec(ad.nTrials);
         end
@@ -87,11 +86,13 @@ classdef AlignInfo < AlignDescriptor
         function ad = markInvalid(ad, invalid)
             ad.warnIfNoArgOut(nargout);
             ad.manualInvalid(invalid) = false;
+            ad = ad.updateSummary();
         end
 
         function ad = setInvalid(ad, mask)
             ad.warnIfNoArgOut(nargout);
             ad.manualInvalid = mask;
+            ad = ad.updateSummary();
         end
         
         function valid = get.valid(ad)
@@ -104,175 +105,276 @@ classdef AlignInfo < AlignDescriptor
 
         function ad = selectTrials(ad, mask)
             ad.warnIfNoArgOut(nargout);
+            ad.eventInfo = ad.eventInfo(mask);
             ad.timeInfo = ad.timeInfo(mask);
             ad.manualInvalid = ad.manualInvalid(mask);
             ad.computedValid = ad.computedValid(mask);
+            ad = ad.updateSummary();
         end
         
         % internal use function that simply grabs the event times relative to the trial
         % start and start/stop times as well
         % eventInfo(iTrial).event_eventName is time of eventName in trial
         % iTrial relative to eventInfo(iTrial).event_start
-        function [eventInfo] = getEventInfo(ad, R)
-            % get trial start and stop times
-            [startMs stopMs] = ad.getTrialLengthFn(R);
-            startMs = makecol(startMs);
-            stopMs = makecol(stopMs);
-
+        function [eventInfo] = requestEventInfo(ad, R)
             eventList = ad.getEventList();
             
-            % grab the event times for all needed events, must be relative
-            % to those start and stop times
+            % grab the event times for all needed events
             times = ad.getEventTimesFn(R, eventList);
-            if ~iscell(times)
-                times = mat2cell(times);
+
+            % times may be:
+            % nTrials x nEvents cell array
+            % nTrials x nEvents matrix
+            % nTrials x 1 struct array with fields == eventList
+            %
+            % ultimately convert to the struct format
+            if iscell(times)
+                eventInfo = cell2struct(times, eventList, 2);
+            elseif isnumeric(times)
+                eventInfo = cell2struct(num2cell(times), eventList, 2);
+            elseif isstruct(times)
+                eventInfo = times;
+            else
+                error('AlignInfo.getEventTimesFn returned an invalid value');
             end
-            % times is an nEvents x nTrials cell array
-            
+
             % replace empty cells with NaN
-            emptyMask = cellfun(@isempty, times);
-            times(emptyMask) = {NaN};
-            
-            % convert event times to column vectors
-            times = cellfun(@makecol, times, 'UniformOutput', false);
-            
-            % build a nTrials struct vector
-            nTrials = length(R);
-            
-            % set event_start and event_end fields
-            eventInfo = assignIntoStructArray([], {'event_start', 'event_end'}, [startMs stopMs]);
-            
-            % add event_eventName fields to this structure
-            eventFields = cellfun(@(s) sprintf('event_%s', s), eventList, 'UniformOutput', false);
-            eventInfo = assignIntoStructArray(eventInfo, eventFields, times);
+            %eventInfo = structReplaceEmptyValues(eventInfo, NaN);
+        end
+
+        function times = getEventNthTimeVector(ad, event, n)
+            if strcmp(n, 'end')
+                fn = @(info) info.(event)(end);
+            else
+                fn = @(info) info.(event)(n);
+            end
+            times = arrayfun(fn, ad.eventInfo, ...
+                'ErrorHandler', @(varargin) NaN);
+            times = ad.eventTimeRoundFn(times);
+        end
+        
+        function timeCell = getEventIndexedTimeCell(ad, event, n)
+            % similar to above but returns cell array, and n may be be a
+            % string of the form '1:2', '1:end', ':', etc
+            if ~ischar(n) || strcmp(n, 'end')
+                times = num2cell(ad.getEventNthTimeVector(event, n));
+            else
+                % must have a colon, parse into tokens
+                pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
+                str = 'end-1:end';
+                info = regexp(n, pat, 'names', 'once');
+                
+                if isempty(info)
+                    error('Unable to parse event index %s(%s)', event, n);
+                end
+                
+                % convert ind1, ind2 to doubles
+                if isempty(info.ind1)
+                    ind1 = 0;
+                else
+                    ind1 = str2double(info.ind1);
+                end
+                if isempty(info.ind2)
+                    ind2 = 0;
+                else
+                    ind2 = str2double(info.ind2);
+                end
+                if isempty(info.end1)
+                    if isempty(info.end2)
+                        fn = @(info) info.(event)(ind1:ind2);
+                    else
+                        fn = @(info) info.(event)(ind1:end+ind2);
+                    end
+                else
+                    if isempty(info.end2)
+                        fn = @(info) info.(event)(end+ind1:ind2);
+                    else
+                        fn = @(info) info.(event)(end+ind1:end+ind2);
+                    end
+                end
+                        
+                timeCell = arrayfun(fn, ad.eventInfo, ...
+                    'ErrorHandler', @(varargin) [], 'UniformOutput', false);
+                timeCell = cellfun(@ad.eventTimeRoundFn, timeCell, 'UniformOutput', false);
+            end
+        end
+        
+        function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n)
+            timeCell  = ad.getEventIndexedTimeCell(event, n);
+            emptyMask = cellfun(@isempty, timeCell);
+            [timeCell{emptyMask}] = deal(NaN);
         end
         
         % get the aligned start/stop/zero/mark time windows for each trial, 
         % respecting all truncation and invalidation instructions
-        function [timeInfo valid] = getTimeInfo(ad, R, padWindow)
+        function [timeInfo valid] = buildTimeInfo(ad, R)
             % returns a struct array with the actual time window and time of zero for trial i as
             %   timeInfo(i).start, .stop, .zero
             %
             % timeInfo(i).valid and valid(i) indicate whether trial i satisfied inclusion criteria
             % as specified by the various means of trial invalidation 
-            %
-            % extraSpikeWindow = [pre post] is the expanded window around start:stop that will
-            %    be grabbed as well to facilitate spike filtering. This will be stored in startPad
-            %    and stopPad and will affect the .valid(i) on each trial. Defaults to [0 0]
            
-            if nargin == 2 || isempty(padWindow)
-                padWindow = [0 0];
-            end
-            padPre = padWindow(1);
-            padPost = padWindow(2);
-            
-            eventInfo = ad.getEventInfo(R);
-            eventNameFn = @(event) strcat('event_', event);
+            padPre = ad.padPre;
+            padPost = ad.padPost;
 
-            % returns a column cell array with all times for an event by name 
-            allTimesFromNameFn = @(event) {eventInfo.(eventNameFn(event))};
-            
-            % build matrix nEvents x nTrials of first times for convenience
+            eventNameFn = @(event) event;
+            nTrials = numel(ad.eventInfo);
 
-            % returns a column vector with the times for an event by name
-            % each entry is guaranteed to have a NaN instead of being empty
-            firstTimesFromNameFn = @(event) cellfun(@(x) x(1), allTimesFromNameFn(event));
-            
-            nTrials = ad.getNTrialsFromData(R);
             t.valid = truevec(nTrials);
-            t.start = ceil(firstTimesFromNameFn(ad.startEvent) + ad.startOffset);
-            t.stop = ceil(firstTimesFromNameFn(ad.stopEvent) + ad.stopOffset);
-            t.zero = ceil(firstTimesFromNameFn(ad.zeroEvent) + ad.zeroOffset);
+            t.invalidCause = cellvec(nTrials);
 
-            % truncate trials based on events
-            for i = 1:length(ad.truncateAfterEvents)
-                times = ceil(firstTimesFromNameFn(ad.truncateAfterEvents{i}) + ad.truncateAfterOffsets(i));
-                t.start = max(t.start, times);
-            end
-            
-            for i = 1:length(ad.truncateBeforeEvents)
-                times = floor(firstTimesFromNameFn(ad.truncateBeforeEvents{i}) + ad.truncateBeforeOffsets(i));
-                t.stop = min(t.stop, times);
-            end
+            t.trialStart = ad.getEventNthTimeVector('TrialStart', 1); 
+            t.trialStop = ad.getEventNthTimeVector('TrialEnd', 1);
 
+            % get start event
+            t.start = ad.getEventNthTimeVector(ad.startEvent, ad.startEventIndex) + ad.startOffset;
+            noStart = isnan(t.start);
+            [t.invalidCause{noStart}] = deal(sprintf('Missing start event %s', ad.startUnabbreviatedLabel));
+            t.valid(noStart & t.valid) = false;
+
+            % get stop event
+            t.stop = ad.getEventNthTimeVector(ad.stopEvent, ad.stopEventIndex) + ad.stopOffset;
+            noStop = isnan(t.start);
+            [t.invalidCause{noStop & t.valid}] = deal(sprintf('Missing stop event %s', ad.stopUnabbreviatedLabel));
+            t.valid(noStop) = false;
+
+            % get zero alignment event
+            t.zero= ad.getEventNthTimeVector(ad.zeroEvent, ad.zeroEventIndex) + ad.zeroOffset;
+            noZero = isnan(t.zero);
+            [t.invalidCause{noZero & t.valid}] = deal(sprintf('Missing zero event %s', ad.zeroUnabbreviatedLabel));
+            t.valid(noZero) = false;
+                        
+            % get pad window
             t.startPad = t.start - padPre;
             t.stopPad = t.stop + padPost;
+            
+            % truncate trial end (including padding) based on truncateAfter events
+            t.isTruncatedStop = falsevec(nTrials);
+            for i = 1:length(ad.truncateAfterEvents)
+                times = ad.getEventNthTimeVector(ad.truncateAfterEvents{i}, ad.truncateAfterEventsIndex{i}) + ad.truncateAfterOffsets(i);
+                t.isTruncatedStop = t.isTruncatedStop | times < t.stopPad;
+                t.stopPad = nanmin(t.stop, times);
+                t.stop = t.stopPad - padPost;
+            end
+            
+            % truncate trial start (including padding) based on truncateBefore events
+            t.isTruncatedStart = falsevec(nTrials);
+            for i = 1:length(ad.truncateBeforeEvents)
+                times = ad.getEventNthTimeVector(ad.truncateBeforeEvents{i}, ad.truncateBeforeEventsIndex{i}) + ad.truncateBeforeOffsets(i);
+                t.isTruncatedStart = t.isTruncatedStart | times > t.startPad;
+                t.startPad = nanmax(t.startPad, times);
+                t.start = t.startPad + padPre;
+            end
 
-            % mark trials as invalid based on invalidateEvents
+            % mark trials as invalid if startPad:stopPad includes any invalidateEvents
             for i = 1:length(ad.invalidateEvents)
-                times = firstTimesFromNameFn(ad.invalidateEvents{i}) + ad.invalidateOffsets(i);
-                t.valid(t.startPad < times && t.stopPad > times) = false;
+                timesCell = ad.getEventIndexedTimeVectorFillEmptyWithNan(ad.invalidateEvents{i}, ad.invalidOffset(i))
+                maskInvalid = falsevec(length(t.startPad))
+                for iT = 1:length(t.startPad)
+                    maskInvalid(iT) = any(timesCell{iT} > t.startPad(iT) & timesCell{iT} < t.stopPad(iT));
+                end
+                t.valid(maskInvalid) = false;
+                [t.invalidCause{maskInvalid}] = deal(sprintf('Overlapped invalidating event %s', ad.invalidUnabbreviatedLabels{i}));
             end
 
             % handle windows which extend outside of trial
             if strcmp(ad.outsideOfTrialMode, ad.TRUNCATE) || ...
                strcmp(ad.outsideOfTrialMode, ad.INVALIDATE)
-                startMs = [eventInfo.event_start];
-                stopMs = [eventInfo.event_end];
 
                 if strcmp(ad.outsideOfTrialMode, ad.TRUNCATE) 
                     % truncate so that padded window fits within the trial
-                    t.startPad(t.startPad < startMs) = startMs(t.startPad < startMs);
-                    t.stopPad(t.stopPad > stopMs) = stopMs(t.stopPad > stopMs);
+                    t.startPad(t.startPad < t.trialStart) = t.trialStart(t.startPad < t.trialStart);
+                    t.stopPad(t.stopPad > t.trialStop) = t.trialStop(t.stopPad > t.trialStop);
 
                     t.start = t.startPad + padPre;
                     t.stop = t.stopPad - padPost;
                 else
-                    t.valid(t.startPad < startMs) = false;
-                    t.valid(t.stopPad > stopMs) = false;
+                    mask = t.startPad < t.trialStart;
+                    t.valid(mask) = false;
+                    [t.invalidCause{mask}] = deal('Start plus padding occurs before trial start');
+                    
+                    mask = t.stopPad > t.trialStop;
+                    t.valid(mask) = false;
+                    [t.invalidCause{mask}] = deal('Stop plus padding occurs after trial end');
                 end
             end
 
             % handle minimum duration window
-            t.valid(t.stop - t.start < ad.minDuration) = false;
-
-            % filter out NaNs
-            t.valid(isnan(t.start) | isnan(t.stop) | isnan(t.zero)) = false;
-            
-            % clear out values for invalid trials to avoid hard to catch
-            % bugs
+            mask = t.stop - t.start < ad.minDuration;
+            t.valid(mask) = false;
+            [t.invalidCause{mask}] = deal(sprintf('Trial duration is less than minDuration %g', ad.minDuration));
+        
+            % clear out values for invalid trials to avoid hard to catch bugs
+            t.startPad(~t.valid) = NaN;
+            t.stopPad(~t.valid) = NaN;
             t.start(~t.valid) = NaN;
             t.stop(~t.valid) = NaN;
             t.zero(~t.valid) = NaN;
-        
+            
             % now build the final timeInfo struct
             valid = t.valid;
-            t = rmfield(t, 'valid');
+            %t = rmfield(t, 'valid');
             timeInfo = structOfArraysToStructArray(t);
+            nTrials = numel(timeInfo);
             
             % include the mark times
-            for iEv = 1:length(ad.markEvents)
-                %times = floor(timesFromNameFn(ad.markEvents{iEv}) + ad.markOffsets(iEv));
-                times = allTimesFromNameFn(ad.markEvents{iEv});
-                for iTrial = 1:nTrials
-                    if valid(iTrial)
-                        timeInfo(iTrial).mark{iEv} = floor(times{iTrial}) + ad.markOffsets(iEv);
-                    else
-                        timeInfo(iTrial).mark{iEv} = NaN;
-                    end
-                end 
+            for i = 1:length(ad.markEvents)
+                markTimesCell = ad.getEventIndexedTimeVector(ad.markEvents{i}, ad.markEventsIndex{i}, ad.markOffsets(i));
+                for iT = 1:nTrials
+                    timeInfo(iT).mark{i} = markTimesCell{i};
+                end
             end
             
             % include the interval times
             for iInt = 1:size(ad.intervalEvents, 1)
-                startTimes = allTimesFromNameFn(ad.intervalEvents{iInt, 1});
-                stopTimes = allTimesFromNameFn(ad.intervalEvents{iInt, 2});
+                startTimes = ad.getEventIndexedTimeVector(ad.intervalEventsStart{iInt}, ad.intervalEventsIndexStart, ad.intervalOffsetsStart(iInt));
+                stopTimes = ad.getEventIndexedTimeVector(ad.intervalEventsStop{iInt}, ad.intervalEventsIndexStop, ad.intervalOffsetsStop(iInt));
                 for iTrial = 1:nTrials
-                    if valid(iTrial)
-                        timeInfo(iTrial).interval{iInt} = cat(2, ...
-                            floor(startTimes{iTrial}) + ad.intervalOffsets(iInt, 1), ...
-                            floor(stopTimes{iTrial}) + ad.intervalOffsets(iInt, 2));
-                    else
-                        timeInfo(iTrial).interval{iInt} = [ NaN NaN ];
-                    end
+                    timeInfo(iTrial).intervalStart{iInt} = startTimes{iTrial};
+                    timeInfo(iTrial).intervalStop{iInt} = stopTimes{iTrial};
                 end 
             end
             
-            timeInfo = structMerge(timeInfo, eventInfo);
         end
     end
 
     methods % Labeling and axis drawing
+        function ad = updateSummary(ad)
+            
+        end
+        
+        function [summaryInfo] = buildSummaryInfo(ad, varargin)
+            % look over the timeInfo struct and compute aggregate statistics about
+            % the timing of each event relative to .zero
+            return;
+            ti = ad.timeInfo;
+            events = ad.getEventList(); 
+
+            zeroTimes = [ad.timeInfo.(ad.zeroEvent)];
+
+            for iEv = 1:length(events)
+                event = events{iEv};
+
+                times = ai.timeInfo;
+
+                evi.fixed = true;
+                evi.relativeMedian = ad.startOffset - ad.zeroOffset;
+                evi.relativeList = repmat(ad.nTrials, 1, evi.relativeMedian); 
+                evi.relativeMin = evi.relativeMedian;
+                evi.relativeMax = evi.relativeMedian;
+
+                ad.startOffset - ad.zeroOffset;
+                labelInfo(counter).name = ad.startLabel;
+                labelInfo(counter).time = ad.startOffset - ad.zeroOffset;
+                labelInfo(counter).align = 'left';
+                labelInfo(counter).info = ad.startInfo;
+                labelInfo(counter).markData = ad.startMarkData;
+                labelInfo(counter).fixed = true;
+                counter = counter + 1;
+                drewStartLabel = true;
+            end
+        end
+
         % struct with fields .time and and .name with where to label the time axis appropriately
         % pass along timeInfo so that the medians of non-fixed events can be labeled as well 
         function [labelInfo] = getLabelInfo(ad, varargin)
@@ -675,31 +777,24 @@ classdef AlignInfo < AlignDescriptor
     end
 
     methods(Static)
-        function times = getEventTimes(R, eventName)
+        function [timeData] = getEventTimes(R, eventNameList)
             % default function for accessing event times
             % Returns a cell array of size nTrials x nEvents
             % with each containing all events for event i, trial j
             % unless either 'takeFirst', or 'takeLast' is true, in which case not
             % regardless, if no events are found, the cell will contain a NaN rather than be empty
 
-            if ~iscell(eventName)
-                eventName = {eventName};
+            if ~iscell(eventNameList)
+                eventNameList = {eventNameList};
             end
-            nEvents = length(eventName);
-
-            nTrials = AlignInfo.getNTrialsFromData(R);
+            
             if isstruct(R)
-                % simply access the events by name
-                
-                times = cell(nTrials, nEvents);
-
-                for iEv = 1:nEvents
-                    times(:, iEv) = {R.(eventName{iEv})};
-                end
+                % keep only the appropriate fields
+                timeData = keepfields(R, eventNameList);
 
             elseif isa(R, 'TrialData')
-                times = R.getEventsStartAligned(eventName);
-
+                timeData = R.getRawEventStruct();
+               
             else
                 error('Unsupported trial data type, please specify .getEventTimesFn');
             end

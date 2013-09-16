@@ -16,9 +16,6 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
         % return the name of the time unit used by this interface
         timeUnitName = getTimeUnitName(tdi, varargin);
 
-        % return the time conversion factor, i.e. number of time units in 1 second
-        N = getTimeUnitsPerSecond(tdi, varargin);
-
         % Describe the channels present in the dataset 
         % channelDescriptors: scalar struct. fields are channel names, values are ChannelDescriptor 
         channelDescriptors = getChannelDescriptors(tdi, varargin);
@@ -35,10 +32,11 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
         % channelNames may include any of the channels returned by getChannelDescriptors()
         %   as well as any of the following "special" channels used by TrialData:
         %
-        %   trialId : a unique numeric identifier for this trial
         %   subject : string, subject from whom the data were collected
         %   protocol : string, protocol in which the data were collected
         %   protocolVersion: numeric version identifier for that protocol
+        %   trialId : a unique numeric identifier for this trial
+        %   trialIdStr: a unique string describing this trial
         %   saveTag : a numeric identifier for the containing block of trials
         %   duration : time length of each trial in tUnits
         %   tStartWallclock : wallclock datenum indicating when this trial began
@@ -47,41 +45,65 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
         channelData = getChannelData(tdi, channelNames, varargin);
     end
 
+    methods
+        % return the time conversion factor, i.e. number of time units in 1 second
+        function N = getTimeUnitsPerSecond(tdi, varargin)
+            timeUnitName = tdi.getTimeUnitName();
+
+            switch(timeUnitName)
+                case 'ms'
+                    N = 1000;
+                case 's'
+                    N = 1;
+                otherwise
+                    error('Unrecognized timeUnits %s', timeUnitName);
+            end
+        end
+
+    end
+
     methods(Sealed)
         % build ParamChannelDescriptors around each of the special param names
         % .special will be marked as true
         function cds = getSpecialParamChannelDescriptors(tdi)
-            
-            cd = StringParamChannelDescriptor('subject');
+            cd = ParamChannelDescriptor.buildStringParam('subject');
             cd.special = true;
             cds = cd;
 
-            cd = StringParamChannelDescriptor('protocol');
+            cd = ParamChannelDescriptor.buildStringParam('protocol');
             cd.special = true;
             cds(end+1) = cd;
 
-            cd = ParamChannelDescriptor('protocolVersion');
+            cd = ParamChannelDescriptor.buildScalarParam('protocolVersion');
             cd.special = true;
             cds(end+1) = cd;
 
-            cd = StringParamChannelDescriptor('trialId');
+            cd = ParamChannelDescriptor.buildStringParam('trialIdStr');
             cd.special = true;
             cds(end+1) = cd;
 
-            cd = StringParamChannelDescriptor('saveTag');
+            cd = ParamChannelDescriptor.buildScalarParam('trialId');
             cd.special = true;
             cds(end+1) = cd;
 
-            cd = ParamChannelDescriptor('duration');
-            cd.units = tdi.getTimeUnitName;
+            cd = ParamChannelDescriptor.buildScalarParam('saveTag');
+            cd.special = true;
+            cds(end+1) = cd;
+
+            cd = ParamChannelDescriptor.buildScalarParam('duration');
+            cd.units = tdi.getTimeUnitName();
             cd.special = true;
             cds(end+1) = cd;
             
-            cd = ParamChannelDescriptor('timeStartWallclock');
+            cd = ParamChannelDescriptor.buildDatenumParam('timeStartWallclock');
             cd.special = true;
             cds(end+1) = cd;
-
-            cd = ParamChannelDescriptor('timeStopWallclock');
+            
+            cd = EventChannelDescriptor.buildScalarEvent('TrialStart', tdi.tUnits);
+            cd.special = true;
+            cds(end+1) = cd;
+            
+            cd = EventChannelDescriptor.buildScalarEvent('TrialEnd', tdi.tUnits);
             cd.special = true;
             cds(end+1) = cd;
         end

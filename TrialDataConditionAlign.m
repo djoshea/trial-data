@@ -28,7 +28,7 @@ classdef TrialDataConditionAlign < TrialData
     
     methods
         function disp(td)
-            td.printDescription();
+            td.printDescriptionShort();
             fprintf('\n');
             
             td.alignInfo.printOneLineDescription();
@@ -36,10 +36,11 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo.printDescription();
             
             fprintf('\n');
-            builtin('disp', td);
+            td.printChannelInfo();
+            fprintf('\n');
         end
 
-        function td = updateValid(td);
+        function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
             cvalid = td.conditionInfo.valid;
             avalid = td.alignInfo.valid;
@@ -251,6 +252,33 @@ classdef TrialDataConditionAlign < TrialData
             
             xlabel(td.getTimeAxisLabel());
             ylabel(td.getAxisLabelForChannel(name));
+        end
+        
+        function plotAnalogGroupedEachTrial2D(td, name1, name2, varargin) 
+            p = inputParser();
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.KeepUnmatched;
+            p.parse(varargin{:});
+
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+
+            dataByGroup1 = td.getAnalogGrouped(name1);  
+            dataByGroup2 = td.getAnalogGrouped(name2);  
+            app = td.conditionAppearances;
+
+            for iCond = 1:td.nConditions
+                dataCell1 = dataByGroup1{iCond};
+                dataCell2 = dataByGroup2{iCond};
+                for iTrial = 1:numel(dataCell1)
+                    plot(axh, dataCell1{iTrial}, dataCell2{iTrial}, '-', 'Color', app(iCond).color, ...
+                        'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    if iTrial == 1, hold(axh, 'on'); end
+                end
+            end
+            box(axh, 'off');
+            
+            xlabel(td.getAxisLabelForChannel(name1));
+            ylabel(td.getAxisLabelForChannel(name2));
         end
     end
 
