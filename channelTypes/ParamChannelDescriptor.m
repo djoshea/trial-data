@@ -15,8 +15,6 @@ classdef ParamChannelDescriptor < ChannelDescriptor
 
         function cd = ParamChannelDescriptor(varargin)
             cd = cd@ChannelDescriptor(varargin{:});
-            cd.missingValue = NaN;
-            cd.scalar = true; % by default, change this if not true
         end
     end
     
@@ -33,8 +31,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
         
         function cd = buildDatenumParam(varargin)
             cd = ParamChannelDescriptor(varargin{:});
-            cd = cd.inferAttributesFromData(1);
-            cd.datenum = true;
+            cd.dfd  = DateTimeField();
         end 
     end
  

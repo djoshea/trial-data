@@ -13,39 +13,26 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         special = false; % whether this channel is a "special" identifier channel used by TrialData
 
-        datenum = false; % if true, treat as datenum value 
-
-        %Fs = NaN; % sampling frequency in Hz 
+        dfd % DataFieldDescriptor instance
     end
 
     % Inferred from data by inferAttributesFromData below
-    properties
+    properties(SetAccess=protected)
         storageDataClass = 'double'; % original class name, for storage purposes
 
         dataClass % class used in memory
         
-        numeric % the data are numeric
-
-        logical % the data are logical
-
-        string % the data are strings
-
-        vector % all values are vector
-        
-        scalar % all values are scalar 
-
-        missingValue = []; % value inserted when the original data was missing
-
-        contentsAreCell % each trial has a cell array inside it
-        
         collectAsCell = true; % use a cell to aggregate the data rather than a numeric matrix
 
-        ndims % number of dimensions occupied by this signal
+        missingValue = [];
 
-        sizeConsistent = false; % is the size the same in every trial?
-        size  % size of the signal along each dimension or NaN if variable
+        % ndims % number of dimensions occupied by this signal
 
-        concatenateAlongDim % when dimension along which trials would be concatenated, or NaN if this won't work
+        % sizeConsistent = false; % is the size the same in every trial?
+
+        % size  % size of the signal along each dimension or NaN if variable
+
+        % concatenateAlongDim % when dimension along which trials would be concatenated, or NaN if this won't work
     end
 
     methods(Abstract)
@@ -61,9 +48,19 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function cd = ChannelDescriptor(varargin)
             p = inputParser();
             p.addOptional('name', '', @ischar);
+            p.addOptional('dfd', [], @(x) isa(x, 'DataFieldDescriptor'));
             p.parse(varargin{:});
 
             cd.name = p.Results.name;
+            cd.dfd = p.Results.dfd;
+        end
+
+        function cd = set.dfd(cd, dfd)
+            assert(isempty(dfd) || isa(dfd, 'DataFieldDescriptor'), 'dfd must be a DataFieldDescriptor');
+            cd.dfd = dfd;
+            if ~isempty(dfd)
+                cd.missingValue = dfd.getEmptyValueElement();
+            end
         end
 
         function str = getAxisLabel(cd)
@@ -76,6 +73,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         function cd = inferAttributesFromData(cd, dataCell)
             assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
+
+            cd.dfd = DataFieldDescriptor.inferFromValues(dataCell);
+            cd.collectAsCell = ~cd.dfd.matrix;
 
             % infer data class
             if ~iscell(dataCell)
@@ -98,6 +98,17 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 end
                 cd.storageDataClass = classes{1};
             end
+
+            switch cd.storageDataClass
+                case {'double', 'single', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64'}
+                    cd.dataClass = 'double';
+                case 'char'
+                    cd.dataClass = 'char';
+                case 'logical'
+                    cd.dataClass = 'logical';
+            end
+
+            return;
 
             % determine if values are strings
             cd.string = all(cellfun(@(x) ischar(x), dataCell(~emptyMask)));
