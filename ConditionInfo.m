@@ -39,6 +39,7 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
         
         % T x A matrix of which condition each trial belongs to as a row vector of subscript indices
         conditionSubs 
+        conditionSubsIncludingManualInvalid
         
         % nConditions x 1 cell array of idx in each condition
         listByCondition
@@ -56,6 +57,8 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
         % logical mask indicating which trials are valid to include when returning groups
         % this mask does not affect any other functions for grabbing attribute values / unique attributes, etc.
         valid  
+        
+        computedValid
 
         nValid
     end
@@ -225,9 +228,11 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
     end
     
     methods
-        function subsMat = get.conditionSubs(ci)
+        % compute which condition each trial falls into, without writing
+        % NaNs for manualInvalid marked trials
+        function subsMat = get.conditionSubsIncludingManualInvalid(ci)
             %subsMat = TensorUtils.ind2subAsMat(ci.conditionsSize, ci.conditionIdx);
-            if isempty(ci.conditionSubs)
+            if isempty(ci.conditionSubsIncludingManualInvalid)
                 if ci.nConditions > 0 && ci.nTrials > 0
                     if ci.nAttributesGroupBy == 0
                         % not grouping on anything, only 1 condition
@@ -270,13 +275,17 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
                     subsMat = [];
                     return;
                 end
-                ci.conditionSubs = subsMat;
+                ci.conditionSubsIncludingManualInvalid = subsMat;
                 
-                ci.conditionSubs(any(ci.conditionSubs == 0, 2), :) = NaN;
-                ci.conditionSubs(ci.manualInvalid, :) = NaN;
+                ci.conditionSubsIncludingManualInvalid(any(ci.conditionSubsIncludingManualInvalid == 0, 2), :) = NaN;
+                
             end
-            
-            subsMat = ci.conditionSubs;
+            subsMat = ci.conditionSubsIncludingManualInvalid;
+        end
+        
+        function subsMat = get.conditionSubs(ci)
+            subsMat = ci.conditionSubsIncludingManualInvalid;
+            subsMat(ci.manualInvalid, :) = NaN;
         end
         
         function list = get.listByCondition(ci)
@@ -323,6 +332,14 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
             % return a mask which takes into account having a valid value for each attribute
             % specified, as well as the markInvalid function which stores its results in .manualInvalid
             valid = ~ci.manualInvalid & ci.getIsTrialInSomeGroup();
+        end
+        
+        function computedValid = get.computedValid(ci)
+            if ci.nTrials > 0
+                computedValid = ~isnan(ci.conditionSubsIncludingManualInvalid(:, 1));
+            else
+                computedValid = [];
+            end
         end
 
         function nValid = get.nValid(ci)

@@ -234,7 +234,7 @@ classdef AlignInfo < AlignDescriptor
 
             % get stop event
             t.stop = ad.getEventNthTimeVector(ad.stopEvent, ad.stopEventIndex) + ad.stopOffset;
-            noStop = isnan(t.start);
+            noStop = isnan(t.stop);
             [t.invalidCause{noStop & t.valid}] = deal(sprintf('Missing stop event %s', ad.stopUnabbreviatedLabel));
             t.valid(noStop) = false;
 

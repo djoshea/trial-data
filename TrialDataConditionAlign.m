@@ -42,8 +42,8 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
-            cvalid = td.conditionInfo.valid;
-            avalid = td.alignInfo.valid;
+            cvalid = td.conditionInfo.computedValid;
+            avalid = td.alignInfo.computedValid;
 
             % combine and update the validity masks 
             td.valid = cvalid & avalid;
@@ -249,6 +249,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             box(axh, 'off');
+            axis(axh, 'tight');
             
             xlabel(td.getTimeAxisLabel());
             ylabel(td.getAxisLabelForChannel(name));
@@ -276,6 +277,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             box(axh, 'off');
+            axis(axh, 'tight');
             
             xlabel(td.getAxisLabelForChannel(name1));
             ylabel(td.getAxisLabelForChannel(name2));
