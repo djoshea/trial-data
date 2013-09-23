@@ -64,6 +64,7 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
             groups = tdi.meta.groups;
             groupNames = fieldnames(groups);
             nGroups = numel(groupNames);
+            fprintf('Inferring channel data characteristics...\n');
             for iG = 1:nGroups
                 group = groups.(groupNames{iG});
                 nSignals = numel(group.signalNames);

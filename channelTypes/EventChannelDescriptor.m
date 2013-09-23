@@ -21,14 +21,28 @@ classdef EventChannelDescriptor < ChannelDescriptor
         end
         
         function cd = inferAttributesFromData(cd, dataCell)
-            cd = inferAttributesFromData@ChannelDescriptor(cd, dataCell);
+            assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
+
+            cd.dfd = NumericVectorField();
+            cd.storageDataClass = 'double';
         end
     end
     
     methods(Static)
-        function cd = buildScalarEvent(name, timeUnits)
+        function cd = buildSingleEvent(name, timeUnits)
             cd = EventChannelDescriptor(name);
-            cd.units = timeUnits;
+            cd.dfd = ScalarField();
+            if nargin > 1
+                cd.units = timeUnits;
+            end
+        end
+        
+        function cd = buildMultipleEvent(name, timeUnits)
+            cd = EventChannelDescriptor(name);
+            cd.dfd = NumericVectorField();
+            if nargin > 1
+                cd.units = timeUnits;
+            end
         end
     end
 

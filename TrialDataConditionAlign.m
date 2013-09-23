@@ -76,10 +76,13 @@ classdef TrialDataConditionAlign < TrialData
         function td = groupBy(td, paramList, varargin)
             td.warnIfNoArgOut(nargout);
             p = inputParser;
-            p.addRequired('paramList', @(x) ischar(x) || iscellstr(x));
+            p.addRequired('paramList', @(x) isempty(x) || ischar(x) || iscellstr(x));
             p.parse(paramList, varargin{:});
 
             paramList = p.Results.paramList;
+            if isempty(paramList)
+                paramList = {};
+            end
             if ischar(paramList)
                 paramList = {paramList};
             end
@@ -220,8 +223,15 @@ classdef TrialDataConditionAlign < TrialData
             [data time] = td.alignInfo.getAlignedTimeseries(data, time);
         end
         
+        % return aligned event times
         function [timesCell tags] = getEvent(td, name)
             [timesCell tags] = getEvent@TrialData(td, name);
+            timesCell = td.alignInfo.getAlignedTimes(timesCell);
+        end
+
+        % return aligned unit spike times
+        function [timesCell] = getSpikeTimesForUnit(td, unitName); 
+            timesCell = getSpikeTimesForUnit@TrialData(td, unitName);
             timesCell = td.alignInfo.getAlignedTimes(timesCell);
         end
     end
@@ -243,8 +253,10 @@ classdef TrialDataConditionAlign < TrialData
                 dataCell = dataByGroup{iCond};
                 timeCell = timeByGroup{iCond};
                 for iTrial = 1:numel(dataCell)
-                    plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', 'Color', app(iCond).color, ...
-                        'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    if ~isempty(timeCell{iTrial}) && ~isempty(dataCell{iTrial})
+                        plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', 'Color', app(iCond).color, ...
+                            'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    end
                     if iTrial == 1, hold(axh, 'on'); end
                 end
             end

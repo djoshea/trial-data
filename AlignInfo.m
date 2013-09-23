@@ -617,7 +617,8 @@ classdef AlignInfo < AlignDescriptor
         function [alignedData alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, varargin)
             [alignedTime rawTimesMask] = ad.getAlignedTimes(timeCell, varargin{:});
             %dataCell = cellfun(@makecol, dataCell, 'UniformOutput', false);
-            alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, 'UniformOutput', false);
+            alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
+                'UniformOutput', false, 'ErrorHandler', @(varargin) []);
         end
 
         % used to annotate a time axis with the relevant start/stop/zero/marks

@@ -99,11 +99,12 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
             cd.special = true;
             cds(end+1) = cd;
             
-            cd = EventChannelDescriptor.buildScalarEvent('TrialStart', tdi.tUnits);
+            tUnits = tdi.getTimeUnitName();
+            cd = EventChannelDescriptor.buildSingleEvent('TrialStart', tUnits);
             cd.special = true;
             cds(end+1) = cd;
             
-            cd = EventChannelDescriptor.buildScalarEvent('TrialEnd', tdi.tUnits);
+            cd = EventChannelDescriptor.buildSingleEvent('TrialEnd', tUnits);
             cd.special = true;
             cds(end+1) = cd;
         end

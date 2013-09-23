@@ -102,7 +102,7 @@ classdef TrialData
             for iChannel = 1:nChannels
                 chd = channelDescriptors(iChannel); 
                 data = chd.repairData(data);
-                data = chd.convertData(data);
+                %data = chd.convertData(data);
             end
 
             td.data = data;
@@ -300,6 +300,23 @@ classdef TrialData
             if ~td.channelDescriptorsByName.(name).collectAsCell
                 values = cell2mat(values);
             end
+        end
+    end
+
+    methods % Spike channel methods
+        function names = listSpikeChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
+            names = {channelDescriptors(mask).name};
+        end
+
+        function timesCell = getSpikeTimesForUnit(td, unitName, varargin) 
+            timesCell = td.getRawSpikeTimesForUnit(td, unitRaw);
+        end
+        
+        function timesCell = getRawSpikeTimesForUnit(td, unitName)
+            name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+            timesCell = {td.data.(name)}';
         end
     end
 
