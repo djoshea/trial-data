@@ -21,7 +21,7 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
         % Constructor : bind to MatUdp R struct and parse channel info
         function td = MatUdpTrialDataInterfaceV3(R, meta)
             assert(isvector(R) && ~isempty(R) && isstruct(R), 'Trial data must be a struct vector');
-            assert(isstruct(meta) && ~isempty(meta) && isscalar(meta), 'Meta data must be a scalar struct');
+            assert(isstruct(meta) && ~isempty(meta) && isvector(meta), 'Meta data must be a vector struct');
             td.R = makecol(R);
             td.meta = meta;
             td.nTrials = numel(R);
@@ -61,12 +61,21 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
 %                  'saveTag', 'tsStartWallclock', 'tsStopWallclock', ...
 %                  'tUnits', 'version', 'time'});
             iChannel = 1;
-            groups = tdi.meta.groups;
+            groups = tdi.meta(1).groups;
             groupNames = fieldnames(groups);
             nGroups = numel(groupNames);
             fprintf('Inferring channel data characteristics...\n');
             for iG = 1:nGroups
                 group = groups.(groupNames{iG});
+
+                if strcmp(group.type, 'event')
+                    % for event groups, the meta signalNames field is unreliable unless we take
+                    % the union of all signal names
+                    names = arrayfun(@(m) m.groups.(groupNames{iG}).signalNames, ...
+                        tdi.meta, 'UniformOutput', false);
+                    group.signalNames = unique(cat(1, names{:}));
+                end
+
                 nSignals = numel(group.signalNames);
                 for iS = 1:nSignals
                     name = group.signalNames{iS};
