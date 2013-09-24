@@ -1113,7 +1113,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             
             ti = obj.alignInfo.timeInfo(p.Results.trialIdx);
             
-            obj.alignInfo.drawTimeAxis(ti);
+            obj.alignInfo.drawTimeAxis(ti, 'setXLim', true);
         end
 
         function hLine = drawSpikesForCondition(obj, iCond, varargin)
@@ -1292,7 +1292,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             xOffset = 0;
             yOffset = 0;
             showLegend = true;
-            legendPosition = 'NorthEast';
+            legendPosition = 'Best';
             axh = [];
             drawTimeAxis = true;
             idxByCondition = [];

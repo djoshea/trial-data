@@ -780,6 +780,7 @@ classdef(HandleCompatible) ConditionDescriptor
             if nConditions == 1
                 cmap = [0.3 0.3 1];
             else
+                %cmap = jet(nConditions);
                 cmap =pmkmp(nConditions, 'isol');
             end
              

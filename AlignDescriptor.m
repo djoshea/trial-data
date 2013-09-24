@@ -505,7 +505,7 @@ classdef AlignDescriptor
             p.parse(varargin{:});
             offset = p.Results.offset;
             
-            if isempty(index)
+            if isempty(p.Results.index)
                 index = ':';
             else
                 index = p.Results.index;

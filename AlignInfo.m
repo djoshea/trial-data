@@ -340,13 +340,17 @@ classdef AlignInfo < AlignDescriptor
 
     methods % Labeling and axis drawing
         function ad = updateSummary(ad)
-            
-        end
-        
-        function [summaryInfo] = buildSummaryInfo(ad, varargin)
             % look over the timeInfo struct and compute aggregate statistics about
             % the timing of each event relative to .zero
+            %
+            % .summaryInfo(i) looks like
+            %     .name 
+            %     .median
+            %     .mean
+            %     .list
+            
             return;
+            
             ti = ad.timeInfo;
             events = ad.getEventList(); 
 
@@ -410,6 +414,16 @@ classdef AlignInfo < AlignDescriptor
                     counter = counter + 1;
                     drewStartLabel = true;
                 end
+            else
+                % label at minimum time
+                labelInfo(counter).name = ad.startLabel;
+                labelInfo(counter).time = min([timeInfo.start] - [timeInfo.zero]);
+                labelInfo(counter).align = 'left';
+                labelInfo(counter).info = ad.startInfo;
+                labelInfo(counter).markData = ad.startMarkData;
+                labelInfo(counter).fixed = true;
+                counter = counter + 1;
+                drewStartLabel = true;
             end
             
             % label the zero event provided that it lies within the start/stop window
@@ -439,6 +453,14 @@ classdef AlignInfo < AlignDescriptor
                     labelInfo(counter).fixed = true;
                     counter = counter + 1;
                 end
+            else
+                labelInfo(counter).name = ad.stopLabel; 
+                labelInfo(counter).time = max([timeInfo.stop] - [timeInfo.zero]);
+                labelInfo(counter).align = 'right';
+                labelInfo(counter).info = ad.stopInfo;
+                labelInfo(counter).markData = ad.stopMarkData;
+                labelInfo(counter).fixed = true;
+                counter = counter + 1;
             end
 
             % label each of the event marks that are fixed with respect to the zero event
@@ -500,7 +522,7 @@ classdef AlignInfo < AlignDescriptor
                 % first check whether there is an existing label (from a
                 % mark) at this point already...
                 if ~any(floor([labelInfo.time]) == floor(tMin))
-                    labelInfo(counter).name = ad.buildLabel(ad.zeroEvent, tMin);
+                    labelInfo(counter).name = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, tMin);
                     labelInfo(counter).time = tMin;
                     labelInfo(counter).align = 'left';
                     labelInfo(counter).markData = false; % this is just convenience, don't mark on data
@@ -515,7 +537,7 @@ classdef AlignInfo < AlignDescriptor
                 % first check whether there is an existing label (from a
                 % mark) at this point already...
                 if ~any(floor([labelInfo.time]) == floor(tMax))
-                    labelInfo(counter).name = ad.buildLabel(ad.zeroEvent, tMax);
+                    labelInfo(counter).name = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, tMax);
                     labelInfo(counter).time = tMax;
                     labelInfo(counter).align = 'right';
                     labelInfo(counter).markData = false;
