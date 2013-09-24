@@ -112,7 +112,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             missingValue = cd.missingValue;
             if ~isempty(missingValue)
                 for iR = 1:numel(R)
-                    if isempty(R(iR).(fld))
+                    if isempty(R(iR).(fld)) || isequaln(R(iR).(fld), NaN)
                         R(iR).(fld) = missingValue;
                     end
                 end

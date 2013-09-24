@@ -197,11 +197,28 @@ classdef TrialData
             tf = ismember(name, td.channelNames);
         end
         
+        function assertHasChannel(td, name)
+            assert(td.hasChannel(name), 'TrialData does not have channel %s', name);
+        end
+        
         function cds = getChannelDescriptorArray(td)
             fields = fieldnames(td.channelDescriptorsByName);
             for iF = 1:length(fields)
                 cds(iF) = td.channelDescriptorsByName.(fields{iF});
             end
+        end
+        
+        function td = setChannelData(td, name, varargin)
+            td.warnIfNoArgOut(nargout);
+            fields = td.channelDescriptorsByName.(name).getDataFields();
+            % for now just set first field
+            fld = fields{1};
+            vals = varargin{1};
+            if ~iscell(vals)
+                vals = num2cell(vals);
+            end
+            
+            [td.data.(fld)] = deal(vals{:});
         end
     end
     
@@ -216,6 +233,19 @@ classdef TrialData
             cd = td.channelDescriptorsByName.(name);
             data = {td.data.(name)}';
             time = {td.data.(cd.timeField)}';
+        end
+        
+        function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
+            [dataCell, timeCell] = td.getAnalog(name);
+            dataVec = cellfun(@(v) v(1), dataCell, 'ErrorHandler', @(varargin) NaN);
+            if nargout > 1
+                timeVec = cellfun(@(v) v(1), timeCell, 'ErrorHandler', @(varargin) NaN);
+            end
+        end 
+        
+        function td = setAnalog(td, name, vals)
+            td.warnIfNoArgOut(nargout);
+            td = td.setChannelData(name, vals);
         end
     end
     
@@ -284,6 +314,11 @@ classdef TrialData
                 end
             end
         end
+        
+        function td = setEvent(td, name, vals)
+            td.warnIfNoArgOut(nargout);
+            td = td.setChannelData(name, vals);
+        end
     end
     
     methods % Param channel methods
@@ -301,6 +336,11 @@ classdef TrialData
                 values = cell2mat(values);
             end
         end
+        
+        function td = setParam(td, name, vals)
+            td.warnIfNoArgOut(nargout);
+            td = td.setChannelData(name, vals);
+        end
     end
 
     methods % Spike channel methods
@@ -311,7 +351,7 @@ classdef TrialData
         end
 
         function timesCell = getSpikeTimesForUnit(td, unitName, varargin) 
-            timesCell = td.getRawSpikeTimesForUnit(td, unitRaw);
+            timesCell = td.getRawSpikeTimesForUnit(unitName);
         end
         
         function timesCell = getRawSpikeTimesForUnit(td, unitName)
@@ -337,19 +377,16 @@ classdef TrialData
             values = p.Results.values;
             cd = p.Results.channelDescriptor;
 
-            assert(~tf.hasChannel(name), 'TrialData already has channel with name %s', name);
+            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
             assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
 
             if isempty(cd)
-                cd = ParamChannelDescriptor.inferFromValues(values);
+                cd = ParamChannelDescriptor.buildFromValues(name, values);
             end
             cd.name = name;
 
-            td.channelDescriptors(end+1) = cd;
-            td.channelDescriptorsByName.(name) = cd;
-
             td.data = assignIntoStructArray(td.data, name, values);
-
+            td.channelDescriptorsByName.(name) = cd;
             td = td.updatePostDataChange();
         end
     end

@@ -144,6 +144,7 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
             ci.manualInvalid = false(nnz(selector), 1);
             ci.conditionIdx = ci.conditionIdx(selector);
             ci.conditionSubs = ci.conditionSubs(selector, :);
+            ci.conditionSubsIncludingManualInvalid = ci.conditionSubsIncludingManualInvalid(selector,:);
             % auto-updates on request:
             ci.listByCondition = [];
         end

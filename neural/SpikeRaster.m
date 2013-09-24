@@ -1113,7 +1113,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             
             ti = obj.alignInfo.timeInfo(p.Results.trialIdx);
             
-            obj.alignInfo.drawTimeAxis(ti, p.Unmatched);
+            obj.alignInfo.drawTimeAxis(ti);
         end
 
         function hLine = drawSpikesForCondition(obj, iCond, varargin)

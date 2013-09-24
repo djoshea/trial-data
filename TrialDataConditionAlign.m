@@ -181,6 +181,11 @@ classdef TrialDataConditionAlign < TrialData
             [dataCell, timeCell] = td.getAnalog(name);
             [dCell, tCell] = td.groupElements(dataCell, timeCell);
         end
+        
+        function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
+            [dataVec, timeVec] = td.getAnalogSample(name);
+            [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
+        end 
 
         function dCell = getEventGrouped(td, name)
             dCell = td.groupElements(td.getAnalog(name));
@@ -224,8 +229,8 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         % return aligned event times
-        function [timesCell tags] = getEvent(td, name)
-            [timesCell tags] = getEvent@TrialData(td, name);
+        function timesCell = getEvent(td, name)
+            timesCell = getEvent@TrialData(td, name);
             timesCell = td.alignInfo.getAlignedTimes(timesCell);
         end
 
@@ -233,6 +238,13 @@ classdef TrialDataConditionAlign < TrialData
         function [timesCell] = getSpikeTimesForUnit(td, unitName); 
             timesCell = getSpikeTimesForUnit@TrialData(td, unitName);
             timesCell = td.alignInfo.getAlignedTimes(timesCell);
+        end
+    end
+
+    % Spike data
+    methods
+        function sr = buildSpikeRasterForUnit(td, unitName)
+            sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfo);
         end
     end
 
@@ -293,6 +305,39 @@ classdef TrialDataConditionAlign < TrialData
             
             xlabel(td.getAxisLabelForChannel(name1));
             ylabel(td.getAxisLabelForChannel(name2));
+        end
+        
+        function plotAnalogGroupedEachTrial3D(td, name1, name2, name3, varargin) 
+            p = inputParser();
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.KeepUnmatched;
+            p.parse(varargin{:});
+
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+
+            dataByGroup1 = td.getAnalogGrouped(name1);  
+            dataByGroup2 = td.getAnalogGrouped(name2);
+            dataByGroup3 = td.getAnalogGrouped(name3);
+            app = td.conditionAppearances;
+
+            for iCond = 1:td.nConditions
+                dataCell1 = dataByGroup1{iCond};
+                dataCell2 = dataByGroup2{iCond};
+                dataCell3 = dataByGroup3{iCond};
+                for iTrial = 1:numel(dataCell1)
+                    plot3(axh, dataCell1{iTrial}, dataCell2{iTrial}, dataCell3{iTrial}, ...
+                        '-', 'Color', app(iCond).color, ...
+                        'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    if iTrial == 1, hold(axh, 'on'); end
+                end
+            end
+            box(axh, 'off');
+            axis(axh, 'tight');
+            axis(axh, 'vis3d');
+            
+            xlabel(td.getAxisLabelForChannel(name1));
+            ylabel(td.getAxisLabelForChannel(name2));
+            zlabel(td.getAxisLabelForChannel(name3));
         end
     end
 

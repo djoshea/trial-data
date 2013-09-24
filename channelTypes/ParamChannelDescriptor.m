@@ -1,9 +1,23 @@
 classdef ParamChannelDescriptor < ChannelDescriptor
     
-    properties
-        isString = false;
-        isScalar = false;
-        isBoolean = false;
+    properties(Dependent)
+        isString 
+        isScalar
+        isBoolean
+    end
+    
+    methods
+        function tf = get.isString(cd)
+            tf = isa(cd.dfd, 'StringField');
+        end
+        
+        function tf = get.isScalar(cd)
+            tf = isa(cd.dfd, 'ScalarField') || isa(cd.dfd, 'BooleanField');
+        end
+        
+        function tf = get.isBoolean(cd)
+            tf = isa(cd.dfd, 'BooleanField');
+        end
     end
     
     methods
@@ -27,37 +41,39 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             % THIS ASSUMES THAT DATACELL IS HOMOGENOUS
             assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
             
-            v = []; i = 1;
-            while isempty(v)
-                v = dataCell{i};
-                i = i+1;
-            end
-            
-            cd.isString = false;
-            cd.isScalar = false;
-            if ischar(v)
-                cd.dfd = StringField();
-                cd.isString = true;
+            if ~iscell(dataCell)
+                cd.dfd = ScalarField();
+                cd.storageDataClass = class(dataCell);
                 
-            elseif isscalar(v)
-                if islogical(v)
-                    cd.dfd = BooleanField();
-                    cd.isBoolean = true;
-                else
-                    cd.dfd = ScalarField();
-                end
-                cd.isScalar = true;
-                
-            elseif isvector(v)
-                cd.dfd = NumericVectorField();
-              
-            elseif isnumeric(v) || islogical(v)
-                cd.dfd = NumericField();
             else
-                error('ParameterChannel attributes could not be inferred from data');
+                v = []; i = 1;
+                while isempty(v)
+                    v = dataCell{i};
+                    i = i+1;
+                end
+                
+                if ischar(v)
+                    cd.dfd = StringField();
+
+                elseif isscalar(v)
+                    if islogical(v)
+                        cd.dfd = BooleanField();
+                    else
+                        cd.dfd = ScalarField();
+                    end
+
+                elseif isvector(v)
+                    cd.dfd = NumericVectorField();
+
+                elseif isnumeric(v) || islogical(v)
+                    cd.dfd = NumericField();
+                    
+                else
+                    error('ParameterChannel attributes could not be inferred from data');
+                end
+                
+                cd.storageDataClass = class(v);
             end
-            
-            cd.storageDataClass = class(v);
         end
         
     end
@@ -66,7 +82,6 @@ classdef ParamChannelDescriptor < ChannelDescriptor
         function cd = buildStringParam(name)
             cd = ParamChannelDescriptor(name);
             cd.dfd = StringField();
-            cd.isString = true;
             cd.storageDataClass = 'char';
         end
         
@@ -76,24 +91,25 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 cd.units = units;
             end
             cd.dfd = ScalarField();
-            cd.isScalar = true;
             cd.storageDataClass = 'double';
         end 
         
         function cd = buildDatenumParam(name)
             cd = ParamChannelDescriptor(name);
             cd.dfd  = DateTimeField();
-            cd.isScalar = true;
             cd.storageDataClass = 'double';
         end 
         
         function cd = buildBooleanParam(name)
             cd = ParamChannelDescriptor(name);
             cd.dfd  = BooleanField();
-            cd.isScalar = true;
-            cd.isBoolean = true;
             cd.storageDataClass = 'logical';
         end 
+        
+        function cd = buildFromValues(name, values)
+            cd = ParamChannelDescriptor(name);
+            cd = cd.inferAttributesFromData(values);
+        end
     end
  
 %     methods(Static) % infer channel descriptor from values
