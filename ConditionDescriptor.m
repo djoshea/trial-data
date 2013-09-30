@@ -728,7 +728,7 @@ classdef(HandleCompatible) ConditionDescriptor
                 include = false;
                 val = attrValues.(attr{iAttr});
                 
-                if ~isscalar(val)
+                if ~ischar(val) && isscalar(val)
                     % skip attributes where more than one value is
                     % specified, they won't be part of the condition name
                     continue;
@@ -750,11 +750,11 @@ classdef(HandleCompatible) ConditionDescriptor
 
                 % include attribute name if its numeric
                 if attrIsNumeric(iAttr)
-                    val = [attr{iAttr} '=' val];
+                    val = num2str(val);
                 end
                   
                 if include
-                    name = [name val ' '];
+                    name = [name attr{iAttr} '=' val ' '];
                 end
             end
             

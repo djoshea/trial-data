@@ -69,10 +69,9 @@ classdef AlignInfo < AlignDescriptor
         function ad = applyToTrialData(ad, R)
             ad.warnIfNoArgOut(nargout);
             ad.eventInfo = ad.requestEventInfo(R);
-            [ad.timeInfo, ad.computedValid] = ad.buildTimeInfo();
-            %ad.summary = ad.summarizeTimeInfo(ad.timeInfo);
             ad.applied = true;
             ad.manualInvalid = falsevec(ad.nTrials);
+            ad = ad.update();
         end
         
         function nt = get.nTrials(ad)
@@ -103,6 +102,17 @@ classdef AlignInfo < AlignDescriptor
             end
         end
 
+        function ad = update(ad)
+            if ~ad.applied
+                % nothing to udpate if we haven't applied to trial data yet
+                return;
+            end
+            
+            ad.warnIfNoArgOut(nargout);
+            [ad.timeInfo, ad.computedValid] = ad.buildTimeInfo();
+            %ad.summary = ad.summarizeTimeInfo(ad.timeInfo);
+        end
+        
         function ad = selectTrials(ad, mask)
             ad.warnIfNoArgOut(nargout);
             ad.eventInfo = ad.eventInfo(mask);
@@ -157,7 +167,7 @@ classdef AlignInfo < AlignDescriptor
             % similar to above but returns cell array, and n may be be a
             % string of the form '1:2', '1:end', ':', etc
             if ~ischar(n) || strcmp(n, 'end')
-                times = num2cell(ad.getEventNthTimeVector(event, n));
+                timeCell = num2cell(ad.getEventNthTimeVector(event, n));
             else
                 % must have a colon, parse into tokens
                 pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
@@ -207,7 +217,7 @@ classdef AlignInfo < AlignDescriptor
         
         % get the aligned start/stop/zero/mark time windows for each trial, 
         % respecting all truncation and invalidation instructions
-        function [timeInfo valid] = buildTimeInfo(ad, R)
+        function [timeInfo, valid] = buildTimeInfo(ad)
             % returns a struct array with the actual time window and time of zero for trial i as
             %   timeInfo(i).start, .stop, .zero
             %
@@ -217,7 +227,6 @@ classdef AlignInfo < AlignDescriptor
             padPre = ad.padPre;
             padPost = ad.padPost;
 
-            eventNameFn = @(event) event;
             nTrials = numel(ad.eventInfo);
 
             t.valid = truevec(nTrials);
@@ -268,8 +277,8 @@ classdef AlignInfo < AlignDescriptor
 
             % mark trials as invalid if startPad:stopPad includes any invalidateEvents
             for i = 1:length(ad.invalidateEvents)
-                timesCell = ad.getEventIndexedTimeVectorFillEmptyWithNan(ad.invalidateEvents{i}, ad.invalidOffset(i))
-                maskInvalid = falsevec(length(t.startPad))
+                timesCell = ad.getEventIndexedTimeVectorFillEmptyWithNan(ad.invalidateEvents{i}, ad.invalidOffset(i));
+                maskInvalid = falsevec(length(t.startPad));
                 for iT = 1:length(t.startPad)
                     maskInvalid(iT) = any(timesCell{iT} > t.startPad(iT) & timesCell{iT} < t.stopPad(iT));
                 end

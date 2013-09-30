@@ -425,10 +425,15 @@ classdef AlignDescriptor
             ad = ad.update();
         end
 
-        function ad = pad(ad, window, varargin)
+        function ad = pad(ad, pre, post, varargin)
             ad.warnIfNoArgOut(nargout);
-            ad.padPre = window(1);
-            ad.padPost = window(2);
+            if nargin < 3
+                ad.padPre = pre(1);
+                ad.padPost = pre(2);
+            else
+                ad.padPre = pre;
+                ad.padPost = post;
+            end
 
             ad = ad.update();
         end
@@ -690,6 +695,7 @@ classdef AlignDescriptor
 
             ad.warnIfNoArgOut(nargout);
 
+            str = strtrim(str);
             [startStopZero remain] = strtok(str, ',');
 
             % split the string into start : stop @ zero
@@ -703,8 +709,14 @@ classdef AlignDescriptor
                     [ad.zeroEvent ad.zeroEventIndex ad.zeroOffset ad.zeroLabel] = ...
                         ad.parseEventOffsetString(startStopZero, 'zero', 'defaultIndex', 1);
                     ad.zeroDefault = false;
-                    ad = ad.start(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset);
-                    ad = ad.stop(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset);
+                    
+                    % '@Event' means TrialStart:TrialEnd @ Event (align whole trial to Event), whereas
+                    % 'Event' means Event:Event @ Event (single sample at Event)
+                    if(str(1) ~= '@')
+                        ad = ad.start(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset);
+                        ad = ad.stop(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset);
+                    end
+                    
                 %catch exc
                     % otherwise just fail
                     %error('Error parsing align descriptor %s', string);
@@ -719,6 +731,13 @@ classdef AlignDescriptor
                 [ad.stopEvent ad.stopEventIndex ad.stopOffset ad.stopLabel] = ...
                     ad.parseEventOffsetString(info.stop, 'stop', 'defaultIndex', 1);
                 ad.stopDefault = true;
+                
+                % deal with event:+100, -100:event cases
+                if isempty(ad.startEvent) && ~isempty(ad.stopEvent)
+                    ad.startEvent = ad.stopEvent;
+                elseif isempty(ad.stopEvent) && ~isempty(ad.startEvent)
+                    ad.stopEvent = ad.startEvent;
+                end
 
                 if isfield(info, 'zero') && ~isempty(info.zero)
                     % zero specified explicitly
@@ -726,7 +745,16 @@ classdef AlignDescriptor
                     [ad.zeroEvent ad.zeroEventIndex ad.zeroOffset ad.zeroLabel] = ...
                         ad.parseEventOffsetString(info.zero, 'zero', 'defaultIndex', 1);
                     ad.zeroDefault = false;
+                    if isempty(ad.startEvent) && isempty(ad.stopEvent)
+                        ad.startEvent = ad.zeroEvent;
+                        ad.stopEvent = ad.zeroEvent;
+                    end 
                 else
+                    % deal with 500:800 case here
+                    if isempty(ad.startEvent) && isempty(ad.stopEvent)
+                        ad.startEvent = 'TrialStart';
+                        ad.stopEvent = 'TrialStart';
+                    end 
                     ad = ad.setDefaultZero();
                 end
             end
@@ -742,53 +770,78 @@ classdef AlignDescriptor
                 % parse this as 'typeStr name+offset'
                 [typeStr name index offset label] = ....
                     ad.parseTypedEventOffsetString(thisToken);
+                
+                if ~isempty(typeStr)
+                    % match typeStr against the known types:
+                    switch typeStr
+                        case {'truncateAfter', 'before'}
+                            ad.truncateAfterEvents{end+1} = name;
+                            if isempty(index)
+                                % choose most conservative default, truncate
+                                % everything after the first occurrence
+                                ad.truncateAfterEventsIndex{end+1} = 1;
+                            else
+                                ad.truncateAfterEventsIndex{end+1} = index;
+                            end
 
-                % match typeStr against the known types:
-                switch typeStr
-                    case {'truncateAfter', 'before'}
-                        ad.truncateAfterEvents{end+1} = name;
-                        if isempty(index)
-                            % choose most conservative default, truncate
-                            % everything after the first occurrence
-                            ad.truncateAfterEventsIndex{end+1} = '1';
-                        else
-                            ad.truncateAfterEventsIndex{end+1} = index;
-                        end
-                            
-                        ad.truncateAfterOffsets(end+1) = offset;
+                            ad.truncateAfterOffsets(end+1) = offset;
 
-                    case {'truncateBefore', 'after'}
-                        ad.truncateBeforeEvents{end+1} = name;
-                        if isempty(index)
-                            % choose most conservative default, truncate
-                            % everything before the last occurrence
-                            ad.truncateBeforeEventsIndex{end+1} = 'end';
-                        else
-                            ad.truncateBeforeEventsIndex{end+1} = index;
-                        end
-                        ad.truncateBeforeOffsets(end+1) = offset;
+                        case {'truncateBefore', 'after'}
+                            ad.truncateBeforeEvents{end+1} = name;
+                            if isempty(index)
+                                % choose most conservative default, truncate
+                                % everything before the last occurrence
+                                ad.truncateBeforeEventsIndex{end+1} = 'end';
+                            else
+                                ad.truncateBeforeEventsIndex{end+1} = index;
+                            end
+                            ad.truncateBeforeOffsets(end+1) = offset;
 
-                    case {'invalidate', 'exclude', 'excluding'}
-                        ad.invalidateEvents{end+1} = name;
-                        if isempty(index)
-                            % choose most conservative default, any
-                            % occurrence invalidates the trial
-                            ad.invalidateEventsIndex{end+1} = ':';
-                        else
-                            ad.invalidateEventsIndex{end+1} = index;
-                        end
-                            
-                        ad.invalidateOffsets(end+1) = offset;
+                        case {'invalidate', 'exclude', 'excluding'}
+                            ad.invalidateEvents{end+1} = name;
+                            if isempty(index)
+                                % choose most conservative default, any
+                                % occurrence invalidates the trial
+                                ad.invalidateEventsIndex{end+1} = ':';
+                            else
+                                ad.invalidateEventsIndex{end+1} = index;
+                            end
 
-                    case {'mark', 'indicate'}
-                        ad = ad.mark(name, offset, 'as', label, 'index', index);
+                            ad.invalidateOffsets(end+1) = offset;
 
-                    otherwise
-                        error('Unknown descriptor keyword %s', typeStr);
-                end    
+                        case {'mark', 'indicate'}
+                            ad = ad.mark(name, offset, 'as', label, 'index', index);
+
+                        otherwise
+                            error('Unknown descriptor keyword %s', typeStr);
+                    end  
+                else
+                    % try parsing pad command
+                    [success, ad.padPre, ad.padPost] = ad.parsePadString(thisToken);
+                    if ~success
+                        error('Could not parse token %s');
+                    end                    
+                end
             end
 
             ad = ad.update();
+        end
+        
+        function [success, padPre, padPost] = parsePadString(ad, str)
+            pat = 'pad\s*\[?(?<padPre>+?-?\d*):(?<padPost>+?-?\d*)';
+            str = strtrim(str);
+            info = regexp(str, pat, 'names', 'once');
+            
+            if isempty(info)
+                success = false;
+            else
+                success = true;
+                padPre = str2double(info.padPre);
+                padPost = str2double(info.padPost);
+                
+                assert(~isnan(padPre), 'Could not parse padPre %s as number', info.padPre);
+                assert(~isnan(padPost), 'Could not parse padPost %s as number', info.padPost);
+            end
         end
 
         function [typeStr name index offset label] = parseTypedEventOffsetString(ad, str, varargin)
@@ -798,7 +851,7 @@ classdef AlignDescriptor
             info = regexp(str, pat, 'names', 'once');
 
             if isempty(info)
-                error('Error parsing offset string %s', str);
+                typeStr = '';
             end
 
             typeStr = info.typeStr;
@@ -816,7 +869,7 @@ classdef AlignDescriptor
             p.parse(varargin{:});
             
             % match event name
-            eventPat = '(?<event>\w+)';
+            eventPat = '(?<event>[a-zA-Z]\w+)?';
             % match anything like V or V:V where V is '#', 'end', 'end-#'
             indexPat = '(?<index>\((end)?-?\d*:?(end)?-?\d*\))?';
             % match anything like +# or -#
@@ -965,7 +1018,7 @@ classdef AlignDescriptor
         function disp(ad)
             ad.printOneLineDescription();
             
-            tcprintf('inline', '\tpad {bright blue}[%d %d]\n', ad.padPre, ad.padPost);
+            tcprintf('inline', '\tpad [pre {bright blue}%d{none} post {bright blue}%d{none}]\n', ad.padPre, ad.padPost);
 
             tcprintf('inline', '\toutside trial {bright blue}%s\n', ad.outsideOfTrialMode);
             
@@ -1127,8 +1180,8 @@ classdef AlignDescriptor
             labelInfo = makecol(labelInfo);
         end
 
-        function lims = getTimeAxisLims(ad, timeInfo, varargin)
-            labelInfo = ad.getLabelInfo(timeInfo);
+        function lims = getTimeAxisLims(ad, varargin)
+            labelInfo = ad.getLabelInfo();
             tickPos = [labelInfo.time];
             lims = [min(tickPos) max(tickPos)];
         end

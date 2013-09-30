@@ -21,7 +21,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     methods(Abstract)
         % filter used for convolution, as an impulse response which may 
         % have acausal elements if indZero > 0
-        [filt indZero] = getFilter(sf);
+        [filt, indZero] = getFilter(sf);
     end
 
     methods(Access=protected)
@@ -47,13 +47,13 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 
             tMin = tWindow(1);
             tMax = tWindow(2);
-            tvec = tMin:tMax-1;
+            tvec = tMin:tMax;
             nTime = length(tvec);
 
             % get time vector including pre and post padding to accomodate filter
             nPre = sf.preWindowMs;
             nPost = sf.postWindowMs;
-            tvecPad = tMin-nPre:tMax+nPost;
+            tvecPad = tMin-nPre:tMax+nPost+1;
             nTimePad = length(tvecPad);
             
             % filter via valid convolution, which automatically removes the padding

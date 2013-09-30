@@ -36,7 +36,7 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
         
         % filter used for convolution, as an impulse response which may 
         % have acausal elements if getFilterIndZero > 1
-        function [filt indZero] = getFilter(sf)
+        function [filt, indZero] = getFilter(sf)
             sigmaMultiple = 3;
             % future is negative time
             % we care about 3 sigma in the future from the delayPeak 

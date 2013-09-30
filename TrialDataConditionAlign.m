@@ -14,6 +14,8 @@ classdef TrialDataConditionAlign < TrialData
         conditions
         conditionNames
         conditionAppearances
+        
+        conditionAppearanceFn
     end
 
     % Initializing and building
@@ -151,7 +153,15 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.conditionAppearances(td)
             v = td.conditionInfo.appearances;
         end
-
+        
+        function td = set.conditionAppearanceFn(td, v)
+            td.conditionInfo.appearanceFn = v;
+        end
+        
+        function v = get.conditionAppearanceFn(td)
+            v = td.conditionInfo.appearanceFn;
+        end
+        
         function v = get.listByCondition(td)
             v = td.conditionInfo.listByCondition;
         end
@@ -171,9 +181,9 @@ classdef TrialDataConditionAlign < TrialData
         function varargout = groupElements(td, varargin)
             for i = 1:numel(varargin)
                 data = varargin{i};
-                assert(isvector(data) && numel(data) == td.nTrials, ...
-                    'Data must be a vector with length == number of trials');
-                varargout{i} = cellfun(@(idx) data(idx), td.listByCondition, 'UniformOutput', false);
+                assert(size(data,1) == td.nTrials, ...
+                    'Data must have size nTrials along 1st dimension');
+                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition, 'UniformOutput', false);
             end
         end
 
@@ -203,6 +213,11 @@ classdef TrialDataConditionAlign < TrialData
             td.alignInfo = AlignInfo();
             td.alignInfo = td.alignInfo.applyToTrialData(td);
         end
+        
+        function td = postUpdateAlignInfo(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.updateValid();
+        end
 
         function td = align(td, ad)
             td.warnIfNoArgOut(nargout);
@@ -216,7 +231,23 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             td.alignInfo = ad.applyToTrialData(td);
-            td = td.updateValid();
+            td = td.postUpdateAlignInfo();
+        end
+        
+        % add a padding window to the AlignInfo
+        % may change which trials are valid
+        % usage: pad([pre post]) or pad(pre, post)
+        % pre > 0 means add padding before the start (typical case)
+        function td = pad(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.pad(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        % filter trials that are valid based on AlignInfo
+        function td = filterValidTrialsAlignInfo(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.selectTrials(td.alignInfo.computedValid);
         end
     end
     
@@ -245,6 +276,28 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function sr = buildSpikeRasterForUnit(td, unitName)
             sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfo);
+            sr.useWidestCommonValidTimeWindow = false;
+        end
+        
+        function [rates, tvec] = getFilteredSpikeRateEachTrial(td, unitName, varargin)
+            p = inputParser;
+            p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.parse(varargin{:});
+            
+            sf = p.Results.spikeFilter;
+            spikeCell = td.getSpikeTimesForUnit(unitName);
+            timeInfo = td.alignInfo.timeInfo;
+            
+            % convert to .zero relative times since that's what spikeCell
+            % will be in
+            tMinByTrial = [timeInfo.start] - [timeInfo.zero];
+            tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
+            [rates, tvec] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial);
+        end
+        
+        function [rateCell, tvec] = getFilteredSpikeRateGroupedEachTrial(td, unitName, varargin)
+            [rateMat, tvec] = td.getFilteredSpikeRateEachTrial(unitName, varargin{:});
+            rateCell = td.groupElements(rateMat);
         end
     end
 

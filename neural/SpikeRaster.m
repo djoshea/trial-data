@@ -36,7 +36,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
         
         % if true, tMin and tMax will be set to the widest 
         % setting this calls clearCache()
-        useWidestCommonValidTimeWindow = true;
+        useWidestCommonValidTimeWindow = false;
         
         % see set.spikeFilter 
         spikeFilter 
@@ -149,7 +149,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
                 assert(isa(alignInfo, 'AlignInfo'), 'alignInfo argument must be an AlignInfo instance');
                 obj.alignInfo = alignInfo;
             end
-           % obj.alignInfo.padWindow = obj.padWindow;
+            obj.alignInfo = obj.alignInfo.pad(obj.padWindow);
             
             %obj.alignTimeInfo = obj.alignDescriptor.getTimeInfo(R, obj.padWindow);
            % [obj.spikes] = obj.alignDescriptor.getAlignedTimes(obj.alignTimeInfo, rawSpikes);
@@ -318,7 +318,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
         end
 
         function tBins = get.tBins(obj)
-            tBins = makecol(obj.tMin : obj.tBinWidth : obj.tMax - obj.tBinWidth);
+            tBins = makecol(obj.tMin : obj.tBinWidth : obj.tMax);
         end
 
         function nTBins = get.nTBins(obj)

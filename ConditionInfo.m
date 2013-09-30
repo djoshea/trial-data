@@ -86,6 +86,7 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
             ci.names = {};
             ci.conditionIdx = [];
             ci.conditionSubs = [];
+            ci.conditionSubsIncludingManualInvalid = [];
             ci.listByCondition = [];
             
             % the above accomplishes the same effect as in ConditionDescriptor
@@ -803,7 +804,7 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
             ci = ConditionDescriptor.fromConditionDescriptor(cd, ci);
             % bind the trialData
             if ~isempty(p.Results.trialData)
-                ci.bind(p.Results.trialData);
+                ci.applyToTrialData(p.Results.trialData);
             end
         end
 

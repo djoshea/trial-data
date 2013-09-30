@@ -64,8 +64,31 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
     end
 
     methods
-        function rates = filterSpikeTrains(sf, spikeCell, tWindow)
+        function [rates, tvec] = filterSpikeTrains(sf, spikeCell, tWindow)
             rates = sf.subclassFilterSpikeTrains(spikeCell, tWindow);
+            tvec = tWindow(1):tWindow(2);
+        end
+        
+        function [rates, tvec] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial)
+            tWindow(1) = nanmin(tMinByTrial);
+            tWindow(2) = nanmax(tMaxByTrial);
+            
+            [rates, tvec] = sf.filterSpikeTrains(spikeCell, tWindow);
+                
+            % go through and mark as NaN any time outside each trial's
+            % valid window, in case tMin / tMax are larger than that
+            for iTrial = 1:numel(tMinByTrial)
+                mask = falsevec(numel(tvec));
+                mask(tvec < tMinByTrial(iTrial)) = true;
+                mask(tvec > tMaxByTrial(iTrial)) = true;
+                rates(iTrial, mask) = NaN;
+            end
+        end
+    end
+    
+    methods(Static)
+        function sf = getDefaultFilter()
+            sf = GaussianSpikeFilter();
         end
     end
 end
