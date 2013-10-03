@@ -141,11 +141,19 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
         
         function selectTrials(ci, selector)
             assert(isvector(selector), 'Selector must be vector of indices or vector mask');
-            ci.values = ci.values(selector, :);
-            ci.manualInvalid = false(nnz(selector), 1);
-            ci.conditionIdx = ci.conditionIdx(selector);
-            ci.conditionSubs = ci.conditionSubs(selector, :);
-            ci.conditionSubsIncludingManualInvalid = ci.conditionSubsIncludingManualInvalid(selector,:);
+            % cache everything ahead of time because some are dynamically
+            % computed from the others
+            values = ci.values;
+            manualInvalid = ci.manualInvalid;
+            conditionIdx = ci.conditionIdx;
+            conditionSubs = ci.conditionSubs;
+            conditionSubsIncludingManualInvalid = ci.conditionSubsIncludingManualInvalid;
+            
+            ci.values = values(selector, :);
+            ci.manualInvalid = manualInvalid(selector);
+            ci.conditionIdx = conditionIdx(selector);
+            ci.conditionSubs = conditionSubs(selector, :);
+            ci.conditionSubsIncludingManualInvalid = conditionSubsIncludingManualInvalid(selector,:);
             % auto-updates on request:
             ci.listByCondition = [];
         end

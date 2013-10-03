@@ -103,9 +103,24 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo.noUpdateCache = false;
             td.conditionInfo.updateCache();
 
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = setAttributeValueList(td, attrName, valueList)
+            td.warnIfNoArgOut(nargout);
+            td = td.createCopyConditionInfo();
+            td.conditionInfo.setValueList(attrName, valueList);
+        end
+        
+        function valueList = getAttributeValueList(td, attrName)
+            valueList = td.conditionInfo.getAttributeValueList(attrName);
+        end
+        
+        function td = postUpdateConditionInfo(td)
+            td.warnIfNoArgOut(nargout);
             td = td.updateValid();
         end
-
+        
         % filter trials that are valid based on ConditionInfo
         function td = filterValidTrialsConditionInfo(td, varargin)
             td.warnIfNoArgOut(nargout);
@@ -244,10 +259,16 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateAlignInfo();
         end
         
+        
         % filter trials that are valid based on AlignInfo
         function td = filterValidTrialsAlignInfo(td, varargin)
             td.warnIfNoArgOut(nargout);
             td = td.selectTrials(td.alignInfo.computedValid);
+        end
+        
+        % get the time window for each trial
+        function durations = getValidDurations(td)
+            durations = td.alignInfo.getValidDurationByTrial();
         end
     end
     
@@ -266,10 +287,13 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         % return aligned unit spike times
-        function [timesCell] = getSpikeTimesForUnit(td, unitName); 
+        function [timesCell] = getSpikeTimesForUnit(td, unitName)
             timesCell = getSpikeTimesForUnit@TrialData(td, unitName);
             timesCell = td.alignInfo.getAlignedTimes(timesCell);
         end
+        
+     
+        
     end
 
     % Spike data
@@ -298,6 +322,21 @@ classdef TrialDataConditionAlign < TrialData
         function [rateCell, tvec] = getFilteredSpikeRateGroupedEachTrial(td, unitName, varargin)
             [rateMat, tvec] = td.getFilteredSpikeRateEachTrial(unitName, varargin{:});
             rateCell = td.groupElements(rateMat);
+        end
+        
+        function timesCellofCells = getSpikeTimesForUnitGrouped(td, unitName)
+            timesCell = td.getSpikeTimesForUnit(unitName);
+            timesCellofCells = td.groupElements(timesCell);
+        end
+        
+        function countsCell = getSpikeCountsForUnitGrouped(td, unitName)
+            counts = td.getSpikeCountsForUnit(unitName);
+            countsCell = td.groupElements(counts);
+        end
+        
+        function rateCell = getSpikeRatePerSecForUnitGrouped(td, unitName)
+            rates = td.getSpikeRatePerSecForUnit(unitName);
+            rateCell = td.groupElements(rates);
         end
     end
 

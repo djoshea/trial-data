@@ -345,6 +345,12 @@ classdef AlignInfo < AlignDescriptor
             end
             
         end
+        
+        function lengths = getValidDurationByTrial(ad) 
+            assert(ad.applied, 'Call .applyToTrialData first');
+            ti = ad.timeInfo;
+            lengths = makecol([ti.stop] - [ti.start] + 1);
+        end
     end
 
     methods % Labeling and axis drawing

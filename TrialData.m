@@ -201,6 +201,13 @@ classdef TrialData
             assert(td.hasChannel(name), 'TrialData does not have channel %s', name);
         end
         
+        % get the time window for each trial
+        function durations = getValidDurations(td)
+            starts = td.getEventFirst('TrialStart');
+            ends = td.getEventLast('TrialEnd');
+            durations = ends - starts;
+        end
+        
         function cds = getChannelDescriptorArray(td)
             fields = fieldnames(td.channelDescriptorsByName);
             for iF = 1:length(fields)
@@ -226,7 +233,7 @@ classdef TrialData
         function names = listAnalogChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name};
+            names = {channelDescriptors(mask).name}';
         end
         
         function [data, time] = getAnalog(td, name)
@@ -253,7 +260,7 @@ classdef TrialData
         function names = listEventChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name};
+            names = {channelDescriptors(mask).name}';
         end
 
         function timesCell = getEvent(td, name)
@@ -325,7 +332,7 @@ classdef TrialData
         function names = listParamChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name};
+            names = {channelDescriptors(mask).name}';
         end
         
         % Basic access methods, very fast
@@ -347,7 +354,13 @@ classdef TrialData
         function names = listSpikeChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name};
+            names = {channelDescriptors(mask).name}';
+        end
+        
+        function names = listSpikeUnits(td)
+            chNames = td.listSpikeChannels();
+            names = cellfun(@SpikeChannelDescriptor.convertChannelNameToUnitName, chNames, ...
+                'UniformOutput', false);
         end
 
         function timesCell = getSpikeTimesForUnit(td, unitName, varargin) 
@@ -357,6 +370,16 @@ classdef TrialData
         function timesCell = getRawSpikeTimesForUnit(td, unitName)
             name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
             timesCell = {td.data.(name)}';
+        end
+            
+        function counts = getSpikeCountsForUnit(td, unitName)
+            counts = cellfun(@numel, td.getSpikeTimesForUnit(unitName));
+        end
+        
+        function rates = getSpikeRatePerSecForUnit(td, unitName)
+            counts = td.getSpikeCountsForUnit(unitName);
+            durations = td.getValidDurations();
+            rates = counts ./ durations * td.timeUnitsPerSecond;
         end
     end
 
