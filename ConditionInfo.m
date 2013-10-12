@@ -3,7 +3,7 @@
 % of each attribute for each trial. If not bound to anything, this function will receive
 % [] as its first argument, with the assumption being that the function handle in this
 % case is already bound to a specific set of trial data.
-classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
+classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
 
     properties
         % function with signature:
@@ -17,35 +17,42 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
         % 
         getAttributeValueFn = @ConditionInfo.defaultGetAttributeFn;
         
+        % function with signature:
+        % nTrials = getNTrialsFn(trialData)
         getNTrialsFn = @ConditionInfo.defaultGetNTrialsFn;
-        
-        % has apply to trial data already been called?
-        applied = false; 
     end
     
     properties(SetAccess=protected)
+        % has apply to trial data already been called?
+        applied = false;
+        
         % T is number of trials
         % A is number of attributes
-        values = {}; % T x A cell array : value of attribute a on trial t
+        values % T x 1 struct array : values(iTrial).attr = value
         
-        attributeValueListAuto % A logical array: is the value list for attribute automatically computed?
-
         % a mask over trials (T x 1). A trial is valid if all of its attribute values are in the
         % value lists for those attributes, AND manualInvalid(i) == 0
         manualInvalid % used by markInvalid
-        
+    end
+    
+    % Properties which are stored inside odc!
+    properties(Dependent, Transient, SetAccess=protected)
         % which condition does each trial belong to
         conditionIdx % T x 1 array of linear index into conditions for each trials
         
         % T x A matrix of which condition each trial belongs to as a row vector of subscript indices
-        conditionSubs 
         conditionSubsIncludingManualInvalid
+
+        % T x A matrix of which condition each trial belongs to as a row
+        % vector of subscript indices, except invalid trials will have all
+        % NaNs in their row
+        conditionSubs 
         
         % nConditions x 1 cell array of idx in each condition
         listByCondition
     end
 
-    properties(Dependent)
+    properties(Dependent, Transient)
         nTrials
         
         countByCondition
@@ -64,35 +71,22 @@ classdef ConditionInfo < handle & matlab.mixin.Copyable & ConditionDescriptor
     end
 
     methods 
-        function ci = ConditionInfo(varargin)
-            p = inputParser;
-            p.addOptional('trialData', [], @(x) true);
-            p.parse(varargin{:});
-
-            if ~isempty(p.Results.trialData)
-                ci.applyToTrialData(p.Results.trialData);
-            end
+        function ci = ConditionInfo()
+            ci = ci@ConditionDescriptor();
+        end
+             
+        function odc = buildOdc(ci)
+            odc = ConditionInfoOnDemandCache();
         end
     end
     
     methods % Superclass overrides
-        function ci = updateCache(ci)
-            % flush the current conditions / appearances / names buffers and list
-            % of trials in each condition. These will be refreshed upon request.
-            
-            % handle this on demand instead of precomputing
-            ci.conditions = [];
-            ci.appearances = {};
-            ci.names = {};
+        function ci = invalidateCache(ci)
+            ci = invalidateCache@ConditionDescriptor(ci);
             ci.conditionIdx = [];
             ci.conditionSubs = [];
             ci.conditionSubsIncludingManualInvalid = [];
             ci.listByCondition = [];
-            
-            % the above accomplishes the same effect as in ConditionDescriptor
-            % except that ConditionDescriptor recomputes everything then since it 
-            % is a value class
-            %ci = updateCache@ConditionDescriptor(ci); 
         end
         
         function ci = freezeAppearances(ci)

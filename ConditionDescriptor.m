@@ -1,4 +1,4 @@
-classdef(HandleCompatible) ConditionDescriptor 
+classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor 
 % ConditionDescriptor is a static representation of a A-dimensional combinatorial
 % list of attribute values
 
@@ -10,40 +10,46 @@ classdef(HandleCompatible) ConditionDescriptor
         
         % updates cache on set
         appearanceFn; % function which takes struct('attrName1', attrVal1, 'attrName2', attrVal2)
-                      % and returns {'Color', 'k', 'LineWidth', 2};              
-    end
+                      % and returns struct('color', 'k', 'lineWidth', 2, ...);      
 
-    properties(Transient)
-        noUpdateCache = false; % if true, updateCache does nothing, useful for loading or building 
-                               % be sure to set to true and call updateCache afterwards
     end
-    
-    properties(SetAccess=protected)        
+     
+    properties(SetAccess=protected)
         groupByList % list of attibute names we group on
         
-        % These are generated on the fly by property get, but cached for speed, see updateCache to reset them 
-        
-        % these are A-dimensional objects where A is nAttributesGroupBy or length(groupByList)
-        conditions = struct(); % A-dimensional struct where values(...idx...).attribute is the value of that attribute on that condition
-        
-        appearances % A-dimensional struct of appearance values
-        names % naes of each condition 
+        % A x 1 : by attribute                       
+        attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
+        attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
+        attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value?
+        attributeValueList = {}; % A x 1 cell array of permitted values for this attribute
+        attributeValueListSpecified = []; % A x 1 logical array: was a non-empty value list provided for this attribute
         
         frozenAppearanceConditions
         frozenAppearanceData
     end
+
+    % END OF STORED PROPERTIES
     
-    properties(SetAccess=protected)
-        % A x 1 : by attribute 
-        attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
-        attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
-        attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value?
-        attributeValueList = {}; % A x 1 cell array of permitted values for this attribute 
+    properties(Transient, Hidden)
+        noUpdateCache = false; % if true, invalidateCache does nothing, useful for loading or building 
+                               % be sure to set to true and call invalidateCache afterwards                        
+    end
+    
+    properties(Transient, Access=protected)
+        odc % handle to a ConditionDescriptorOnDemandCache
+    end
+    
+    % THE FOLLOWING PROPERTIES WRAP EQUIVALENT PROPERTIES IN ODC
+    properties(Transient, Dependent, SetAccess=protected)        
+        % These are generated on the fly by property get, but cached for speed, see invalidateCache to reset them 
         
-        attributeValueListSpecified = []; % A x 1 logical array: was a non-empty value list provided for this attribute
+        % these are A-dimensional objects where A is nAttributesGroupBy or length(groupByList)
+        conditions % A-dimensional struct where values(...idx...).attribute is the value of that attribute on that condition
+        appearances % A-dimensional struct of appearance values
+        names % naes of each condition 
     end
 
-    properties(Dependent)
+    properties(Dependent, Transient)
         nAttributes % how many attributes: ndims(values)
 
         nValuesByAttribute % how many values per attribute: size(values)
@@ -70,73 +76,106 @@ classdef(HandleCompatible) ConditionDescriptor
         
         conditionsWithGroupByFieldsOnly % same as conditions, but with only fields in groupByList specified
     end
+    
+    % Constructor, load, save methods
+    methods
+        function ci = ConditionDescriptor()
+            ci.odc = ci.buildOdc();
+        end
+        
+        function odc = buildOdc(ci)
+            odc = ConditionDescriptorOnDemandCache();
+        end
+    end
+    
+    % PROPERTIES WHICH EXIST INSIDE ODC
+    % on get: retrieve from odc, if empty {call build<Property>, store in odc, return it}
+    % on set: make copy of odc to alleviate dependency, store in odc
+    % 
+    % Note: we use the build<Property> methods because property getters
+    % cannot be inherited, so subclasses can override the build method
+    % instead.
+    
+    methods 
+        % auto generate the odc if necessary, again using buildODC
+        function v = get.conditions(ci)
+            v = ci.odc.conditions;
+            if isempty(v)
+                ci.odc.conditions = ci.buildConditions();
+                v = ci.odc.conditions;
+            end
+        end
+        
+        function ci = set.conditions(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditions = v;
+        end
+        
+        function v = get.appearances(ci)
+            v = ci.odc.appearances;
+            if isempty(v)
+                ci.odc.appearances = ci.buildAppearances();
+                v = ci.odc.appearances;
+            end
+        end
+        
+        function ci = set.appearances(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.appearances = v;
+        end
+        
+        function v = get.names(ci)
+            v = ci.odc.names;
+            if isempty(v)
+                ci.odc.names = ci.buildNames();
+                v = ci.odc.names;
+            end
+        end 
+        
+        function ci = set.names(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.names = v;
+        end
+    end
 
     methods
-        function ci = updateCache(ci)
-            % this is a manual flag to suppress repreated updates of internal
-            % variables. because this is not a handle class, we must either
-            % update the cache whenever something changes that invalidates it,
-            % or regenerate it each and every time these fields are accessed.
-            % We choose the former approach here to avoid repeated computation
-            if ci.noUpdateCache
-                return;
-            end
-
+        % flush the contents of odc as they are invalid
+        % call this at the end of any methods which would want to
+        % regenerate these values
+        function ci = invalidateCache(ci)
             ci.warnIfNoArgOut(nargout);
             
             % here we precompute these things to save time, 
             % but each of these things also has a get method that will
             % recompute this for us
-            ci.conditions = ci.getValues;
-            ci.appearances = ci.getAppearances;
-            ci.names = ci.getNames;
+            ci.conditions = [];
+            ci.appearances = [];
+            ci.names = [];
         end
         
+        % Manually freeze the condition appearances so that they don't
+        % change when we downsample the conditions
         function ci = freezeAppearances(ci)
             ci.warnIfNoArgOut(nargout);
             
             % freeze current appearance information
             ci.frozenAppearanceConditions = ci.conditions;
-            ci.frozenAppearanceData = ci.appearance;
+            ci.frozenAppearanceData = ci.appearances;
             ci.appearanceFn = @ConditionDescriptor.frozenAppearanceFn;
         end
         
         function ci = set.nameFn(ci, fn)
             ci.nameFn = fn;
-            ci = ci.updateCache();
+            ci.names = [];
         end
         
         function ci = set.appearanceFn(ci, fn)
             ci.appearanceFn = fn;
-            ci = ci.updateCache();
+            ci.appearances = [];
         end
         
         function tf = hasAttribute(ci, name)
             tf = ismember(name, ci.attributeNames);
-        end
-        
-        function appearances = get.appearances(ci)
-            if isempty(ci.appearances)
-                % will only cache if handle class (e.g. ConditionInfo)
-                ci.appearances = ci.getAppearances();
-            end
-            appearances = ci.appearances;
-        end
-        
-        function names = get.names(ci)
-            if isempty(ci.names)
-                % will only cache if handle class (e.g. ConditionInfo)
-                ci.names = ci.getNames();
-            end
-            names = ci.names;
-        end
-        
-        function conditions = get.conditions(ci)
-            if isempty(ci.conditions)
-                % will only cache if handle class (e.g. ConditionInfo)
-                ci.conditions = ci.getValues();
-            end
-            conditions = ci.conditions;
         end
 
         function na = get.nAttributes(ci)
@@ -352,7 +391,7 @@ classdef(HandleCompatible) ConditionDescriptor
             p.addParamValue('requestAs', '', @ischar);
             p.addParamValue('valueList', {}, @(x) isnumeric(x) || iscell(x)); 
             % list of names to substitute for each value in the list
-            p.addParamValue('groupBy', false, @islogical);
+            p.addParamValue('groupBy', true, @islogical);
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
             requestAs = p.Results.requestAs;
@@ -384,29 +423,35 @@ classdef(HandleCompatible) ConditionDescriptor
                 ci.groupByList{end+1} = name;
             end
             
-            ci = ci.updateCache();
+            ci = ci.invalidateCache();
         end
 
-%         function ci = removeAttribute(ci, name)
-%             ci.warnIfNoArgOut(nargout);
-% 
-%             if ~ci.hasAttribute(name)
-%                 error('ConditionDescriptor has no attribute %s', name);
-%             end
-%             
-%             iAttr = ci.getAttributeIdx(name);
-%             maskOther = true(ci.nAttributes, 1);
-%             maskOther(iAttr) = false;
-%             ci.attributeNames = ci.attributeNames(maskOther);
-%             ci.attributeNumeric = ci.attributeNumeric(maskOther); 
-%             ci.attributeRequestAs = ci.attributeRequestAs(maskOther);
-%             ci.attributeValueList = ci.attributeValueList(maskOther);
-%             ci.attributeValueListSpecified = ci.attributeValueListSpecified(maskOther);
-%             
-%             ci.groupByList = setdiff(ci.groupByList, name);
-%             
-%             ci = ci.updateCache();
-%         end
+        function ci = removeAttribute(ci, varargin)
+            if iscell(varargin{1})
+                attributes = varargin{1};
+            else
+                attributes = varargin;
+            end
+            
+            ci.warnIfNoArgOut(nargout);
+            
+            if ~isnumeric(attributes)
+                % check all exist
+                ci.getAttributeIdx(attributes);
+            else
+                attributes = ci.attributeNames(attributes);
+            end
+            
+            if ~ci.hasAttribute(attributes)
+                error('ConditionDescriptor has no attribute %s', name);
+            end
+            
+            iAttr = ci.getAttributeIdx(attributes);
+            maskOther = true(ci.nAttributes, 1);
+            maskOther(iAttr) = false;
+            
+            ci = ci.maskAttributes(maskOther);
+        end
         
         function ci = setValueList(ci, name, valueList)
             ci.warnIfNoArgOut(nargout);
@@ -425,7 +470,7 @@ classdef(HandleCompatible) ConditionDescriptor
                 ci.attributeValueListSpecified(iAttr) = true;
             end
                        
-            ci = ci.updateCache();
+            ci = ci.invalidateCache();
         end
         
         function ci = groupBy(ci, varargin)
@@ -444,17 +489,41 @@ classdef(HandleCompatible) ConditionDescriptor
             
             ci.warnIfNoArgOut(nargout);
             ci.groupByList = attributes;
-            ci = ci.updateCache();
+            ci = ci.invalidateCache();
         end
 
         function ci = groupByAll(ci)
             ci.warnIfNoArgOut(nargout);
             ci = ci.groupBy(ci.attributeNames);
         end
+        
+        function ci = dontGroupBy(ci, varargin)
+            if iscell(varargin{1})
+                attributes = varargin{1};
+            else
+                attributes = varargin;
+            end
+            
+            if ~isnumeric(attributes)
+                % check all exist
+                ci.getAttributeIdx(attributes);
+            else
+                attributes = ci.attributeNames(attributes);
+            end
+            
+            ci.warnIfNoArgOut(nargout);
+            ci.groupByList = setdiff(ci.groupByList, attributes);
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = ungroup(ci)
+            ci.groupByList = {};
+            ci = ci.invalidateCache();
+        end
     end
 
     methods % Filtering
-        function [ci mask] = filteredByAttribute(ci, attributeName, valueListKeep, varargin)
+        function [ci, mask] = filteredByAttribute(ci, attributeName, valueListKeep, varargin)
             ciOrig = ci;
             ci.warnIfNoArgOut(nargout);
             ci = ci.copyIfHandle(); 
@@ -477,13 +546,19 @@ classdef(HandleCompatible) ConditionDescriptor
                 valueListKeep = {valueListKeep};
             end
             
-            % maintain the original sort order
-            [ci.attributeValueList{idx} indKeep] = intersectCell(valueList, valueListKeep, 'stable');
+           
+            if ~isempty(ci.attributeValueList{idx})
+                 % maintain the original sort order when filtering
+                [ci.attributeValueList{idx} indKeep] = intersectCell(valueList, valueListKeep, 'stable');
+            else
+                ci.attributeValueList{idx} = valueListKeep;
+                indKeep = [];
+            end
             
             if p.Results.removeFromGroupBy
                 ci.groupByList = setdiff(ci.groupByList, attributeName);
             end
-            ci = ci.updateCache();
+            ci = ci.invalidateCache();
 
             % generate mask of conditionsKept
             if nargout > 1
@@ -491,7 +566,7 @@ classdef(HandleCompatible) ConditionDescriptor
             end
         end
 
-        function [ci mask] = filteredByAttributeStruct(ci, attributeValues, varargin)
+        function [ci, mask] = filteredByAttributeStruct(ci, attributeValues, varargin)
             ci.warnIfNoArgOut(nargout);
             ci = ci.copyIfHandle(); 
             
@@ -514,7 +589,7 @@ classdef(HandleCompatible) ConditionDescriptor
             
             % also remove from groupByList
             ci.groupByList = setdiff(ci.groupByList, name);
-            ci = ci.updateCache();
+            ci = ci.invalidateCache();
         end
     end
     
@@ -522,9 +597,12 @@ classdef(HandleCompatible) ConditionDescriptor
        function ci = maskAttributes(ci, mask)
            ci.warnIfNoArgOut(nargout);
             ci.attributeNames = ci.attributeNames(mask);
+            ci.attributeRequestAs = ci.attributeRequestAs(mask);
             ci.attributeNumeric = ci.attributeNumeric(mask);
             ci.attributeValueList = ci.attributeValueList(mask);
             ci.attributeValueListSpecified = ci.attributeValueListSpecified(mask);
+            
+            ci.groupByList = setdiff(ci.groupByList, ci.attributeNames);
         end 
     end
 
@@ -629,7 +707,7 @@ classdef(HandleCompatible) ConditionDescriptor
     end
 
     methods % Generating names, values, appearances...
-        function values = getValues(ci)
+        function values = buildConditions(ci)
             if ci.nConditions > 0
                 nAttr = ci.nAttributes;
                 nAttrGroupBy = ci.nAttributesGroupBy;
@@ -659,7 +737,7 @@ classdef(HandleCompatible) ConditionDescriptor
                 for iA = 1:nAttr
                     attr = ci.attributeNames{iA};
                     if ~ismember(attr, ci.groupByList)
-                        list = ci.attributeValueList{iA};
+                        list = ci.attributeValueList{iA};                        
                         if length(list) == 1
                             val.(attr) = list{1};
                         else
@@ -670,7 +748,7 @@ classdef(HandleCompatible) ConditionDescriptor
             end
         end
 
-        function names = getNames(ci)
+        function names = buildNames(ci)
             % pass along values(i) and the subscripts of that condition in case useful 
             if ci.nConditions > 0
                 nameFn = ci.nameFn;
@@ -685,7 +763,7 @@ classdef(HandleCompatible) ConditionDescriptor
             end
         end
         
-        function appearances = getAppearances(ci)
+        function appearances = buildAppearances(ci)
             if ci.nConditions > 0
                 appearFn = ci.appearanceFn;
                 defaultFn = eval(sprintf('@%s.defaultAppearanceFn', class(ci)));
@@ -860,7 +938,7 @@ classdef(HandleCompatible) ConditionDescriptor
             end
             
             cdNew.noUpdateCache = false;
-            cdNew = cdNew.updateCache();
+            cdNew = cdNew.invalidateCache();
         end
     end
     
