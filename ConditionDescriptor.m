@@ -14,21 +14,26 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
     end
      
     properties(SetAccess=protected)
-        groupByList % list of attibute names we group on
-        
         % A x 1 : by attribute                       
         attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
-        attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value?
-        
+        attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value? 
+    end
+    
+    properties(SetAccess=protected)
+        % When re-arranging the axes, default condition appearances can get shuffled around
+        % which can make comparison across figures difficult. These cache
+        % the condition appearances to make things easier. Call
+        % freezeAppearances to activate()
+        appearanceFrozen = false;
         frozenAppearanceConditions
         frozenAppearanceData
-    end
 
-    properties(Access=protected)
         % don't access these directly, call .getAttributeValueList
         attributeValueListManual = {}; % A x 1 cell array of permitted values for this attribute
         attributeValueListSpecified = []; % A x 1 logical array: was a non-empty value list provided for this attribute
+
+        axisSpec % specification for how to form the group axes
     end
     
     % END OF STORED TO DISK PROPERTIES
@@ -68,25 +73,25 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
         nConditions % how many total conditions
         
-        groupByListAttributeIdx % idx into .attributeNames of each attribute in groupByList
+        %groupByListAttributeIdx % idx into .attributeNames of each attribute in groupByList
         
-        isAttributeInGroupByList % mask indicating which .attributeNames{i} is in groupByList
+        %isAttributeInGroupByList % mask indicating which .attributeNames{i} is in groupByList
 
         %attributeValueListGroupBy % same as attributeValueList but for grouped attributes only
         
-        nAttributesGroupBy % how many attributes in group by list
+        %nAttributesGroupBy % how many attributes in group by list
         
         conditionsSize 
 
         conditionsAsLinearInds % linear index corresponding to each condition if flattened 
         
-        nValuesByAttributeGroupBy % same as conditionsSize (except won't auto expand to be N x 1)
+        %nValuesByAttributeGroupBy % same as conditionsSize (except won't auto expand to be N x 1)
         
-        attributeNamesGroupBy % attributeNames(isAttributeInGroupByList)
+        %attributeNamesGroupBy % attributeNames(isAttributeInGroupByList)
         
-        attributeRequestAsGroupBy % attributeRequestAs(isAttributeInGroupByList)
+        %attributeRequestAsGroupBy % attributeRequestAs(isAttributeInGroupByList)
         
-        conditionsWithGroupByFieldsOnly % same as conditions, but with only fields in groupByList specified
+        %conditionsWithGroupByFieldsOnly % same as conditions, but with only fields in groupByList specified
     end
     
     % Constructor, load, save methods
@@ -100,6 +105,24 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
     end
    
+    % Specify and manipulate group axes
+    methods
+        function ci = addAxis(ci, varargin)
+            ci.warnIfNoArgOut(nargout);
+            
+            p = inputParser;
+            p.addParamValue('name', '', @ischar);
+            p.addParamValue('attributes', {}, @iscellstr);
+            p.addParamValue('values', [], @(x) true);
+            p.parse(varargin{:});
+            
+            ax.attributes = p.Results.attributes;
+            ci.assertHasAttribute(ax.attributes);
+            
+            
+        end
+        
+    end
     
     % get, set data stored inside odc
     methods 
@@ -291,6 +314,16 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function tf = hasAttribute(ci, name)
             tf = ismember(name, ci.attributeNames);
         end
+        
+        function assertHasAttribute(ci, name)
+            tf = ci.hasAttribute(name);
+            if ~all(tf)
+                if iscell(name)
+                    name = strjoin(name(~tf));
+                end
+                error('Attribute(s) %s not found', name);
+            end
+        end
 
         function na = get.nAttributes(ci)
             na = length(ci.attributeNames);
@@ -298,42 +331,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
         function nv = get.nValuesByAttribute(ci)
             nv = cellfun(@length, ci.attributeValueList); 
-        end
-
-        function list = get.groupByList(ci)
-            if isempty(ci.groupByList)
-                list = {};
-            else
-                list = ci.groupByList;
-            end
-        end
-        
-        function idx = get.groupByListAttributeIdx(ci) 
-            idx = ci.getAttributeIdx(ci.groupByList);
-        end
-
-        function mask = get.isAttributeInGroupByList(ci)
-            mask = ismember(ci.attributeNames, ci.groupByList);
-        end
-        
-        function valueLists = get.attributeValueListGroupBy(ci)
-            valueLists = ci.attributeValueList(ci.groupByListAttributeIdx);
-        end
-
-        function na = get.nAttributesGroupBy(ci)
-            na = length(ci.groupByList);
-        end
-        
-        function names = get.attributeNamesGroupBy(ci)
-            names = ci.attributeNames(ci.groupByListAttributeIdx);
-        end
-        
-        function names = get.attributeRequestAsGroupBy(ci)
-            names = ci.attributeRequestAs(ci.groupByListAttributeIdx);
-        end
-
-        function nv = get.nValuesByAttributeGroupBy(ci)
-            nv = cellfun(@length, ci.attributeValueListGroupBy); 
         end
 
         function nv = get.conditionsSize(ci)
@@ -349,15 +346,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
         end
         
-        function conditions = get.conditionsWithGroupByFieldsOnly(ci)
-            if ci.nConditions > 0
-                fieldsToRemove = intersect(fieldnames(ci.conditions), ci.attributeNames(~ci.isAttributeInGroupByList));
-                conditions = rmfield(ci.conditions, fieldsToRemove);
-            else
-                conditions = struct([]);
-            end
-        end
-
         function linearInds = get.conditionsAsLinearInds(ci)
             linearInds = TensorUtils.containingLinearInds(ci.conditionsSize);
         end
@@ -389,25 +377,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
         end
         
-        function idx = getAttributeIdxInGroupByList(ci, name)
-            if isempty(name)
-                idx = [];
-                return;
-            end
-            
-            if ~iscell(name)
-                name = {name};
-            end
-            
-            idx = nan(length(name), 1);
-            for i = 1:length(name)
-                idx(i) = find(strcmp(ci.groupByList, name{i}));
-                if isempty(idx)
-                    error('Cannot find attribute named %s', name{i});
-                end
-            end
-        end
-
         function tf = getIsAttributeNumeric(ci, name)
             idx = ci.getAttributeIdx(name);
             tf = ci.attributeNumeric(idx);
@@ -541,6 +510,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
 
         function ci = removeAttribute(ci, varargin)
+            ci.warnIfNoArgOut(nargout);
+            
             if iscell(varargin{1})
                 attributes = varargin{1};
             else

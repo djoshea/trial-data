@@ -28,7 +28,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         
         % T is number of trials
         % A is number of attributes
-        values % T x 1 struct array : values(iTrial).attr = value
+        values % T x A cell array : values{iTrial, iAttr} = value
         
         % a mask over trials (T x 1). A trial is valid if all of its attribute values are in the
         % value lists for those attributes, AND manualInvalid(i) == 0
@@ -136,9 +136,88 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci.odc.listByCondition = v;
         end
     end
+        
+    methods % Build data stored inside odc
+        function conditionIdx = buildConditionIdx(ci)
+            if ci.nTrials > 0
+                conditionIdx = TensorUtils.subMat2Ind(ci.conditionsSize, ci.conditionSubs);
+            else
+                conditionIdx = [];
+                return;
+            end
+        end
+        
+        % compute which condition each trial falls into, without writing
+        % NaNs for manualInvalid marked trials
+        function subsMat = buildConditionSubsIncludingManualInvalid(ci)
+            if ci.nConditions > 0 && ci.nTrials > 0
+                if ci.nAttributesGroupBy == 0
+                    % not grouping on anything, only 1 condition
+                    assert(ci.nConditions == 1);
+
+                    % it's in condition 1 if it matches all of the
+                    % non-grouped attributes, NaN otherwise
+                    % filter by all other attributes having values in the
+                    % valueList
+                    subsMat = ones(ci.nTrials, 1);
+                    for iA = 1:ci.nAttributes
+                        attr = ci.attributeNames{iA};
+                        values = ci.values(:, iA);
+                        invalid = ~ismemberCell(values, ci.attributeValueList{iA});
+                        subsMat(invalid, :) = NaN;
+                    end
+                else
+                    % build a matrix of subscripts subs{iAttr}(iTrial) is the index into 
+                    % valueList for attribute iAttr of trial iTrial's attribute iAttr value
+                    subsMat = nan(ci.nTrials, ci.nAttributesGroupBy);
+                    for i = 1:ci.nAttributesGroupBy
+                        % translate groupByList idx into attribute idx
+                        iAttr = ci.groupByListAttributeIdx(i); 
+                        values = ci.values(:, iAttr);
+                        [~, subsMat(:, i)] = ismemberCell(values, ci.attributeValueList{iAttr});
+                    end
+
+                    % filter by all other attributes having values in the
+                    % valueList
+                    for iA = 1:ci.nAttributes
+                        attr = ci.attributeNames{iA};
+                        if ~ismember(attr, ci.groupByList)
+                            values = ci.values(:, iA);
+                            invalid = ~ismemberCell(values, ci.attributeValueList{iA});
+                            subsMat(invalid, :) = NaN;
+                        end
+                    end
+                end
+                
+                subsMat(any(subsMat == 0, 2), :) = NaN;
+            else
+                subsMat = [];
+                return;
+            end
+        end
+        
+        function subsMat = buildConditionSubs(ci)
+            subsMat = ci.conditionSubsIncludingManualInvalid;
+            subsMat(ci.manualInvalid, :) = NaN;
+        end
+        
+        function list = buildListByCondition(ci)
+            list = cell(ci.conditionsSize);
+            for iC = 1:ci.nConditions
+                list{iC} = makecol(find(ci.conditionIdx == iC));
+                if isempty(list{iC})
+                    % ensure it can be concatenated into a column
+                    % vector using cell2mat
+                    list{iC} = nan(0, 1);
+                end
+            end
+        end
+    end
+
     
-    methods % Superclass overrides
+    methods % ConditionDescriptor overrides
         function ci = invalidateCache(ci)
+            ci.warnIfNoArgOut(nargout);
             ci = invalidateCache@ConditionDescriptor(ci);
             % additionally invalidate new fields
             ci.conditionIdx = [];
@@ -151,6 +230,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             % freeze current appearance information, but only store
             % conditions that have a trial in them now (which saves a bunch
             % of searching time)
+            ci.warnIfNoArgOut(nargout);
             mask = ci.countByCondition > 0;
             ci.frozenAppearanceConditions = ci.conditions(mask);
             ci.frozenAppearanceData = ci.appearances(mask);
@@ -160,6 +240,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
     
     methods(Access=protected)
         function ci = maskAttributes(ci, mask)
+            ci.warnIfNoArgOut(nargout);
             ci = maskAttributes@ConditionDescriptor(ci, mask);
             ci.attributeValueListAuto = ci.attributeValueListAuto(mask);
             ci.values = ci.values(:, mask);
@@ -167,31 +248,73 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
     end
 
     methods
-        function conditionIdx = get.conditionIdx(ci)
-            if isempty(ci.conditionIdx)
-                if ci.nTrials > 0
-                    ci.conditionIdx = TensorUtils.subMat2Ind(ci.conditionsSize, ci.conditionSubs);
-                else
-                    conditionIdx = [];
-                    return;
-                end
-            end
-            conditionIdx = ci.conditionIdx;
+        function counts = get.countByCondition(ci)
+            counts = cellfun(@length, ci.listByCondition);
         end
         
-        function initializeWithNTrials(ci, N)
+        function nConditions = get.nConditionsNonEmpty(ci)
+            nConditions = nnz(~cellfun(@isempty, ci.listByCondition));
+        end
+
+        function nt = get.nTrials(ci)
+            nt = size(ci.values, 1);
+        end
+
+        % mark additional trials invalid
+        function ci = markInvalid(ci, invalid)
+            ci.warnIfNoArgOut(nargout);
+            ci.manualInvalid(invalid) = true;
+            ci = ci.updateCache();
+        end
+        
+        % overwrite manualInvalid with invalid, ignoring what was already
+        % marked invalid
+        function ci = setInvalid(ci, invalid)
+            ci.warnIfNoArgOut(nargout);
+            assert(isvector(invalid) & numel(invalid) == ci.nTrials, 'Size mismatch');
+            ci.manualInvalid = makecol(invalid);
+            ci = ci.updateCache();
+        end
+
+        function valid = get.valid(ci)
+            % return a mask which takes into account having a valid value for each attribute
+            % specified, as well as the markInvalid function which stores its results in .manualInvalid
+            valid = ~ci.manualInvalid & ci.getIsTrialInSomeGroup();
+        end
+        
+        function computedValid = get.computedValid(ci)
+            if ci.nTrials > 0
+                computedValid = ~isnan(ci.conditionSubsIncludingManualInvalid(:, 1));
+            else
+                computedValid = [];
+            end
+        end
+
+        function nValid = get.nValid(ci)
+            nValid = nnz(ci.valid);
+        end
+        
+        function mask = getIsTrialInSomeGroup(ci)
+            mask = ~isnan(ci.conditionIdx);
+        end
+        
+        function ci = initializeWithNTrials(ci, N)
+            ci.warnIfNoArgOut(nargout);
             % build empty arrays for N trials
             ci.manualInvalid = false(N, 1);
             ci.values = cell(N, ci.nAttributes);
             ci.conditionIdx = nan(N, 1);
         end
 
-        function filterValidTrials(ci)
+        function ci = filterValidTrials(ci)
             % drop all invalid trials
+            ci.warnIfNoArgOut(nargout);
             ci.selectTrials(ci.valid);
         end
         
-        function selectTrials(ci, selector)
+        function ci = selectTrials(ci, selector)
+            ci.warnIfNoArgOut(nargout);
+            
             assert(isvector(selector), 'Selector must be vector of indices or vector mask');
             % cache everything ahead of time because some are dynamically
             % computed from the others
@@ -210,9 +333,11 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci.listByCondition = [];
         end
         
-        function applyToTrialData(ci, td)
+        function ci = applyToTrialData(ci, td)
             % build the internal attribute value list (and number of trials)
             % from td.
+            
+            ci.warnIfNoArgOut(nargout);
             
             % set trialCount to match length(trialData)
             nTrials = ci.getNTrialsFn(td);
@@ -260,6 +385,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         end
 
         function ci = addAttribute(ci, varargin)
+            ci.warnIfNoArgOut(nargout);
             ci.assertNotApplied();
             ci = addAttribute@ConditionDescriptor(ci, varargin{:});
         end
@@ -286,130 +412,6 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 valueStruct = orderfields(valueStruct, attrNames);
                 valueStruct = makecol(valueStruct);
             end
-        end
-    end
-    
-    methods
-        % compute which condition each trial falls into, without writing
-        % NaNs for manualInvalid marked trials
-        function subsMat = get.conditionSubsIncludingManualInvalid(ci)
-            %subsMat = TensorUtils.ind2subAsMat(ci.conditionsSize, ci.conditionIdx);
-            if isempty(ci.conditionSubsIncludingManualInvalid)
-                if ci.nConditions > 0 && ci.nTrials > 0
-                    if ci.nAttributesGroupBy == 0
-                        % not grouping on anything, only 1 condition
-                        assert(ci.nConditions == 1);
-                        
-                        % it's in condition 1 if it matches all of the
-                        % non-grouped attributes, NaN otherwise
-                        % filter by all other attributes having values in the
-                        % valueList
-                        subsMat = ones(ci.nTrials, 1);
-                        for iA = 1:ci.nAttributes
-                            attr = ci.attributeNames{iA};
-                            values = ci.values(:, iA);
-                            invalid = ~ismemberCell(values, ci.attributeValueList{iA});
-                            subsMat(invalid, :) = NaN;
-                        end
-                    else
-                        % build a matrix of subscripts subs{iAttr}(iTrial) is the index into 
-                        % valueList for attribute iAttr of trial iTrial's attribute iAttr value
-                        subsMat = nan(ci.nTrials, ci.nAttributesGroupBy);
-                        for i = 1:ci.nAttributesGroupBy
-                            % translate groupByList idx into attribute idx
-                            iAttr = ci.groupByListAttributeIdx(i); 
-                            values = ci.values(:, iAttr);
-                            [~, subsMat(:, i)] = ismemberCell(values, ci.attributeValueList{iAttr});
-                        end
-
-                        % filter by all other attributes having values in the
-                        % valueList
-                        for iA = 1:ci.nAttributes
-                            attr = ci.attributeNames{iA};
-                            if ~ismember(attr, ci.groupByList)
-                                values = ci.values(:, iA);
-                                invalid = ~ismemberCell(values, ci.attributeValueList{iA});
-                                subsMat(invalid, :) = NaN;
-                            end
-                        end
-                    end
-                else
-                    subsMat = [];
-                    return;
-                end
-                ci.conditionSubsIncludingManualInvalid = subsMat;
-                
-                ci.conditionSubsIncludingManualInvalid(any(ci.conditionSubsIncludingManualInvalid == 0, 2), :) = NaN;
-                
-            end
-            subsMat = ci.conditionSubsIncludingManualInvalid;
-        end
-        
-        function subsMat = get.conditionSubs(ci)
-            subsMat = ci.conditionSubsIncludingManualInvalid;
-            subsMat(ci.manualInvalid, :) = NaN;
-        end
-        
-        function list = get.listByCondition(ci)
-            if isempty(ci.listByCondition)
-                list = cell(ci.conditionsSize);
-                for iC = 1:ci.nConditions
-                    list{iC} = makecol(find(ci.conditionIdx == iC));
-                    if isempty(list{iC})
-                        % ensure it can be concatenated into a column
-                        % vector using cell2mat
-                        list{iC} = nan(0, 1);
-                    end
-                end
-                ci.listByCondition = list;
-            else
-                list = ci.listByCondition;
-            end
-        end
-
-        function counts = get.countByCondition(ci)
-            counts = cellfun(@length, ci.listByCondition);
-        end
-        
-        function nConditions = get.nConditionsNonEmpty(ci)
-            nConditions = nnz(~cellfun(@isempty, ci.listByCondition));
-        end
-
-        function nt = get.nTrials(ci)
-            nt = size(ci.values, 1);
-        end
-
-        function markInvalid(ci, invalid)
-            ci.manualInvalid(invalid) = true;
-            ci.updateCache();
-        end
-        
-        function setInvalid(ci, invalid)
-            assert(isvector(invalid) & numel(invalid) == ci.nTrials, 'Size mismatch');
-            ci.manualInvalid = makecol(invalid);
-            ci.updateCache();
-        end
-
-        function valid = get.valid(ci)
-            % return a mask which takes into account having a valid value for each attribute
-            % specified, as well as the markInvalid function which stores its results in .manualInvalid
-            valid = ~ci.manualInvalid & ci.getIsTrialInSomeGroup();
-        end
-        
-        function computedValid = get.computedValid(ci)
-            if ci.nTrials > 0
-                computedValid = ~isnan(ci.conditionSubsIncludingManualInvalid(:, 1));
-            else
-                computedValid = [];
-            end
-        end
-
-        function nValid = get.nValid(ci)
-            nValid = nnz(ci.valid);
-        end
-        
-        function mask = getIsTrialInSomeGroup(ci)
-            mask = ~isnan(ci.conditionIdx);
         end
     end
 
