@@ -11,7 +11,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         % updates cache on set
         appearanceFn; % function which takes struct('attrName1', attrVal1, 'attrName2', attrVal2)
                       % and returns struct('color', 'k', 'lineWidth', 2, ...);      
-
     end
      
     properties(SetAccess=protected)
@@ -21,14 +20,18 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value?
-        attributeValueList = {}; % A x 1 cell array of permitted values for this attribute
-        attributeValueListSpecified = []; % A x 1 logical array: was a non-empty value list provided for this attribute
         
         frozenAppearanceConditions
         frozenAppearanceData
     end
 
-    % END OF STORED PROPERTIES
+    properties(Access=protected)
+        % don't access these directly, call .getAttributeValueList
+        attributeValueListManual = {}; % A x 1 cell array of permitted values for this attribute
+        attributeValueListSpecified = []; % A x 1 logical array: was a non-empty value list provided for this attribute
+    end
+    
+    % END OF STORED TO DISK PROPERTIES
     
     properties(Transient, Hidden)
         noUpdateCache = false; % if true, invalidateCache does nothing, useful for loading or building 
@@ -40,13 +43,22 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
     end
     
     % THE FOLLOWING PROPERTIES WRAP EQUIVALENT PROPERTIES IN ODC
+    % on get: retrieve from odc, if empty {call build<Property>, store in odc, return it}
+    % on set: make copy of odc to alleviate dependency, store in odc
+    % 
+    % Note: we use the build<Property> methods because property getters
+    % cannot be inherited, so subclasses can override the build method
+    % instead.
     properties(Transient, Dependent, SetAccess=protected)        
         % These are generated on the fly by property get, but cached for speed, see invalidateCache to reset them 
         
         % these are A-dimensional objects where A is nAttributesGroupBy or length(groupByList)
         conditions % A-dimensional struct where values(...idx...).attribute is the value of that attribute on that condition
         appearances % A-dimensional struct of appearance values
-        names % naes of each condition 
+        names % A-dimensional cellstr array with names of each condition 
+        attributeValueList % A x 1 cell array of values allowed for this attribute
+                           % here just computed from attributeValueListManual, but in ConditionInfo
+                           % can be automatically computed from the data
     end
 
     properties(Dependent, Transient)
@@ -60,7 +72,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         
         isAttributeInGroupByList % mask indicating which .attributeNames{i} is in groupByList
 
-        attributeValueListGroupBy % same as attributeValueList but for grouped attributes only
+        %attributeValueListGroupBy % same as attributeValueList but for grouped attributes only
         
         nAttributesGroupBy % how many attributes in group by list
         
@@ -87,17 +99,10 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             odc = ConditionDescriptorOnDemandCache();
         end
     end
+   
     
-    % PROPERTIES WHICH EXIST INSIDE ODC
-    % on get: retrieve from odc, if empty {call build<Property>, store in odc, return it}
-    % on set: make copy of odc to alleviate dependency, store in odc
-    % 
-    % Note: we use the build<Property> methods because property getters
-    % cannot be inherited, so subclasses can override the build method
-    % instead.
-    
+    % get, set data stored inside odc
     methods 
-        % auto generate the odc if necessary, again using buildODC
         function v = get.conditions(ci)
             v = ci.odc.conditions;
             if isempty(v)
@@ -136,8 +141,117 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.odc = ci.odc.copy();
             ci.odc.names = v;
         end
+        
+        function v = get.attributeValueList(ci)
+            v = ci.odc.attributeValueList;
+            if isempty(v)
+                ci.odc.attributeValueList = ci.buildAttributeValueList();
+                v = ci.odc.attributeValueList;
+            end
+        end
+        
+        function ci = set.attributeValueList(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.attributeValueList = v;
+        end
     end
 
+    % build data stored inside odc
+    methods 
+        function values = buildConditions(ci)
+            if ci.nConditions > 0
+                nAttr = ci.nAttributes;
+                nAttrGroupBy = ci.nAttributesGroupBy;
+                if nAttrGroupBy > 0
+                    nValuesByAttr = ci.nValuesByAttributeGroupBy;
+                    values = TensorUtils.mapToSizeFromSubs(nValuesByAttr, @getInfoFn);
+                else
+                    values = getInfoFn();
+                end
+            else
+                values = struct([]);
+            end
+            
+            function val = getInfoFn(varargin)
+                % varargin{i} is the index into the value list of groupByAttribute i
+                % return a struct where .attribute = value for both
+                % groupByAttributes and non-groupByAttributes with only one
+                % value allowed
+                
+                val = struct();
+                % loop over group by attributes
+                for iA = 1:nAttrGroupBy
+                    val.(ci.groupByList{iA}) = ci.attributeValueListGroupBy{iA}{varargin{iA}};
+                end
+                
+                % loop over everything else
+                for iA = 1:nAttr
+                    attr = ci.attributeNames{iA};
+                    if ~ismember(attr, ci.groupByList)
+                        list = ci.attributeValueList{iA};                        
+                        if length(list) == 1
+                            val.(attr) = list{1};
+                        else
+                            val.(attr) = list;
+                        end
+                    end
+                end
+            end
+        end
+
+        function names = buildNames(ci)
+            % pass along values(i) and the subscripts of that condition in case useful 
+            if ci.nConditions > 0
+                nameFn = ci.nameFn;
+                if isempty(nameFn)
+                    nameFn = @ConditionDescriptor.defaultNameFn;
+                end
+
+                wrapFn = @(varargin) nameFn(ci, varargin{:});
+                names = TensorUtils.mapIncludeSubs(wrapFn, ci.conditions);
+            else
+                names = {};
+            end
+        end
+        
+        function appearances = buildAppearances(ci)
+            if ci.nConditions > 0
+                appearFn = ci.appearanceFn;
+                defaultFn = eval(sprintf('@%s.defaultAppearanceFn', class(ci)));
+                defaults = defaultFn(ci);
+
+                if isempty(appearFn)
+                    % use the default function built into ConditionDescriptor
+                    % or whatever subclass version of
+                    % defaultAppearanceFn there is (namely ConditionInfo)
+                    appearances = defaults;
+                else
+                    appearances = appearFn(ci, defaults);
+                    % ensure that no fields have been lost from the
+                    % defaults
+                    appearances = structMerge(defaults, appearances, 'warnOnOverwrite', false);
+                end
+            else
+                appearances = struct([]);
+            end
+        end
+        
+        function valueList = buildAttributeValueList(ci)
+            % just pull the manual lists
+            valueList = ci.attributeValueListManual;
+        end
+        
+        function valueList = getAttributeValueList(ci, name)
+            idx = ci.getAttributeIdx(name);
+            valueList = makecol(ci.attributeValueList{idx});
+        end
+
+        function valueIdx = getAttributeValueIdx(ci, attr, value)
+            [tf valueIdx] = ismember(value, ci.getAttributeValueList(attr));
+            assert(tf, 'Value not found in attribute %s valueList', attr);
+        end
+    end
+    
     methods
         % flush the contents of odc as they are invalid
         % call this at the end of any methods which would want to
@@ -409,13 +523,13 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.attributeRequestAs{iAttr} = requestAs;
             
             if isempty(valueList)
-                ci.attributeValueList{iAttr} = {};
+                ci.attributeValueListManual{iAttr} = {};
                 ci.attributeValueListSpecified(iAttr) = false;
             else
                 if ~iscell(valueList)
                     valueList = num2cell(valueList);
                 end
-                ci.attributeValueList{iAttr} = valueList;
+                ci.attributeValueListManual{iAttr} = valueList;
                 ci.attributeValueListSpecified(iAttr) = true;
             end
             
@@ -460,13 +574,13 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             
             ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
             if isempty(valueList)
-                ci.attributeValueList{iAttr} = {};
+                ci.attributeValueListManual{iAttr} = {};
                 ci.attributeValueListSpecified(iAttr) = false;
             else
                 if ~iscell(valueList)
                     valueList = num2cell(valueList);
                 end
-                ci.attributeValueList{iAttr} = valueList;
+                ci.attributeValueListManual{iAttr} = valueList;
                 ci.attributeValueListSpecified(iAttr) = true;
             end
                        
@@ -546,7 +660,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 valueListKeep = {valueListKeep};
             end
             
-           
             if ~isempty(ci.attributeValueList{idx})
                  % maintain the original sort order when filtering
                 [ci.attributeValueList{idx} indKeep] = intersectCell(valueList, valueListKeep, 'stable');
@@ -706,95 +819,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
     end
 
-    methods % Generating names, values, appearances...
-        function values = buildConditions(ci)
-            if ci.nConditions > 0
-                nAttr = ci.nAttributes;
-                nAttrGroupBy = ci.nAttributesGroupBy;
-                if nAttrGroupBy > 0
-                    nValuesByAttr = ci.nValuesByAttributeGroupBy;
-                    values = TensorUtils.mapToSizeFromSubs(nValuesByAttr, @getInfoFn);
-                else
-                    values = getInfoFn();
-                end
-            else
-                values = struct([]);
-            end
-            
-            function val = getInfoFn(varargin)
-                % varargin{i} is the index into the value list of groupByAttribute i
-                % return a struct where .attribute = value for both
-                % groupByAttributes and non-groupByAttributes with only one
-                % value allowed
-                
-                val = struct();
-                % loop over group by attributes
-                for iA = 1:nAttrGroupBy
-                    val.(ci.groupByList{iA}) = ci.attributeValueListGroupBy{iA}{varargin{iA}};
-                end
-                
-                % loop over everything else
-                for iA = 1:nAttr
-                    attr = ci.attributeNames{iA};
-                    if ~ismember(attr, ci.groupByList)
-                        list = ci.attributeValueList{iA};                        
-                        if length(list) == 1
-                            val.(attr) = list{1};
-                        else
-                            val.(attr) = list;
-                        end
-                    end
-                end
-            end
-        end
-
-        function names = buildNames(ci)
-            % pass along values(i) and the subscripts of that condition in case useful 
-            if ci.nConditions > 0
-                nameFn = ci.nameFn;
-                if isempty(nameFn)
-                    nameFn = @ConditionDescriptor.defaultNameFn;
-                end
-
-                wrapFn = @(varargin) nameFn(ci, varargin{:});
-                names = TensorUtils.mapIncludeSubs(wrapFn, ci.conditions);
-            else
-                names = {};
-            end
-        end
-        
-        function appearances = buildAppearances(ci)
-            if ci.nConditions > 0
-                appearFn = ci.appearanceFn;
-                defaultFn = eval(sprintf('@%s.defaultAppearanceFn', class(ci)));
-                defaults = defaultFn(ci);
-
-                if isempty(appearFn)
-                    % use the default function built into ConditionDescriptor
-                    % or whatever subclass version of
-                    % defaultAppearanceFn there is (namely ConditionInfo)
-                    appearances = defaults;
-                else
-                    appearances = appearFn(ci, defaults);
-                    % ensure that no fields have been lost from the
-                    % defaults
-                    appearances = structMerge(defaults, appearances, 'warnOnOverwrite', false);
-                end
-            else
-                appearances = struct([]);
-            end
-        end
-        
-        function valueList = getAttributeValueList(ci, name)
-            idx = ci.getAttributeIdx(name);
-            valueList = makecol(ci.attributeValueList{idx});
-        end
-
-        function valueIdx = getAttributeValueIdx(ci, attr, value)
-            [tf valueIdx] = ismember(value, ci.getAttributeValueList(attr));
-            assert(tf, 'Value not found in attribute %s valueList', attr);
-        end
-    end
     
     methods(Static) % Default nameFn and appearanceFn
         function name = defaultNameFn(ci, attrValues, conditionSubs)

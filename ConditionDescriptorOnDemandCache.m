@@ -10,6 +10,7 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
         conditions
         names
         appearances
+        attributeValueLists
     end
     
 end

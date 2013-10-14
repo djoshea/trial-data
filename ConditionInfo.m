@@ -35,6 +35,8 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         manualInvalid % used by markInvalid
     end
     
+    %%% End of properties saved to disk
+    
     % Properties which are stored inside odc!
     properties(Dependent, Transient, SetAccess=protected)
         % which condition does each trial belong to
@@ -80,9 +82,65 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         end
     end
     
+    % get / set data stored inside odc
+    methods 
+        function v = get.conditionIdx(ci)
+            v = ci.odc.conditionIdx;            
+            if isempty(v)
+                ci.odc.conditionIdx = ci.buildConditionIdx();
+                v = ci.odc.conditionIdx;
+            end
+        end
+        
+        function ci = set.conditionIdx(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditionIdx = v;
+        end
+        
+        function v = get.conditionSubsIncludingManualInvalid(ci)
+            v = ci.odc.conditionSubsIncludingManualInvalid;            
+            if isempty(v)
+                ci.odc.conditionSubsIncludingManualInvalid = ci.buildConditionSubsIncludingManualInvalid();
+                v = ci.odc.conditionSubsIncludingManualInvalid;
+            end
+        end
+        
+        function ci = set.conditionSubsIncludingManualInvalid(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditionSubsIncludingManualInvalid = v;
+        end
+        
+        function v = get.conditionSubs(ci)
+            v = ci.odc.conditionSubs;            
+            if isempty(v)
+                ci.odc.conditionSubs = ci.buildConditionSubs();
+                v = ci.odc.conditionSubs;
+            end
+        end
+        
+        function ci = set.conditionSubs(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditionSubs = v;
+        end
+        
+        function v = get.listByCondition(ci)
+            v = ci.odc.listByCondition;            
+            if isempty(v)
+                ci.odc.listByCondition = ci.buildListByCondition();
+                v = ci.odc.listByCondition;
+            end
+        end
+        
+        function ci = set.listByCondition(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.listByCondition = v;
+        end
+    end
+    
     methods % Superclass overrides
         function ci = invalidateCache(ci)
             ci = invalidateCache@ConditionDescriptor(ci);
+            % additionally invalidate new fields
             ci.conditionIdx = [];
             ci.conditionSubs = [];
             ci.conditionSubsIncludingManualInvalid = [];
