@@ -163,43 +163,47 @@ classdef AlignInfo < AlignDescriptor
             times = ad.eventTimeRoundFn(times);
         end
         
-        function timeCell = getEventIndexedTimeCell(ad, event, n)
+        function timeCell = getEventIndexedTimeCell(ad, event, n, offset)
             % similar to above but returns cell array, and n may be be a
             % string of the form '1:2', '1:end', ':', etc
             if ~ischar(n) || strcmp(n, 'end')
                 timeCell = num2cell(ad.getEventNthTimeVector(event, n));
             else
                 % must have a colon, parse into tokens
-                pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
-                str = 'end-1:end';
-                info = regexp(n, pat, 'names', 'once');
-                
-                if isempty(info)
-                    error('Unable to parse event index %s(%s)', event, n);
-                end
-                
-                % convert ind1, ind2 to doubles
-                if isempty(info.ind1)
-                    ind1 = 0;
+                if strcmp(n, ':')
+                    fn = @(info) info.(event);
                 else
-                    ind1 = str2double(info.ind1);
-                end
-                if isempty(info.ind2)
-                    ind2 = 0;
-                else
-                    ind2 = str2double(info.ind2);
-                end
-                if isempty(info.end1)
-                    if isempty(info.end2)
-                        fn = @(info) info.(event)(ind1:ind2);
-                    else
-                        fn = @(info) info.(event)(ind1:end+ind2);
+                    pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
+                    str = 'end-1:end';
+                    info = regexp(n, pat, 'names', 'once');
+
+                    if isempty(info)
+                        error('Unable to parse event index %s(%s)', event, n);
                     end
-                else
-                    if isempty(info.end2)
-                        fn = @(info) info.(event)(end+ind1:ind2);
+
+                    % convert ind1, ind2 to doubles
+                    if isempty(info.ind1)
+                        ind1 = 1;
                     else
-                        fn = @(info) info.(event)(end+ind1:end+ind2);
+                        ind1 = str2double(info.ind1);
+                    end
+                    if isempty(info.ind2)
+                        ind2 = 0;
+                    else
+                        ind2 = str2double(info.ind2);
+                    end
+                    if isempty(info.end1)
+                        if isempty(info.end2)
+                            fn = @(info) info.(event)(ind1:ind2);
+                        else
+                            fn = @(info) info.(event)(ind1:end+ind2);
+                        end
+                    else
+                        if isempty(info.end2)
+                            fn = @(info) info.(event)(end+ind1:ind2);
+                        else
+                            fn = @(info) info.(event)(end+ind1:end+ind2);
+                        end
                     end
                 end
                         
@@ -207,10 +211,12 @@ classdef AlignInfo < AlignDescriptor
                     'ErrorHandler', @(varargin) [], 'UniformOutput', false);
                 timeCell = cellfun(@ad.eventTimeRoundFn, timeCell, 'UniformOutput', false);
             end
+            
+            timeCell = cellfun(@(x) x + offset, timeCell, 'UniformOutput', false);
         end
         
-        function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n)
-            timeCell  = ad.getEventIndexedTimeCell(event, n);
+        function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, index, offset)
+            timeCell  = ad.getEventIndexedTimeCell(event, index, offset);
             emptyMask = cellfun(@isempty, timeCell);
             [timeCell{emptyMask}] = deal(NaN);
         end
@@ -277,13 +283,13 @@ classdef AlignInfo < AlignDescriptor
 
             % mark trials as invalid if startPad:stopPad includes any invalidateEvents
             for i = 1:length(ad.invalidateEvents)
-                timesCell = ad.getEventIndexedTimeVectorFillEmptyWithNan(ad.invalidateEvents{i}, ad.invalidOffset(i));
+                timesCell = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.invalidateEvents{i}, ad.invalidateEventsIndex{i}, ad.invalidateOffsets(i));
                 maskInvalid = falsevec(length(t.startPad));
                 for iT = 1:length(t.startPad)
                     maskInvalid(iT) = any(timesCell{iT} > t.startPad(iT) & timesCell{iT} < t.stopPad(iT));
                 end
                 t.valid(maskInvalid) = false;
-                [t.invalidCause{maskInvalid}] = deal(sprintf('Overlapped invalidating event %s', ad.invalidUnabbreviatedLabels{i}));
+                [t.invalidCause{maskInvalid}] = deal(sprintf('Overlapped invalidating event %s', ad.invalidateUnabbreviatedLabels{i}));
             end
 
             % handle windows which extend outside of trial

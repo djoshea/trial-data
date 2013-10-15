@@ -80,7 +80,7 @@ classdef AlignDescriptor
 
         % invalidate any trial whose window includes these events
         invalidateEvents = {};
-        invalidateEventsIndex
+        invalidateEventsIndex = {};
         invalidateOffsets
 
         % purely for annotation, used by getTimeInfo and drawTimeAxis methods 
