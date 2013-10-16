@@ -26,8 +26,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         attributeValueBinsAutoMode % A x 1 numeric array of either AttributeValueBinsAutoUniform or AttributeValueBinsAutoQuantiles
 
         axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
-        axisValueListManual
-        axisRandomizeMode
+        axisValueListManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
+        axisRandomizeMode % G x 1 numeric of constants beginning with Axis* (see below)
     end
     
     properties(SetAccess=protected)
@@ -64,6 +64,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                            % here just computed from attributeValueListManual, but in ConditionInfo
                            % can be automatically computed from the data
         attributeValueListAsStrings % same as above, but everything is a string
+        
+        attributeDescriptions
     end
     
     % how are attribute values determined for a given attribute?
@@ -74,6 +76,11 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         AttributeValueBinsManual = 4;
         AttributeValueBinsAutoUniform = 4;
         AttributeValueBinsAutoQuantiles = 5;
+        
+        AxisOriginal = 1;
+        AxisShuffled = 2;
+        AxisResampled = 3;
+        AxisResampledFromFirst = 4;
     end
         
     properties(Dependent, Transient)
@@ -153,6 +160,19 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function ci = set.attributeValueList(ci, v)
             ci.odc = ci.odc.copy();
             ci.odc.attributeValueList = v;
+        end
+        
+        function v = get.attributeValueListAsStrings(ci)
+            v = ci.odc.attributeValueListAsStrings;
+            if isempty(v)
+                ci.odc.attributeValueListAsStrings = ci.buildAttributeValueListAsStrings();
+                v = ci.odc.attributeValueListAsStrings;
+            end
+        end
+        
+        function ci = set.attributeValueListAsStrings(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.attributeValueListAsStrings = v;
         end
     end
 
@@ -311,8 +331,14 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.groupBy(ci.attributeNames);
         end
         
+        % remove all axes
         function ci = ungroup(ci)
-            ci.groupByList = {};
+            ci.warnIfNoArgOut(nargout);
+            
+            ci.axisAttributes = {};
+            ci.axisValueListManual = {};
+            ci.axisRandomizeMode = [];
+            
             ci = ci.invalidateCache();
         end
     end
@@ -421,61 +447,47 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             tcprintf('yellow', '%s: ', class(ci));
             nAttr = ci.nAttributes;
             % print full list
-            str = sprintf('{bright blue}Group by ');
-            if nAttr > 0
-                % print attribute list with value list counts
-                for i = 1:ci.nAttributesGroupBy
-                    if i > 1
-                        str = [str '{dark gray} x '];
-                    end
-                    str = [str sprintf('{white}%s {bright blue}(%d) ', ...
-                        ci.groupByList{i}, ci.nValuesByAttributeGroupBy(i))];
-                end
-                
-            else
-                str = '{bright blue}no group by attributes';
-            end
-            str = [str '\n'];
-            tcprintf('inline', str);
-            
-%             fprintf('All attributes: ');
-             if nAttr > 0
-%                 % print attribute list with value list counts
-%                 for i = 1:ci.nAttributes
-%                     % bright color if we're grouping on this
-%                     if ci.isAttributeInGroupByList(i) 
-%                         nameColorStr = '{bright blue}';
-%                     else
-%                         nameColorStr = '{blue}';
-%                     end
-%                     % is the requestAs the same as the attribute name?
-%                     if strcmp(ci.attributeNames{i}, ci.attributeRequestAs{i})
-%                         nameStr = sprintf('%s%s', nameColorStr, ci.attributeNames{i});
-%                     else
-%                         nameStr = sprintf('%s%s as %s', nameColorStr, ci.attributeNames{i}, ci.attributeRequestAs{i});
-%                     end
-%                     tcprintf('inline', strcat(nameStr, '{gray} ({white}%d{gray}) '), ci.nValuesByAttribute(i));
+            str = tcprintf('inline', '{bright blue}Attributes: %s\n', strjoin(ci.attributeDescriptions));
+
+%             
+% %             fprintf('All attributes: ');
+%              if nAttr > 0
+% %                 % print attribute list with value list counts
+% %                 for i = 1:ci.nAttributes
+% %                     % bright color if we're grouping on this
+% %                     if ci.isAttributeInGroupByList(i) 
+% %                         nameColorStr = '{bright blue}';
+% %                     else
+% %                         nameColorStr = '{blue}';
+% %                     end
+% %                     % is the requestAs the same as the attribute name?
+% %                     if strcmp(ci.attributeNames{i}, ci.attributeRequestAs{i})
+% %                         nameStr = sprintf('%s%s', nameColorStr, ci.attributeNames{i});
+% %                     else
+% %                         nameStr = sprintf('%s%s as %s', nameColorStr, ci.attributeNames{i}, ci.attributeRequestAs{i});
+% %                     end
+% %                     tcprintf('inline', strcat(nameStr, '{gray} ({white}%d{gray}) '), ci.nValuesByAttribute(i));
+% % 
+% %                     if i < ci.nAttributes
+% %                         tcprintf('dark gray', ' x ');
+% %                     end
+% %                 end
+% %                 
+% %                 fprintf('\n');
 % 
-%                     if i < ci.nAttributes
-%                         tcprintf('dark gray', ' x ');
+%                 % print attribute value lists on each line
+%                 for i = 1:ci.nAttributes
+%                     if ci.isAttributeInGroupByList(i) 
+%                         tcprintf('inline', '\t{gray}%s: {white}%s\n', ...
+%                             ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
+%                     else
+%                         tcprintf('inline', '\t{gray}%s: {none}%s\n', ...
+%                             ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
 %                     end
 %                 end
-%                 
-%                 fprintf('\n');
-
-                % print attribute value lists on each line
-                for i = 1:ci.nAttributes
-                    if ci.isAttributeInGroupByList(i) 
-                        tcprintf('inline', '\t{gray}%s: {white}%s\n', ...
-                            ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
-                    else
-                        tcprintf('inline', '\t{gray}%s: {none}%s\n', ...
-                            ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
-                    end
-                end
-            else
-                %tcprintf('dark gray', 'no attributes\n');
-            end
+%             else
+%                 %tcprintf('dark gray', 'no attributes\n');
+%             end
 
         end
 
@@ -542,7 +554,32 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 end
             end
         end
+        
+        function desc = get.attributeDescriptions(ci)
+            desc = cellvec(ci.nAttributes);
+            for i = 1:ci.nAttributes
+                name = ci.attributeNames{i};  
+                nValues = ci.nValuesByAttribute(i);
+                nAutoBins = ci.attributeValueBinsAutoCount(i);
 
+                switch ci.attributeValueModes(i)
+                    case AttributeValueListManual
+                        suffix = sprintf('(%d)', nValues);
+                    case AttributeValueListAuto
+                        suffix = '(?)';
+                    case AttributeValueBinsManual
+                        suffix = sprintf('(%d bins)', nValues);
+                    case AttributeValueBinsAutoUniform
+                        suffix = sprintf('(%d unif bins)', nAutoBins);
+                    case AttributeValueBinsAutoQuantile
+                        suffix = sprintf('(%d quantiles)', nAutoBins);
+                end
+
+                desc{i} = sprintf('%s %s', name, suffix);
+            end
+        end 
+
+        % add a new attribute
         function ci = addAttribute(ci, name, varargin)
             ci.warnIfNoArgOut(nargout);
             
@@ -553,9 +590,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             p.addParamValue('requestAs', '', @ischar);
             p.addParamValue('valueList', {}, @(x) isnumeric(x) || iscell(x)); 
             p.addParamValue('valueBins', {}, @(x) isnumeric(x) || iscell(x));
-            
-            % list of names to substitute for each value in the list
-            p.addParamValue('groupBy', true, @islogical);
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
             requestAs = p.Results.requestAs;
@@ -574,22 +608,21 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             
             if isempty(valueList)
                 ci.attributeValueListManual{iAttr} = {};
-                ci.attributeValueListSpecified(iAttr) = false;
             else
                 if ~iscell(valueList)
                     valueList = num2cell(valueList);
                 end
                 ci.attributeValueListManual{iAttr} = valueList;
-                ci.attributeValueListSpecified(iAttr) = true;
             end
-            
-            if p.Results.groupBy
-                ci.groupByList{end+1} = name;
-            end
+             
+            ci.attributeValueBinsManual{iAttr} = [];
+            ci.attributeValueBinsAutoCount(iAttr) = NaN;
+            ci.attributeValueBinsAutoMode(iAttr) = NaN;
             
             ci = ci.invalidateCache();
         end
 
+        % remove an existing attribute
         function ci = removeAttribute(ci, varargin)
             ci.warnIfNoArgOut(nargout);
             
@@ -619,6 +652,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.maskAttributes(maskOther);
         end
         
+        % manually set the attribute value list
         function ci = setAttributeValueList(ci, name, valueList)
             ci.warnIfNoArgOut(nargout);
             
@@ -633,6 +667,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.invalidateCache();
         end
         
+        % manually set attribute bins
         function ci = binAttribute(ci, name, bins)
             ci.warnIfNoArgOut(nargout);
             
@@ -656,6 +691,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.invalidateCache();
         end
         
+        % automatically set attribute binned uniformly by range
         function ci = binAttributeUniform(ci, name, nBins)
             ci.warnIfNoArgOut(nargout);
             
@@ -668,6 +704,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.invalidateCache();
         end
         
+        % automatically set attribute binned into quantiles
         function ci = binAttributeQuantiles(ci, name, nQuantiles)
             ci.warnIfNoArgOut(nargout);
             
