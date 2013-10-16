@@ -42,7 +42,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
     
     % END OF STORED TO DISK PROPERTIES
     
-    
     properties(Transient, Access=protected)
         odc % handle to a ConditionDescriptorOnDemandCache
     end
@@ -77,11 +76,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         AttributeValueBinsAutoQuantiles = 5;
     end
         
-    properties(Dependent, SetAccess=private)
-        attributeValueModes
-    end
-
     properties(Dependent, Transient)
+        attributeValueModes
+
         nAttributes % how many attributes: ndims(values)
 
         nValuesByAttribute % how many values per attribute: size(values)
@@ -279,54 +276,39 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             p.addParamValue('valueList', [], @(x) true);
             p.parse(varargin{:});
             
-            ax.attributes = p.Results.attributes;
-            ci.assertHasAttribute(ax.attributes);
+            if ~iscell(p.Results.attributes)
+                attr = {p.Results.attributes};
+            else
+                attr = p.Results.attributes;
+            end
+            ci.assertHasAttribute(attr);
             
             % create a grouping axis
+            idx = ci.nAxes + 1; 
+            ci.axisAttributes{idx} = p.Results.attributes;
+            ci.axisValueListManual{idx} = p.Results.valueList;
+            ci.axisRandomizeMode(idx) = ci.AxisNormal;
             
+            ci = ci.invalidateCache();
         end
         
-             function ci = groupBy(ci, varargin)
+        % wipe out existing axes and creates simple auto axes along each 
+        function ci = groupBy(ci, varargin)
+            ci.warnIfNoArgOut(nargout);
             if iscell(varargin{1})
                 attributes = varargin{1};
             else
                 attributes = varargin;
             end
             
-            if ~isnumeric(attributes)
-                % check all exist
-                ci.getAttributeIdx(attributes);
-            else
-                attributes = ci.attributeNames(attributes);
+            for i = 1:numel(attributes)
+                ci = ci.addAxis(attributes{i});
             end
-            
-            ci.warnIfNoArgOut(nargout);
-            ci.groupByList = attributes;
-            ci = ci.invalidateCache();
         end
 
         function ci = groupByAll(ci)
             ci.warnIfNoArgOut(nargout);
             ci = ci.groupBy(ci.attributeNames);
-        end
-        
-        function ci = dontGroupBy(ci, varargin)
-            if iscell(varargin{1})
-                attributes = varargin{1};
-            else
-                attributes = varargin;
-            end
-            
-            if ~isnumeric(attributes)
-                % check all exist
-                ci.getAttributeIdx(attributes);
-            else
-                attributes = ci.attributeNames(attributes);
-            end
-            
-            ci.warnIfNoArgOut(nargout);
-            ci.groupByList = setdiff(ci.groupByList, attributes);
-            ci = ci.invalidateCache();
         end
         
         function ci = ungroup(ci)
