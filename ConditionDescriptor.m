@@ -180,6 +180,10 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
     methods 
         function values = buildConditions(ci)
             if ci.nConditions > 0
+                for iX = 1:ci.nAxes
+                    valueListThisAxis = ci.getValueListForAxis(iX); 
+                end
+
                 nAttr = ci.nAttributes;
                 nAttrGroupBy = ci.nAttributesGroupBy;
                 if nAttrGroupBy > 0
@@ -217,6 +221,36 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     end
                 end
             end
+        end
+
+        function valueListByAxes = buildValueListByAxes()
+            valueListByAxes = cellvec(ci.nAxes);
+            for iX = 1:ci.nAxes  
+                % build a list of values as a struct array for this axis
+                % valueList{iAxis}(iEl).attribute = values describes the attribute values
+                % allowed for attribute `attribute` at position iEl along axis iAxis
+               
+                % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
+                if isempty(ci.axisValueListManual{iX})
+                    % build auto list of attributes
+                    valueListByAxes{iX} = ci.buildAutoValueListForAttributeSet(ci.axisAttributes{iX});
+                else
+                    valueListByAxes{iX} = ci.axisValueListManual{iX};
+                end
+            end
+        end
+
+        % build a struct array for a set of attributes that walks all possible combinations of the two attribute value lists
+        function valueStructList = buildAutoValueStructListForAttributeSet(ci, attributes)
+            attrIdx = ci.getAttributeIdx(attributes);
+            valueLists = ci.attributeValueLists(attrIdx);
+            sizes = n
+            valueStructList = TensorUtils.mapToSizeFromSubs(
+
+            function s = buildValueAtSubs(varargin)
+
+            end
+
         end
 
         function names = buildNames(ci)
@@ -266,6 +300,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                         valueList{i} = ci.attributeValueListManual{i};
                     case ci.AttributeValueBinsManual
                         valueList{i} = ci.attributeValueBinsManual{i};
+                    case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantile}
+                        % the number of bins is known, so they can be specified here
+                        valueList{i} = 1:ci.attributeValueBinsAutoCount;
                     otherwise
                         % leave empty, must be determined when
                         % ConditionInfo applies it to data
@@ -284,7 +321,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
     end
     
-       
     % Specify and manipulate group axes
     methods
         function ci = addAxis(ci, varargin)
