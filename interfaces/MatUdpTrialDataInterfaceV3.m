@@ -33,12 +33,12 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
     % TrialDataInterface implementation
     methods
         % return a string describing the data set wrapped by this TDI
-        function datasetName = getDatasetName(tdi, varargin)
+        function datasetName = getDatasetName(tdi, varargin) %#ok<INUSD>
             datasetName = '';
         end
 
         % return a scalar struct containing any arbitrary metadata
-        function datasetMeta = getDatasetMeta(tdi, varargin)
+        function datasetMeta = getDatasetMeta(tdi, varargin) %#ok<INUSD>
             datasetMeta = [];
         end
 
@@ -72,7 +72,7 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
                     % for event groups, the meta signalNames field is unreliable unless we take
                     % the union of all signal names
                     names = arrayfun(@(m) m.groups.(groupNames{iG}).signalNames, ...
-                        tdi.meta, 'UniformOutput', false);
+                        tdi.meta, 'UniformOutput', false, 'ErrorHandler', @(varargin) {});
                     group.signalNames = unique(cat(1, names{:}));
                 end
 
@@ -107,7 +107,7 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
                     % store original field name to ease lookup in getDataForChannel()
                     cd.meta.originalField = dataFieldMain;
 
-                    channelDescriptors(iChannel) = cd;
+                    channelDescriptors(iChannel) = cd; %#ok<AGROW>
                     iChannel = iChannel + 1;
                 end
             end

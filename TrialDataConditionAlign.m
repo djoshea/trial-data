@@ -194,6 +194,7 @@ classdef TrialDataConditionAlign < TrialData
     methods
         % given a cellvec or nmeric vector, group its elements
         function varargout = groupElements(td, varargin)
+            varargout = cell(size(varargin));
             for i = 1:numel(varargin)
                 data = varargin{i};
                 assert(size(data,1) == td.nTrials, ...
@@ -202,7 +203,7 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
 
-        function [dCell tCell] = getAnalogGrouped(td, name)
+        function [dCell, tCell] = getAnalogGrouped(td, name)
             [dataCell, timeCell] = td.getAnalog(name);
             [dCell, tCell] = td.groupElements(dataCell, timeCell);
         end
@@ -275,9 +276,9 @@ classdef TrialDataConditionAlign < TrialData
     % AlignInfo data access
     methods
         % return aligned analog channel
-        function [data time] = getAnalog(td, name)
-            [data time] = getAnalog@TrialData(td, name);
-            [data time] = td.alignInfo.getAlignedTimeseries(data, time);
+        function [data, time] = getAnalog(td, name)
+            [data, time] = getAnalog@TrialData(td, name);
+            [data, time] = td.alignInfo.getAlignedTimeseries(data, time);
         end
         
         % return aligned event times
@@ -345,12 +346,13 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupedEachTrial(td, name, varargin) 
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.addParamValue('patchline', false, @islogical); % use patchline to enable transparency
             p.KeepUnmatched;
             p.parse(varargin{:});
 
             axh = td.getRequestedPlotAxis(p.Unmatched);
 
-            [dataByGroup timeByGroup] = td.getAnalogGrouped(name);     
+            [dataByGroup, timeByGroup] = td.getAnalogGrouped(name);     
             app = td.conditionAppearances;
 
             for iCond = 1:td.nConditions
@@ -358,8 +360,14 @@ classdef TrialDataConditionAlign < TrialData
                 timeCell = timeByGroup{iCond};
                 for iTrial = 1:numel(dataCell)
                     if ~isempty(timeCell{iTrial}) && ~isempty(dataCell{iTrial})
-                        plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', 'Color', app(iCond).color, ...
-                            'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                        if p.Results.patchline
+                           patchline(double(timeCell{iTrial}), dataCell{iTrial}, ...
+                               'Color', app(iCond).color, ...
+                               'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                        else
+                            plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', 'Color', app(iCond).color, ...
+                                'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                        end
                     end
                     if iTrial == 1, hold(axh, 'on'); end
                 end
@@ -374,6 +382,7 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupedEachTrial2D(td, name1, name2, varargin) 
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.addParamValue('patchline', false, @islogical); % use patchline to enable transparency
             p.KeepUnmatched;
             p.parse(varargin{:});
 
@@ -387,8 +396,14 @@ classdef TrialDataConditionAlign < TrialData
                 dataCell1 = dataByGroup1{iCond};
                 dataCell2 = dataByGroup2{iCond};
                 for iTrial = 1:numel(dataCell1)
-                    plot(axh, dataCell1{iTrial}, dataCell2{iTrial}, '-', 'Color', app(iCond).color, ...
-                        'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    if p.Results.patchline
+                        patchline(dataCell1{iTrial}, dataCell2{iTrial}, ...
+                               'EdgeColor', app(iCond).color, ...
+                               'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    else
+                        plot(axh, dataCell1{iTrial}, dataCell2{iTrial}, '-', 'Color', app(iCond).color, ...
+                            'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                    end
                     if iTrial == 1, hold(axh, 'on'); end
                 end
             end
