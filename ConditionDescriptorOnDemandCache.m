@@ -18,4 +18,16 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
         axisValueLists
     end
     
+    methods
+        function flush(c)
+            c.conditions = [];
+            c.conditionsRelevantAttributesOnly = [];
+            c.names = [];
+            c.appearances = [];
+            c.attributeValueList = [];
+            c.attributeValueListAsStrings = [];
+            c.axisValueLists = [];
+        end
+    end
+    
 end

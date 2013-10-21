@@ -10,3 +10,6 @@ ci = ci.binAttributeQuantiles('b', 5);
 ci = ci.addAxis('a');
 ci = ci.addAxis('b');
 
+ci
+
+ci = ci.addAxis({'a', 'b'});

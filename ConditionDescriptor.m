@@ -17,15 +17,18 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         % A x 1 : by attribute                       
         attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
+        
+        axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
+    end
+    
+    properties(Access=protected)
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value? 
         
-        % don't access these directly, call .getAttributeValueList
         attributeValueListsManual = {}; % A x 1 cell array of permitted values (or cells of values) for this attribute
         attributeValueBinsManual = {}; % A x 1 cell array of value Nbins x 2 value bins to use for numeric lists
         attributeValueBinsAutoCount % A x 1 numeric array of Nbins to use when auto computing the bins, NaN if not in use
         attributeValueBinsAutoMode % A x 1 numeric array of either AttributeValueBinsAutoUniform or AttributeValueBinsAutoQuantiles
-
-        axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
+        
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
         axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
         axisRandomizeMode % G x 1 numeric of constants beginning with Axis* (see below)
@@ -252,9 +255,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
                 if isempty(ci.axisValueListsManual{iX})
                     % build auto list of attributes
-                    valueListByAxes{iX} = ci.buildAutoValueListForAttributeSet(ci.axisAttributes{iX});
+                    valueListByAxes{iX} = makecol(ci.buildAutoValueListForAttributeSet(ci.axisAttributes{iX}));
                 else
-                    valueListByAxes{iX} = ci.axisValueListsManual{iX};
+                    valueListByAxes{iX} = makecol(ci.axisValueListsManual{iX});
                 end
             end
         end
@@ -336,8 +339,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                         else
                             valueList{i} = {'?'};
                         end
-                       
                 end
+                valueList{i} = makecol(valueList{i});
             end
         end
         
@@ -364,6 +367,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                         % auto list leave empty, must be determined when
                         % ConditionInfo applies it to data
                 end
+                valueList{i} = makecol(valueList{i});
             end
         end
 
@@ -494,12 +498,10 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
 
         % remove all axes
-        function ci = ungroup(ci)
+        function ci = clearAxes(ci)
             ci.warnIfNoArgOut(nargout);
 
-            ci.axisAttributes = {};
-            ci.axisValueListsManual = {};
-            ci.axisRandomizeMode = [];
+            ci = ci.maskAxes([]);
 
             ci = ci.invalidateCache();
         end
@@ -535,11 +537,11 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 end
             end
             
-            ci.maskAxes(~removeAxisMask);
+            ci = ci.maskAxes(~removeAxisMask);
         end
     end
 
-    methods % ATTRIBUTES
+    methods % General methods, setters and getters
         
         % flush the contents of odc as they are invalid
         % call this at the end of any methods which would want to
@@ -550,13 +552,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             % here we precompute these things to save time, 
             % but each of these things also has a get method that will
             % recompute this for us
-            ci.conditions = [];
-            ci.appearances = [];
-            ci.names = [];
-            ci.attributeValueLists = [];
-            ci.attributeValueListsAsStrings = [];
-            
-            ci.axisValueLists = [];
+            ci.odc  = ci.odc.copy();
+            ci.odc.flush();
         end
 
         % Manually freeze the condition appearances so that they don't
@@ -890,106 +887,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.invalidateCache();
         end
     end
-    
-    methods % Comparison axis building
-        function varargout = compareAlong(ci, attrNames, varargin)
-            % identical to compareSlices(attrNames) except attrNames must be a single attr
-            assert(ischar(attrNames) || length(attrNames) == 1, 'compareAlong accepts only single attribute comparisons. Use compareSlices');
-            [varargout{1:nargout}] = ci.compareSlices(attrNames, varargin{:});
-        end 
-
-        function varargout = compareWithin(ci, attrNames, varargin)
-            assert(ischar(attrNames) || length(attrNames) == 1, 'compareWithin accepts only single attribute comparisons. Use compareSlicesWithin');
-            % identical to compareSlicesWithin(attrNames) except attrNames must be a single attr
-            [varargout{1:nargout}] = ci.compareSlicesWithin(attrNames, varargin{:});
-        end
-
-        function varargout = compareSlicesWithin(ci, attrNames, varargin)
-            % shortcut for .compareSlices( otherAttrNames )
-            % build slices across all other attribute so that each inner comparison
-            % has conditions which share the same value for attrNames
-
-            otherAttrNames = setdiff(ci.groupByList, attrNames);
-            [varargout{1:nargout}] = ci.compareSlices(otherAttrNames, varargin{:});
-        end
-
-        function [conditionIdxCell, conditionDescriptorOuter, conditionDescriptorInnerCell, ...
-                conditionDescriptorInnerCommon] = ...
-                compareSlices(ci, attrNames, varargin)
-            % compareSlice is used to generate comparisons where we consider collectively
-            % conditions with each set of values of some subset of attributes (attrNamesOrInds)
-            % repeating this analysis for each set of values of all the other attributes.
-            % In other words, generate a set of slices over attrNamesOrInds, for each set of 
-            % other attribute values.
-            %
-            % Suppose we have four attributes (A, B, C, D) with value counts nA, nB, nC, nD
-            % Calling compareSlices({'A', 'B'}) will generate a cell tensor of size 
-            % nC x nD. Within each element is a nA x nB tensor of condition indices. 
-            % The indices in conditionIdxCell{iC, iD}{iA, iB} represent conditions having value 
-            % iA, iB for attributes A, B and values iC, iD for attribute C, D. 
-            % The purpose of this reorganization is that it makes it easy to run a comparison
-            % involving every condition along the A, B axes, while holding attributes C, D
-            % constant, and then repeating this for each value of C, D.
-            %
-            % Define szOuter as the sizes of the dimensions not in attrNamesOrInds.
-            % Define szInner as the sizes of the dimensions in attrNamesOrInds.
-            % In the example: szOuter == [nC nD], szInner = [nA nB]
-            % 
-            % conditionIdxCell : szOuter cell tensor of szInner numeric tensors.
-            %   conditionIdxCell{iC, iD}{iA, iB} has the conditionIdx for iA,iB,iC,iD
-            %
-            % conditionDescriptorOuter : scalar ConditionDescriptor instance, formed by grouping
-            %   on attributes not in attrNamesOrInds. This describes the layout of conditions selected
-            %   in the outer tensor over C, D. Each inner tensor of conditionIdx will have the corresponding
-            %   iC, iD values for C, D in all conditions within.
-            %
-            % conditionDescriptorInnerCell : szOuter cell tensor of Condition Descriptor instances.
-            %   Each instance is similar to conditionDescriptor, but it also filters for the single
-            %   attribute values for C, D, and thus perfectly describes the conditions within the corresponding 
-            %   conditionIdxCell inner tensor
-            %
-            % conditionDescriptorInnerCommon: scalar ConditionDescriptor instance, formed
-            %   grouping on attrNamesOrInds only. This condition descriptor is common to 
-            %   the structure of each inner conditionIdx tensor's comparisons, i.e. it
-            %   describes the layout of conditions over A, B. 
-            %
-
-            p = inputParser;
-            p.parse(varargin{:});
-
-            % ensure attributes are in groupByList
-            %attrIdx = makecol(ci.getAttributeIdxInGroupByList(attrNames));
-
-            [otherAttrNames, otherAttrIdx] = setdiff(ci.groupByList, attrNames);
-
-            % generate the regrouped conditionInd tensor 
-            tInds = ci.conditionsAsLinearInds;
-            conditionIdxCell = TensorUtils.regroupAlongDimension(tInds, otherAttrIdx);
-
-            sz = ci.conditionsSize;
-            szOuter = TensorUtils.expandScalarSize(sz(otherAttrIdx));
-            %szInner = TensorUtils.expandScalarSize(sz(attrIdx));
-
-            if nargout > 1
-                conditionDescriptorOuter = ci.copyIfHandle().groupBy(otherAttrNames);
-            end
-
-            if nargout > 2
-                conditionDescriptorInnerCell = cell(szOuter);
-                for iOuter = 1:prod(szOuter)
-                    conditionDescriptorInnerCell{iOuter} = ci.filteredByAttributeStruct(...
-                        conditionDescriptorOuter.conditionsWithGroupByFieldsOnly(iOuter), ...
-                        'removeFromGroupBy', true);
-                end
-            end
-
-            if nargout > 3
-                conditionDescriptorInnerCommon = ci.copyIfHandle();
-                conditionDescriptorInnerCommon = conditionDescriptorInnerCommon.groupBy(attrNames);
-            end
-
-        end
-    end
 
     methods(Static) % Default nameFn and appearanceFn
         function name = defaultNameFn(ci, attrValues, conditionSubs) %#ok<INUSD>
@@ -1001,7 +898,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 include = false;
                 val = attrValues.(attr{iAttr});
 
-                if ~ischar(val) && isscalar(val)
+                if ~ischar(val) && ~isscalar(val)
                     % skip attributes where more than one value is
                     % specified, they won't be part of the condition name
                     continue;
@@ -1109,14 +1006,11 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
     methods(Static) % construct from another condition descriptor, used primarily by ConditionInfo
         function cdNew = fromConditionDescriptor(cd, cdNew)
+            cd.warnIfNoArgOut(nargout);
+            
             if nargin < 2
                 cdNew = ConditionDescriptor();
             end
-            cdNew.noUpdateCache = true;
-
-            cdNew.attributeNames = cd.attributeNames;
-            cdNew.attributeNumeric = cd.attributeNumeric; 
-            cdNew.attributeValueList = cd.attributeValueList; 
 
             meta = ?ConditionDescriptor;
             props = meta.PropertyList;
@@ -1131,12 +1025,11 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 end
             end
 
-            cdNew.noUpdateCache = false;
             cdNew = cdNew.invalidateCache();
         end
     end
 
-    methods 
+    methods % copy if handle
         function obj = copyIfHandle(obj)
             if isa(obj, 'handle')
                 obj = obj.copy(); %#ok<MCNPN>
@@ -1147,10 +1040,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
     methods(Access=protected) % Utility methods
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~isa(obj, 'handle')
-                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                warning('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
                     class(obj));
-                expr = sprintf('debug(''%s'')', message);
-                evalin('caller', expr); 
             end
         end
     end
