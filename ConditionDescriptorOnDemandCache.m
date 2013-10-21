@@ -8,7 +8,8 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
 
     properties(Transient)
         conditions
-        conditionsRelevantAttributesOnly
+        conditionsAsStrings
+        conditionsAxisAttributesOnly
         
         names
         appearances
@@ -16,17 +17,20 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
         attributeValueListAsStrings
         
         axisValueLists
+        axisValueListsAsStrings
     end
     
     methods
         function flush(c)
             c.conditions = [];
-            c.conditionsRelevantAttributesOnly = [];
+            c.conditionsAsStrings = [];
+            c.conditionsAxisAttributesOnly = [];
             c.names = [];
             c.appearances = [];
             c.attributeValueList = [];
             c.attributeValueListAsStrings = [];
             c.axisValueLists = [];
+            c.axisValueListsAsStrings = [];
         end
     end
     
