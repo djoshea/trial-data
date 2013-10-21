@@ -27,6 +27,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
         axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
+        axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
         axisRandomizeMode % G x 1 numeric of constants beginning with Axis* (see below)
     end
     
@@ -58,6 +59,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         
         % these are A-dimensional objects where A is nAttributesGroupBy or length(groupByList)
         conditions % A-dimensional struct where values(...idx...).attribute is the value of that attribute on that condition
+        conditionsRelevantAttributesOnly
         appearances % A-dimensional struct of appearance values
         names % A-dimensional cellstr array with names of each condition 
         attributeValueLists % A x 1 cell array of values allowed for this attribute
@@ -67,37 +69,48 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         attributeDescriptions
 
         axisValueLists % G dimensional cell array of structs which select attribute values for that position along an axis
+        axisValueListMode % G dimensional array of 
     end
     
     % how are attribute values determined for a given attribute?
     properties(Constant, Hidden)
+        % for attributeValueListMode
         AttributeValueListManual = 1;
         AttributeValueListAuto = 2;
-        
         AttributeValueBinsManual = 3;
         AttributeValueBinsAutoUniform = 4;
         AttributeValueBinsAutoQuantiles = 5;
         
+        % for axisRandomizeMode
         AxisOriginal = 1;
         AxisShuffled = 2;
         AxisResampled = 3;
         AxisResampledFromFirst = 4;
+        
+        % for axisValueListMode
+        AxisValueListAutoAll = 1;
+        AxisValueListAutoOccupied = 2;
+        AxisValueListManual = 3;
     end
         
     properties(Dependent, Transient)
-        attributeValueModes
-
         nAttributes % how many attributes: ndims(values)
 
         nValuesByAttribute % how many values per attribute: size(values)
 
-        nAxes % how many dimensions of grouping axes
-
+        attributeAlongWhichAxis % A x 1 array indicating which axis an attribute contributes to (or NaN)
+        attributeValueModes
+        
         nConditions % how many total conditions
         
         conditionsSize 
 
         conditionsAsLinearInds % linear index corresponding to each condition if flattened 
+        
+
+        nAxes % how many dimensions of grouping axe
+        nValuesAlongAxes % X x 1 array of number of elements along the axis
+        axisDescriptions % strcell describing each axis
     end
     
     % Constructor, load, save methods
@@ -124,6 +137,19 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function ci = set.conditions(ci, v)
             ci.odc = ci.odc.copy();
             ci.odc.conditions = v;
+        end
+        
+        function v = get.conditionsRelevantAttributesOnly(ci)
+            v = ci.odc.conditionsRelevantAttributesOnly;
+            if isempty(v)
+                ci.odc.conditionsRelevantAttributesOnly = ci.buildConditionsRelevantAttributesOnly();
+                v = ci.odc.conditionsRelevantAttributesOnly;
+            end
+        end
+        
+        function ci = set.conditionsRelevantAttributesOnly(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditionsRelevantAttributesOnly = v;
         end
         
         function v = get.appearances(ci)
@@ -193,16 +219,26 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
     % build data stored inside odc
     methods 
-        function values = buildConditions(ci)
+        function values = buildConditionsRelevantAttributesOnly(ci)
             if ci.nAxes == 0
-                % TODO fix this to return global search
                 values = struct();
-                return
+            else
+                valueLists = ci.axisValueLists; 
+                values = TensorUtils.mapFromAxisLists(@structMergeMultiple,...
+                    valueLists, 'asCell', false);
             end
-            for iX = 1:ci.nAxes
-                vals = ci.axisValueLists{iX}; 
-                attr = ci.axisAttributes{iX};
-                values = TensorUtils.mapFromAxisLists(@structMergeMultiple, vals{:});
+        end
+        
+        function values = buildConditions(ci)
+            values = ci.conditionsRelevantAttributesOnly;
+            
+            % and add "wildcard" match for all other attributes
+            whichAxis = ci.attributeAlongWhichAxis;
+            for iA = 1:ci.nAttributes
+                if isnan(whichAxis(iA))
+                    values = assignIntoStructArray(values, ci.attributeNames{iA}, ...
+                        ci.attributeValueLists(iA));
+                end
             end
         end
 
@@ -225,10 +261,14 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
         % build a struct array for a set of attributes that walks all possible combinations of the attribute values 
         function values = buildAutoValueListForAttributeSet(ci, attributes)
+            if ischar(attributes)
+                attributes = {attributes};
+            end
             attrIdx = ci.getAttributeIdx(attributes);
             valueLists = ci.attributeValueLists(attrIdx);
 
-            values = TensorUtils.mapFromAxisLists(@buildStruct, valueLists{:});
+            values = TensorUtils.mapFromAxisLists(@buildStruct, valueLists, ...
+                'asCell', false);
 
             function s = buildStruct(varargin)
                 for i = 1:numel(varargin)
@@ -241,12 +281,12 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function names = buildNames(ci)
             % pass along values(i) and the subscripts of that condition in case useful 
             if ci.nConditions > 0
-                nameFn = ci.nameFn;
-                if isempty(nameFn)
-                    nameFn = @ConditionDescriptor.defaultNameFn;
+                fn = ci.nameFn;
+                if isempty(fn)
+                    fn = @ConditionDescriptor.defaultNameFn;
                 end
 
-                wrapFn = @(varargin) nameFn(ci, varargin{:});
+                wrapFn = @(varargin) fn(ci, varargin{:});
                 names = TensorUtils.mapIncludeSubs(wrapFn, ci.conditions);
             else
                 names = {};
@@ -282,20 +322,21 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             for i = 1:ci.nAttributes
                 switch modes(i) 
                     case ci.AttributeValueListManual
-                        valueList{i} = ci.attributeValueListManual{i};
+                        valueList{i} = ci.attributeValueListsManual{i};
                     case ci.AttributeValueBinsManual
                         valueList{i} = ci.attributeValueBinsManual{i};
                     case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
                         % the number of bins is known, so they can be specified here
                         valueList{i} = 1:ci.attributeValueBinsAutoCount(i);
                     otherwise
-                        if ci.attributeNumeric(i)
-                            valueList{i} = [];
-                        else
-                            valueList{i} = {};
-                        end
-                        % leave empty, must be determined when
+                         % place holder, must be determined when
                         % ConditionInfo applies it to data
+                        if ci.attributeNumeric(i)
+                            valueList{i} = NaN;
+                        else
+                            valueList{i} = {'?'};
+                        end
+                       
                 end
             end
         end
@@ -332,15 +373,66 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
 
         function valueIdx = getAttributeValueIdx(ci, attr, value)
-            [tf valueIdx] = ismember(value, ci.getAttributeValueLists(attr));
+            [tf, valueIdx] = ismember(value, ci.getAttributeValueLists(attr));
             assert(tf, 'Value not found in attribute %s valueList', attr);
         end
     end
 
-    % Specify and manipulate group axes
-    methods
+    methods % AXES
         function n = get.nAxes(ci)
             n = numel(ci.axisAttributes);
+        end
+        
+        function a = get.attributeAlongWhichAxis(ci)
+            a = nanvec(ci.nAttributes);
+            for iX = 1:ci.nAxes
+                a(ci.getAttributeIdx(ci.axisAttributes{iX})) = iX;
+            end
+        end
+        
+        function modes = get.axisValueListMode(ci)
+            modes = nanvec(ci.nAxes);
+            
+            for iX = 1:ci.nAxes
+                if ~isempty(ci.axisValueListsManual{iX})
+                    modes(iX) = ci.AxisValueListManual;
+                elseif ci.axisValueListsOccupiedOnly(iX)
+                    modes(iX) = ci.AxisValueListAutoOccupied;
+                else
+                    modes(iX) = ci.AxisValueListAutoAll;
+                end
+            end
+        end
+        
+        function desc = get.axisDescriptions(ci)
+            desc = cellvec(ci.nAxes);
+            
+            for iX = 1:ci.nAxes
+                attr = ci.axisAttributes{iX};
+                nv = ci.conditionsSize(iX);
+                switch ci.axisValueListMode(iX)
+                    case ci.AxisValueListAutoAll
+                        vlStr = ' auto';
+                    case ci.AxisValueListAutoOccupied
+                        vlStr = ' autoOccupied';
+                    case ci.AxisValueListManual
+                        vlStr = ' manual';
+                end   
+                        
+                switch ci.axisRandomizeMode(iX)
+                    case ci.AxisOriginal
+                        randStr = '';
+                    case ci.AxisShuffled
+                        randStr = ' shuffled';
+                    case ci.AxisResampled
+                        randStr = ' resampled';
+                    case ci.AxisResampledFromFirst
+                        randStr = ' resampledFromFirst';
+                end
+                
+                desc{iX} = sprintf('axis %d : %s%s (%d%s)', iX, ...
+                    strjoin(attr, ' x '), randStr, nv, vlStr);
+            end
         end
         
         function ci = addAxis(ci, varargin)
@@ -358,13 +450,27 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 attr = p.Results.attributes;
             end
             ci.assertHasAttribute(attr);
+            
+            ci = ci.removeAttributesFromAxes(attr);
 
             % create a grouping axis
             idx = ci.nAxes + 1; 
-            ci.axisAttributes{idx} = p.Results.attributes;
+            ci.axisAttributes{idx} = attr;
             ci.axisValueListsManual{idx} = p.Results.valueList;
             ci.axisRandomizeMode(idx) = ci.AxisOriginal;
+            ci.axisValueListsOccupiedOnly(idx) = true;
 
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = maskAxes(ci, mask)
+            ci.warnIfNoArgOut(nargout);
+            
+            ci.axisAttributes = ci.axisAttributes(mask);
+            ci.axisValueListsManual = ci.axisValueListsManual(mask);
+            ci.axisRandomizeMode = ci.axisRandomizeMode(mask);
+            ci.axisValueListsOccupiedOnly = ci.axisValueListsOccupiedOnly(mask);
+            
             ci = ci.invalidateCache();
         end
 
@@ -392,14 +498,49 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
 
             ci.axisAttributes = {};
-            ci.axisValueListManual = {};
+            ci.axisValueListsManual = {};
             ci.axisRandomizeMode = [];
 
             ci = ci.invalidateCache();
         end
+        
+        function ci = removeAttributesFromAxes(ci, namesOrIdx)
+            ci.warnIfNoArgOut(nargout);
+            attrIdx = ci.getAttributeIdx(namesOrIdx);
+            attrNames = ci.attributeNames(attrIdx);
+            
+            if ci.nAxes == 0
+                return;
+            end
+            
+            whichAxis = ci.attributeAlongWhichAxis;
+            removeAxisMask = falsevec(ci.nAxes);
+            for iAI = 1:numel(attrIdx)
+                iA = attrIdx(iAI);
+                iX = whichAxis(iA);
+                if isnan(iX)
+                    continue;
+                end
+                
+                % remove this attribute from axis iX
+                maskInAxis = strcmp(ci.axisAttributes{iX}, attrNames{iAI});
+                if all(maskInAxis)
+                    removeAxisMask(iX) = true;
+                else
+                    ci.axisAttributes{iX} = ci.axisAttributes{iX}(~maskInAxis);
+                    % clear out manual value list as it's likely invalid now
+                    ci.axisValueListsManual{iX} = [];
+                    % and reset the randomization
+                    ci.axisRandomizeMode(iX) = ci.AxisOriginal;
+                end
+            end
+            
+            ci.maskAxes(~removeAxisMask);
+        end
     end
 
-    methods
+    methods % ATTRIBUTES
+        
         % flush the contents of odc as they are invalid
         % call this at the end of any methods which would want to
         % regenerate these values
@@ -414,6 +555,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.names = [];
             ci.attributeValueLists = [];
             ci.attributeValueListsAsStrings = [];
+            
+            ci.axisValueLists = [];
         end
 
         % Manually freeze the condition appearances so that they don't
@@ -429,27 +572,16 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
         function ci = set.nameFn(ci, fn)
             ci.nameFn = fn;
-            ci.names = [];
+            ci = ci.invalidateCache();
         end
 
         function ci = set.appearanceFn(ci, fn)
             ci.appearanceFn = fn;
-            ci.appearances = [];
+            ci = ci.invalidateCache();
         end
-
-
+        
         function nv = get.conditionsSize(ci)
-            %             if ci.nAttributes == 0
-            %                 nv = [1];
-            %             elseif ci.nAttributesGroupBy == 0
-            %                 nv = [1 1];
-            %             else
-            %                 nv = ci.nValuesByAttributeGroupBy; 
-            %             end
-            %             if isscalar(nv)
-            %                 nv(2) = 1;
-            %             end
-            nv = 1;
+            nv = size(ci.conditions);
         end
 
         function linearInds = get.conditionsAsLinearInds(ci)
@@ -460,92 +592,13 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             n = prod(ci.conditionsSize);
         end
 
-        function idxList = getAttributeIdx(ci,name)
-            if isempty(name)
-                idxList = [];
-                return;
-            end
-            if ~iscell(name)
-                name = {name};
-            end
-
-            idxList = nan(length(name), 1);
-            for i = 1:length(name)
-                if ischar(name{i})
-                    idx = find(strcmp(ci.attributeNames, name{i}), 1);
-                else
-                    idx = name{i};
-                end
-                if isempty(idx)
-                    error('Cannot find attribute named %s', name{i});
-                end
-                idxList(i) = idx;
-            end
-        end
-
-        function tf = getIsAttributeNumeric(ci, name)
-            idx = ci.getAttributeIdx(name);
-            tf = ci.attributeNumeric(idx);
-        end
-
-        function str = getDescriptionGroupBy(cd)
-            % get description of attributes being grouped by
-            desc = cd.description;
-            attrDesc = strjoin(cellfun(@(name, vals) sprintf('%s (%d)', name, vals), ... 
-                cd.attributeNamesGroupBy, num2cell(cd.nValuesByAttributeGroupBy), 'UniformOutput', false), ' x ');
-            if isempty(desc)
-                str = attrDesc;
-            else
-                str = sprintf('%s : %s', desc, attrDesc);
-            end
-        end
-
         function printDescription(ci) 
-            tcprintf('yellow', '%s: ', class(ci));
-            nAttr = ci.nAttributes;
-            % print full list
-            tcprintf('inline', '{bright blue}Attributes: %s\n', strjoin(ci.attributeDescriptions));
-
-            %             
-            % %             fprintf('All attributes: ');
-            %              if nAttr > 0
-            % %                 % print attribute list with value list counts
-            % %                 for i = 1:ci.nAttributes
-            % %                     % bright color if we're grouping on this
-            % %                     if ci.isAttributeInGroupByList(i) 
-            % %                         nameColorStr = '{bright blue}';
-            % %                     else
-            % %                         nameColorStr = '{blue}';
-            % %                     end
-            % %                     % is the requestAs the same as the attribute name?
-            % %                     if strcmp(ci.attributeNames{i}, ci.attributeRequestAs{i})
-            % %                         nameStr = sprintf('%s%s', nameColorStr, ci.attributeNames{i});
-            % %                     else
-            % %                         nameStr = sprintf('%s%s as %s', nameColorStr, ci.attributeNames{i}, ci.attributeRequestAs{i});
-            % %                     end
-            % %                     tcprintf('inline', strcat(nameStr, '{gray} ({white}%d{gray}) '), ci.nValuesByAttribute(i));
-            % % 
-            % %                     if i < ci.nAttributes
-            % %                         tcprintf('dark gray', ' x ');
-            % %                     end
-            % %                 end
-            % %                 
-            % %                 fprintf('\n');
-            % 
-            %                 % print attribute value lists on each line
-            %                 for i = 1:ci.nAttributes
-            %                     if ci.isAttributeInGroupByList(i) 
-            %                         tcprintf('inline', '\t{gray}%s: {white}%s\n', ...
-            %                             ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
-            %                     else
-            %                         tcprintf('inline', '\t{gray}%s: {none}%s\n', ...
-            %                             ci.attributeNames{i}, strjoin(ci.attributeValueList{i}, ', '));
-            %                     end
-            %                 end
-            %             else
-            %                 %tcprintf('dark gray', 'no attributes\n');
-            %             end
-
+            tcprintf('yellow', '%s:', class(ci));
+            tcprintf('inline', '{bright blue}Attributes: {white}%s\n', strjoin(ci.attributeDescriptions));
+            axisDesc = ci.axisDescriptions;
+            for iX = 1:ci.nAxes
+                tcprintf('inline', '\t%s\n', axisDesc{iX});
+            end
         end
 
         function disp(ci)
@@ -574,6 +627,42 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             na = length(ci.attributeNames);
         end
 
+                function idxList = getAttributeIdx(ci,name)
+            if isempty(name)
+                idxList = [];
+                return;
+            end
+            
+            if isnumeric(name)
+                % already idx, just return
+                idxList = floor(name);
+                idxList(idxList < 0 | idxList > ci.nAttributes) = NaN;
+                return;
+            end
+            
+            if ~iscell(name)
+                name = {name};
+            end
+
+            idxList = nan(length(name), 1);
+            for i = 1:length(name)
+                if ischar(name{i})
+                    idx = find(strcmp(ci.attributeNames, name{i}), 1);
+                else
+                    idx = name{i};
+                end
+                if isempty(idx)
+                    error('Cannot find attribute named %s', name{i});
+                end
+                idxList(i) = idx;
+            end
+        end
+        
+        function tf = getIsAttributeNumeric(ci, name)
+            idx = ci.getAttributeIdx(name);
+            tf = ci.attributeNumeric(idx);
+        end
+        
         % return an A x 1 numeric array of constants in the AttributeValue*
         % set listed above, describing how this attribute's values are
         % determined
@@ -606,8 +695,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     case {ci.AttributeValueBinsAutoQuantiles, ci.AttributeValueBinsAutoUniform}
                         nv(i) = ci.attributeValueBinsAutoCount(i);
                     otherwise
-                        % leave NaN, must be determined when
-                        % ConditionInfo applies it to data
+                        % will be automatically determined in conditioninfo
+                        % not actually one value, but want to put '?' there
+                        nv(i) = 1;
                 end
             end
         end
@@ -623,7 +713,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     case ci.AttributeValueListManual
                         suffix = sprintf('(%d)', nValues);
                     case ci.AttributeValueListAuto
-                        suffix = '(?)';
+                        suffix = '(? auto)';
                     case ci.AttributeValueBinsManual
                         suffix = sprintf('(%d bins)', nValues);
                     case ci.AttributeValueBinsAutoUniform
@@ -708,6 +798,27 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
             ci = ci.maskAttributes(maskOther);
         end
+        
+        function ci = maskAttributes(ci, mask)
+            ci.warnIfNoArgOut(nargout);
+            
+            idxRemove = find(~mask);
+            if ~any(idxRemove)
+                return;
+            end
+            
+            % first remove the attributes from any axes they are on
+            ci = ci.removeAttributeFromAxes(idxRemove); 
+            
+            % then remove it from the attribute lists
+            ci.attributeNames = ci.attributeNames(mask);
+            ci.attributeRequestAs = ci.attributeRequestAs(mask);
+            ci.attributeNumeric = ci.attributeNumeric(mask);
+            ci.attributeValueList = ci.attributeValueList(mask);
+            ci.attributeValueBinsAutoCount = ci.attributeValueBinsAutoCount(mask);
+            ci.attributeValueBinsAutoMode = ci.attributeValueBinsAutoMode(mask);
+            ci.attributeValueBinsManual = ci.attributeValueBinsManual(mask);
+        end 
 
         % manually set the attribute value list
         function ci = setAttributeValueList(ci, name, valueList)
@@ -753,6 +864,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         % automatically set attribute binned uniformly by range
         function ci = binAttributeUniform(ci, name, nBins)
             ci.warnIfNoArgOut(nargout);
+            
+            iAttr = ci.getAttributeIdx(name);
 
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeNumeric(iAttr) = true;
@@ -777,92 +890,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.invalidateCache();
         end
     end
-
-    methods % Filtering
-        function [ci, mask] = filteredByAttribute(ci, attributeName, valueListKeep, varargin)
-            ciOrig = ci;
-            ci.warnIfNoArgOut(nargout);
-            ci = ci.copyIfHandle(); 
-
-            % filter attribute by the intersection of its current value list and valueListKeep 
-            p = inputParser;
-            p.addRequired('attributeName', @ischar);
-            p.addRequired('valueListKeep', @(x) true);
-            p.addParamValue('removeFromGroupBy', false, @islogical); 
-            p.parse(attributeName, valueListKeep, varargin{:});
-
-            idx = ci.getAttributeIdx(attributeName);
-            valueList = ci.attributeValueList{idx};
-
-            if ~any(ismemberCell(valueListKeep, valueList))
-                error('No conditions will be kept by this filter');
-            end
-
-            if ischar(valueListKeep)
-                valueListKeep = {valueListKeep};
-            end
-
-            if ~isempty(ci.attributeValueList{idx})
-                % maintain the original sort order when filtering
-                [ci.attributeValueList{idx} indKeep] = intersectCell(valueList, valueListKeep, 'stable');
-            else
-                ci.attributeValueList{idx} = valueListKeep;
-                indKeep = [];
-            end
-
-            if p.Results.removeFromGroupBy
-                ci.groupByList = setdiff(ci.groupByList, attributeName);
-            end
-            ci = ci.invalidateCache();
-
-            % generate mask of conditionsKept
-            if nargout > 1
-                mask = TensorUtils.maskSelectAlongDimension(ciOrig.conditionsSize, idx, indKeep);
-            end
-        end
-
-        function [ci, mask] = filteredByAttributeStruct(ci, attributeValues, varargin)
-            ci.warnIfNoArgOut(nargout);
-            ci = ci.copyIfHandle(); 
-
-            attributes = fieldnames(attributeValues);
-
-            for i = 1:length(attributes)
-                [ci mask] = ci.filteredByAttribute(attributes{i}, attributeValues.(attributes{i}), varargin{:});
-            end
-        end
-
-        function ci = withoutAttribute(ci, name)
-            % remove an attribute from the list
-            ci.warnIfNoArgOut(nargout);
-            ci = ci.copyIfHandle();
-            idx = ci.getAttributeIdx(name);
-            mask = true(ci.nAttributes, 1);
-            mask(idx) = false;
-
-            ci = ci.maskAttributes(mask);
-
-            % also remove from groupByList
-            ci.groupByList = setdiff(ci.groupByList, name);
-            ci = ci.invalidateCache();
-        end
-    end
-
-    methods(Access=protected)
-        function ci = maskAttributes(ci, mask)
-            ci.warnIfNoArgOut(nargout);
-            ci.attributeNames = ci.attributeNames(mask);
-            ci.attributeRequestAs = ci.attributeRequestAs(mask);
-            ci.attributeNumeric = ci.attributeNumeric(mask);
-            ci.attributeValueList = ci.attributeValueList(mask);
-            ci.attributeValueBinsAutoCount = ci.attributeValueBinsAutoCount(mask);
-            ci.attributeValueBinsAutoMode = ci.attributeValueBinsAutoMode(mask);
-            ci.attributeValueBinsManual = ci.attributeValueBinsManual(mask);
-
-            ci.groupByList = setdiff(ci.groupByList, ci.attributeNames);
-        end 
-    end
-
+    
     methods % Comparison axis building
         function varargout = compareAlong(ci, attrNames, varargin)
             % identical to compareSlices(attrNames) except attrNames must be a single attr
@@ -885,7 +913,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             [varargout{1:nargout}] = ci.compareSlices(otherAttrNames, varargin{:});
         end
 
-        function [conditionIdxCell conditionDescriptorOuter conditionDescriptorInnerCell ...
+        function [conditionIdxCell, conditionDescriptorOuter, conditionDescriptorInnerCell, ...
                 conditionDescriptorInnerCommon] = ...
                 compareSlices(ci, attrNames, varargin)
             % compareSlice is used to generate comparisons where we consider collectively
@@ -930,9 +958,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             p.parse(varargin{:});
 
             % ensure attributes are in groupByList
-            attrIdx = makecol(ci.getAttributeIdxInGroupByList(attrNames));
+            %attrIdx = makecol(ci.getAttributeIdxInGroupByList(attrNames));
 
-            [otherAttrNames otherAttrIdx] = setdiff(ci.groupByList, attrNames);
+            [otherAttrNames, otherAttrIdx] = setdiff(ci.groupByList, attrNames);
 
             % generate the regrouped conditionInd tensor 
             tInds = ci.conditionsAsLinearInds;
@@ -940,7 +968,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
             sz = ci.conditionsSize;
             szOuter = TensorUtils.expandScalarSize(sz(otherAttrIdx));
-            szInner = TensorUtils.expandScalarSize(sz(attrIdx));
+            %szInner = TensorUtils.expandScalarSize(sz(attrIdx));
 
             if nargout > 1
                 conditionDescriptorOuter = ci.copyIfHandle().groupBy(otherAttrNames);
@@ -963,9 +991,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
     end
 
-
     methods(Static) % Default nameFn and appearanceFn
-        function name = defaultNameFn(ci, attrValues, conditionSubs)
+        function name = defaultNameFn(ci, attrValues, conditionSubs) %#ok<INUSD>
             name = '';
             attr = fieldnames(attrValues);
             attrIsNumeric = ci.getIsAttributeNumeric(attr);
@@ -1000,7 +1027,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 end
 
                 if include
-                    name = [name attr{iAttr} '=' val ' '];
+                    name = [name attr{iAttr} '=' val ' ']; %#ok<AGROW>
                 end
             end
 
@@ -1018,7 +1045,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             %
             % Alternatively, if no arguments are passed, simply return a set of defaults
 
-            conditionsSize = ci.conditionsSize;
             nConditions = ci.nConditions;
 
             a = emptyStructArray(ci.conditionsSize, {'color', 'lineWidth'});
@@ -1113,7 +1139,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
     methods 
         function obj = copyIfHandle(obj)
             if isa(obj, 'handle')
-                obj = obj.copy();
+                obj = obj.copy(); %#ok<MCNPN>
             end
         end
     end

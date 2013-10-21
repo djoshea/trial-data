@@ -8,6 +8,8 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
 
     properties(Transient)
         conditions
+        conditionsRelevantAttributesOnly
+        
         names
         appearances
         attributeValueList
