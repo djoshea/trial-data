@@ -13,4 +13,13 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
         listByCondition
     end
     
+    methods
+        function flush(c)
+            flush@ConditionDescriptorOnDemandCache(c);
+            c.conditionIdx = [];
+            c.conditionSubs = [];
+            c.conditionSubsIncludingManualInvalid = [];
+            c.listByCondition = [];
+        end
+    end
 end

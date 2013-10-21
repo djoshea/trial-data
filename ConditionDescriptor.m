@@ -130,336 +130,56 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
     end
 
-    % get, set data stored inside odc
-    % ALL of these should copy odc before writing to it
-    methods 
-        function v = get.conditions(ci)
-            v = ci.odc.conditions;
-            if isempty(v)
-                ci.odc.conditions = ci.buildConditions();
-                v = ci.odc.conditions;
-            end
-        end
+    methods % General methods, setters and getters
         
-        function ci = set.conditions(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.conditions = v;
-        end
-        
-        function v = get.conditionsAsStrings(ci)
-            v = ci.odc.conditionsAsStrings;
-            if isempty(v)
-                ci.odc.conditionsAsStrings = ci.buildConditionsAsStrings();
-                v = ci.odc.conditionsAsStrings;
-            end
-        end
-        
-        function ci = set.conditionsAsStrings(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.conditionsAsStrings = v;
-        end
-        
-        function v = get.conditionsAxisAttributesOnly(ci)
-            v = ci.odc.conditionsAxisAttributesOnly;
-            if isempty(v)
-                ci.odc.conditionsAxisAttributesOnly = ci.buildConditionsRelevantAttributesOnly();
-                v = ci.odc.conditionsAxisAttributesOnly;
-            end
-        end
-        
-        function ci = set.conditionsAxisAttributesOnly(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.conditionsAxisAttributesOnly = v;
-        end
-        
-        function v = get.appearances(ci)
-            v = ci.odc.appearances;
-            if isempty(v)
-                ci.odc.appearances = ci.buildAppearances();
-                v = ci.odc.appearances;
-            end
-        end
-        
-        function ci = set.appearances(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.appearances = v;
-        end
-        
-        function v = get.names(ci)
-            v = ci.odc.names;
-            if isempty(v)
-                ci.odc.names = ci.buildNames();
-                v = ci.odc.names;
-            end
-        end 
-        
-        function ci = set.names(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.names = v;
-        end
-        
-        function v = get.attributeValueLists(ci)
-            v = ci.odc.attributeValueList;
-            if isempty(v)
-                ci.odc.attributeValueList = ci.buildAttributeValueLists();
-                v = ci.odc.attributeValueList;
-            end
-        end
-        
-        function ci = set.attributeValueLists(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.attributeValueList = v;
-        end
-        
-        function v = get.attributeValueListsAsStrings(ci)
-            v = ci.odc.attributeValueListAsStrings;
-            if isempty(v)
-                ci.odc.attributeValueListAsStrings = ci.buildAttributeValueListAsStrings();
-                v = ci.odc.attributeValueListAsStrings;
-            end
-        end
-        
-        function ci = set.attributeValueListsAsStrings(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.attributeValueListAsStrings = v;
+        % flush the contents of odc as they are invalid
+        % call this at the end of any methods which would want to
+        % regenerate these values
+        function ci = invalidateCache(ci)
+            ci.warnIfNoArgOut(nargout);
+
+            % here we precompute these things to save time, 
+            % but each of these things also has a get method that will
+            % recompute this for us
+            ci.odc  = ci.odc.copy();
+            ci.odc.flush();
         end
 
-        function v = get.axisValueLists(ci)
-            v = ci.odc.axisValueLists;
-            if isempty(v)
-                ci.odc.axisValueLists = ci.buildAxisValueLists();
-                v = ci.odc.axisValueLists;
-            end
+        % Manually freeze the condition appearances so that they don't
+        % change when we downsample the conditions
+        function ci = freezeAppearances(ci)
+            ci.warnIfNoArgOut(nargout);
+
+            % freeze current appearance information
+            ci.frozenAppearanceConditions = ci.conditions;
+            ci.frozenAppearanceData = ci.appearances;
+            ci.appearanceFn = @ConditionDescriptor.frozenAppearanceFn;
         end
 
-        function ci = set.axisValueLists(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.axisValueLists = v;
+        function ci = set.nameFn(ci, fn)
+            ci.nameFn = fn;
+            ci = ci.invalidateCache();
+        end
+
+        function ci = set.appearanceFn(ci, fn)
+            ci.appearanceFn = fn;
+            ci = ci.invalidateCache();
         end
         
-        function v = get.axisValueListsAsStrings(ci)
-            v = ci.odc.axisValueListsAsStrings;
-            if isempty(v)
-                ci.odc.axisValueListsAsStrings = ci.buildAxisValueListsAsStrings();
-                v = ci.odc.axisValueListsAsStrings;
-            end
+        function printDescription(ci) 
+            tcprintf('yellow', '%s:\n', class(ci));
+            tcprintf('inline', '\t{bright blue}Attributes: {white}%s\n', strjoin(ci.attributeDescriptions));
+            tcprintf('inline', '\t{bright blue}Axes: {white}%s\n', strjoin(ci.axisDescriptions, ' , '));
         end
 
-        function ci = set.axisValueListsAsStrings(ci, v)
-            ci.odc = ci.odc.copy();
-            ci.odc.axisValueListsAsStrings = v;
+        function disp(ci)
+            ci.printDescription();
+            fprintf('\n');
+            builtin('disp', ci);
         end
     end
 
-    % build data stored inside odc
-    methods 
-        function values = buildConditionsRelevantAttributesOnly(ci)
-            if ci.nAxes == 0
-                values = struct();
-            else
-                valueLists = ci.axisValueLists; 
-                values = TensorUtils.mapFromAxisLists(@structMergeMultiple,...
-                    valueLists, 'asCell', false);
-            end
-        end
-        
-        function values = buildConditions(ci)
-            values = ci.conditionsAxisAttributesOnly;
-            
-            % and add "wildcard" match for all other attributes
-            whichAxis = ci.attributeAlongWhichAxis;
-            for iA = 1:ci.nAttributes
-                if isnan(whichAxis(iA))
-                    values = assignIntoStructArray(values, ci.attributeNames{iA}, ...
-                        ci.attributeValueLists(iA));
-                end
-            end
-        end
-        
-        function values = buildConditionsAsStrings(ci)
-            if ci.nAxes == 0
-                values = {structToString(ci.conditions)};
-            else
-                valueLists = ci.axisValueListsAsStrings; 
-                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, ' '),...
-                    valueLists, 'asCell', true);
-            end
-        end
-        
-        function valueListByAxes = buildAxisValueLists(ci)
-            valueListByAxes = cellvec(ci.nAxes);
-            for iX = 1:ci.nAxes
-                % build a cellstr of descriptions of the values along this axis
-               
-                % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
-                if isempty(ci.axisValueListsManual{iX})
-                    % build auto list of attributes
-                    valueListByAxes{iX} = makecol(buildAutoValueListForAttributeSet(ci.axisAttributes{iX}));
-                else
-                    valueListByAxes{iX} = makecol(ci.axisValueListsManual{iX});
-                end
-            end
-
-            function values = buildAutoValueListForAttributeSet(attributes)
-                % build a struct array for a set of attributes that walks all possible combinations of the attribute values 
-                if ischar(attributes)
-                    attributes = {attributes};
-                end
-                attrIdx = ci.getAttributeIdx(attributes);
-                valueLists = ci.attributeValueLists(attrIdx);
-
-                values = TensorUtils.mapFromAxisLists(@buildStruct, valueLists, ...
-                    'asCell', false);
-
-                function s = buildStruct(varargin)
-                    for i = 1:numel(varargin)
-                        s.(attributes{i}) = varargin{i};
-                    end
-                end
-
-            end
-        end
-        
-        function strCell = buildAxisValueListsAsStrings(ci)
-            strCell = cellvec(ci.nAxes);
-            for iX = 1:ci.nAxes  
-                % build a list of values as a struct array for this axis
-                % valueList{iAxis}(iEl).attribute = values describes the attribute values
-                % allowed for attribute `attribute` at position iEl along axis iAxis
-               
-                % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
-                if isempty(ci.axisValueListsManual{iX})
-                    % build auto list of attributes
-                    strCell{iX} = makecol(buildAutoValueListForAttributeSetAsString(ci.axisAttributes{iX}));
-                else
-                    strCell{iX} = cellfun(@structToString, makecol(ci.axisValueListsManual{iX}), ...
-                        'UniformOutput', false);
-                end
-            end
-            
-            function strCell = buildAutoValueListForAttributeSetAsString(attributes)
-                % build a struct array for a set of attributes that walks all possible combinations of the attribute values 
-                if ischar(attributes)
-                    attributes = {attributes};
-                end
-                attrIdx = ci.getAttributeIdx(attributes);
-                valueLists = ci.attributeValueListsAsStrings(attrIdx);
-
-                strCell = TensorUtils.mapFromAxisLists(@buildString, valueLists, ...
-                    'asCell', true);
-
-                function str = buildString(varargin)
-                    for i = 1:numel(varargin)
-                        s.(attributes{i}) = varargin{i};
-                    end
-                    
-                    str = structToString(s);
-                end
-            end
-        end
-
-        function names = buildNames(ci)
-            % pass along values(i) and the subscripts of that condition in case useful 
-            if ci.nConditions > 0
-                fn = ci.nameFn;
-                if isempty(fn)
-                    fn = @ConditionDescriptor.defaultNameFn;
-                end
-                names = fn(ci);
-                assert(iscellstr(names) && isequal(size(names), ci.conditionsSize), ...
-                    'nameFn must return cellstr with same size as .conditions');
-            else
-                names = {};
-            end
-        end
-
-        function appearances = buildAppearances(ci)
-            if ci.nConditions > 0
-                appearFn = ci.appearanceFn;
-                defaultFn = eval(sprintf('@%s.defaultAppearanceFn', class(ci)));
-                defaults = defaultFn(ci);
-
-                if isempty(appearFn)
-                    % use the default function built into ConditionDescriptor
-                    % or whatever subclass version of
-                    % defaultAppearanceFn there is (namely ConditionInfo)
-                    appearances = defaults;
-                else
-                    appearances = appearFn(ci, defaults);
-                    % ensure that no fields have been lost from the
-                    % defaults
-                    appearances = structMerge(defaults, appearances, 'warnOnOverwrite', false);
-                end
-            else
-                appearances = struct([]);
-            end
-        end
-
-        function valueList = buildAttributeValueLists(ci)
-            % just pull the manual lists (ConditionInfo will deal
-            modes = ci.attributeValueModes;
-            valueList = cellvec(ci.nAttributes);
-            for i = 1:ci.nAttributes
-                switch modes(i) 
-                    case ci.AttributeValueListManual
-                        valueList{i} = ci.attributeValueListsManual{i};
-                    case ci.AttributeValueBinsManual
-                        valueList{i} = ci.attributeValueBinsManual{i};
-                    case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
-                        % the number of bins is known, so they can be specified here
-                        valueList{i} = 1:ci.attributeValueBinsAutoCount(i);
-                    otherwise
-                         % place holder, must be determined when
-                        % ConditionInfo applies it to data
-                        if ci.attributeNumeric(i)
-                            valueList{i} = NaN;
-                        else
-                            valueList{i} = {'?'};
-                        end
-                end
-                valueList{i} = makecol(valueList{i});
-            end
-        end
-        
-        function valueList = buildAttributeValueListAsStrings(ci)
-            modes = ci.attributeValueModes;
-            valueList = ci.attributeValueLists;
-            for i = 1:ci.nAttributes
-                switch modes(i) 
-                    case ci.AttributeValueListManual
-                        if ci.attributeNumeric(i)
-                            valueList{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
-                        end             
-                    case ci.AttributeValueBinsManual
-                        bins = ci.attributeValueBinsManual{i};
-                        valueList{i} = arrayfun(@(row) sprintf('%d-%d', bins(row, 1), bins(row, 2)), ...
-                            1:size(bins, 2), 'UniformOutput', false);
-                    case ci.AttributeValueBinsAutoUniform
-                        % placeholder for actual bin limits
-                        valueList{i} = arrayfun(@(bin) sprintf('bin%d', bin), 1:ci.attributeValueBinsAutoCount, 'UniformOutput', false);
-                    case ci.AttributeValueBinsAutoQuantiles
-                        valueList{i} = arrayfun(@(bin) sprintf('qu%d', bin), 1:ci.attributeValueBinsAutoCount(i), 'UniformOutput', false);
-                    otherwise
-                        valueList{i} = {'?'};
-                        % auto list leave empty, must be determined when
-                        % ConditionInfo applies it to data
-                end
-                valueList{i} = makecol(valueList{i});
-            end
-        end
-
-        function valueList = getAttributeValueList(ci, name)
-            idx = ci.getAttributeIdx(name);
-            valueList = makecol(ci.attributeValueLists{idx});
-        end
-
-        function valueIdx = getAttributeValueIdx(ci, attr, value)
-            [tf, valueIdx] = ismember(value, ci.getAttributeValueLists(attr));
-            assert(tf, 'Value not found in attribute %s valueList', attr);
-        end
-    end
-
-    methods % AXES
+    methods % Axis related 
         function n = get.nAxes(ci)
             n = numel(ci.axisAttributes);
         end
@@ -616,43 +336,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             
             ci = ci.maskAxes(~removeAxisMask);
         end
-    end
-
-    methods % General methods, setters and getters
-        
-        % flush the contents of odc as they are invalid
-        % call this at the end of any methods which would want to
-        % regenerate these values
-        function ci = invalidateCache(ci)
-            ci.warnIfNoArgOut(nargout);
-
-            % here we precompute these things to save time, 
-            % but each of these things also has a get method that will
-            % recompute this for us
-            ci.odc  = ci.odc.copy();
-            ci.odc.flush();
-        end
-
-        % Manually freeze the condition appearances so that they don't
-        % change when we downsample the conditions
-        function ci = freezeAppearances(ci)
-            ci.warnIfNoArgOut(nargout);
-
-            % freeze current appearance information
-            ci.frozenAppearanceConditions = ci.conditions;
-            ci.frozenAppearanceData = ci.appearances;
-            ci.appearanceFn = @ConditionDescriptor.frozenAppearanceFn;
-        end
-
-        function ci = set.nameFn(ci, fn)
-            ci.nameFn = fn;
-            ci = ci.invalidateCache();
-        end
-
-        function ci = set.appearanceFn(ci, fn)
-            ci.appearanceFn = fn;
-            ci = ci.invalidateCache();
-        end
         
         function nv = get.conditionsSize(ci)
             nv = size(ci.conditions);
@@ -665,21 +348,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function n = get.nConditions(ci)
             n = prod(ci.conditionsSize);
         end
-
-        function printDescription(ci) 
-            tcprintf('yellow', '%s:\n', class(ci));
-            tcprintf('inline', '\t{bright blue}Attributes: {white}%s\n', strjoin(ci.attributeDescriptions));
-            tcprintf('inline', '\t{bright blue}Axes: {white}%s\n', strjoin(ci.axisDescriptions, ' , '));
-        end
-
-        function disp(ci)
-            ci.printDescription();
-            fprintf('\n');
-            builtin('disp', ci);
-        end
     end
 
-    methods % Attribute manipulations
+    methods % Attribute related 
         function [tf, idx] = hasAttribute(ci, name)
             [tf, idx] = ismember(name, ci.attributeNames);
         end
@@ -965,6 +636,336 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
     end
 
+    % get, set data stored inside odc
+    methods 
+        % NOTE: all of these should copy odc before writing to it
+        
+        function v = get.conditions(ci)
+            v = ci.odc.conditions;
+            if isempty(v)
+                ci.odc.conditions = ci.buildConditions();
+                v = ci.odc.conditions;
+            end
+        end
+        
+        function ci = set.conditions(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditions = v;
+        end
+        
+        function v = get.conditionsAsStrings(ci)
+            v = ci.odc.conditionsAsStrings;
+            if isempty(v)
+                ci.odc.conditionsAsStrings = ci.buildConditionsAsStrings();
+                v = ci.odc.conditionsAsStrings;
+            end
+        end
+        
+        function ci = set.conditionsAsStrings(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditionsAsStrings = v;
+        end
+        
+        function v = get.conditionsAxisAttributesOnly(ci)
+            v = ci.odc.conditionsAxisAttributesOnly;
+            if isempty(v)
+                ci.odc.conditionsAxisAttributesOnly = ci.buildConditionsRelevantAttributesOnly();
+                v = ci.odc.conditionsAxisAttributesOnly;
+            end
+        end
+        
+        function ci = set.conditionsAxisAttributesOnly(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.conditionsAxisAttributesOnly = v;
+        end
+        
+        function v = get.appearances(ci)
+            v = ci.odc.appearances;
+            if isempty(v)
+                ci.odc.appearances = ci.buildAppearances();
+                v = ci.odc.appearances;
+            end
+        end
+        
+        function ci = set.appearances(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.appearances = v;
+        end
+        
+        function v = get.names(ci)
+            v = ci.odc.names;
+            if isempty(v)
+                ci.odc.names = ci.buildNames();
+                v = ci.odc.names;
+            end
+        end 
+        
+        function ci = set.names(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.names = v;
+        end
+        
+        function v = get.attributeValueLists(ci)
+            v = ci.odc.attributeValueList;
+            if isempty(v)
+                ci.odc.attributeValueList = ci.buildAttributeValueLists();
+                v = ci.odc.attributeValueList;
+            end
+        end
+        
+        function ci = set.attributeValueLists(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.attributeValueList = v;
+        end
+        
+        function v = get.attributeValueListsAsStrings(ci)
+            v = ci.odc.attributeValueListAsStrings;
+            if isempty(v)
+                ci.odc.attributeValueListAsStrings = ci.buildAttributeValueListAsStrings();
+                v = ci.odc.attributeValueListAsStrings;
+            end
+        end
+        
+        function ci = set.attributeValueListsAsStrings(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.attributeValueListAsStrings = v;
+        end
+
+        function v = get.axisValueLists(ci)
+            v = ci.odc.axisValueLists;
+            if isempty(v)
+                ci.odc.axisValueLists = ci.buildAxisValueLists();
+                v = ci.odc.axisValueLists;
+            end
+        end
+
+        function ci = set.axisValueLists(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.axisValueLists = v;
+        end
+        
+        function v = get.axisValueListsAsStrings(ci)
+            v = ci.odc.axisValueListsAsStrings;
+            if isempty(v)
+                ci.odc.axisValueListsAsStrings = ci.buildAxisValueListsAsStrings();
+                v = ci.odc.axisValueListsAsStrings;
+            end
+        end
+
+        function ci = set.axisValueListsAsStrings(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.axisValueListsAsStrings = v;
+        end
+    end
+
+    % build data stored inside odc (used by getters above)
+    methods 
+        function values = buildConditionsRelevantAttributesOnly(ci)
+            if ci.nAxes == 0
+                values = struct();
+            else
+                valueLists = ci.axisValueLists; 
+                values = TensorUtils.mapFromAxisLists(@structMergeMultiple,...
+                    valueLists, 'asCell', false);
+            end
+        end
+        
+        function values = buildConditions(ci)
+            values = ci.conditionsAxisAttributesOnly;
+            
+            % and add "wildcard" match for all other attributes
+            whichAxis = ci.attributeAlongWhichAxis;
+            for iA = 1:ci.nAttributes
+                if isnan(whichAxis(iA))
+                    values = assignIntoStructArray(values, ci.attributeNames{iA}, ...
+                        ci.attributeValueLists(iA));
+                end
+            end
+        end
+        
+        function values = buildConditionsAsStrings(ci)
+            if ci.nAxes == 0
+                values = {structToString(ci.conditions)};
+            else
+                valueLists = ci.axisValueListsAsStrings; 
+                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, ' '),...
+                    valueLists, 'asCell', true);
+            end
+        end
+        
+        function valueListByAxes = buildAxisValueLists(ci)
+            valueListByAxes = cellvec(ci.nAxes);
+            for iX = 1:ci.nAxes
+                % build a cellstr of descriptions of the values along this axis
+               
+                % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
+                if isempty(ci.axisValueListsManual{iX})
+                    % build auto list of attributes
+                    valueListByAxes{iX} = makecol(buildAutoValueListForAttributeSet(ci.axisAttributes{iX}));
+                else
+                    valueListByAxes{iX} = makecol(ci.axisValueListsManual{iX});
+                end
+            end
+
+            function values = buildAutoValueListForAttributeSet(attributes)
+                % build a struct array for a set of attributes that walks all possible combinations of the attribute values 
+                if ischar(attributes)
+                    attributes = {attributes};
+                end
+                attrIdx = ci.getAttributeIdx(attributes);
+                valueLists = ci.attributeValueLists(attrIdx);
+
+                values = TensorUtils.mapFromAxisLists(@buildStruct, valueLists, ...
+                    'asCell', false);
+
+                function s = buildStruct(varargin)
+                    for i = 1:numel(varargin)
+                        s.(attributes{i}) = varargin{i};
+                    end
+                end
+
+            end
+        end
+        
+        function strCell = buildAxisValueListsAsStrings(ci)
+            strCell = cellvec(ci.nAxes);
+            for iX = 1:ci.nAxes  
+                % build a list of values as a struct array for this axis
+                % valueList{iAxis}(iEl).attribute = values describes the attribute values
+                % allowed for attribute `attribute` at position iEl along axis iAxis
+               
+                % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
+                if isempty(ci.axisValueListsManual{iX})
+                    % build auto list of attributes
+                    strCell{iX} = makecol(buildAutoValueListForAttributeSetAsString(ci.axisAttributes{iX}));
+                else
+                    strCell{iX} = cellfun(@structToString, makecol(ci.axisValueListsManual{iX}), ...
+                        'UniformOutput', false);
+                end
+            end
+            
+            function strCell = buildAutoValueListForAttributeSetAsString(attributes)
+                % build a struct array for a set of attributes that walks all possible combinations of the attribute values 
+                if ischar(attributes)
+                    attributes = {attributes};
+                end
+                attrIdx = ci.getAttributeIdx(attributes);
+                valueLists = ci.attributeValueListsAsStrings(attrIdx);
+
+                strCell = TensorUtils.mapFromAxisLists(@buildString, valueLists, ...
+                    'asCell', true);
+
+                function str = buildString(varargin)
+                    for i = 1:numel(varargin)
+                        s.(attributes{i}) = varargin{i};
+                    end
+                    
+                    str = structToString(s);
+                end
+            end
+        end
+
+        function names = buildNames(ci)
+            % pass along values(i) and the subscripts of that condition in case useful 
+            if ci.nConditions > 0
+                fn = ci.nameFn;
+                if isempty(fn)
+                    fn = @ConditionDescriptor.defaultNameFn;
+                end
+                names = fn(ci);
+                assert(iscellstr(names) && isequal(size(names), ci.conditionsSize), ...
+                    'nameFn must return cellstr with same size as .conditions');
+            else
+                names = {};
+            end
+        end
+
+        function appearances = buildAppearances(ci)
+            if ci.nConditions > 0
+                appearFn = ci.appearanceFn;
+                defaultFn = eval(sprintf('@%s.defaultAppearanceFn', class(ci)));
+                defaults = defaultFn(ci);
+
+                if isempty(appearFn)
+                    % use the default function built into ConditionDescriptor
+                    % or whatever subclass version of
+                    % defaultAppearanceFn there is (namely ConditionInfo)
+                    appearances = defaults;
+                else
+                    appearances = appearFn(ci, defaults);
+                    % ensure that no fields have been lost from the
+                    % defaults
+                    appearances = structMerge(defaults, appearances, 'warnOnOverwrite', false);
+                end
+            else
+                appearances = struct([]);
+            end
+        end
+
+        function valueList = buildAttributeValueLists(ci)
+            % just pull the manual lists (ConditionInfo will deal
+            modes = ci.attributeValueModes;
+            valueList = cellvec(ci.nAttributes);
+            for i = 1:ci.nAttributes
+                switch modes(i) 
+                    case ci.AttributeValueListManual
+                        valueList{i} = ci.attributeValueListsManual{i};
+                    case ci.AttributeValueBinsManual
+                        valueList{i} = ci.attributeValueBinsManual{i};
+                    case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
+                        % the number of bins is known, so they can be specified here
+                        valueList{i} = 1:ci.attributeValueBinsAutoCount(i);
+                    otherwise
+                         % place holder, must be determined when
+                        % ConditionInfo applies it to data
+                        if ci.attributeNumeric(i)
+                            valueList{i} = NaN;
+                        else
+                            valueList{i} = {'?'};
+                        end
+                end
+                valueList{i} = makecol(valueList{i});
+            end
+        end
+        
+        function valueList = buildAttributeValueListAsStrings(ci)
+            modes = ci.attributeValueModes;
+            valueList = ci.attributeValueLists;
+            for i = 1:ci.nAttributes
+                switch modes(i) 
+                    case ci.AttributeValueListManual
+                        if ci.attributeNumeric(i)
+                            valueList{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
+                        end             
+                    case ci.AttributeValueBinsManual
+                        bins = ci.attributeValueBinsManual{i};
+                        valueList{i} = arrayfun(@(row) sprintf('%d-%d', bins(row, 1), bins(row, 2)), ...
+                            1:size(bins, 2), 'UniformOutput', false);
+                    case ci.AttributeValueBinsAutoUniform
+                        % placeholder for actual bin limits
+                        valueList{i} = arrayfun(@(bin) sprintf('bin%d', bin), 1:ci.attributeValueBinsAutoCount, 'UniformOutput', false);
+                    case ci.AttributeValueBinsAutoQuantiles
+                        valueList{i} = arrayfun(@(bin) sprintf('qu%d', bin), 1:ci.attributeValueBinsAutoCount(i), 'UniformOutput', false);
+                    otherwise
+                        valueList{i} = {'?'};
+                        % auto list leave empty, must be determined when
+                        % ConditionInfo applies it to data
+                end
+                valueList{i} = makecol(valueList{i});
+            end
+        end
+
+        function valueList = getAttributeValueList(ci, name)
+            idx = ci.getAttributeIdx(name);
+            valueList = makecol(ci.attributeValueLists{idx});
+        end
+
+        function valueIdx = getAttributeValueIdx(ci, attr, value)
+            [tf, valueIdx] = ismember(value, ci.getAttributeValueLists(attr));
+            assert(tf, 'Value not found in attribute %s valueList', attr);
+        end
+    end
+    
     methods(Static) % Default nameFn and appearanceFn
         function nameCell = defaultNameFn(ci, varargin) 
             % receives the condition descriptor itself and returns a
@@ -1141,19 +1142,17 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
     end
 
-    methods % copy if handle
-        function obj = copyIfHandle(obj)
-            if isa(obj, 'handle')
-                obj = obj.copy(); %#ok<MCNPN>
-            end
-        end
-    end
-
     methods(Access=protected) % Utility methods
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~isa(obj, 'handle')
                 warning('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
                     class(obj));
+            end
+        end
+        
+        function obj = copyIfHandle(obj)
+            if isa(obj, 'handle')
+                obj = obj.copy(); %#ok<MCNPN>
             end
         end
     end

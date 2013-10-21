@@ -37,7 +37,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
     
     %%% End of properties saved to disk
     
-    % Properties which are stored inside odc!
+    % Properties which wrap eponymous properties inside odc (on-demand cache)
     properties(Dependent, Transient, SetAccess=protected)
         % which condition does each trial belong to
         conditionIdx % T x 1 array of linear index into conditions for each trials
@@ -72,7 +72,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         nValid
     end
 
-    methods 
+    methods % constructor, odc build
         function ci = ConditionInfo()
             ci = ci@ConditionDescriptor();
         end
@@ -214,22 +214,11 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         end
     end
 
-    
     methods % ConditionDescriptor overrides
-        function ci = invalidateCache(ci)
-            ci.warnIfNoArgOut(nargout);
-            ci = invalidateCache@ConditionDescriptor(ci);
-            % additionally invalidate new fields
-            ci.conditionIdx = [];
-            ci.conditionSubs = [];
-            ci.conditionSubsIncludingManualInvalid = [];
-            ci.listByCondition = [];
-        end
-        
         function ci = freezeAppearances(ci)
             % freeze current appearance information, but only store
-            % conditions that have a trial in them now (which saves a bunch
-            % of searching time)
+            % conditions that have a trial in them now (which can save
+            % significant searching time)
             ci.warnIfNoArgOut(nargout);
             mask = ci.countByCondition > 0;
             ci.frozenAppearanceConditions = ci.conditions(mask);
@@ -244,10 +233,10 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci = maskAttributes@ConditionDescriptor(ci, mask);
             ci.attributeValueListAuto = ci.attributeValueListAuto(mask);
             ci.values = ci.values(:, mask);
-        end 
+        end
     end
 
-    methods
+    methods % simple dependent property lookup
         function counts = get.countByCondition(ci)
             counts = cellfun(@length, ci.listByCondition);
         end
@@ -303,13 +292,6 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             % build empty arrays for N trials
             ci.manualInvalid = false(N, 1);
             ci.values = cell(N, ci.nAttributes);
-            ci.conditionIdx = nan(N, 1);
-        end
-
-        function ci = filterValidTrials(ci)
-            % drop all invalid trials
-            ci.warnIfNoArgOut(nargout);
-            ci.selectTrials(ci.valid);
         end
         
         function ci = selectTrials(ci, selector)
@@ -318,19 +300,22 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             assert(isvector(selector), 'Selector must be vector of indices or vector mask');
             % cache everything ahead of time because some are dynamically
             % computed from the others
-            values = ci.values;
-            manualInvalid = ci.manualInvalid;
-            conditionIdx = ci.conditionIdx;
-            conditionSubs = ci.conditionSubs;
-            conditionSubsIncludingManualInvalid = ci.conditionSubsIncludingManualInvalid;
             
-            ci.values = values(selector, :);
-            ci.manualInvalid = manualInvalid(selector);
-            ci.conditionIdx = conditionIdx(selector);
-            ci.conditionSubs = conditionSubs(selector, :);
-            ci.conditionSubsIncludingManualInvalid = conditionSubsIncludingManualInvalid(selector,:);
-            % auto-updates on request:
-            ci.listByCondition = [];
+            ci.values = ci.values(selector, :);
+            ci = ci.invalidateCache();
+            
+%             manualInvalid = ci.manualInvalid;
+%             conditionIdx = ci.conditionIdx;
+%             conditionSubs = ci.conditionSubs;
+%             conditionSubsIncludingManualInvalid = ci.conditionSubsIncludingManualInvalid;
+%             
+%             ci.values = values(selector, :);
+%             ci.manualInvalid = manualInvalid(selector);
+%             ci.conditionIdx = conditionIdx(selector);
+%             ci.conditionSubs = conditionSubs(selector, :);
+%             ci.conditionSubsIncludingManualInvalid = conditionSubsIncludingManualInvalid(selector,:);
+%             % auto-updates on request:
+%             ci.listByCondition = [];
         end
         
         function ci = applyToTrialData(ci, td)
