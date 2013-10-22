@@ -225,6 +225,100 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci.frozenAppearanceData = ci.appearances(mask);
             ci.appearanceFn = @ConditionDescriptor.frozenAppearanceFn;
         end
+        
+        function valueList = buildAttributeValueLists(ci)
+            % figure out the automatic value lists
+            modes = ci.attributeValueModes;
+            valueList = cellvec(ci.nAttributes);
+            for i = 1:ci.nAttributes
+                switch modes(i) 
+                    case ci.AttributeValueListAuto
+                        % compute unique bins
+                        valueList{i} = ci.computeAutoListForAttribute(i);
+                        
+                    case ci.AttributeValueListManual
+                        % use manual list
+                        valueList{i} = ci.attributeValueListsManual{i};
+                        
+                    case ci.AttributeValueBinsManual
+                        % use specified bins
+                        valueList{i} = ci.attributeValueBinsManual{i};
+                        
+                    case ci.AttributeValueBinsAutoUniform
+                        % compute bin boundaries
+                        valueList{i} = ci.computeAutoUniformBinsForAttribute(i);
+                        
+                    case ci.AttributeValueBinsAutoQuantiles
+                        % compute bin boundaries
+                        valueList{i} = ci.computeAutoQuantileBinsForAttribute(i);
+                end
+                valueList{i} = makecol(valueList{i});
+            end
+        end
+        
+        function valueList = computeAutoListForAttribute(ci, attrIdx)
+            vals = ci.values(:, attrIdx);
+            if ci.attributeNumeric(attrIdx)
+                vals = removenan(cell2mat(vals));
+                valueList = num2cell(unique(vals));
+            else
+                emptyMask = cellfun(@isempty, vals);
+                vals = vals(~emptyMask);
+                valueList = unique(vals);
+            end
+        end             
+        
+        function bins = computeAutoUniformBinsForAttribute(ci, attrIdx)
+            vals = cell2mat(ci.values(:, attrIdx));
+            nBins = ci.attributeValueBinsAutoCount(attrIdx);
+            minV = nanmin(vals);
+            maxV = nanmax(vals);
+            
+            if isnan(minV) || isnan(maxV) || isnan(nBins)
+                bins = [NaN, NaN];
+            else
+                binEdges = makecol(linspace(minV, maxV, nBins + 1));
+                bins = [ binEdges(1:end-1), binEdges(2:end) ];
+            end
+        end
+        
+        function bins = computeAutoQauntileBinsForAttribute(ci, attrIdx)
+            vals = removenan(cell2mat(ci.values(:, attrIdx)));
+            nBins = ci.attributeValueBinsAutoCount(attrIdx);
+            
+            if isisempty(vals);
+                bins = [NaN, NaN];
+            else
+                binEdges = makecol(quantile(vals, linspace(0, 1, nBins+1)));
+                bins = [ binEdges(1:end-1), binEdges(2:end) ];
+            end
+        end
+        
+        function valueListAsStrings = buildAttributeValueListAsStrings(ci)
+            modes = ci.attributeValueModes;
+            % rely on ConditionDescriptor's implementation, substitute
+            % where necessary
+            valueListAsStrings = buildAttributeValueListAsStrings@ConditionDescriptor(ci);
+            valueList = ci.attributeValueLists;
+            
+            for i = 1:ci.nAttributes
+                switch modes(i) 
+                    case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
+                        % insert actual bin limits from valueList
+                        valueListAsStrings{i} = arrayfun(@(binL, binH) sprintf('%d-%d', binL, binH), ...
+                            valueList{i}(:, 1), valueList{i}(:, 2), 'UniformOutput', false);
+                    case ci.AttributeValueAuto
+                        % convert auto list to string
+                        if ci.attributeNumeric(i)
+                            valueListAsStrings{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
+                        else
+                            valueListAsStrings{i} = valueList{i};
+                        end
+                end
+                valueList{i} = makecol(valueList{i});
+            end
+        end
+
     end
     
     methods(Access=protected)
