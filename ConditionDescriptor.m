@@ -273,20 +273,16 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         % wipe out existing axes and creates simple auto axes along each 
         function ci = groupBy(ci, varargin)
             ci.warnIfNoArgOut(nargout);
-            if iscell(varargin{1})
-                attributes = varargin{1};
-            else
-                attributes = varargin;
-            end
-
-            for i = 1:numel(attributes)
-                ci = ci.addAxis(attributes{i});
+            ci = ci.clearAxes();
+            
+            for i = 1:numel(varargin)
+                ci = ci.addAxis(varargin{i});
             end
         end
 
         function ci = groupByAll(ci)
             ci.warnIfNoArgOut(nargout);
-            ci = ci.groupBy(ci.attributeNames);
+            ci = ci.groupBy(ci.attributeNames{:});
         end
 
         % remove all axes
@@ -567,9 +563,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
             iAttr = ci.getAttributeIdx(name);           
             if isempty(valueList)
-                ci.attributeValueListManual{iAttr} = {};
+                ci.attributeValueListsManual{iAttr} = {};
             else
-                ci.attributeValueListManual{iAttr} = valueList;                
+                ci.attributeValueListsManual{iAttr} = valueList;                
             end
             ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
 
@@ -596,8 +592,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.attributeValueBinsManual{iAttr} = binsMat;
             ci.attributeNumeric(iAttr) = true;
             ci.attributeValueListManual{iAttr} = {};
-            ci.attributeValueBinsAutoCount = NaN;
-            ci.attributeValueBinsAutoModes = NaN;
+            ci.attributeValueBinsAutoCount(iAttr) = NaN;
+            ci.attributeValueBinsAutoModes(iAttr) = NaN;
 
             ci = ci.invalidateCache();
         end
@@ -610,9 +606,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeNumeric(iAttr) = true;
-            ci.attributeValueListManual{iAttr} = {};
-            ci.attributeValueBinsAutoCount = nBins;
-            ci.attributeValueBinsAutoModes = ci.AttributeValueBinsAutoUniform;
+            ci.attributeValueListsManual{iAttr} = {};
+            ci.attributeValueBinsAutoCount(iAttr) = nBins;
+            ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoUniform;
 
             ci = ci.invalidateCache();
         end
@@ -779,6 +775,27 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
         end
         
+        % build a wildcard search struct where each .attribute field is the
+        % value list for that attribute
+        function values = buildStructAllAttributeValueLists(ci)
+            values = struct();
+            for iA = 1:ci.nAttributes
+                values = assignIntoStructArray(values, ci.attributeNames{iA}, ...
+                    ci.attributeValueLists(iA));
+            end
+        end
+        
+        function values = buildStructNonAxisAttributeValueLists(ci)
+            whichAxis = ci.attributeAlongWhichAxis;
+            values = struct();
+            for iA = 1:ci.nAttributes
+                if isnan(whichAxis(iA))
+                    values = assignIntoStructArray(values, ci.attributeNames{iA}, ...
+                        ci.attributeValueLists(iA));
+                end
+            end
+        end
+        
         function values = buildConditionsAsStrings(ci)
             if ci.nAxes == 0
                 values = {structToString(ci.conditions)};
@@ -811,12 +828,24 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 attrIdx = ci.getAttributeIdx(attributes);
                 valueLists = ci.attributeValueLists(attrIdx);
 
+                % convert bin edges value lists to the cell vectors
+                for i = 1:numel(attrIdx)
+                    switch ci.attributeValueModes(attrIdx(i))
+                        case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ...
+                                ci.AttributeValueBinsAutoQuantiles}
+                            % convert valueList from Nbins x 2 matrix to
+                            % Nbins x 1 cellvector so that it gets mapped
+                            % correctly
+                            valueLists{i} = mat2cell(valueLists{i}, ones(size(valueLists{i}, 1), 1));
+                    end
+                end
+                            
                 values = TensorUtils.mapFromAxisLists(@buildStruct, valueLists, ...
                     'asCell', false);
 
                 function s = buildStruct(varargin)
-                    for i = 1:numel(varargin)
-                        s.(attributes{i}) = varargin{i};
+                    for j = 1:numel(varargin)
+                        s.(attributes{j}) = varargin{j};
                     end
                 end
 
@@ -825,13 +854,28 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         
         function strCell = buildAxisValueListsAsStrings(ci)
             strCell = cellvec(ci.nAxes);
+            valueLists = ci.axisValueLists;
+            
+            % describe the list of values selected for along each position on each axis
             for iX = 1:ci.nAxes  
-                % build a list of values as a struct array for this axis
-                % valueList{iAxis}(iEl).attribute = values describes the attribute values
-                % allowed for attribute `attribute` at position iEl along axis iAxis
-               
-                % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
-                strCell{iX} = arrayfun(@structToString, makecol(ci.axisValueLists{iX}), ...
+                
+                % start with axisValueLists
+                attr = ci.axisAttributes{iX};
+                attrIdx = ci.getAttributeIdx(attr);
+                
+                % replace binned values with strings
+                for iA = 1:numel(attrIdx)
+                    switch ci.attributeValueModes(attrIdx(iA))
+                        case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ...
+                                ci.AttributeValueBinsAutoQuantiles}
+                            % convert valueList from 1 x 2 vector to '#-#' string
+                            for iV = 1:numel(valueLists{iX})
+                                valueLists{iX}(iV).(attr{iA}) = sprintf('%g-%g', valueLists{iX}(iV).(attr{iA}));
+                            end
+                    end
+                end
+                
+                strCell{iX} = arrayfun(@structToString, makecol(valueLists{iX}), ...
                    'UniformOutput', false);
             end
         end
@@ -917,8 +961,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
                         if ~iscell(valueList{i})
                             bins = valueList{i};
-                            valueList{i} = arrayfun(@(row) sprintf('%d-%d', bins(row, 1), bins(row, 2)), ...
-                                1:size(bins, 2), 'UniformOutput', false);
+                            valueList{i} = arrayfun(@(row) sprintf('%g-%g', bins(row, 1), bins(row, 2)), ...
+                                1:size(bins, 1), 'UniformOutput', false);
                         else
                             % already cellstr for auto bins, leave as is
                         end
@@ -948,46 +992,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             %  a cell tensor specifying the names of each condition
             
             nameCell = ci.conditionsAsStrings;
-            
-            return;
-%             attr = fieldnames(attrValues);
-%             attrIsNumeric = ci.getIsAttributeNumeric(attr);
-% 
-%             for iAttr = 1:length(attr)
-%                 include = false;
-%                 val = attrValues.(attr{iAttr});
-% 
-%                 if ~ischar(val) && ~isscalar(val)
-%                     % skip attributes where more than one value is
-%                     % specified, they won't be part of the condition name
-%                     continue;
-%                 end
-% 
-%                 if isnumeric(val)
-%                     if isscalar(val)
-%                         val = num2str(val);
-%                     else
-%                         val = mat2str(val);
-%                     end
-%                     include = true;
-%                 elseif ischar(val)
-%                     % okay as is
-%                     include = true;
-%                 elseif length(val) > 1
-%                     include = false;
-%                 end
-% 
-%                 % include attribute name if its numeric
-%                 if attrIsNumeric(iAttr)
-%                     val = num2str(val);
-%                 end
-% 
-%                 if include
-%                     name = [name attr{iAttr} '=' val ' ']; %#ok<AGROW>
-%                 end
-%             end
-% 
-%             name = strtrim(name);
         end
 
         function a = defaultAppearanceFn(ci, varargin)
@@ -1100,21 +1104,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
           
             cd = ConditionDescriptor();
             for iAttr = 1:nAttr
-                vals = {s.(attr{iAttr})};
-                [tf, mat] = isScalarCell(vals);
-                if tf
-                    uniqVals = unique(removenan(mat));
-                else
-                    emptyMask = cellfun(@isempty, vals);
-                    uniqVals = unique(vals(~emptyMask));
-                end
-                
-                cd = cd.addAttribute(attr{iAttr}, 'valueList', uniqVals);
-                if tf && numel(uniqVals) > 10
-                    cd = cd.binAttributeQuantiles(attr{iAttr}, 5);
-                end
-            end
-                    
+                cd = cd.addAttribute(attr{iAttr});
+            end       
         end
     end
 
