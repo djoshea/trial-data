@@ -344,6 +344,10 @@ classdef TrialData
             end
         end
         
+        function paramStruct = getParamStruct(td)
+            paramStruct = copyStructField(td.data, [], td.listParamChannels());
+        end
+        
         function td = setParam(td, name, vals)
             td.warnIfNoArgOut(nargout);
             td = td.setChannelData(name, vals);

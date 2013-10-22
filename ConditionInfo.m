@@ -412,10 +412,13 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         % overwrite manualInvalid with invalid, ignoring what was already
         % marked invalid
         function ci = setInvalid(ci, invalid)
+            % only invalidate if changing
             ci.warnIfNoArgOut(nargout);
             assert(isvector(invalid) & numel(invalid) == ci.nTrials, 'Size mismatch');
-            ci.manualInvalid = makecol(invalid);
-            ci = ci.invalidateCache();
+            if any(ci.manualInvalid ~= invalid)
+                ci.manualInvalid = makecol(invalid);
+                ci = ci.invalidateCache();
+            end
         end
 
         function valid = get.valid(ci)

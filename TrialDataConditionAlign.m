@@ -59,56 +59,26 @@ classdef TrialDataConditionAlign < TrialData
         function td = initializeConditionInfo(td)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = ConditionInfo();
-            td.conditionInfo.applyToTrialData(td);
-        end
-
-        function td = createCopyConditionInfo(td)
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.copy();
+            td.conditionInfo = td.conditionInfo.applyToTrialData(td);
         end
 
         function td = selectTrials(td, mask)
             td.warnIfNoArgOut(nargout);
             td = selectTrials@TrialData(td, mask);
-            td = td.createCopyConditionInfo();
-            td.conditionInfo.selectTrials(mask);
+            td.conditionInfo = td.conditionInfo.selectTrials(mask);
             td.alignInfo = td.alignInfo.selectTrials(mask);
         end
         
-        function td = groupBy(td, paramList, varargin)
+        function td = groupBy(td, varargin)
             td.warnIfNoArgOut(nargout);
-            p = inputParser;
-            p.addRequired('paramList', @(x) isempty(x) || ischar(x) || iscellstr(x));
-            p.parse(paramList, varargin{:});
-
-            paramList = p.Results.paramList;
-            if isempty(paramList)
-                paramList = {};
-            end
-            if ischar(paramList)
-                paramList = {paramList};
-            end
-
-            % TrialData are not handle classes, copy conditionInfo to
-            % achieve independence
-            td.conditionInfo = ConditionInfo();
-            td.conditionInfo.noUpdateCache = true;
             
-            for iAttr = 1:numel(paramList)
-                td.conditionInfo.addAttribute(paramList{iAttr});
-            end
-            td.conditionInfo.groupBy(paramList);
-            td.conditionInfo.applyToTrialData(td);
-            
-            td.conditionInfo.noUpdateCache = false;
-            td.conditionInfo.updateCache();
+            td.conditionInfo = td.conditionInfo.groupBy(varargin{:});
 
             td = td.postUpdateConditionInfo();
         end
         
         function td = setAttributeValueList(td, attrName, valueList)
             td.warnIfNoArgOut(nargout);
-            td = td.createCopyConditionInfo();
             td.conditionInfo.setValueList(attrName, valueList);
         end
         
@@ -124,7 +94,6 @@ classdef TrialDataConditionAlign < TrialData
         % filter trials that are valid based on ConditionInfo
         function td = filterValidTrialsConditionInfo(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.createCopyConditionInfo();
             td = td.selectTrials(td.conditionInfo.valid);
         end
 
