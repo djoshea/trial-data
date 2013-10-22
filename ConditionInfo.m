@@ -13,8 +13,6 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         % - attributeNames: cellstr of attribute names (from the
         %     "requestAs" list)
         % - valuesByAttribute : struct array where v(iTrial).attributeName = attribute value on this trial
-        % 
-        % 
         getAttributeValueFn = @ConditionInfo.defaultGetAttributeFn;
         
         % function with signature:
@@ -77,7 +75,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci = ci@ConditionDescriptor();
         end
              
-        function odc = buildOdc(ci)
+        function odc = buildOdc(ci) %#ok<MANU>
             odc = ConditionInfoOnDemandCache();
         end
     end
@@ -150,49 +148,23 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         % compute which condition each trial falls into, without writing
         % NaNs for manualInvalid marked trials
         function subsMat = buildConditionSubsIncludingManualInvalid(ci)
-            if ci.nConditions > 0 && ci.nTrials > 0
-                if ci.nAttributesGroupBy == 0
-                    % not grouping on anything, only 1 condition
-                    assert(ci.nConditions == 1);
-
-                    % it's in condition 1 if it matches all of the
-                    % non-grouped attributes, NaN otherwise
-                    % filter by all other attributes having values in the
-                    % valueList
-                    subsMat = ones(ci.nTrials, 1);
-                    for iA = 1:ci.nAttributes
-                        attr = ci.attributeNames{iA};
-                        values = ci.values(:, iA);
-                        invalid = ~ismemberCell(values, ci.attributeValueList{iA});
-                        subsMat(invalid, :) = NaN;
-                    end
-                else
-                    % build a matrix of subscripts subs{iAttr}(iTrial) is the index into 
-                    % valueList for attribute iAttr of trial iTrial's attribute iAttr value
-                    subsMat = nan(ci.nTrials, ci.nAttributesGroupBy);
-                    for i = 1:ci.nAttributesGroupBy
-                        % translate groupByList idx into attribute idx
-                        iAttr = ci.groupByListAttributeIdx(i); 
-                        values = ci.values(:, iAttr);
-                        [~, subsMat(:, i)] = ismemberCell(values, ci.attributeValueList{iAttr});
-                    end
-
-                    % filter by all other attributes having values in the
-                    % valueList
-                    for iA = 1:ci.nAttributes
-                        attr = ci.attributeNames{iA};
-                        if ~ismember(attr, ci.groupByList)
-                            values = ci.values(:, iA);
-                            invalid = ~ismemberCell(values, ci.attributeValueList{iA});
-                            subsMat(invalid, :) = NaN;
-                        end
-                    end
+            if ci.nAxes == 0
+                subsMat = nanvec(ci.nTrials);
+                assert(ci.nConditions == 1);
+                subsMat(ci.getAttributeMatchesOverTrials(ci.conditions)) = 1;
+            
+            elseif ci.nConditions > 0 && ci.nTrials > 0
+                subsMat = nan(ci.nTrials, ci.nAxes);
+                for iX = 1:ci.nAxes
+                    % accept the first axis value that matches
+                    matchMatrix = ci.getAttributeMatchesOverTrials(ci.axisValueLists{iX});
+                    [tf, match] = max(matchMatrix, [], 2);
+                    subsMat(tf, iX) = match(tf);
                 end
                 
                 subsMat(any(subsMat == 0, 2), :) = NaN;
             else
                 subsMat = [];
-                return;
             end
         end
         
@@ -220,6 +192,10 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             % conditions that have a trial in them now (which can save
             % significant searching time)
             ci.warnIfNoArgOut(nargout);
+            if ~ci.applied
+                ci = freezeAppearances@ConditionDescriptor(ci);
+                return;
+            end
             mask = ci.countByCondition > 0;
             ci.frozenAppearanceConditions = ci.conditions(mask);
             ci.frozenAppearanceData = ci.appearances(mask);
@@ -227,6 +203,12 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         end
         
         function valueList = buildAttributeValueLists(ci)
+            if ~ci.applied
+                % act like ConditionDescriptor before applied to trial data
+                valueList = buildAttributeValueLists@ConditionDescriptor(ci);
+                return;
+            end
+                
             % figure out the automatic value lists
             modes = ci.attributeValueModes;
             valueList = cellvec(ci.nAttributes);
@@ -257,10 +239,9 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         end
         
         function valueList = computeAutoListForAttribute(ci, attrIdx)
-            vals = ci.values(:, attrIdx);
+            vals = ci.getAttributeValues(attrIdx);
             if ci.attributeNumeric(attrIdx)
-                vals = removenan(cell2mat(vals));
-                valueList = num2cell(unique(vals));
+                valueList = unique(removenan(vals));
             else
                 emptyMask = cellfun(@isempty, vals);
                 vals = vals(~emptyMask);
@@ -282,11 +263,11 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
         end
         
-        function bins = computeAutoQauntileBinsForAttribute(ci, attrIdx)
+        function bins = computeAutoQuantileBinsForAttribute(ci, attrIdx)
             vals = removenan(cell2mat(ci.values(:, attrIdx)));
             nBins = ci.attributeValueBinsAutoCount(attrIdx);
             
-            if isisempty(vals);
+            if isempty(vals);
                 bins = [NaN, NaN];
             else
                 binEdges = makecol(quantile(vals, linspace(0, 1, nBins+1)));
@@ -294,39 +275,92 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
         end
         
-        function valueListAsStrings = buildAttributeValueListAsStrings(ci)
-            modes = ci.attributeValueModes;
+        function valueListAsStrings = buildAttributeValueListsAsStrings(ci)
+            if ~ci.applied
+                % act like ConditionDescriptor before applied to trial data
+                valueListAsStrings = buildAttributeValueListsAsStrings@ConditionDescriptor(ci);
+                return;
+            end
+            
             % rely on ConditionDescriptor's implementation, substitute
             % where necessary
-            valueListAsStrings = buildAttributeValueListAsStrings@ConditionDescriptor(ci);
+            modes = ci.attributeValueModes;
+            valueListAsStrings = buildAttributeValueListsAsStrings@ConditionDescriptor(ci);
             valueList = ci.attributeValueLists;
             
             for i = 1:ci.nAttributes
                 switch modes(i) 
-                    case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
-                        % insert actual bin limits from valueList
-                        valueListAsStrings{i} = arrayfun(@(binL, binH) sprintf('%d-%d', binL, binH), ...
-                            valueList{i}(:, 1), valueList{i}(:, 2), 'UniformOutput', false);
-                    case ci.AttributeValueAuto
-                        % convert auto list to string
+                    case ci.AttributeValueListAuto
+                        % convert populated list to cellstr
                         if ci.attributeNumeric(i)
                             valueListAsStrings{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
                         else
                             valueListAsStrings{i} = valueList{i};
                         end
                 end
-                valueList{i} = makecol(valueList{i});
+                valueListAsStrings{i} = makecol(valueListAsStrings{i});
+            end
+        end
+        
+        function valueListByAxes = buildAxisValueLists(ci)
+            valueListByAxes = buildAxisValueLists@ConditionDescriptor(ci);
+            if ~ci.applied
+                return;
+            end
+            
+            for iX = 1:ci.nAxes
+                % build a cellstr of descriptions of the values along this axis
+               switch ci.axisValueListModes(iX)
+                   case ci.AxisValueListAutoOccupied
+                       % need to filter by which values are actually
+                       % occupied by at least one trial
+                       keep = any(ci.getAttributeMatchesOverTrials(valueListByAxes{iX}), 1);
+                       valueListByAxes{iX} = makecol(valueListByAxes{iX}(keep));
+                end
             end
         end
 
+        function mask = getAttributeMatchesOverTrials(ci, valueStruct)
+            % valueStruct is a struct where .attribute = [vals] or {vals} 
+            % matches trials where attribute takes a value in vals
+            % return a logical mask nTrials x 1 indicating these matches
+            % if valueStruct is a length nValues struct vector, mask will
+            % be nTrials x nValues
+           
+            if ci.nTrials == 0
+                mask = logical([]);
+                return;
+            end
+            
+            nValues = numel(valueStruct);
+            mask = true(ci.nTrials, nValues);
+            
+            fields = fieldnames(valueStruct);
+            attrIdx = ci.assertHasAttribute(fields);
+            
+            for iF = 1:numel(fields)
+                for iV = 1:nValues
+                	mask(:, iV) = mask(:, iV) & ...
+                        ismember(ci.getAttributeValues(attrIdx(iF)), ...
+                        valueStruct(iV).(fields{iF}));
+                end
+            end
+        end
+        
+        function values = getAttributeValues(ci, name)
+            idx = ci.getAttributeIdx(name);
+            values = ci.values(:, idx);
+            if ci.attributeNumeric(idx)
+                values = cell2mat(values);
+            end
+        end
     end
     
-    methods(Access=protected)
+    methods
         function ci = maskAttributes(ci, mask)
             ci.warnIfNoArgOut(nargout);
-            ci = maskAttributes@ConditionDescriptor(ci, mask);
-            ci.attributeValueListAuto = ci.attributeValueListAuto(mask);
             ci.values = ci.values(:, mask);
+            ci = maskAttributes@ConditionDescriptor(ci, mask);
         end
     end
 
@@ -415,12 +449,11 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         function ci = applyToTrialData(ci, td)
             % build the internal attribute value list (and number of trials)
             % from td.
-            
             ci.warnIfNoArgOut(nargout);
             
             % set trialCount to match length(trialData)
             nTrials = ci.getNTrialsFn(td);
-            ci.initializeWithNTrials(nTrials);
+            ci = ci.initializeWithNTrials(nTrials);
 
             if ci.nAttributes > 0 && ci.nTrials > 0
                 % fetch valuesByAttribute using callback function
@@ -430,31 +463,36 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 % store in .values cell
                 ci.values = valueCell;
                 
-                % update valueLists for each attribute where these aren't
-                % manually specified
-                if any(~ci.attributeValueListSpecified)
-                    for iAttr = 1:ci.nAttributes
-                        if ci.attributeValueListSpecified(iAttr)
-                            continue;
-                        end
-
-                        valuesThis = ci.values(:, iAttr);
-                        % use different behavior depending on whether all values are scalars
-                        [tf mat] = isScalarCell(valuesThis);
-                        if tf 
-                            valueUnique = unique(removenan(mat));
-                        else
-                            valueUnique = setdiff(unique(valuesThis), {''});
-                        end
-
-                        valueList = makecol(valueUnique);
-                        ci = ci.setValueList(iAttr, valueList);
-                    end
-                end
+                ci = ci.fixAttributeValues();
             end
             
             ci.applied = true;
-            ci.updateCache();
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = fixAttributeValues(ci)
+            ci.warnIfNoArgOut(nargout);
+            if ci.nAttributes == 0 || ci.nTrials == 0
+                return;
+            end
+            for i = 1:ci.nAttributes
+                vals = ci.values(:, i);
+
+                % check for numeric
+                [tf, mat] = isScalarCell(vals);
+                if tf
+                    ci.values(:, i) = num2cell(mat);
+                    ci.attributeNumeric(i) = true;
+                else
+                    [tf, strCell] = isStringCell(vals, 'convertScalar', false, 'convertVector', false);
+                    if tf
+                        ci.values(:, i) = strCell;
+                        ci.attributeNumeric(i) = false;
+                    else
+                        error('Attribute %s values were neither uniformly scalar nor strings', ci.attributeNames{i});
+                    end
+                end
+            end
         end
         
         function assertNotApplied(ci)
@@ -465,7 +503,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
 
         function ci = addAttribute(ci, varargin)
             ci.warnIfNoArgOut(nargout);
-            ci.assertNotApplied();
+            %ci.assertNotApplied();
             ci = addAttribute@ConditionDescriptor(ci, varargin{:});
         end
         
@@ -839,89 +877,84 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
 
     methods % Convenience attribute accessor methods
         
-        function values = getAttribute(ci, name)
-            idx = ci.getAttributeIdx(name);
-            values = ci.values(:, idx);
-            if ci.attributeNumeric(idx)
-                values = cell2mat(values);
-            end
-            
-            % exclude any values not found in the valueList, if specified
-            valueList = ci.getAttributeValueList(name);
-            if ~isempty(valueList)
-                invalidValues = ~ismember(values, valueList);
-                if iscellstr(values)
-                    [values{invalidValues}] = deal('');
-                elseif iscell(values)
-                    [values{invalidValues}] = deal(NaN);
-                else
-                    values(invalidValues) = NaN;
-                end
-            end
-        end
-
-        function values = getAttributeUnique(ci, name)
-            % if a value list is specified, we simply return that
-            % otherwise, return the unique list of values
-            valueList = ci.getAttributeValueList(name);
-            if ~isempty(valueList)
-                values = valueList; 
-            else
-                values = unique(ci.getAttribute(name));
-
-                % remove empty and nan values
-                if isnumeric(values) || islogical(values)
-                    remove = isnan(values) | isempty(values);
-                    values = num2cell(values);
-                else
-                    remove = cellfun(@isempty, values);
-                end
-                values(remove) = [];
-            end
-        end
-
-        function valueCell = getMultipleAttributeUnique(ci, names)
-           valueCell = cellfun(@(name) ci.getAttributeUnique(name), names, ...
-                'UniformOutput', false);
-        end
-    
-        function valueCell = getAllUnique(ci)
-            valueCell = ci.getMultipleAttributeUnique(ci.attributeNames);
-        end
-
-        function idx = getIdxWithAttributeValue(ci, name, value)
-            values = ci.getAttribute(name);
-            if isnumeric(values) || islogical(values)
-                values = num2cell(values);
-            end
-            match = cellfun(@(x) isequal(x, value), values);
-            idx = find(match);
-        end
-
-        function idxCell = getIdxEachAttributeValue(ci, name)
-            values = ci.getAttributeUnique(name);
-            nValues = length(values);
-            idxCell = cell(nValues, 1);
-
-            if isnumeric(values) || islogical(values)
-                values = num2cell(values);
-            end
-            for iValue = 1:nValues
-                idxCell{iValue} = ci.getIdxWithAttributeValue(name, values{iValue});
-            end
-        end
         
-        function idxList = getAttributeAsIdxUnique(ci, name)
-            % return a numeric vector of the attribute value for trial i
-            % like getAttribute, but instead of the raw value return an
-            % index into getAttributeUnique(name)
             
-            idxList = nan(ci.nTrials, 1);
-            idxCell = ci.getIdxEachAttributeValue(name);
-            for i = 1:length(idxCell);
-                idxList(idxCell{i}) = i;
-            end
-        end
+%             % exclude any values not found in the valueList, if specified
+%             valueList = ci.getAttributeValueList(name);
+%             if ~isempty(valueList)
+%                 invalidValues = ~ismember(values, valueList);
+%                 if iscellstr(values)
+%                     [values{invalidValues}] = deal('');
+%                 elseif iscell(values)
+%                     [values{invalidValues}] = deal(NaN);
+%                 else
+%                     values(invalidValues) = NaN;
+%                 end
+%             end
+%     end
+% 
+%         function values = getAttributeUnique(ci, name)
+%             % if a value list is specified, we simply return that
+%             % otherwise, return the unique list of values
+%             valueList = ci.getAttributeValueList(name);
+%             if ~isempty(valueList)
+%                 values = valueList; 
+%             else
+%                 values = unique(ci.getAttribute(name));
+% 
+%                 % remove empty and nan values
+%                 if isnumeric(values) || islogical(values)
+%                     remove = isnan(values) | isempty(values);
+%                     values = num2cell(values);
+%                 else
+%                     remove = cellfun(@isempty, values);
+%                 end
+%                 values(remove) = [];
+%             end
+%         end
+% 
+%         function valueCell = getMultipleAttributeUnique(ci, names)
+%            valueCell = cellfun(@(name) ci.getAttributeUnique(name), names, ...
+%                 'UniformOutput', false);
+%         end
+%     
+%         function valueCell = getAllUnique(ci)
+%             valueCell = ci.getMultipleAttributeUnique(ci.attributeNames);
+%         end
+% 
+%         function idx = getIdxWithAttributeValue(ci, name, value)
+%             values = ci.getAttribute(name);
+%             if isnumeric(values) || islogical(values)
+%                 values = num2cell(values);
+%             end
+%             match = cellfun(@(x) isequal(x, value), values);
+%             idx = find(match);
+%         end
+% 
+%         function idxCell = getIdxEachAttributeValue(ci, name)
+%             values = ci.getAttributeUnique(name);
+%             nValues = length(values);
+%             idxCell = cell(nValues, 1);
+% 
+%             if isnumeric(values) || islogical(values)
+%                 values = num2cell(values);
+%             end
+%             for iValue = 1:nValues
+%                 idxCell{iValue} = ci.getIdxWithAttributeValue(name, values{iValue});
+%             end
+%         end
+%         
+%         function idxList = getAttributeAsIdxUnique(ci, name)
+%             % return a numeric vector of the attribute value for trial i
+%             % like getAttribute, but instead of the raw value return an
+%             % index into getAttributeUnique(name)
+%             
+%             idxList = nan(ci.nTrials, 1);
+%             idxCell = ci.getIdxEachAttributeValue(name);
+%             for i = 1:length(idxCell);
+%                 idxList(idxCell{i}) = i;
+%             end
+%         end
     end
 
     methods % ConditionDescriptor builder

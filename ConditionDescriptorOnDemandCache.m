@@ -13,8 +13,8 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
         
         names
         appearances
-        attributeValueList
-        attributeValueListAsStrings
+        attributeValueLists
+        attributeValueListsAsStrings
         
         axisValueLists
         axisValueListsAsStrings
@@ -27,8 +27,8 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
             c.conditionsAxisAttributesOnly = [];
             c.names = [];
             c.appearances = [];
-            c.attributeValueList = [];
-            c.attributeValueListAsStrings = [];
+            c.attributeValueLists = [];
+            c.attributeValueListsAsStrings = [];
             c.axisValueLists = [];
             c.axisValueListsAsStrings = [];
         end

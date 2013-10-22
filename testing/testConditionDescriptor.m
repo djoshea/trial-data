@@ -1,6 +1,7 @@
 %clear classes;
 
-ci = ConditionDescriptor();
+%ci = ConditionDescriptor();
+ci = ConditionInfo();
 
 ci = ci.addAttribute('a');
 ci = ci.addAttribute('b');

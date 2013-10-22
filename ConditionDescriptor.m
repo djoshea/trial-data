@@ -27,14 +27,14 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         attributeValueListsManual = {}; % A x 1 cell array of permitted values (or cells of values) for this attribute
         attributeValueBinsManual = {}; % A x 1 cell array of value Nbins x 2 value bins to use for numeric lists
         attributeValueBinsAutoCount % A x 1 numeric array of Nbins to use when auto computing the bins, NaN if not in use
-        attributeValueBinsAutoMode % A x 1 numeric array of either AttributeValueBinsAutoUniform or AttributeValueBinsAutoQuantiles
+        attributeValueBinsAutoModes % A x 1 numeric array of either AttributeValueBinsAutoUniform or AttributeValueBinsAutoQuantiles
         
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
         axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
-        axisRandomizeMode % G x 1 numeric of constants beginning with Axis* (see below)
+        axisRandomizeModes % G x 1 numeric of constants beginning with Axis* (see below)
     end
     
-    properties(SetAccess=protected)
+    properties(Hidden, SetAccess=protected)
         % When re-arranging the axes, default condition appearances can get shuffled around
         % which can make comparison across figures difficult. These cache
         % the condition appearances to make things easier. Call
@@ -71,29 +71,28 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                            % here just computed from attributeValueListManual, but in ConditionInfo
                            % can be automatically computed from the data
         attributeValueListsAsStrings % same as above, but everything is a string
-        attributeDescriptions
-
+        
         axisValueLists % G dimensional cell array of structs which select attribute values for that position along an axis
         axisValueListsAsStrings
-        axisValueListMode % G dimensional array of 
+        axisValueListModes % G dimensional array of 
     end
     
     % how are attribute values determined for a given attribute?
     properties(Constant, Hidden)
-        % for attributeValueListMode
+        % for attributeValueListModes
         AttributeValueListManual = 1;
         AttributeValueListAuto = 2;
         AttributeValueBinsManual = 3;
         AttributeValueBinsAutoUniform = 4;
         AttributeValueBinsAutoQuantiles = 5;
         
-        % for axisRandomizeMode
+        % for axisRandomizeModes
         AxisOriginal = 1;
         AxisShuffled = 2;
         AxisResampled = 3;
         AxisResampledFromFirst = 4;
         
-        % for axisValueListMode
+        % for axisValueListModes
         AxisValueListAutoAll = 1;
         AxisValueListAutoOccupied = 2;
         AxisValueListManual = 3;
@@ -101,22 +100,18 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         
     properties(Dependent, Transient)
         nAttributes % how many attributes: ndims(values)
-
+        attributeDescriptions
         nValuesByAttribute % how many values per attribute: size(values)
-
         attributeAlongWhichAxis % A x 1 array indicating which axis an attribute contributes to (or NaN)
         attributeValueModes
         
-        nConditions % how many total conditions
-        
-        conditionsSize 
-
-        conditionsAsLinearInds % linear index corresponding to each condition if flattened 
-        
-
         nAxes % how many dimensions of grouping axe
         nValuesAlongAxes % X x 1 array of number of elements along the axis
         axisDescriptions % strcell describing each axis
+        
+        nConditions % how many total conditions
+        conditionsSize 
+        conditionsAsLinearInds % linear index corresponding to each condition if flattened 
     end
     
     % Constructor, load, save methods
@@ -191,7 +186,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
         end
         
-        function modes = get.axisValueListMode(ci)
+        function modes = get.axisValueListModes(ci)
             modes = nanvec(ci.nAxes);
             
             for iX = 1:ci.nAxes
@@ -211,7 +206,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             for iX = 1:ci.nAxes
                 attr = ci.axisAttributes{iX};
                 nv = ci.conditionsSize(iX);
-                switch ci.axisValueListMode(iX)
+                switch ci.axisValueListModes(iX)
                     case ci.AxisValueListAutoAll
                         vlStr = ' auto';
                     case ci.AxisValueListAutoOccupied
@@ -220,7 +215,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                         vlStr = ' manual';
                 end   
                         
-                switch ci.axisRandomizeMode(iX)
+                switch ci.axisRandomizeModes(iX)
                     case ci.AxisOriginal
                         randStr = '';
                     case ci.AxisShuffled
@@ -258,7 +253,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             idx = ci.nAxes + 1; 
             ci.axisAttributes{idx} = attr;
             ci.axisValueListsManual{idx} = p.Results.valueList;
-            ci.axisRandomizeMode(idx) = ci.AxisOriginal;
+            ci.axisRandomizeModes(idx) = ci.AxisOriginal;
             ci.axisValueListsOccupiedOnly(idx) = true;
 
             ci = ci.invalidateCache();
@@ -269,7 +264,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             
             ci.axisAttributes = ci.axisAttributes(mask);
             ci.axisValueListsManual = ci.axisValueListsManual(mask);
-            ci.axisRandomizeMode = ci.axisRandomizeMode(mask);
+            ci.axisRandomizeModes = ci.axisRandomizeModes(mask);
             ci.axisValueListsOccupiedOnly = ci.axisValueListsOccupiedOnly(mask);
             
             ci = ci.invalidateCache();
@@ -330,7 +325,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     % clear out manual value list as it's likely invalid now
                     ci.axisValueListsManual{iX} = [];
                     % and reset the randomization
-                    ci.axisRandomizeMode(iX) = ci.AxisOriginal;
+                    ci.axisRandomizeModes(iX) = ci.AxisOriginal;
                 end
             end
             
@@ -418,7 +413,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 elseif ~isempty(ci.attributeValueBinsManual{i})
                     modes(i) = ci.AttributeValueBinsManual;
                 elseif ~isnan(ci.attributeValueBinsAutoCount(i))
-                    modes(i) = ci.attributeValueBinsAutoMode(i);
+                    modes(i) = ci.attributeValueBinsAutoModes(i);
                 else
                     modes(i) = ci.AttributeValueListAuto;
                 end
@@ -428,19 +423,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         % determine the number of attributes, where possible, otherwise
         % leave as NaN. returns A x 1 numeric array
         function nv = get.nValuesByAttribute(ci)
-            modes = ci.attributeValueModes;
             nv = nanvec(ci.nAttributes);
             for i = 1:ci.nAttributes
-                switch modes(i) 
-                    case {ci.AttributeValueListManual, ci.AttributeValueBinsManual}
-                        nv(i) = numel(ci.attributeValueLists{i});
-                    case {ci.AttributeValueBinsAutoQuantiles, ci.AttributeValueBinsAutoUniform}
-                        nv(i) = ci.attributeValueBinsAutoCount(i);
-                    otherwise
-                        % will be automatically determined in conditioninfo
-                        % not actually one value, but want to put '?' there
-                        nv(i) = 1;
-                end
+                nv(i) = numel(ci.attributeValueLists{i});
             end
         end
 
@@ -455,16 +440,21 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     case ci.AttributeValueListManual
                         suffix = sprintf('(%d)', nValues);
                     case ci.AttributeValueListAuto
-                        suffix = '(? auto)';
+                        suffix = sprintf('(%d auto)', nValues);
                     case ci.AttributeValueBinsManual
                         suffix = sprintf('(%d bins)', nValues);
                     case ci.AttributeValueBinsAutoUniform
-                        suffix = sprintf('(%d unif bins)', nAutoBins);
+                        suffix = sprintf('(%d bins)', nAutoBins);
                     case ci.AttributeValueBinsAutoQuantiles
                         suffix = sprintf('(%d quantiles)', nAutoBins);
                 end
 
-                desc{i} = sprintf('%s %s', name, suffix);
+                if ci.attributeNumeric(i)
+                    numericStr = '#';
+                else
+                    numericStr = '';
+                end
+                desc{i} = sprintf('%s %s%s', name, numericStr, suffix);
             end
         end 
 
@@ -490,7 +480,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 error('ConditionDescriptor already has attribute %s', name);
             end
             
-
             iAttr = ci.nAttributes + 1;
             ci.attributeNames{iAttr} = name;
             ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList); 
@@ -509,11 +498,18 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
-            ci.attributeValueBinsAutoMode(iAttr) = NaN;
+            ci.attributeValueBinsAutoModes(iAttr) = NaN;
 
             ci = ci.invalidateCache();
         end
 
+        function ci = addAttributes(ci, names)
+            ci.warnIfNoArgOut(nargout);
+            for i = 1:numel(names)
+                ci = ci.addAttribute(names{i});
+            end
+        end
+        
         % remove an existing attribute
         function ci = removeAttribute(ci, varargin)
             ci.warnIfNoArgOut(nargout);
@@ -561,7 +557,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.attributeNumeric = ci.attributeNumeric(mask);
             ci.attributeValueList = ci.attributeValueList(mask);
             ci.attributeValueBinsAutoCount = ci.attributeValueBinsAutoCount(mask);
-            ci.attributeValueBinsAutoMode = ci.attributeValueBinsAutoMode(mask);
+            ci.attributeValueBinsAutoModes = ci.attributeValueBinsAutoModes(mask);
             ci.attributeValueBinsManual = ci.attributeValueBinsManual(mask);
         end 
 
@@ -601,7 +597,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.attributeNumeric(iAttr) = true;
             ci.attributeValueListManual{iAttr} = {};
             ci.attributeValueBinsAutoCount = NaN;
-            ci.attributeValueBinsAutoMode = NaN;
+            ci.attributeValueBinsAutoModes = NaN;
 
             ci = ci.invalidateCache();
         end
@@ -616,7 +612,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.attributeNumeric(iAttr) = true;
             ci.attributeValueListManual{iAttr} = {};
             ci.attributeValueBinsAutoCount = nBins;
-            ci.attributeValueBinsAutoMode = ci.AttributeValueBinsAutoUniform;
+            ci.attributeValueBinsAutoModes = ci.AttributeValueBinsAutoUniform;
 
             ci = ci.invalidateCache();
         end
@@ -630,7 +626,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.attributeNumeric(iAttr) = true;
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = nQuantiles;
-            ci.attributeValueBinsAutoMode(iAttr) = ci.AttributeValueBinsAutoQuantiles;
+            ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoQuantiles;
 
             ci = ci.invalidateCache();
         end
@@ -706,29 +702,29 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         end
         
         function v = get.attributeValueLists(ci)
-            v = ci.odc.attributeValueList;
+            v = ci.odc.attributeValueLists;
             if isempty(v)
-                ci.odc.attributeValueList = ci.buildAttributeValueLists();
-                v = ci.odc.attributeValueList;
+                ci.odc.attributeValueLists = ci.buildAttributeValueLists();
+                v = ci.odc.attributeValueLists;
             end
         end
         
         function ci = set.attributeValueLists(ci, v)
             ci.odc = ci.odc.copy();
-            ci.odc.attributeValueList = v;
+            ci.odc.attributeValueLists = v;
         end
         
         function v = get.attributeValueListsAsStrings(ci)
-            v = ci.odc.attributeValueListAsStrings;
+            v = ci.odc.attributeValueListsAsStrings;
             if isempty(v)
-                ci.odc.attributeValueListAsStrings = ci.buildAttributeValueListAsStrings();
-                v = ci.odc.attributeValueListAsStrings;
+                ci.odc.attributeValueListsAsStrings = ci.buildAttributeValueListsAsStrings();
+                v = ci.odc.attributeValueListsAsStrings;
             end
         end
         
         function ci = set.attributeValueListsAsStrings(ci, v)
             ci.odc = ci.odc.copy();
-            ci.odc.attributeValueListAsStrings = v;
+            ci.odc.attributeValueListsAsStrings = v;
         end
 
         function v = get.axisValueLists(ci)
@@ -835,33 +831,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 % allowed for attribute `attribute` at position iEl along axis iAxis
                
                 % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
-                if isempty(ci.axisValueListsManual{iX})
-                    % build auto list of attributes
-                    strCell{iX} = makecol(buildAutoValueListForAttributeSetAsString(ci.axisAttributes{iX}));
-                else
-                    strCell{iX} = cellfun(@structToString, makecol(ci.axisValueListsManual{iX}), ...
-                        'UniformOutput', false);
-                end
-            end
-            
-            function strCell = buildAutoValueListForAttributeSetAsString(attributes)
-                % build a struct array for a set of attributes that walks all possible combinations of the attribute values 
-                if ischar(attributes)
-                    attributes = {attributes};
-                end
-                attrIdx = ci.getAttributeIdx(attributes);
-                valueLists = ci.attributeValueListsAsStrings(attrIdx);
-
-                strCell = TensorUtils.mapFromAxisLists(@buildString, valueLists, ...
-                    'asCell', true);
-
-                function str = buildString(varargin)
-                    for i = 1:numel(varargin)
-                        s.(attributes{i}) = varargin{i};
-                    end
-                    
-                    str = structToString(s);
-                end
+                strCell{iX} = arrayfun(@structToString, makecol(ci.axisValueLists{iX}), ...
+                   'UniformOutput', false);
             end
         end
 
@@ -912,9 +883,15 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                         valueList{i} = ci.attributeValueListsManual{i};
                     case ci.AttributeValueBinsManual
                         valueList{i} = ci.attributeValueBinsManual{i};
-                    case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
+                    case ci.AttributeValueBinsAutoUniform
+                        % placeholder string to be replaced by actual bins
+                        % matrix
+                        valueList{i} = arrayfun(@(bin) sprintf('bin%d', bin), ...
+                            1:ci.attributeValueBinsAutoCount(i), 'UniformOutput', false);
+                    case ci.AttributeValueBinsAutoQuantiles
                         % the number of bins is known, so they can be specified here
-                        valueList{i} = 1:ci.attributeValueBinsAutoCount(i);
+                        valueList{i} = arrayfun(@(bin) sprintf('quantile%d', bin), ...
+                            1:ci.attributeValueBinsAutoCount(i), 'UniformOutput', false);
                     otherwise
                          % place holder, must be determined when
                         % ConditionInfo applies it to data
@@ -928,7 +905,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
         end
         
-        function valueList = buildAttributeValueListAsStrings(ci)
+        function valueList = buildAttributeValueListsAsStrings(ci)
             modes = ci.attributeValueModes;
             valueList = ci.attributeValueLists;
             for i = 1:ci.nAttributes
@@ -937,19 +914,18 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                         if ci.attributeNumeric(i)
                             valueList{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
                         end             
-                    case ci.AttributeValueBinsManual
-                        bins = ci.attributeValueBinsManual{i};
-                        valueList{i} = arrayfun(@(row) sprintf('%d-%d', bins(row, 1), bins(row, 2)), ...
-                            1:size(bins, 2), 'UniformOutput', false);
-                    case ci.AttributeValueBinsAutoUniform
-                        % placeholder for actual bin limits
-                        valueList{i} = arrayfun(@(bin) sprintf('bin%d', bin), 1:ci.attributeValueBinsAutoCount, 'UniformOutput', false);
-                    case ci.AttributeValueBinsAutoQuantiles
-                        valueList{i} = arrayfun(@(bin) sprintf('qu%d', bin), 1:ci.attributeValueBinsAutoCount(i), 'UniformOutput', false);
-                    otherwise
-                        valueList{i} = {'?'};
+                    case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
+                        if ~iscell(valueList{i})
+                            bins = valueList{i};
+                            valueList{i} = arrayfun(@(row) sprintf('%d-%d', bins(row, 1), bins(row, 2)), ...
+                                1:size(bins, 2), 'UniformOutput', false);
+                        else
+                            % already cellstr for auto bins, leave as is
+                        end
+                    case ci.AttributeValueListAuto
                         % auto list leave empty, must be determined when
                         % ConditionInfo applies it to data
+                        valueList{i} = {'?'};   
                 end
                 valueList{i} = makecol(valueList{i});
             end
