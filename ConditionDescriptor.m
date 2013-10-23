@@ -1099,13 +1099,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         % for numeric attributes, if there are more than 10 different
         % values, the attribute will be binned into quintiles
         function cd = fromStruct(s)
-            attr = fieldnames(s);
-            nAttr = numel(attr);
-          
             cd = ConditionDescriptor();
-            for iAttr = 1:nAttr
-                cd = cd.addAttribute(attr{iAttr});
-            end       
+            cd = cd.addAttributes(fieldnames(s));
         end
     end
 

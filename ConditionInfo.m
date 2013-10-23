@@ -586,6 +586,13 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 ci.applyToTrialData(p.Results.trialData);
             end
         end
+        
+        % construct condition descriptor from a struct of attribute values
+        function cd = fromStruct(s)
+            cd = ConditionInfo();
+            cd = cd.addAttributes(fieldnames(s));
+            cd = cd.applyToTrialData(s);
+        end
 
         % return a scalar struct with one field for each attribute containing the attribute values
         % as a cell array or numeric vector
