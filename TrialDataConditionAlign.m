@@ -31,11 +31,11 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function disp(td)
             td.printDescriptionShort();
-            fprintf('\n');
+            fprintf('\t');
             
             td.alignInfo.printOneLineDescription();
-            fprintf('\n');
-            td.conditionInfo.printDescription();
+            fprintf('\t');
+            td.conditionInfo.printOneLineDescription();
             
             fprintf('\n');
             td.printChannelInfo();
@@ -49,7 +49,7 @@ classdef TrialDataConditionAlign < TrialData
 
             % combine and update the validity masks 
             td.valid = cvalid & avalid;
-            td.conditionInfo.setInvalid(~td.valid);
+            td.conditionInfo = td.conditionInfo.setInvalid(~td.valid);
             td.alignInfo = td.alignInfo.setInvalid(~td.valid);
         end
     end
@@ -58,7 +58,7 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function td = initializeConditionInfo(td)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = ConditionInfo();
+            td.conditionInfo = ConditionInfo.fromStruct(td.getParamStruct());
             td.conditionInfo = td.conditionInfo.applyToTrialData(td);
         end
 
@@ -71,9 +71,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = groupBy(td, varargin)
             td.warnIfNoArgOut(nargout);
-            
             td.conditionInfo = td.conditionInfo.groupBy(varargin{:});
-
             td = td.postUpdateConditionInfo();
         end
         

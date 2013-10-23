@@ -166,6 +166,15 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             tcprintf('inline', '\t{bright blue}Attributes: {white}%s\n', strjoin(ci.attributeDescriptions));
             tcprintf('inline', '\t{bright blue}Axes: {white}%s\n', strjoin(ci.axisDescriptions, ' , '));
         end
+        
+        function printOneLineDescription(ci)
+            tcprintf('yellow', '%s: ', class(ci));
+            if ci.nAxes == 0
+                tcprintf('inline', '{bright blue}no grouping axes\n');
+            else
+                tcprintf('inline', '{bright blue}%s\n', strjoin(ci.axisDescriptions, ' , '));
+            end
+        end
 
         function disp(ci)
             ci.printDescription();

@@ -39,12 +39,36 @@ classdef TrialData
     methods
         function td = TrialData(varargin)
             if ~isempty(varargin)
-                td = td.initialize(varargin{:});
+                if isa(varargin{1}, 'TrialData')
+                    td = td.initializeFromTrialData(varargin{1});
+                elseif isa(varargin{1}, 'TrialDataInterface')
+                    td = td.initializeFromTrialDataInterface(varargin{:});
+                else
+                    error('Unknown initializer');
+                end
             end
         end
 
+        function td = initializeFromTrialData(td, tdOther)
+            % this is used by subclasses, so can't copy to output
+            meta = ?TrialData;
+            props = meta.PropertyList;
+
+            for iProp = 1:length(props)
+                prop = props(iProp);
+                if prop.Dependent || prop.Constant || prop.Transient
+                    continue;
+                else
+                    name = prop.Name;
+                    td.(name) = tdOther.(name);
+                end
+            end
+        end
+        
         % copy everything over from the TrialDataInterface
-        function td = initialize(td, varargin)
+        function td = initializeFromTrialDataInterface(td, varargin)
+            td.warnIfNoArgOut();
+            
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
             p.parse(varargin{:});

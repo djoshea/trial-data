@@ -148,9 +148,9 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         % NaNs for manualInvalid marked trials
         function subsMat = buildConditionSubsIncludingManualInvalid(ci)
             if ci.nAxes == 0
-                subsMat = nanvec(ci.nTrials);
+                subsMat = onesvec(ci.nTrials);
                 assert(ci.nConditions == 1);
-                subsMat(ci.getAttributeMatchesOverTrials(ci.conditions)) = 1;
+%                 subsMat(ci.getAttributeMatchesOverTrials(ci.conditions)) = 1;
             
             elseif ci.nConditions > 0 && ci.nTrials > 0
                 subsMat = nan(ci.nTrials, ci.nAxes);
@@ -164,11 +164,12 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 % mark as NaN if it doesn't match for every attribute
                 subsMat(any(subsMat == 0, 2), :) = NaN;
                 
+                % DONT DO THIS ANYMORE
                 % filter out any that don't have a valid attribute value
                 % along the other non-axis attributes as well
-                valueList = ci.buildStructNonAxisAttributeValueLists();
-                matchesOther = ci.getAttributeMatchesOverTrials(valueList);
-                subsMat(~matchesOther, :) = NaN;
+%                 valueList = ci.buildStructNonAxisAttributeValueLists();
+%                 matchesOther = ci.getAttributeMatchesOverTrials(valueList);
+%                 subsMat(~matchesOther, :) = NaN;
             else
                 subsMat = [];
             end
@@ -598,17 +599,19 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         % as a cell array or numeric vector
         function values = defaultGetAttributeFn(data, attributeNames, varargin)
             assert(isstruct(data) || isa(data, 'TrialData'), 'Please provide getAttributeFn if data is not struct or TrialData');
-            valuesByAttribute = struct();
-            for iAttr = 1:length(attributeNames)
-                attr = attributeNames{iAttr};
-                
-                if isstruct(data)
-                    valuesByAttribute.(attr) = {data.(attr)};
-                elseif isa(data, 'TrialData')
-                    valuesByAttribute.(attr) = data.getParam(attr);
-                end
+            
+            if isstruct(data)
+                % TODO implement request as renaming here
+                values = keepfields(data, attributeNames);
+%                 for iAttr = 1:length(attributeNames)
+%                     attr = attributeNames{iAttr};
+%                     valuesByAttribute.(attr) = {data.(attr)};
+%                 end
+            elseif isa(data, 'TrialData')
+                values = keepfields(data.getParamStruct, attributeNames);
+            else
+                error('Please provide .getAttributeFn to request attributes from this data type');
             end
-            values = structOfArraysToStructArray(valuesByAttribute);
         end
         
         function nTrials = defaultGetNTrialsFn(data, varargin)

@@ -117,8 +117,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
                 def.conditionInfo = ConditionInfo.fromConditionDescriptor(def.conditionDescriptor, R);
             end
             
-            obj.conditionInfo = def.conditionInfo.copy();
-            obj.conditionInfo.freezeAppearances();
+            obj.conditionInfo = def.conditionInfo.freezeAppearances();
             
             if ~isempty(def.name)
                 obj.name = def.name;
@@ -179,7 +178,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             % mark as invalid trials which do not meet the alignment descriptor's inclusion criteria
             % this ensures they will not be included when we call conditionInfo.getGroups()
             obj.alignInfo = obj.alignInfo.markInvalid(~valid);
-            obj.conditionInfo.markInvalid(~obj.valid);
+            obj.conditionInfo = obj.conditionInfo.markInvalid(~obj.valid);
         end
     end
     
@@ -1318,7 +1317,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             end
 
             if isempty(appearance) || isempty(names) || isempty(idxByCondition) 
-                idxByCondition = obj.conditionInfo.getGroups();
+                idxByCondition = obj.conditionInfo.listByCondition;
                 appearance = obj.conditionAppearance;
                 names = obj.conditionNames;
             end
