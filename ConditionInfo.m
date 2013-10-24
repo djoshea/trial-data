@@ -451,6 +451,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             % cache everything ahead of time because some are dynamically
             % computed from the others
             
+            ci.manualInvalid = ci.manualInvalid(selector);
             ci.values = ci.values(selector, :);
             ci = ci.invalidateCache();
         end
