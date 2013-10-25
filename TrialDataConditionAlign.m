@@ -161,15 +161,24 @@ classdef TrialDataConditionAlign < TrialData
     methods
         % given a cellvec or nmeric vector, group its elements
         function varargout = groupElements(td, varargin)
+            varargout = cell(nargout, 1);
             for i = 1:numel(varargin)
                 data = varargin{i};
                 assert(size(data,1) == td.nTrials, ...
                     'Data must have size nTrials along 1st dimension');
-                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition, 'UniformOutput', false);
+                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition, ...
+                    'UniformOutput', false);
             end
         end
+        
+        % given data with dimension 1 with size nTrials, group by condition
+        % and map out{i} = fn(group{i})
+        function out = mapByGroup(fn, varargin)
+            dataByGroup = td.groupElements(varargin{:});
+            out = cellfun(fn, dataByGroup{:}, 'UniformOutput', false);
+        end
 
-        function [dCell tCell] = getAnalogGrouped(td, name)
+        function [dCell, tCell] = getAnalogGrouped(td, name)
             [dataCell, timeCell] = td.getAnalog(name);
             [dCell, tCell] = td.groupElements(dataCell, timeCell);
         end
@@ -254,55 +263,60 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         % return aligned unit spike times
-        function [timesCell] = getSpikeTimesForUnit(td, unitName)
-            timesCell = getSpikeTimesForUnit@TrialData(td, unitName);
+        function [timesCell] = getSpikeTimes(td, unitName)
+            timesCell = getSpikeTimes@TrialData(td, unitName);
             timesCell = td.alignInfo.getAlignedTimes(timesCell);
         end
-        
-     
         
     end
 
     % Spike data
     methods
-        function sr = buildSpikeRasterForUnit(td, unitName)
+        function sr = buildSpikeRaster(td, unitName)
             sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfo);
             sr.useWidestCommonValidTimeWindow = false;
         end
-        
+           
         function [rates, tvec] = getFilteredSpikeRateEachTrial(td, unitName, varargin)
             p = inputParser;
+            p.addParamValue('tWindow', [], @isvector);
             p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
-            spikeCell = td.getSpikeTimesForUnit(unitName);
+            spikeCell = td.getSpikeTimes(unitName);
             timeInfo = td.alignInfo.timeInfo;
             
             % convert to .zero relative times since that's what spikeCell
-            % will be in
+            % will be in (when called in this class)
+            tWindow = p.Results.tWindow;
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
-            [rates, tvec] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial);
+            [rates, tvec] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, tWindow);
         end
         
-        function [rateCell, tvec] = getFilteredSpikeRateGroupedEachTrial(td, unitName, varargin)
+        function [rateCell, tvec] = getFilteredSpikeRateGrouped(td, unitName, varargin)
             [rateMat, tvec] = td.getFilteredSpikeRateEachTrial(unitName, varargin{:});
             rateCell = td.groupElements(rateMat);
         end
         
-        function timesCellofCells = getSpikeTimesForUnitGrouped(td, unitName)
-            timesCell = td.getSpikeTimesForUnit(unitName);
+        function [psthMatrix, tvec] = getFilteredPSTHByCondition(td, unitName, varargin)
+            [rateCell, tvec] = getFilteredSpikeRateGrouped(td, unitName, varargin{:});
+            psthMatrix = cell2mat(cellfun(@(r) nanmean(r, 1), rateCell, 'UniformOutput', false));
+        end
+        
+        function timesCellofCells = getSpikeTimesGrouped(td, unitName)
+            timesCell = td.getSpikeTimes(unitName);
             timesCellofCells = td.groupElements(timesCell);
         end
         
-        function countsCell = getSpikeCountsForUnitGrouped(td, unitName)
-            counts = td.getSpikeCountsForUnit(unitName);
+        function countsCell = getSpikeCountsGrouped(td, unitName)
+            counts = td.getSpikeCounts(unitName);
             countsCell = td.groupElements(counts);
         end
         
-        function rateCell = getSpikeRatePerSecForUnitGrouped(td, unitName)
-            rates = td.getSpikeRatePerSecForUnit(unitName);
+        function rateCell = getSpikeMeanRateGrouped(td, unitName)
+            rates = td.getSpikeMeanRate(unitName);
             rateCell = td.groupElements(rates);
         end
     end
@@ -325,7 +339,8 @@ classdef TrialDataConditionAlign < TrialData
                 timeCell = timeByGroup{iCond};
                 for iTrial = 1:numel(dataCell)
                     if ~isempty(timeCell{iTrial}) && ~isempty(dataCell{iTrial})
-                        plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', 'Color', app(iCond).color, ...
+                        plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', ...
+                            'Color', app(iCond).color, ...
                             'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
                     end
                     if iTrial == 1, hold(axh, 'on'); end

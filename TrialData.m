@@ -331,7 +331,7 @@ classdef TrialData
         end
 
         function times = getEventFirst(td, name)  
-            times = getEventNthOccurrence(td, name, 1);
+            times = getEventNth(td, name, 1);
         end
 
         function times = getEventLast(td, name)  
@@ -391,24 +391,25 @@ classdef TrialData
                 'UniformOutput', false);
         end
 
-        function timesCell = getSpikeTimesForUnit(td, unitName, varargin) 
-            timesCell = td.getRawSpikeTimesForUnit(unitName);
+        function timesCell = getSpikeTimes(td, unitName, varargin) 
+            timesCell = td.getRawSpikeTimes(unitName);
         end
         
-        function timesCell = getRawSpikeTimesForUnit(td, unitName)
+        function timesCell = getRawSpikeTimes(td, unitName)
             name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
             timesCell = {td.data.(name)}';
         end
             
-        function counts = getSpikeCountsForUnit(td, unitName)
-            counts = cellfun(@numel, td.getSpikeTimesForUnit(unitName));
+        function counts = getSpikeCounts(td, unitName)
+            counts = cellfun(@numel, td.getSpikeTimes(unitName));
         end
         
-        function rates = getSpikeRatePerSecForUnit(td, unitName)
-            counts = td.getSpikeCountsForUnit(unitName);
+        function rates = getSpikeMeanRate(td, unitName)
+            counts = td.getSpikeCounts(unitName);
             durations = td.getValidDurations();
             rates = counts ./ durations * td.timeUnitsPerSecond;
         end
+     
     end
 
     methods % Add data methods

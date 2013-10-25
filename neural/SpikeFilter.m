@@ -69,9 +69,13 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
             tvec = tWindow(1):tWindow(2);
         end
         
-        function [rates, tvec] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial)
-            tWindow(1) = nanmin(tMinByTrial);
-            tWindow(2) = nanmax(tMaxByTrial);
+        function [rates, tvec] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, tWindow)
+            % By default, window will be the maximum valid across all
+            % trials, but can be overriden
+            if nargin < 5 || isempty(tWindow)
+                tWindow(1) = nanmin(tMinByTrial);
+                tWindow(2) = nanmax(tMaxByTrial);
+            end
             
             [rates, tvec] = sf.filterSpikeTrains(spikeCell, tWindow);
                 
