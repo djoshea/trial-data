@@ -151,7 +151,8 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
                 
                 % rename field to remove group name
                 if isfield(channelData, cd.name)
-                    error('Duplicate channel name %s', cd.name);
+                    warning('Duplicate channel name %s', cd.name);
+                    continue;
                 end
                 channelData = mvfield(channelData, cd.meta.originalField, cd.name);
             end
