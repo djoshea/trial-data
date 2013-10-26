@@ -1,25 +1,5 @@
 classdef ParamChannelDescriptor < ChannelDescriptor
     
-    properties(Dependent)
-        isString 
-        isScalar
-        isBoolean
-    end
-    
-    methods
-        function tf = get.isString(cd)
-            tf = isa(cd.dfd, 'StringField');
-        end
-        
-        function tf = get.isScalar(cd)
-            tf = isa(cd.dfd, 'ScalarField') || isa(cd.dfd, 'BooleanField');
-        end
-        
-        function tf = get.isBoolean(cd)
-            tf = isa(cd.dfd, 'BooleanField');
-        end
-    end
-    
     methods
         function type = getType(cdesc)
             type = 'param';
