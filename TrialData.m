@@ -67,7 +67,7 @@ classdef TrialData
         
         % copy everything over from the TrialDataInterface
         function td = initializeFromTrialDataInterface(td, varargin)
-            td.warnIfNoArgOut();
+            td.warnIfNoArgOut(nargout);
             
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
@@ -358,6 +358,20 @@ classdef TrialData
             mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
+
+        function names = listScalarParamChannels(td);
+            channelDescriptors = td.getChannelDescriptorArray(); 
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.collectAsCell, ...
+                channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+
+        function names = getStringParamChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray(); 
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.collectAsCell, ...
+                channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
         
         % Basic access methods, very fast
         function values = getParam(td, name)
@@ -366,6 +380,10 @@ classdef TrialData
             if ~td.channelDescriptorsByName.(name).collectAsCell
                 values = cell2mat(values);
             end
+        end
+
+        function paramStruct = getRawChannelDataAsStruct(td, names)
+            paramStruct = copyStructField(td.data, [], names);
         end
         
         function paramStruct = getParamStruct(td)
