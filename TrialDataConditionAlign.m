@@ -56,9 +56,22 @@ classdef TrialDataConditionAlign < TrialData
 
     % ConditionInfo control
     methods
+        % parameters that are either scalar or strings
+        function names = listConditionInfoCompatibleParamChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && (cd.isScalar || cd.isString), channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+        
+        function paramStruct = getConditionInfoCompatibleParamStruct(td)
+            names = td.listConditionInfoCompatibleParamChannels();
+            paramStruct = keepfields(td.data, names);
+        end
+        
         function td = initializeConditionInfo(td)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = ConditionInfo.fromStruct(td.getParamStruct());
+            paramStruct = td.getConditionInfoCompatibleParamStruct();
+            td.conditionInfo = ConditionInfo.fromStruct(paramStruct);
             td.conditionInfo = td.conditionInfo.applyToTrialData(td);
         end
 
@@ -173,9 +186,9 @@ classdef TrialDataConditionAlign < TrialData
         
         % given data with dimension 1 with size nTrials, group by condition
         % and map out{i} = fn(group{i})
-        function out = mapByGroup(fn, varargin)
+        function out = mapByGroup(td, fn, varargin)
             dataByGroup = td.groupElements(varargin{:});
-            out = cellfun(fn, dataByGroup{:}, 'UniformOutput', false);
+            out = cellfun(fn, dataByGroup, 'UniformOutput', false);
         end
 
         function [dCell, tCell] = getAnalogGrouped(td, name)

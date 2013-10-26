@@ -361,14 +361,14 @@ classdef TrialData
 
         function names = listScalarParamChannels(td);
             channelDescriptors = td.getChannelDescriptorArray(); 
-            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.collectAsCell, ...
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.isScalar, ...
                 channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
 
         function names = getStringParamChannels(td)
             channelDescriptors = td.getChannelDescriptorArray(); 
-            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.collectAsCell, ...
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.isString, ...
                 channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
