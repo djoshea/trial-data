@@ -28,7 +28,9 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
+    % General utilites
     methods
+        % print a short description
         function disp(td)
             td.printDescriptionShort();
             fprintf('\t');
@@ -42,6 +44,7 @@ classdef TrialDataConditionAlign < TrialData
             fprintf('\n');
         end
 
+        % synchronize valid between AlignInfo and ConditionINfo
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
             cvalid = td.conditionInfo.computedValid;
@@ -261,7 +264,7 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
-    % AlignInfo data access
+    % Aligned data access via AlignInfo
     methods
         % return aligned analog channel
         function [data time] = getAnalog(td, name)

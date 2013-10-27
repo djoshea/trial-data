@@ -7,20 +7,22 @@ classdef TrialData
 % will be done via copy-on-write, so that changes will not propagate to another
 % TrialData instance.
     
-    % Obtained from TrialDataInterface
-    properties% (SetAccess=protected)
-        initialized = false; % has initialize() been called yet?
-
-        trialDataInterfaceClass = '';
-
-        data = struct();  % standardized format nTrials x 1 struct with all trial data  
-        
-        valid
-
+    % Properties stored on disk
+    properties
         datasetName = ''; % string describing entire collection of trials dataset
 
-        datasetMeta
+        datasetMeta % arbitrary 
+    end
+    
+    properties(SetAccess=protected)
+        data = struct();  % standardized format nTrials x 1 struct with all trial data  
         
+        initialized = false; % has initialize() been called yet?
+
+        trialDataInterfaceClass = ''; % how did we access the original data?
+        
+        manualValid
+
         timeUnitName
         
         timeUnitsPerSecond
@@ -29,6 +31,7 @@ classdef TrialData
     end
 
     properties(Dependent) 
+        valid
         nTrials
         nTrialsValid
         nChannels
@@ -137,19 +140,23 @@ classdef TrialData
                 td.channelDescriptorsByName.(channelDescriptors(i).name) = channelDescriptors(i);
             end
             
-            td.valid = truevec(td.nTrials);
+            td.manualValid = truevec(td.nTrials);
             td.initialized = true;
         end
 
         function printDescriptionShort(td)
-            tcprintf('inline', '{yellow}%s: {bright blue}%d trials (%d valid) with %d channels\n', ...
+            tcprintf('inline', '{yellow}%s : {white}%d trials (%d valid) with %d channels\n', ...
                 class(td), td.nTrials, td.nTrialsValid, td.nChannels);
+            if ~isempty(td.datasetName)
+                tcprintf('inline', '{bright blue}Dataset : {white}%s\n', td.datasetName);
+            end
         end
         
         function printChannelInfo(td)
-            tcprintf('inline', '{bright cyan}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Event : {none}%s\n', strjoin(td.listEventChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Param : {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Analog  : {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Event   : {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Param   : {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Spike   : {none}%s\n', strjoin(td.listSpikeChannels(), ', '));
         end
 
         function disp(td)
@@ -159,8 +166,23 @@ classdef TrialData
         end
     end
     
+    % Factory construct from structs
+    methods(Static)
+        function td = fromStructArrays(varargin)
+            error('Not yet implemented');
+        end
+    end
+    
     % Dependent property implementations
     methods % get. accessors for above properties which simply refer to tdi.?
+        function valid = get.valid(td)
+            valid = td.buildValid();
+        end
+        
+        function valid = buildValid(td)
+            valid = td.manualValid;
+        end
+        
         function nTrials = get.nTrials(td)
             nTrials = numel(td.data);
         end
@@ -225,6 +247,23 @@ classdef TrialData
             assert(td.hasChannel(name), 'TrialData does not have channel %s', name);
         end
         
+        function names = listChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            names = {channelDescriptors.name}';
+        end
+        
+        function names = listSpecialChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) cd.special, channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+
+        function names = listNonSpecialChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) ~cd.special, channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+        
         % get the time window for each trial
         function durations = getValidDurations(td)
             starts = td.getEventFirst('TrialStart');
@@ -250,6 +289,72 @@ classdef TrialData
             end
             
             [td.data.(fld)] = deal(vals{:});
+        end
+        
+        % channels may reference common data fields in .data to prevent
+        % data duplication. This function returns the list of channels
+        % which reference a particular data field. fields is a cellstr
+        % and nameCell is a cell of cellstr
+        function namesByField = getChannelsReferencingFields(td, fields)
+            if ischar(fields)
+                wasCell = false;
+                fields = {fields};
+            else
+                wasCell = true;
+            end
+            channels = fieldnames(td.channelDescriptorsByName);
+            fieldsByChannel = structfun(@(cd) cd.getDataFields(), ...
+                td.channelDescriptorsByName, 'UniformOutput', false);
+            nameCell = cellvec(numel(fields));
+            for iF = 1:numel(fields)
+                assert(isfield(td.data, fields{iF}), 'TrialData does not have data field %s', fields{iF});
+                mask = structfun(@(chFields) ismember(fields{iF}, chFields), fieldsByChannel);
+                namesByField{iF} = channels(mask);
+            end
+            if ~wasCell
+                namesByField = namesByField{1};
+            end
+        end
+        
+        % drops all channel data except specified and special
+        % parameter channels
+        function td = dropNonSpecialChannelsExcept(td, names)
+            td.warnIfNoArgOut(nargout);
+            removeNames = setdiff(td.listNonSpecialChannels(), names);
+            td = td.dropChannels(removeNames);
+        end
+        
+        % drop all channels except specified and 
+        function td = dropChannelsExcept(td, names)
+            td.warnIfNoArgOut(nargout);
+            removeNames = setdiff(td.listChannels(), names);
+            td = td.dropChannels(removeNames);
+        end
+        
+        function td = dropChannels(td, names)
+            if ischar(names)
+                names = {names};
+            end
+            
+            % first hold onto the to-be-removed channel descriptors
+            for i = 1:numel(names)
+                cds{i} = td.channelDescriptorsByName.(names{i});
+            end
+            
+            % remove the channel descriptors
+            td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, names);
+            
+            % for the removed data channels' fields, figure out which ones 
+            % aren't referenced by any other channels
+            fieldsRemoveByChannel = cellfun(@(cd) makecol(cd.getDataFields()), ...
+                cds, 'UniformOutput', false);
+            fieldsRemove = unique(cat(1, fieldsRemoveByChannel{:}));
+            
+            otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
+            maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
+            fieldsRemove = fieldsRemove(maskRemove);
+            
+            td.data = rmfield(td.data, fieldsRemove);
         end
     end
     
@@ -358,8 +463,8 @@ classdef TrialData
             mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
-
-        function names = listScalarParamChannels(td);
+        
+        function names = listScalarParamChannels(td)
             channelDescriptors = td.getChannelDescriptorArray(); 
             mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.isScalar, ...
                 channelDescriptors);
