@@ -554,13 +554,15 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
             
             % first remove the attributes from any axes they are on
-            ci = ci.removeAttributeFromAxes(idxRemove); 
-            
+            ci = ci.removeAttributesFromAxes(idxRemove); 
+
             % then remove it from the attribute lists
             ci.attributeNames = ci.attributeNames(mask);
             ci.attributeRequestAs = ci.attributeRequestAs(mask);
             ci.attributeNumeric = ci.attributeNumeric(mask);
-            ci.attributeValueList = ci.attributeValueList(mask);
+            ci.attributeValueListsManual = ci.attributeValueListsManual(mask);
+            ci.attributeValueLists = ci.attributeValueLists(mask);
+            ci.attributeValueListsAsStrings = ci.attributeValueListsAsStrings(mask);
             ci.attributeValueBinsAutoCount = ci.attributeValueBinsAutoCount(mask);
             ci.attributeValueBinsAutoModes = ci.attributeValueBinsAutoModes(mask);
             ci.attributeValueBinsManual = ci.attributeValueBinsManual(mask);

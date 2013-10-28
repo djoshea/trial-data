@@ -351,6 +351,11 @@ classdef AlignInfo < AlignDescriptor
             ti = ad.timeInfo;
             lengths = makecol([ti.stop] - [ti.start] + 1);
         end
+        
+        function offsets = getZeroByTrial(ad)
+            assert(ad.applied, 'Call .applyToTrialData first');
+            offsets = makecol([ad.timeInfo.zero]);
+        end
     end
 
     methods % Labeling and axis drawing

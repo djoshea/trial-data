@@ -33,10 +33,8 @@ classdef TrialDataConditionAlign < TrialData
         % print a short description
         function disp(td)
             td.printDescriptionShort();
-            fprintf('\t');
             
             td.alignInfo.printOneLineDescription();
-            fprintf('\t');
             td.conditionInfo.printOneLineDescription();
             
             fprintf('\n');
@@ -49,11 +47,44 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             cvalid = td.conditionInfo.computedValid;
             avalid = td.alignInfo.computedValid;
+            if isempty(td.manualValid)
+                td.manualValid = truevec(td.nTrials);
+            end
 
-            % combine and update the validity masks 
-            td.valid = cvalid & avalid;
-            td.conditionInfo = td.conditionInfo.setInvalid(~td.valid);
-            td.alignInfo = td.alignInfo.setInvalid(~td.valid);
+            valid = td.manualValid & cvalid & avalid;
+
+            td.conditionInfo = td.conditionInfo.setInvalid(~valid);
+            td.alignInfo = td.alignInfo.setInvalid(~valid);
+        end
+        
+        function valid = buildValid(td)
+            valid = td.conditionInfo.valid & td.alignInfo.valid;
+            if ~isempty(td.manualValid)
+                valid = valid & td.manualValid;
+            end
+        end
+        
+        function td = dropChannels(td, names)
+            names = wrapCell(names);
+            
+            % check whether any of the alignInfo events and error if so
+            alignEvents = td.alignInfo.getEventList();
+            mask = ismember(names, alignEvents);
+            if any(mask)
+                error('TrialData alignment depends on event %s', ...
+                    strjoin(alignEvents(mask)));
+            end
+            
+            % remove from condition info
+            conditionParams = td.conditionInfo.attributeNames;
+            mask = ismember(names, conditionParams);
+            if any(mask)
+                warning('TrialData condition depends on params %s, removing from grouping axes', ...
+                    strjoin(conditionParams(mask)));
+                td.conditionInfo = td.conditionInfo.removeAttribute(names(mask));
+            end
+            
+            td = dropChannels@ConditionDescriptor(td, names);
         end
     end
 
@@ -75,7 +106,24 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             paramStruct = td.getConditionInfoCompatibleParamStruct();
             td.conditionInfo = ConditionInfo.fromStruct(paramStruct);
-            td.conditionInfo = td.conditionInfo.applyToTrialData(td);
+        end
+        
+        function td = addChannel(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            % detect whether any new condition info compatible params
+            % have been added
+            namesOld = td.listConditionInfoCompatibleParamChannels();
+            td = addChannel@TrialData(td, varargin{:});
+            names = td.listConditionInfoCompatibleParamChannels();
+            
+            % if so, add them to the condition info with valueLists
+            % specified
+            newAttr = setdiff(names, namesOld);
+            for iA = 1:numel(newAttr)
+                td.conditionInfo = td.conditionInfo.addAttribute(newAttr{iA}, ...
+                    'values', td.getParam(newAttr{iA}));
+            end
         end
 
         function td = selectTrials(td, mask)
@@ -88,6 +136,24 @@ classdef TrialDataConditionAlign < TrialData
         function td = groupBy(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.groupBy(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = binAttribute(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.binAttribute(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+            
+        function td = binAttributeUniform(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.binAttributeUniform(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = binAttributeQuantiles(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.binAttributeQuantiles(varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
@@ -266,10 +332,14 @@ classdef TrialDataConditionAlign < TrialData
     
     % Aligned data access via AlignInfo
     methods
+        function offsets = getTimeOffsetsFromZeroEachTrial(td)
+            offsets = td.alignInfo.getZeroByTrial();
+        end
+        
         % return aligned analog channel
-        function [data time] = getAnalog(td, name)
-            [data time] = getAnalog@TrialData(td, name);
-            [data time] = td.alignInfo.getAlignedTimeseries(data, time);
+        function [data, time] = getAnalog(td, name)
+            [data, time] = getAnalog@TrialData(td, name);
+            [data, time] = td.alignInfo.getAlignedTimeseries(data, time);
         end
         
         % return aligned event times
@@ -347,7 +417,7 @@ classdef TrialDataConditionAlign < TrialData
 
             axh = td.getRequestedPlotAxis(p.Unmatched);
 
-            [dataByGroup timeByGroup] = td.getAnalogGrouped(name);     
+            [dataByGroup, timeByGroup] = td.getAnalogGrouped(name);     
             app = td.conditionAppearances;
 
             for iCond = 1:td.nConditions

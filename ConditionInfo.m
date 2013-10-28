@@ -507,13 +507,12 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                     ci.attributeNumeric(i) = true;
                 catch
                     % replace empty and NaN with '' (NaN for strings)
-                    nanMask = cellfun(@(x) isequaln(x, NaN), vals);
+                    nanMask = cellfun(@(x) any(isnan(x)), vals);
                     vals(nanMask) = {''};
                     
                     % check for cellstr
-                    [tf, strCell] = isStringCell(vals, 'convertScalar', false, 'convertVector', false);
-                    if tf
-                        ci.values(:, i) = strCell;
+                    if iscellstr(vals)
+                        ci.values(:, i) = vals;
                         ci.attributeNumeric(i) = false;
                     else
                         error('Attribute %s values were neither uniformly scalar nor strings', ci.attributeNames{i});
@@ -528,17 +527,48 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
         end
 
-        function ci = addAttribute(ci, varargin)
+        function ci = addAttribute(ci, name, varargin)
             ci.warnIfNoArgOut(nargout);
-            ci.assertNotApplied();
-            ci = addAttribute@ConditionDescriptor(ci, varargin{:});
+                        
+            if ci.applied
+                % ensure values are specified if already applied
+                % since we won't be requesting them
+                p = inputParser;
+                p.KeepUnmatched = true;
+                p.addParamValue('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
+                p.parse(varargin{:});
+                
+                if ismember('values', p.UsingDefaults)
+                    error('This ConditionInfo has already been applied to data. valueList must be specified when adding new attributes');
+                end
+                
+                % add via ConditionDescriptor
+                ci = addAttribute@ConditionDescriptor(ci, name, p.Unmatched);
+                
+                % set the values in my .values cell array
+                vals = p.Results.values;
+                assert(numel(vals) == ci.nTrials, ...
+                    'Values provided for attribute must have numel == nTrials');
+
+                if iscell(vals)
+                    ci.values(:, end+1) = vals;
+                else
+                    ci.values(:, end+1) = num2cell(vals);
+                end
+                
+                % fix everything up and rebuild the caches
+                ci = ci.fixAttributeValues();
+                ci = ci.invalidateCache();
+            else
+                % if not applied, no need to do anything special
+                ci = addAttribute@ConditionDescriptor(ci, name, varargin{:});
+            end
         end
         
         function valueStruct = requestAttributeValues(ci, td, attrNames, requestAs)
             % lookup requestAs name if not specified
             if nargin < 4
-                inds = find(strcmp(ci.attributeNames, attrNames));
-                requestAs = ci.attributeRequestAs(inds);
+                requestAs = ci.attributeRequestAs(strcmp(ci.attributeNames, attrNames));
             end
                 
             % translate into request as names
@@ -642,7 +672,6 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             %
             % Alternatively, if no arguments are passed, simply return a set of defaults
 
-            conditionsSize = ci.conditionsSize;
             nConditions = ci.nConditions;
             nConditionsNonEmpty = ci.nConditionsNonEmpty;
             countsByCondition = ci.countByCondition;
