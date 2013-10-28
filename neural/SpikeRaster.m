@@ -188,7 +188,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
                 error('Please set .getSpikesFn to provide access to raw spike times');
             end
             
-            timesCell = data.getRawSpikeTimesForUnit(unitName);
+            timesCell = data.getRawSpikeTimes(unitName);
         end
     end
 

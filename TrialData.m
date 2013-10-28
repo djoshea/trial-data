@@ -50,10 +50,6 @@ classdef(ConstructOnLoad) TrialData
                     error('Unknown initializer');
                 end
             end
-            
-            if isempty(td.manualValid)
-                td.manualValid = truevec(td.nTrials);
-            end
         end
 
         function td = initializeFromTrialData(td, tdOther)
@@ -216,7 +212,11 @@ classdef(ConstructOnLoad) TrialData
         function td = selectTrials(td, mask)
             td.warnIfNoArgOut(nargout);
             td.data = td.data(mask);
-            td.manualValid = td.manualValid(mask);
+            if isempty(td.manualValid)
+                td.manualValid = truevec(numel(td.data));
+            else
+                td.manualValid = td.manualValid(mask);
+            end
         end
         
         function td = selectValidTrials(td)

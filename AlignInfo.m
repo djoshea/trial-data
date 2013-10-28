@@ -13,7 +13,7 @@ classdef AlignInfo < AlignDescriptor
         markRelativeDeltaIgnore = 7.5;
 
         % this function maps (R, eventList) --> eventTimes array nTrials x nEvents
-        getEventTimesFn = @AlignInfo.getEventTimes;
+        getEventTimesFn = @AlignInfo.defaultGetEventTimes;
 
         eventTimeRoundFn = @ceil;
         
@@ -60,7 +60,7 @@ classdef AlignInfo < AlignDescriptor
         end
     end
 
-    methods % Binding to trial data
+    methods % Construct and bind to trial data or event struct
         function ad = AlignInfo(varargin)
             ad = ad@AlignDescriptor(varargin{:});
         end
@@ -73,35 +73,7 @@ classdef AlignInfo < AlignDescriptor
             ad.manualInvalid = falsevec(ad.nTrials);
             ad = ad.update();
         end
-        
-        function nt = get.nTrials(ad)
-            if ~ad.applied
-                nt = 0;
-            else
-                nt = numel(ad.timeInfo);
-            end
-        end
-        
-        function ad = markInvalid(ad, invalid)
-            ad.warnIfNoArgOut(nargout);
-            ad.manualInvalid(invalid) = false;
-            ad = ad.updateSummary();
-        end
-
-        function ad = setInvalid(ad, mask)
-            ad.warnIfNoArgOut(nargout);
-            ad.manualInvalid = mask;
-            ad = ad.updateSummary();
-        end
-        
-        function valid = get.valid(ad)
-            if isempty(ad.timeInfo)
-                valid = [];
-            else
-                valid = ad.computedValid & ~ad.manualInvalid;
-            end
-        end
-
+            
         function ad = update(ad)
             if ~ad.applied
                 % nothing to udpate if we haven't applied to trial data yet
@@ -111,15 +83,6 @@ classdef AlignInfo < AlignDescriptor
             ad.warnIfNoArgOut(nargout);
             [ad.timeInfo, ad.computedValid] = ad.buildTimeInfo();
             %ad.summary = ad.summarizeTimeInfo(ad.timeInfo);
-        end
-        
-        function ad = selectTrials(ad, mask)
-            ad.warnIfNoArgOut(nargout);
-            ad.eventInfo = ad.eventInfo(mask);
-            ad.timeInfo = ad.timeInfo(mask);
-            ad.manualInvalid = ad.manualInvalid(mask);
-            ad.computedValid = ad.computedValid(mask);
-            ad = ad.updateSummary();
         end
         
         % internal use function that simply grabs the event times relative to the trial
@@ -152,6 +115,9 @@ classdef AlignInfo < AlignDescriptor
             %eventInfo = structReplaceEmptyValues(eventInfo, NaN);
         end
 
+        % internal utility functions for accessing specific event times
+        
+        % n must be a scalar, times is a numeric array
         function times = getEventNthTimeVector(ad, event, n)
             if strcmp(n, 'end')
                 fn = @(info) info.(event)(end);
@@ -163,6 +129,7 @@ classdef AlignInfo < AlignDescriptor
             times = ad.eventTimeRoundFn(times);
         end
         
+        % n may be an index or a selector (e.g. '2:end')
         function timeCell = getEventIndexedTimeCell(ad, event, n)
             % similar to above but returns cell array, and n may be be a
             % string of the form '1:2', '1:end', ':', etc
@@ -209,6 +176,7 @@ classdef AlignInfo < AlignDescriptor
             end
         end
         
+        % same as above but empty cells are filled with NaN
         function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n)
             timeCell  = ad.getEventIndexedTimeCell(event, n);
             emptyMask = cellfun(@isempty, timeCell);
@@ -343,22 +311,8 @@ classdef AlignInfo < AlignDescriptor
                     timeInfo(iTrial).intervalStop{iInt} = stopTimes{iTrial};
                 end 
             end
-            
         end
         
-        function lengths = getValidDurationByTrial(ad) 
-            assert(ad.applied, 'Call .applyToTrialData first');
-            ti = ad.timeInfo;
-            lengths = makecol([ti.stop] - [ti.start] + 1);
-        end
-        
-        function offsets = getZeroByTrial(ad)
-            assert(ad.applied, 'Call .applyToTrialData first');
-            offsets = makecol([ad.timeInfo.zero]);
-        end
-    end
-
-    methods % Labeling and axis drawing
         function ad = updateSummary(ad)
             % look over the timeInfo struct and compute aggregate statistics about
             % the timing of each event relative to .zero
@@ -368,7 +322,6 @@ classdef AlignInfo < AlignDescriptor
             %     .median
             %     .mean
             %     .list
-            
             return;
             
             ti = ad.timeInfo;
@@ -398,7 +351,113 @@ classdef AlignInfo < AlignDescriptor
                 drewStartLabel = true;
             end
         end
+    end
 
+    methods % Dependent properties and post-applied alignment data request
+        function assertApplied(ad)
+            assert(ad.applied, 'Call .applyToTrialData first');
+        end
+        
+        function nt = get.nTrials(ad)
+            if ~ad.applied
+                nt = 0;
+            else
+                nt = numel(ad.timeInfo);
+            end
+       end
+       
+       function lengths = getValidDurationByTrial(ad) 
+            ad.assertApplied();
+            ti = ad.timeInfo;
+            lengths = makecol([ti.stop] - [ti.start] + 1);
+       end
+        
+       function [start, stop, zero] = getStartStopZeroByTrial(ad)
+           ad.assertApplied();
+           
+           start = makecol([ad.timeInfo.start]);
+           stop = makecol([ad.timeInfo.stop]);
+           zero = makecol([ad.timeInfo.zero]);
+       end
+       
+       function [startRel, stopRel] = getStartStopRelativeToZeroByTrial(ad)
+           ad.assertApplied();
+           [start, stop, zero] = ad.getStartStopZeroByTrial();
+           startRel = start - zero;
+           stopRel = stop - zero;
+       end
+        
+       function zero = getZeroByTrial(ad)
+            ad.assertApplied();
+            zero = makecol([ad.timeInfo.zero]);
+       end
+    end
+    
+    methods % Trial validity
+        function ad = markInvalid(ad, invalid)
+            ad.warnIfNoArgOut(nargout);
+            ad.manualInvalid(invalid) = false;
+            ad = ad.updateSummary();
+        end
+
+        function ad = setInvalid(ad, mask)
+            ad.warnIfNoArgOut(nargout);
+            ad.manualInvalid = mask;
+            ad = ad.updateSummary();
+        end
+        
+        function valid = get.valid(ad)
+            if isempty(ad.timeInfo)
+                valid = [];
+            else
+                valid = ad.computedValid & ~ad.manualInvalid;
+            end
+        end 
+        
+        function ad = selectTrials(ad, mask)
+            ad.warnIfNoArgOut(nargout);
+            ad.eventInfo = ad.eventInfo(mask);
+            ad.timeInfo = ad.timeInfo(mask);
+            ad.manualInvalid = ad.manualInvalid(mask);
+            ad.computedValid = ad.computedValid(mask);
+            ad = ad.updateSummary();
+        end
+    end
+    
+    methods % Time-Aligning data transformations
+        
+        % use the alignment to shift the times in rawTimesCell to be zero relative
+        % and filter by time window determined by getTimeInfo for each trial
+        % INCLUDES additional times found in the padWindow, see .setPadWindow
+        function [alignedTimes rawTimesMask] = getAlignedTimes(ad, rawTimesCell)
+            timeInfo = ad.timeInfo;
+            
+            % filter the spikes within the window and recenter on zero
+            [alignedTimes, rawTimesMask] = cellfun(@fn, ...
+                    makecol(rawTimesCell), ...
+                    makecol(num2cell([timeInfo.startPad])), ...
+                    makecol(num2cell([timeInfo.stopPad])), ...
+                    makecol(num2cell([timeInfo.zero])), ...
+                    'UniformOutput', false);
+                
+            alignedTimes(~ad.valid) = {[]};
+            
+            function [alignedTimes, mask] = fn(rawTimes, tStart, tEnd, tZero)
+                mask = rawTimes >= tStart & rawTimes <= tEnd;
+                alignedTimes = rawTimes(mask) - tZero;
+            end
+        end
+        
+        function [alignedData alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, varargin)
+            [alignedTime rawTimesMask] = ad.getAlignedTimes(timeCell, varargin{:});
+            %dataCell = cellfun(@makecol, dataCell, 'UniformOutput', false);
+            alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
+                'UniformOutput', false, 'ErrorHandler', @(varargin) []);
+        end
+
+    end
+    
+    methods % Labeling and axis drawing
         % struct with fields .time and and .name with where to label the time axis appropriately
         % pass along timeInfo so that the medians of non-fixed events can be labeled as well 
         function [labelInfo] = getLabelInfo(ad, varargin)
@@ -590,7 +649,7 @@ classdef AlignInfo < AlignDescriptor
             labelInfo = makecol(labelInfo);
         end
         
-        function [info valid] = getIntervalInfoByCondition(ad, ciOrig, varargin)
+        function [info, valid] = getIntervalInfoByCondition(ad, ciOrig, varargin)
             % using the conditions picked out by ConditionInfo ci and the event info found in data
             % R, compute the start and stop times for each interval defined by this AlignDescriptor
             % 
@@ -633,36 +692,7 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
         end
-
-        % use the alignment to shift the times in rawTimesCell to be zero relative
-        % and filter by time window determined by getTimeInfo for each trial
-        % INCLUDES additional times found in the padWindow, see .setPadWindow
-        function [alignedTimes rawTimesMask] = getAlignedTimes(ad, rawTimesCell)
-            timeInfo = ad.timeInfo;
-            
-            % filter the spikes within the window and recenter on zero
-            [alignedTimes, rawTimesMask] = cellfun(@fn, ...
-                    makecol(rawTimesCell), ...
-                    makecol(num2cell([timeInfo.startPad])), ...
-                    makecol(num2cell([timeInfo.stopPad])), ...
-                    makecol(num2cell([timeInfo.zero])), ...
-                    'UniformOutput', false);
-                
-            alignedTimes(~ad.valid) = {[]};
-            
-            function [alignedTimes, mask] = fn(rawTimes, tStart, tEnd, tZero)
-                mask = rawTimes >= tStart & rawTimes <= tEnd;
-                alignedTimes = rawTimes(mask) - tZero;
-            end
-        end
         
-        function [alignedData alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, varargin)
-            [alignedTime rawTimesMask] = ad.getAlignedTimes(timeCell, varargin{:});
-            %dataCell = cellfun(@makecol, dataCell, 'UniformOutput', false);
-            alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
-                'UniformOutput', false, 'ErrorHandler', @(varargin) []);
-        end
-
         % used to annotate a time axis with the relevant start/stop/zero/marks
         % non-fixed marks as <markLabel> unless the range is less than a specified 
         % noise-threshold, in which case it is marked as though it were fixed
@@ -819,8 +849,8 @@ classdef AlignInfo < AlignDescriptor
         end
     end
 
-    methods(Static)
-        function [timeData] = getEventTimes(R, eventNameList)
+    methods(Static) % Default accessor methods
+        function [timeData] = defaultGetEventTimesFn(R, eventNameList)
             % default function for accessing event times
             % Returns a cell array of size nTrials x nEvents
             % with each containing all events for event i, trial j
@@ -843,24 +873,24 @@ classdef AlignInfo < AlignDescriptor
             end
         end
        
-        function [startMs stopMs] = getTrialLengths(R)
-            nTrials = AlignInfo.getNTrialsFromData(R);
-            if isstruct(R)
-                
-                startMs = zeros(nTrials, 1);
-                stopMs = [R.length];
-
-                assert(numel(stopMs) == nTrials, 'R.length does not contain a value in all trials');
-
-            elseif isa(R, 'TrialData')
-                startMs = zeros(nTrials, 1);
-                stopMs = R.getParam('duration');
-
-            else
-                error('Unsupported trial data type, please specify .getEventTimesFn');
-            end
-        end
-
+%         function [startMs, stopMs] = defaultGetTrialStartStopFn(R)
+%             nTrials = AlignInfo.getNTrialsFromData(R);
+%             if isstruct(R)
+%                 
+%                 startMs = zeros(nTrials, 1);
+%                 stopMs = [R.length];
+% 
+%                 assert(numel(stopMs) == nTrials, 'R.length does not contain a value in all trials');
+% 
+%             elseif isa(R, 'TrialData')
+%                 startMs = zeros(nTrials, 1);
+%                 stopMs = R.getParam('duration');
+% 
+%             else
+%                 error('Unsupported trial data type, please specify .getEventTimesFn');
+%             end
+%         end
+, 
     end
 end
 
