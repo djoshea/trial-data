@@ -7,7 +7,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         function cd = AnalogChannelDescriptor(name, timeField)
             cd = cd@ChannelDescriptor(name);
             if nargin < 2
-                timeField = sprintf('%s_time', cdesc.name);
+                timeField = sprintf('%s_time', cd.name);
             end
             
             cd.dataFields = {name, timeField};

@@ -47,7 +47,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 numeric = all(cellfun(@isnumeric, dataCell));
                 cls = ChannelDescriptor.getCellElementClass(dataCell);
                 
-                cd.originalDataClassByField = cls;
+                cd.originalDataClassByField = {cls};
 
                 if scalar
                     if strcmp(cls, 'logical')
@@ -68,7 +68,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 else
                     warning('Inconsistent data types encountered');
                     cd.elementTypeByField = cd.UNKNOWN;
-                    cd.originalDataClassByField = '';
+                    cd.originalDataClassByField = {''};
                 end 
             end
         end

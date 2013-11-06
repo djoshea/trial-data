@@ -149,7 +149,7 @@ classdef TrialDataConditionAlign < TrialData
             
             for i = 1:numel(new)
                 td.conditionInfo = td.conditionInfo.addAttribute(new{i}, ...
-                    'values', td.getParam(new{i}));
+                    'values', td.getParamRaw(new{i}));
             end
         end
         
