@@ -106,7 +106,7 @@ classdef(ConstructOnLoad) TrialData
             data = tdi.getChannelData(channelDescriptors);  %#ok<PROP>
 
             % loop over channels and verify
-            fprintf('Validating channel data...\n');
+            %fprintf('Validating channel data...\n');
             ok = falsevec(nChannels);
             msg = cellvec(nChannels);
             for iChannel = 1:nChannels
@@ -125,11 +125,11 @@ classdef(ConstructOnLoad) TrialData
                 error('Missing data provided by getChannelData');
             end
 
-            fprintf('Repairing and converting channel data...\n');
+            %fprintf('Repairing and converting channel data...\n');
             for iChannel = 1:nChannels
                 chd = channelDescriptors(iChannel); 
                 data = chd.repairData(data); %#ok<PROP>
-                %data = chd.convertData(data);
+                data = chd.convertDataToMemoryClass(data); %#ok<PROP>
             end
 
             td.data = data; %#ok<PROP>
@@ -145,33 +145,26 @@ classdef(ConstructOnLoad) TrialData
         end
 
         function printDescriptionShort(td)
-            tcprintf('inline', '{yellow}%s : {white}%d trials (%d valid) with %d channels\n', ...
+            tcprintf('inline', '{yellow}%s: {none}%d trials (%d valid) with %d channels\n', ...
                 class(td), td.nTrials, td.nTrialsValid, td.nChannels);
             if ~isempty(td.datasetName)
-                tcprintf('inline', '{bright blue}Dataset : {white}%s\n', td.datasetName);
+                tcprintf('inline', '{yellow}Dataset: {none}%s\n', td.datasetName);
             end
         end
         
         function printChannelInfo(td)
-            tcprintf('inline', '{bright cyan}Analog  : {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Event   : {none}%s\n', strjoin(td.listEventChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Param   : {none}%s\n', strjoin(td.listParamChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Spike   : {none}%s\n', strjoin(td.listSpikeChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Spike: {none}%s\n', strjoin(td.listSpikeUnits(), ', '));
         end
 
         function disp(td)
             td.printDescriptionShort();
+            fprintf('\n');
             td.printChannelInfo();
             fprintf('\n');
         end
-    end
-    
-    % Factory construct from structs
-    methods(Static)
-%         function td = fromStructArrays(varargin)
-%            
-%             error('Not yet implemented');
-%         end
     end
     
     % Dependent property implementations
@@ -240,6 +233,14 @@ classdef(ConstructOnLoad) TrialData
             end
         end
         
+        function vals = replaceInvalidMaskWithValue(td, vals, value)
+            if iscell(vals)
+                [vals{~td.valid}] = deal(value);
+            else
+                vals(~td.valid) = value;
+            end
+        end
+        
         function obj = copyIfHandle(obj)
             if isa(obj, 'handle')
                 obj = obj.copy(); %#ok<MCNPN>
@@ -278,6 +279,7 @@ classdef(ConstructOnLoad) TrialData
             starts = td.getEventFirst('TrialStart');
             ends = td.getEventLast('TrialEnd');
             durations = ends - starts;
+            durations = td.replaceInvalidMaskWithValue(durations, NaN);
         end
         
         function cds = getChannelDescriptorArray(td)
@@ -289,7 +291,7 @@ classdef(ConstructOnLoad) TrialData
         
         function td = setChannelData(td, name, varargin)
             td.warnIfNoArgOut(nargout);
-            fields = td.channelDescriptorsByName.(name).getDataFields();
+            fields = td.channelDescriptorsByName.(name).dataFields;
             % for now just set first field
             fld = fields{1};
             vals = varargin{1};
@@ -312,7 +314,7 @@ classdef(ConstructOnLoad) TrialData
                 wasCell = true;
             end
             channels = fieldnames(td.channelDescriptorsByName);
-            fieldsByChannel = structfun(@(cd) cd.getDataFields(), ...
+            fieldsByChannel = structfun(@(cd) cd.dataFields, ...
                 td.channelDescriptorsByName, 'UniformOutput', false);
             
             namesByField = cellvec(numel(fields));
@@ -357,7 +359,7 @@ classdef(ConstructOnLoad) TrialData
             
             % for the removed data channels' fields, figure out which ones 
             % aren't referenced by any other channels
-            fieldsRemoveByChannel = cellfun(@(cd) makecol(cd.getDataFields()), ...
+            fieldsRemoveByChannel = cellfun(@(cd) makecol(cd.dataFields), ...
                 cds, 'UniformOutput', false);
             fieldsRemove = unique(cat(1, fieldsRemoveByChannel{:}));
             
@@ -377,10 +379,18 @@ classdef(ConstructOnLoad) TrialData
             names = {channelDescriptors(mask).name}';
         end
         
-        function [data, time] = getAnalog(td, name)
+        function [data, time] = getAnalogRaw(td, name)
             cd = td.channelDescriptorsByName.(name);
-            data = {td.data.(name)}';
-            time = {td.data.(cd.timeField)}';
+            
+            data = {td.data.(cd.dataFields{1})}';
+            time = {td.data.(cd.dataFields{2})}';
+        end
+        
+        % same as raw, except empty out invalid trials
+        function [data, time] = getAnalog(td, name)
+            [data, time] = td.getAnalogRaw(name);
+            data = td.replaceInvalidMaskWithValue(data, []);
+            time = td.replaceInvalidMaskWithValue(time, []);
         end
         
         function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
@@ -404,14 +414,20 @@ classdef(ConstructOnLoad) TrialData
             names = {channelDescriptors(mask).name}';
         end
 
-        function timesCell = getEvent(td, name)
-            timesCell = {td.data.(name)}';
-        end
-        
         % used mainly by AlignInfo to make sure it can access unaligned
         % event info
         function eventStruct = getRawEventStruct(td)
             eventStruct = copyStructField(td.data, [], td.listEventChannels());
+        end
+                
+        function timesCell = getEventRaw(td, name)
+            timesCell = {td.data.(name)}';
+        end
+        
+        % replace invalid trials with []
+        function timesCell = getEvent(td, name)
+            timesCell = td.getEventRaw(name);
+            timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
         
         function timesCell = getEvents(td, nameCell)
@@ -490,13 +506,19 @@ classdef(ConstructOnLoad) TrialData
             names = {channelDescriptors(mask).name}';
         end
         
-        % Basic access methods, very fast
-        function values = getParam(td, name)
-            values = {td.data.(name)}';
+        function values = getParamRaw(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            values = {td.data.(cd.dataFields{1})}';
             % if this channel is marked as a scalar, convert to a numeric array
-            if ~td.channelDescriptorsByName.(name).collectAsCell
+            if ~cd.collectAsCellByField(1)
                 values = cell2mat(values);
             end
+        end
+        % Basic access methods, very fast
+        function values = getParam(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            values = td.getParamRaw(name);
+            values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
         end
 
         function paramStruct = getRawChannelDataAsStruct(td, names)
@@ -525,14 +547,15 @@ classdef(ConstructOnLoad) TrialData
             names = cellfun(@SpikeChannelDescriptor.convertChannelNameToUnitName, chNames, ...
                 'UniformOutput', false);
         end
-
-        function timesCell = getSpikeTimes(td, unitName, varargin) 
-            timesCell = td.getRawSpikeTimes(unitName);
-        end
         
         function timesCell = getRawSpikeTimes(td, unitName)
             name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
             timesCell = {td.data.(name)}';
+        end
+
+        function timesCell = getSpikeTimes(td, unitName, varargin) 
+            timesCell = td.getRawSpikeTimes(unitName);
+            timesCell = td.replaceInvaidMaskWithValue(timesCell, []);
         end
             
         function counts = getSpikeCounts(td, unitName)
@@ -544,7 +567,6 @@ classdef(ConstructOnLoad) TrialData
             durations = td.getValidDurations();
             rates = counts ./ durations * td.timeUnitsPerSecond;
         end
-     
     end
 
     methods % Add data methods
@@ -574,7 +596,7 @@ classdef(ConstructOnLoad) TrialData
                 warning('Overwriting existing channel %s', cd.name);
             end
             
-            dataFields = cd.getDataFields();
+            dataFields = cd.dataFields;
             nFields = numel(dataFields);
             
             % check that one value list was provided for each data field
@@ -584,6 +606,12 @@ classdef(ConstructOnLoad) TrialData
                 numel(nFields), numel(valueCell));
             
             for iF = 1:nFields
+                % IMPORTANT: DO NOT ACCEPT DATA ON INVALID TRIALS
+                if any(~td.valid)
+                    warning('New data will be cleared on invalid trials. Recommended to call filterValidTrials() before manipulating data.');
+                    valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
+                end
+                
                 % if valueCell{iF} is a string, copy that field's values
                 % (if necessary)
                 if ischar(valueCell{iF})
@@ -703,7 +731,7 @@ classdef(ConstructOnLoad) TrialData
 
     methods % Plotting functions
         function str = getAxisLabelForChannel(td, name)
-            str = td.channelDescriptorsByName.(name).getAxisLabel();
+            str = td.channelDescriptorsByName.(name).getAxisLabelPrimary();
         end
 
         function str = getTimeAxisLabel(td)

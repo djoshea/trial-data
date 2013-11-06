@@ -1004,22 +1004,29 @@ classdef AlignDescriptor
 
             str = sprintf('%s : %s @ %s', sStart, sStop, sZero);
         end
+        
+        function str = getStartStopZeroPadDescription(ad)
+            if ad.padPre ~= 0 || ad.padPost ~= 0 
+                padStr = sprintf(', pad [%d %d]', ad.padPre, ad.padPost);
+            else
+                padStr = '';
+            end
+            str = sprintf('%s%s', ad.getStartStopZeroDescription(), padStr);
+        end
 
         function printOneLineDescription(ad)
-            desc = ad.getStartStopZeroDescription();
+            desc = ad.getStartStopZeroPadDescription();
             if ~ad.nameDefault
-                tcprintf('inline', '{yellow}%s: {white}%s : {bright blue}%s\n', class(ad), ad.name, desc);
+                tcprintf('inline', '{yellow}%s: {bright blue}%s : {none}%s\n', class(ad), ad.name, desc);
             else
                 % name will just match desc, so don't print it twice
-                tcprintf('inline', '{yellow}%s: {bright blue}%s\n', class(ad), desc);
+                tcprintf('inline', '{yellow}%s: {none}%s\n', class(ad), desc);
             end
         end
 
         function disp(ad)
             ad.printOneLineDescription();
             
-            tcprintf('inline', '\tpad [pre {bright blue}%d{none} post {bright blue}%d{none}]\n', ad.padPre, ad.padPost);
-
             tcprintf('inline', '\toutside trial {bright blue}%s\n', ad.outsideOfTrialMode);
             
             tcprintf('inline', '\tminimum duration {bright blue}%d\n', ad.minDuration);

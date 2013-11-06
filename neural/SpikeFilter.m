@@ -5,19 +5,19 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
 
     % Dependent properties are provided as a convenience, override the underlying methods
     properties(Dependent)
-        preWindowMs
-        postWindowMs
+        preWindow
+        postWindow
         isCausal
     end
 
     methods(Abstract, Access=protected)
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
-        t = getPreWindowMs(sf)
+        t = getPreWindow(sf)
 
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
-        t = getPostWindowMs(sf)
+        t = getPostWindow(sf)
 
         % spikeCell is nTrains x 1 cell array of time points
         % tvec = timeMin:timeSpacing:timeMax is an evenly spaced time vector
@@ -33,16 +33,16 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
     end
 
     methods % Dependent properties
-        function t = get.preWindowMs(sf)
-            t = sf.getPreWindowMs();
+        function t = get.preWindow(sf)
+            t = sf.getPreWindow();
         end
 
-        function t = get.postWindowMs(sf)
-            t = sf.getPostWindowMs();
+        function t = get.postWindow(sf)
+            t = sf.getPostWindow();
         end
 
         function tf = get.isCausal(sf)
-            tf = sf.getPreWindowMs() >= 0;
+            tf = sf.getPreWindow() >= 0;
         end
         
         function str = getDescription(sf)

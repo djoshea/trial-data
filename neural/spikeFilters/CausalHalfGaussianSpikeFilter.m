@@ -11,7 +11,7 @@ classdef CausalHalfGaussianSpikeFilter < GaussianSpikeFilter
     
     methods(Access=protected)
         function str = subclassGetDescription(sf)
-            str = sprintf('%.0f ms sigma', sf.sigma);
+            str = sprintf('%.0f sigma', sf.sigma);
         end
     end
 

@@ -147,10 +147,16 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         % compute which condition each trial falls into, without writing
         % NaNs for manualInvalid marked trials
         function subsMat = buildConditionSubsIncludingManualInvalid(ci)
+            % filter out any that don't have a valid attribute value
+            % along the other non-axis attributes which act as a filter
+            % (i.e. have a manual value list as well)
+            valueList = ci.buildAttributeFilterValueListStruct();
+            matchesFilters = ci.getAttributeMatchesOverTrials(valueList);
+            
             if ci.nAxes == 0
                 subsMat = onesvec(ci.nTrials);
                 assert(ci.nConditions == 1);
-%                 subsMat(ci.getAttributeMatchesOverTrials(ci.conditions)) = 1;
+                subsMat(~matchesFilters, :) = NaN;
             
             elseif ci.nConditions > 0 && ci.nTrials > 0
                 subsMat = nan(ci.nTrials, ci.nAxes);
@@ -163,15 +169,20 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 
                 % mark as NaN if it doesn't match for every attribute
                 subsMat(any(subsMat == 0, 2), :) = NaN;
-                
-                % DONT DO THIS ANYMORE
-                % filter out any that don't have a valid attribute value
-                % along the other non-axis attributes as well
-%                 valueList = ci.buildStructNonAxisAttributeValueLists();
-%                 matchesOther = ci.getAttributeMatchesOverTrials(valueList);
-%                 subsMat(~matchesOther, :) = NaN;
+              
+                subsMat(~matchesFilters, :) = NaN;
             else
                 subsMat = [];
+            end
+        end
+        
+        function valueList = buildAttributeFilterValueListStruct(ci)
+            mask = ci.attributeActsAsFilter;
+            names = ci.attributeNames(mask);
+            vals = ci.attributeValueLists(mask);
+            valueList = struct();
+            for iA = 1:numel(names)
+                valueList.(names{iA}) = vals{iA};
             end
         end
         
@@ -191,9 +202,31 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 end
             end
         end
+        
     end
 
     methods % ConditionDescriptor overrides and utilities for auto list generation
+        function printOneLineDescription(ci)           
+            if ci.nAxes == 0
+                axisStr = 'no grouping axes';
+            else
+                axisStr = strjoin(ci.axisDescriptions, ' , ');
+            end
+            
+            attrFilter = ci.attributeNames(ci.attributeActsAsFilter);
+            if isempty(attrFilter)
+                filterStr = 'no filtering';
+            else
+                filterStr = sprintf('filtering by %s', strjoin(attrFilter));
+            end
+            
+            validStr = sprintf('(%d valid)', nnz(ci.computedValid));
+            
+            tcprintf('inline', '{yellow}%s: {none}%s, %s %s\n', ...
+                class(ci), axisStr, filterStr, validStr);
+        
+        end
+        
         function ci = freezeAppearances(ci)
             % freeze current appearance information, but only store
             % conditions that have a trial in them now (which can save
@@ -350,14 +383,31 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             fields = fieldnames(valueStruct);
             attrIdx = ci.assertHasAttribute(fields);
             
-            for iF = 1:numel(fields)
+            for iF = 1:numel(fields) % loop over attributes to match
                 attrVals = ci.getAttributeValues(attrIdx(iF));
                 switch ci.attributeValueModes(attrIdx(iF))
+                    
                     case {ci.AttributeValueListAuto, ci.AttributeValueListManual}
-                        % match against lists
-                        for iV = 1:nValues
+                        % match against value lists
+                        for iV = 1:nValues % loop over each value in value list
+                            valsThis = valueStruct(iV).(fields{iF});
+                            
+                            % check whether value list has sublists within
+                            % and flatten them if so
+                            if ci.attributeNumeric(attrIdx(iF))
+                                if iscell(valsThis)
+                                    valsThis = [valsThis{:}];
+                                    % groups of values per each element
+                                end
+                            else
+                                % non-numeric
+                                if ~iscellstr(valsThis) && ~ischar(valsThis)
+                                    valsThis = [valsThis{:}];
+                                end
+                            end
+                            
                             mask(:, iV) = mask(:, iV) & ...
-                                ismember(attrVals, valueStruct(iV).(fields{iF}));
+                                ismember(attrVals, valsThis);
                         end
                             
                     case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ...
@@ -430,7 +480,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         
         function computedValid = get.computedValid(ci)
             if ci.nTrials > 0
-                computedValid = ci.getIsTrialInSomeGroup();
+                computedValid = all(~isnan(ci.conditionSubsIncludingManualInvalid), 2);
             else
                 computedValid = [];
             end
@@ -489,12 +539,19 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci = ci.invalidateCache();
         end
         
-        function ci = fixAttributeValues(ci)
+        function ci = fixAttributeValues(ci, attrIdx)
             ci.warnIfNoArgOut(nargout);
             if ci.nAttributes == 0 || ci.nTrials == 0
                 return;
             end
-            for i = 1:ci.nAttributes
+            
+            if nargin < 2
+                % go over all attributes if not specified
+                attrIdx = 1:ci.nAttributes;
+            end
+            
+            for iList = 1:numel(attrIdx)
+                i = attrIdx(iList);
                 vals = ci.values(:, i);
 
                 % check for numeric, replace empty with NaN
@@ -521,6 +578,20 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
         end
         
+        function ci = setAttributeValueData(ci, name, dataCell)
+            if ~iscell(dataCell)
+                dataCell = num2cell(dataCell);
+            end
+            assert(numel(dataCell) == ci.nTrials, 'Data must be size nTrials');
+            
+            idx = ci.assertHasAttribute(name);
+            ci.values(:, idx) = dataCell;
+            
+            ci = ci.fixAttributeValues(idx);
+            
+            ci.invalidateCache();
+        end
+        
         function assertNotApplied(ci)
             if ci.applied
                 error('You must unbind this ConditionInfo before adding attributes');
@@ -539,7 +610,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 p.parse(varargin{:});
                 
                 if ismember('values', p.UsingDefaults)
-                    error('This ConditionInfo has already been applied to data. valueList must be specified when adding new attributes');
+                    error('This ConditionInfo has already been applied to data. values must be specified when adding new attributes');
                 end
                 
                 % add via ConditionDescriptor
@@ -550,10 +621,14 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 assert(numel(vals) == ci.nTrials, ...
                     'Values provided for attribute must have numel == nTrials');
 
+                iAttr = ci.nAttributes;
+                % critical to update attribute numeric here!
                 if iscell(vals)
-                    ci.values(:, end+1) = vals;
+                    ci.attributeNumeric(iAttr) = false;
+                    ci.values(:, iAttr) = vals;
                 else
-                    ci.values(:, end+1) = num2cell(vals);
+                    ci.attributeNumeric(iAttr) = true;
+                    ci.values(:, iAttr) = num2cell(vals);
                 end
                 
                 % fix everything up and rebuild the caches

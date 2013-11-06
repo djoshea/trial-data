@@ -13,7 +13,7 @@ classdef AlignInfo < AlignDescriptor
         markRelativeDeltaIgnore = 7.5;
 
         % this function maps (R, eventList) --> eventTimes array nTrials x nEvents
-        getEventTimesFn = @AlignInfo.defaultGetEventTimes;
+        getEventTimesFn = @AlignInfo.defaultGetEventTimesFn;
 
         eventTimeRoundFn = @ceil;
         
@@ -74,6 +74,18 @@ classdef AlignInfo < AlignDescriptor
             ad = ad.update();
         end
             
+        function printOneLineDescription(ad)
+            desc = ad.getStartStopZeroPadDescription();
+            validStr = sprintf('(%d valid)', nnz(ad.computedValid));
+            if ~ad.nameDefault
+                tcprintf('inline', '{yellow}%s: {bright blue}%s : {none}%s %s\n', class(ad), ad.name, desc, validStr);
+            else
+                % name will just match desc, so don't print it twice
+                tcprintf('inline', '{yellow}%s: {none}%s %s\n', class(ad), desc, validStr);
+            end
+        end
+
+        
         function ad = update(ad)
             if ~ad.applied
                 % nothing to udpate if we haven't applied to trial data yet
@@ -138,7 +150,7 @@ classdef AlignInfo < AlignDescriptor
             else
                 % must have a colon, parse into tokens
                 pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
-                str = 'end-1:end';
+                %str = 'end-1:end';
                 info = regexp(n, pat, 'names', 'once');
                 
                 if isempty(info)
@@ -324,7 +336,6 @@ classdef AlignInfo < AlignDescriptor
             %     .list
             return;
             
-            ti = ad.timeInfo;
             events = ad.getEventList(); 
 
             zeroTimes = [ad.timeInfo.(ad.zeroEvent)];
@@ -332,7 +343,7 @@ classdef AlignInfo < AlignDescriptor
             for iEv = 1:length(events)
                 event = events{iEv};
 
-                times = ai.timeInfo;
+                times = ad.timeInfo;
 
                 evi.fixed = true;
                 evi.relativeMedian = ad.startOffset - ad.zeroOffset;
@@ -387,6 +398,7 @@ classdef AlignInfo < AlignDescriptor
            stopRel = stop - zero;
        end
         
+       % note that this should return NaNs for invalid trials
        function zero = getZeroByTrial(ad)
             ad.assertApplied();
             zero = makecol([ad.timeInfo.zero]);
@@ -428,16 +440,22 @@ classdef AlignInfo < AlignDescriptor
         
         % use the alignment to shift the times in rawTimesCell to be zero relative
         % and filter by time window determined by getTimeInfo for each trial
-        % INCLUDES additional times found in the padWindow, see .setPadWindow
-        function [alignedTimes rawTimesMask] = getAlignedTimes(ad, rawTimesCell)
-            timeInfo = ad.timeInfo;
-            
+        % if includePadding is true, will additional times found in the padWindow, see .setPadWindow
+        function [alignedTimes, rawTimesMask] = getAlignedTimes(ad, rawTimesCell, includePadding)
             % filter the spikes within the window and recenter on zero
+            if includePadding
+                start = num2cell([ad.timeInfo.startPad]);
+                stop = num2cell([ad.timeInfo.stopPad]);
+            else
+                start = num2cell([ad.timeInfo.start]);
+                stop = num2cell([ad.timeInfo.stop]);
+            end
+            
             [alignedTimes, rawTimesMask] = cellfun(@fn, ...
                     makecol(rawTimesCell), ...
-                    makecol(num2cell([timeInfo.startPad])), ...
-                    makecol(num2cell([timeInfo.stopPad])), ...
-                    makecol(num2cell([timeInfo.zero])), ...
+                    makecol(start), ...
+                    makecol(stop), ...
+                    makecol(num2cell([ad.timeInfo.zero])), ...
                     'UniformOutput', false);
                 
             alignedTimes(~ad.valid) = {[]};
@@ -448,9 +466,8 @@ classdef AlignInfo < AlignDescriptor
             end
         end
         
-        function [alignedData alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, varargin)
-            [alignedTime rawTimesMask] = ad.getAlignedTimes(timeCell, varargin{:});
-            %dataCell = cellfun(@makecol, dataCell, 'UniformOutput', false);
+        function [alignedData, alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, includePadding, varargin)
+            [alignedTime, rawTimesMask] = ad.getAlignedTimes(timeCell, includePadding);
             alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
                 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
         end

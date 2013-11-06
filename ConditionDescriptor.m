@@ -21,9 +21,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
     end
     
-    properties(Access=protected)
+    properties(SetAccess=protected)
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value? 
-        
         attributeValueListsManual = {}; % A x 1 cell array of permitted values (or cells of values) for this attribute
         attributeValueBinsManual = {}; % A x 1 cell array of value Nbins x 2 value bins to use for numeric lists
         attributeValueBinsAutoCount % A x 1 numeric array of Nbins to use when auto computing the bins, NaN if not in use
@@ -103,7 +102,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         attributeDescriptions
         nValuesByAttribute % how many values per attribute: size(values)
         attributeAlongWhichAxis % A x 1 array indicating which axis an attribute contributes to (or NaN)
-        attributeValueModes
+        attributeValueModes % A x 1 array of AttributeValue* constants above
+        attributeActsAsFilter % A x 1 logical array : does this attribute have a
+                % value list or manual bin setup that would invalidate trials?
         
         nAxes % how many dimensions of grouping axe
         nValuesAlongAxes % X x 1 array of number of elements along the axis
@@ -167,13 +168,22 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             tcprintf('inline', '\t{bright blue}Axes: {white}%s\n', strjoin(ci.axisDescriptions, ' , '));
         end
         
-        function printOneLineDescription(ci)
-            tcprintf('yellow', '%s: ', class(ci));
+        function printOneLineDescription(ci)           
             if ci.nAxes == 0
-                tcprintf('inline', '{bright blue}no grouping axes\n');
+                axisStr = 'no grouping axes';
             else
-                tcprintf('inline', '{bright blue}%s\n', strjoin(ci.axisDescriptions, ' , '));
+                axisStr = strjoin(ci.axisDescriptions, ' , ');
             end
+            
+            attrFilter = ci.attributeNames(ci.attributeActsAsFilter);
+            if isempty(attrFilter)
+                filterStr = 'no filtering';
+            else
+                filterStr = sprintf('filtering by %s', strjoin(attrFilter));
+            end
+            
+            tcprintf('inline', '{yellow}%s: {none}%s, %s\n', ...
+                class(ci), axisStr, filterStr);
         end
 
         function disp(ci)
@@ -209,6 +219,12 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
         end
         
+        % determine whether each attribute acts to filter valid trials
+        function tf = get.attributeActsAsFilter(ci)
+            modes = ci.attributeValueModes;
+            tf = ismember(modes, [ci.AttributeValueListManual, ci.AttributeValueBinsManual]);
+        end
+        
         function desc = get.axisDescriptions(ci)
             desc = cellvec(ci.nAxes);
             
@@ -222,7 +238,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                         vlStr = ' autoOccupied';
                     case ci.AxisValueListManual
                         vlStr = ' manual';
-                end   
+                end
                         
                 switch ci.axisRandomizeModes(iX)
                     case ci.AxisOriginal
@@ -352,13 +368,19 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
     methods % Attribute related 
         function [tf, idx] = hasAttribute(ci, name)
-            [tf, idx] = ismember(name, ci.attributeNames);
+            if isnumeric(name)
+                [tf, idx] = ismember(name, 1:ci.nAttributes);
+            else
+                [tf, idx] = ismember(name, ci.attributeNames);
+            end
         end
 
         function idx = assertHasAttribute(ci, name)
             [tf, idx] = ci.hasAttribute(name);
             if ~all(tf)
-                if iscell(name)
+                if isnumeric(name)
+                    name = strjoin(name(~tf), ', ');
+                elseif iscell(name)
                     name = strjoin(name(~tf));
                 end
                 error('Attribute(s) %s not found', name);
@@ -436,12 +458,14 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
         function desc = get.attributeDescriptions(ci)
             desc = cellvec(ci.nAttributes);
+            isFilter = ci.attributeActsAsFilter;
+            modes = ci.attributeValueModes;
             for i = 1:ci.nAttributes
                 name = ci.attributeNames{i};  
                 nValues = ci.nValuesByAttribute(i);
                 nAutoBins = ci.attributeValueBinsAutoCount(i);
 
-                switch ci.attributeValueModes(i)
+                switch modes(i)
                     case ci.AttributeValueListManual
                         suffix = sprintf('(%d)', nValues);
                     case ci.AttributeValueListAuto
@@ -453,13 +477,19 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     case ci.AttributeValueBinsAutoQuantiles
                         suffix = sprintf('(%d quantiles)', nAutoBins);
                 end
+                
+                if isFilter(i)
+                    filterStr = ' [filter]';
+                else
+                    filterStr = '';
+                end
 
                 if ci.attributeNumeric(i)
                     numericStr = '#';
                 else
                     numericStr = '';
                 end
-                desc{i} = sprintf('%s %s%s', name, numericStr, suffix);
+                desc{i} = sprintf('%s %s%s%s', name, numericStr, suffix, filterStr);
             end
         end 
 
@@ -493,7 +523,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             if isempty(valueList)
                 ci.attributeValueListsManual{iAttr} = {};
             else
-                assert(isnumeric(valueList) || iscellstr(valueList), 'ValueList must be numeric or cellstr');
+                assert(isnumeric(valueList) || iscell(valueList), 'ValueList must be numeric or cell');
                 % filter for unique values or 
                 ci.attributeValueListsManual{iAttr} = unique(valueList, 'stable');
             %    if ~iscell(valueList)
@@ -567,6 +597,32 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.attributeValueBinsAutoModes = ci.attributeValueBinsAutoModes(mask);
             ci.attributeValueBinsManual = ci.attributeValueBinsManual(mask);
         end 
+        
+        % set all attribute value lists to auto
+        function ci = setAllAttributeValueListsAuto(ci)
+            ci.warnIfNoArgOut(nargout);
+            for i = 1:ci.nAttributes
+                ci = ci.setAttributeValueListAuto(i);
+            end
+        end
+        
+        % restore value list to automatically include all values, with no
+        % binning
+        function ci = setAttributeValueListAuto(ci, attr)
+            ci.warnIfNoArgOut(nargout);
+            iAttr = ci.assertHasAttribute(attr);
+            ci.attributeValueListsManual{iAttr} = [];
+            ci.attributeValueBinsManual{iAttr} = [];
+            ci.attributeValueBinsAutoCount(iAttr) = NaN;
+            ci.attributeValueBinsAutoModes(iAttr) = NaN;
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = setAttributeNumeric(ci, attr, tf)
+            ci.warnIfNoArgOut(nargout);
+            iAttr = ci.assertHasAttribute(attr);
+            ci.attributeNumeric(iAttr) = tf;
+        end  
 
         % manually set the attribute value list
         function ci = setAttributeValueList(ci, name, valueList)
@@ -578,7 +634,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             else
                 ci.attributeValueListsManual{iAttr} = valueList;                
             end
-            ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
+            
+            %ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
 
             ci = ci.invalidateCache();
         end
@@ -672,7 +729,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function v = get.conditionsAxisAttributesOnly(ci)
             v = ci.odc.conditionsAxisAttributesOnly;
             if isempty(v)
-                ci.odc.conditionsAxisAttributesOnly = ci.buildConditionsRelevantAttributesOnly();
+                ci.odc.conditionsAxisAttributesOnly = ci.buildConditionsAxisAttributesOnly();
                 v = ci.odc.conditionsAxisAttributesOnly;
             end
         end
@@ -763,7 +820,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
     % build data stored inside odc (used by getters above)
     methods 
-        function values = buildConditionsRelevantAttributesOnly(ci)
+        function values = buildConditionsAxisAttributesOnly(ci)
             if ci.nAxes == 0
                 values = struct();
             else
@@ -776,12 +833,23 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function values = buildConditions(ci)
             values = ci.conditionsAxisAttributesOnly;
             
-            % and add "wildcard" match for all other attributes
+            % and add "wildcard" match for all other attributes that act as
+            % filter (i.e. have manual value list or bins specified)
             whichAxis = ci.attributeAlongWhichAxis;
+            isFilter = ci.attributeActsAsFilter;
+            valueLists = ci.attributeValueLists;
             for iA = 1:ci.nAttributes
-                if isnan(whichAxis(iA))
-                    values = assignIntoStructArray(values, ci.attributeNames{iA}, ...
-                        ci.attributeValueLists(iA));
+                if isnan(whichAxis(iA)) && isFilter(iA)
+                    valueList = valueLists{iA};
+                    
+                    % flatten any subgroupings of values in the value list
+                    if ci.attributeNumeric(iA) && iscell(valueList)
+                        valueList = [valueList{:}];
+                    elseif ~ci.attributeNumeric(iA) && ~iscellstr(valueList) && ~ischar(valueList)
+                        valueList = [valueList{:}];
+                    end
+                    % wrap in cell to avoid scalar expansion
+                    values = assignIntoStructArray(values, ci.attributeNames{iA}, {valueList});
                 end
             end
         end
@@ -967,8 +1035,22 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 switch modes(i) 
                     case ci.AttributeValueListManual
                         if ci.attributeNumeric(i)
-                            valueList{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
-                        end             
+                            if iscell(valueList{i})
+                                % could have multiple attribute values
+                                % grouped together as one element
+                                valueList{i} = cellfun(@(vals) strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
+                            else
+                                valueList{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
+                            end
+                        else
+                            % non-numeric, can leave as is unless...
+                            if ~iscellstr(valueList{i})
+                                % could have multiple attribute values
+                                % grouped together as one element
+                                valueList{i} = cellfun(@(vals) strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
+                            end
+                        end
+                                
                     case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
                         if ~iscell(valueList{i})
                             bins = valueList{i};

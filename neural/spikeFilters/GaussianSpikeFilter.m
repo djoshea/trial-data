@@ -61,7 +61,7 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
     
     methods(Access=protected)
         function str = subclassGetDescription(sf)
-            str = sprintf('%.0f ms sigma, center at %.0f', sf.sigma, sf.delayPeak);
+            str = sprintf('%.0f sigma, center at %.0f', sf.sigma, sf.delayPeak);
         end
     end
 
