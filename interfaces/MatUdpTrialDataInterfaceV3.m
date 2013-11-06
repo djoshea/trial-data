@@ -85,24 +85,28 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
                     else
                         dataFieldMain = sprintf('%s_%s', group.name, name);
                     end
-
+                    
                     switch(group.type)
                         case 'analog'
-                            cd = AnalogChannelDescriptor(name);
-                            cd.timeField = sprintf('%s_time', group.name);
+                            timeField = sprintf('%s_time', group.name);
+                            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, '', tdi.tUnits);
                         case 'event'
-                            cd = EventChannelDescriptor(name);
-                            cd.units = tdi.tUnits;
+                            cd = EventChannelDescriptor.buildMultipleEvent(name, tdi.tUnits);
                         case 'param'
                             cd = ParamChannelDescriptor(name);
                         otherwise
                             error('Unknown field type %s for channel %s', group.type, name);
                     end
 
-                    cd.name = name;
                     cd.groupName = group.name;
 
-                    cd = cd.inferAttributesFromData({tdi.R.(dataFieldMain)});
+                    dataCell = {tdi.R.(dataFieldMain)};
+                    if strcmp(group.type, 'analog')
+                        timeCell = {tdi.R.(timeField)};
+                        cd = cd.inferAttributesFromData(dataCell, timeCell);
+                    else
+                        cd = cd.inferAttributesFromData(dataCell);
+                    end
 
                     % store original field name to ease lookup in getDataForChannel()
                     cd.meta.originalField = dataFieldMain;
