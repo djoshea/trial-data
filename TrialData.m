@@ -555,7 +555,7 @@ classdef(ConstructOnLoad) TrialData
 
         function timesCell = getSpikeTimes(td, unitName, varargin) 
             timesCell = td.getRawSpikeTimes(unitName);
-            timesCell = td.replaceInvaidMaskWithValue(timesCell, []);
+            timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
             
         function counts = getSpikeCounts(td, unitName)
