@@ -27,14 +27,14 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     methods(Access=protected)
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
-        function t = getPreWindowMs(sf)
+        function t = getPreWindow(sf)
             filtSize = length(sf.filter);
             t = filtSize - sf.indZero;
         end
 
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
-        function t = getPostWindowMs(sf)
+        function t = getPostWindow(sf)
             t = sf.indZero - 1; 
         end
 
@@ -51,8 +51,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             nTime = length(tvec);
 
             % get time vector including pre and post padding to accomodate filter
-            nPre = sf.preWindowMs;
-            nPost = sf.postWindowMs;
+            nPre = sf.preWindow;
+            nPost = sf.postWindow;
             tvecPad = tMin-nPre:tMax+nPost+1;
             nTimePad = length(tvecPad);
             

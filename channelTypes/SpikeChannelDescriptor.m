@@ -1,24 +1,53 @@
 classdef SpikeChannelDescriptor < ChannelDescriptor
-    properties
-        waveformsField
-        
+    properties(SetAccess=protected)
+        waveformsField = '';
+        quality = NaN;
+        sortMode = NaN;
+    end
+    
+    properties(Dependent)
+        unitStr
         unit
         electrode
-        
-        quality
+    end
+    
+    properties(Constant)
+        SORT_THRESHOLD = 1;
+        SORT_ONLINE = 2;
+        SORT_MANUAL = 3;
     end
 
     methods
         function cd = SpikeChannelDescriptor(name)
             cd = cd@ChannelDescriptor(name); 
+            cd.dataFields = {cd.name};
+            cd.elementTypeByField = cd.VECTOR;
+            cd.originalDataClassByField = {''};
+            cd.unitsByField = {''};
         end
         
-        function type = getType(cdesc)
+        function u = get.unitStr(cd)
+            if isempty(cd.name)
+                u = '';
+            else
+                u = SpikeChannelDescriptor.convertChannelNameToUnitName(cd.name);
+            end
+        end
+        
+        function e = get.electrode(cd)
+            [e, ~] = SpikeChannelDescriptor.convertChannelNameToElectrodeUnit(cd.name);
+        end
+        
+        function u = get.unit(cd)
+            [~, u] = SpikeChannelDescriptor.convertChannelNameToElectrodeUnit(cd.name);
+        end
+        
+        function type = getType(~)
             type = 'spike';
         end
 
-        function str = describe(cdesc)
-            str = sprintf('Spike %s', cdesc.name);  
+        function str = describe(cd)
+            str = sprintf('Unit %s', cd.name);  
         end
 
         function dataFields = getDataFields(cd)
@@ -28,36 +57,49 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function cd = inferAttributesFromData(cd, dataCell)
+        function cd = inferAttributesFromData(cd, varargin)
             assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
-
-            cd.dfd = NumericVectorField();
-            cd.storageDataClass = 'double';
+            
+            assert(numel(varargin) == 1, 'Spike Channel descriptor takes exactly 1 data cell');
+            
+            cd.originalDataClassByField = {ChannelDescriptor.getCellElementClass(varargin{1})};
+            cd.elementTypeByField = cd.VECTOR;
         end
     end
     
     methods(Static)
+        function cd = buildFromUnitStr(unitName)
+            name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+            cd = SpikeChannelDescriptor(name);
+        end
+            
         function fld = convertUnitNameToChannelName(unitStr)
             fld = ['unit', strrep(unitStr, '.', '_')];
         end
         
-        function fld = convertChannelNameToUnitName(ch)
+        function unitStr = convertChannelNameToUnitName(ch)
             info = regexp(ch, 'unit(?<channel>\d+)_(?<unit>\d+)', 'names', 'once');
             if isempty(info)
                 error('Could not parse channel name %s as unit', ch);
             else
                 if isempty(info.unit)
-                    fld = sprintf('%s', info.channel);
+                    unitStr = sprintf('%s', info.channel);
                 else
-                    fld = sprintf('%s.%s', info.channel, info.unit);
+                    unitStr = sprintf('%s.%s', info.channel, info.unit);
                 end
             end
         end
         
-        function cd = buildChannelDotUnit(unitStr)
-            name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitStr);
-            cd = SpikeChannelDescriptor(name);
-            [ch.electrode, cd.unit] = parseUnitName(unitStr);
+        function [electrode, unit] = convertUnitNameToElectrodeUnit(unitName)
+            tokens = regexp(unitName, '(?<electrode>\d+)\.(?<unit>\d+)', 'names');
+            electrode =str2double(tokens.electrode);
+            unit = str2double(tokens.unit);
+        end
+        
+                
+        function [electrode, unit] = convertChannelNameToElectrodeUnit(ch)
+            unitName = SpikeChannelDescriptor.convertChannelNameToUnitName(ch);
+            [electrode, unit] = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
         end
     end
 

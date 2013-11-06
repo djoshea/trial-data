@@ -66,6 +66,8 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
         % build ParamChannelDescriptors around each of the special param names
         % .special will be marked as true
         function cds = getSpecialParamChannelDescriptors(tdi)
+            tUnits = tdi.getTimeUnitName();
+            
             cd = ParamChannelDescriptor.buildStringParam('subject');
             cd.special = true;
             cds = cd;
@@ -90,8 +92,7 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
             cd.special = true;
             cds(end+1) = cd;
 
-            cd = ParamChannelDescriptor.buildScalarParam('duration');
-            cd.units = tdi.getTimeUnitName();
+            cd = ParamChannelDescriptor.buildScalarParam('duration', tUnits);
             cd.special = true;
             cds(end+1) = cd;
             
@@ -99,7 +100,6 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
             cd.special = true;
             cds(end+1) = cd;
             
-            tUnits = tdi.getTimeUnitName();
             cd = EventChannelDescriptor.buildSingleEvent('TrialStart', tUnits);
             cd.special = true;
             cds(end+1) = cd;

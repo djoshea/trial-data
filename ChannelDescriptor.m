@@ -1,101 +1,178 @@
 classdef ChannelDescriptor < matlab.mixin.Heterogeneous
-    % Manually specified meta data
+% Use the factory builder methods in subclasses rather than constructing
+% directly, or use inferAttributesFromData
+    
     properties
-        name = ''; % short name, must be valid field name
-
         groupName = ''; % name of group to which this channel belongs 
 
         description = ''; % extended description 
 
-        units = ''; % string describing units
-
         meta % anything you'd like
 
         special = false; % whether this channel is a "special" identifier channel used by TrialData
-
-        dfd % DataFieldDescriptor instance
     end
-
-    % Inferred from data by inferAttributesFromData below
+    
+    % set by factory builder methods or inferAttributesFromData
+    % EACH OF THE FOLLOWING PROPERTIES MUST HAVE THE SAME SIZE (nFields x 1)
     properties(SetAccess=protected)
-        storageDataClass = 'double'; % original class name, for storage purposes
+        name = ''; % short name, must be valid field name
+
+        % one of the element type Constants defined below
+        elementTypeByField = [];
+
+        % name of each field in the data struct
+        dataFields = {}
+        
+        % string describing units of each field
+        unitsByField = {}
+        
+        originalDataClassByField = {};
+    end
+    
+    properties(Constant, Hidden) % element type constants
+        UNKNOWN = 0;
+        BOOLEAN = 1;
+        SCALAR = 2;
+        VECTOR = 3;
+        NUMERIC = 4;
+        STRING = 5;
+        DATENUM = 6;
     end
     
     properties(Dependent)
-        collectAsCell
+        nFields
+        collectAsCellByField 
+        missingValueByField
+        isBooleanByField
+        isStringByField
+        isVectorByField
+        isScalarByField 
         
-        missingValue
+         % in memory data class of each field (or empty if unknown / mixed)
+        dataClassByField% cell array specifying data class to convert each 
         
-        dataClass
+        % persistent storage data class of each field (or empty if unknown / mixed)
+        storageDataClassByField
+        
+        % these are shortcuts to the first element of the properties above
+        % since the first data field is considered the primary data field
+        unitsPrimary
+        dataFieldPrimary
     end
 
     methods(Abstract)
-        % return a string with this channels type
+        % return a string with this channels short type description string
         type = getType(cdesc);
 
+        % return a string with a short description of the channel excluding
+        % channel name
         str = describe(cdesc);
-
-        dataFields = getDataFields(cdesc);
         
+        % build a channel descriptor from the data
         cd = inferAttributesFromData(cd, dataCell);
     end
+    
+    methods % Dependent property definitions
+        function n = get.nFields(cd)
+            n = numel(cd.elementTypeByField);
+        end
+        
+        function vals = get.missingValueByField(cd)
+            missingVals = {false, NaN, [], [], '', {}};
+            vals = missingVals(cd.elementTypeByField);
+        end
+        
+        function c = get.dataClassByField(cd)
+            c = cellvec(cd.nFields);
+            for iF = 1:cd.nFields
+                switch cd.elementTypeByField(iF)
+                    case cd.BOOLEAN
+                        c{iF} = 'logical';
+                    case {cd.SCALAR, cd.VECTOR, cd.NUMERIC, cd.DATENUM}
+                        c{iF} = 'double';
+                    case cd.STRING
+                        c{iF} = 'char';
+                    otherwise
+                        c{iF} = '';
+                end
+            end
+        end
+        
+        function c = get.storageDataClassByField(cd)
+            c = cellvec(cd.nFields);
+            for iF = 1:cd.nFields
+                switch cd.elementTypeByField(iF)
+                    case cd.BOOLEAN
+                        c{iF} = 'logical';
+                    case {cd.SCALAR, cd.VECTOR, cd.NUMERIC}
+                        c{iF} = cd.originalDataClassByField{iF};
+                    case cd.DATENUM
+                        c{iF} = 'double';
+                    case cd.STRING
+                        c{iF} = 'char';
+                    otherwise
+                        c{iF} = '';
+                end
+            end
+        end
+        
+        function tf = get.collectAsCellByField(cd)
+            tf = ~cd.isScalarByField;
+        end
+        
+        function tf = get.isStringByField(cd)
+            tf = cd.elementTypeByField == cd.STRING;
+        end
+        
+        function tf = get.isScalarByField(cd) % returns true for boolean and scalar
+            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]);
+        end
+        
+        function tf = get.isBooleanByField(cd)
+            tf = cd.elementTypeByField == cd.BOOLEAN;
+        end
+        
+        function u = get.unitsPrimary(cd)
+            if isempty(cd.unitsByField)
+                u = '';
+            else
+                u = cd.unitsByField{1};
+            end
+        end
+        
+        function f = get.dataFieldPrimary(cd)
+            if isempty(cd.dataFields)
+                f = '';
+            else
+                f = cd.dataFields{1};
+            end
+        end
+    end
 
-    methods
+    methods % Constructor
         function cd = ChannelDescriptor(varargin)
             p = inputParser();
             p.addOptional('name', '', @ischar);
-            p.addOptional('dfd', [], @(x) isa(x, 'DataFieldDescriptor'));
             p.parse(varargin{:});
 
             cd.name = p.Results.name;
-            cd.dfd = p.Results.dfd;
         end
 
-        function cd = set.dfd(cd, dfd)
-            assert(isempty(dfd) || isa(dfd, 'DataFieldDescriptor'), 'dfd must be a DataFieldDescriptor');
-            cd.dfd = dfd;
-        end
-        
-        function val = get.missingValue(cd)
-            if isempty(cd.dfd)
-                val = [];
-            else
-                val =  cd.dfd.getEmptyValueElement();
-            end
-        end
-        
-        function tf = get.collectAsCell(cd)
-            if isempty(cd.dfd)
-                tf = true;
-            else
-                tf = ~cd.dfd.matrix;
-            end
-        end
-        
-        function dataClass = get.dataClass(cd)
-            switch cd.storageDataClass
-                case {'double', 'single', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64'}
-                    dataClass = 'double';
-                otherwise
-                    dataClass = cd.storageDataClass;
-            end
-        end
-
-        function str = getAxisLabel(cd)
-            if isempty(cd.units)
+        function str = getAxisLabelPrimary(cd)
+            if isempty(cd.unitsByField{1})
                 str = sprintf('%s', cd.name);
             else
-                str = sprintf('%s (%s)', cd.name, cd.units);
+                str = sprintf('%s (%s)', cd.name, cd.unitsPrimary);
             end
         end
 
         % look at the data struct and check that the correct data fields
         % are present in the R struct
-        function [ok, msg] = checkData(cd, R)
-            fields = cd.getDataFields();
-            if ~all(isfield(R, fields))
+        function [ok, msg] = checkData(cd, data)
+            fields = cd.dataFields;
+            if ~all(isfield(data, fields))
                 ok = false;
-                msg = sprintf('Missing fields %s', strjoin(fields(~isfield(R, fields)), ', '));
+                msg = sprintf('Missing fields %s', strjoin(fields(~isfield(data, fields)), ', '));
             else
                 ok = true;
                 msg = '';
@@ -103,25 +180,47 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
 
         % do any replacement of missing values, etc.
-        function R = repairData(cd, R)
-            % replace empty values with default in all data fields
-            fields = cd.getDataFields();
-            
+        function data = repairData(cd, data)
             % for now, only repair field 1
-            fld = fields{1};
-            missingValue = cd.missingValue;
-            if ~isempty(missingValue)
-                for iR = 1:numel(R)
-                    if isempty(R(iR).(fld)) || isequaln(R(iR).(fld), NaN)
-                        R(iR).(fld) = missingValue;
+            for iF = 1:cd.nFields
+                fld = cd.dataFields{iF};
+                missingValue = cd.missingValueByField{iF};
+                for iD = 1:numel(data)
+                    if isempty(data(iD).(fld)) || isequaln(data(iD).(fld), NaN)
+                        data(iD).(fld) = missingValue;
                     end
                 end
             end
         end
 
-        function data = convertData(cd, data)
-            fields = cd.getDataFields();
-            data = structConvertFieldValues(data, 'double', fields);
+        function data = convertDataToMemoryClass(cd, data)
+            for iF = 1:cd.nFields
+                from = cd.storageDataClassByField{iF};
+                to = cd.dataClassByField{iF};
+                if ~isempty(from) && ~isempty(to) && ~strcmp(from, to)
+                    data = structConvertFieldValues(data, to, cd.dataFields{iF});
+                end
+            end
         end 
+        
+        function data = convertDataToStorageClass(cd, data)
+            for iF = 1:cd.nFields
+                to = cd.storageDataClassByField{iF};
+                from = cd.dataClassByField{iF};
+                if ~isempty(from) && ~isempty(to) && ~strcmp(from, to)
+                    data = structConvertFieldValues(data, to, cd.dataFields{iF});
+                end
+            end
+        end 
+    end
+    
+    methods(Static) % Utility methods
+        function cls = getCellElementClass(dataCell)
+            if isempty(dataCell)
+                cls = '';
+            else
+                cls = class(dataCell{1});
+            end
+        end
     end
 end

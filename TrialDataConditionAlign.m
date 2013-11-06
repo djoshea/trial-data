@@ -12,8 +12,12 @@ classdef TrialDataConditionAlign < TrialData
         conditionIdx
         conditionSubs
         conditions
+        conditionsAsStrings
         conditionNames
         conditionAppearances
+        
+        axisValueLists
+        axisValueListsAsStrings
         
         conditionAppearanceFn
     end
@@ -28,91 +32,187 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
+    % General utilites
     methods
+        % print a short description
         function disp(td)
             td.printDescriptionShort();
-            fprintf('\n');
             
             td.alignInfo.printOneLineDescription();
-            fprintf('\n');
-            td.conditionInfo.printDescription();
+            td.conditionInfo.printOneLineDescription();
             
             fprintf('\n');
             td.printChannelInfo();
             fprintf('\n');
         end
 
+        % synchronize valid between AlignInfo and ConditionINfo
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
             cvalid = td.conditionInfo.computedValid;
             avalid = td.alignInfo.computedValid;
+            if isempty(td.manualValid)
+                td.manualValid = truevec(td.nTrials);
+            end
 
-            % combine and update the validity masks 
-            td.valid = cvalid & avalid;
-            td.conditionInfo.setInvalid(~td.valid);
-            td.alignInfo = td.alignInfo.setInvalid(~td.valid);
+            valid = td.manualValid & cvalid & avalid;
+
+            td.conditionInfo = td.conditionInfo.setInvalid(~valid);
+            td.alignInfo = td.alignInfo.setInvalid(~valid);
+        end
+        
+        function valid = buildValid(td)
+            valid = td.conditionInfo.valid & td.alignInfo.valid;
+            if ~isempty(td.manualValid)
+                valid = valid & td.manualValid;
+            end
+        end
+        
+        function td = dropChannels(td, names)
+            names = wrapCell(names);
+            
+            % check whether any of the alignInfo events and error if so
+            alignEvents = td.alignInfo.getEventList();
+            mask = ismember(names, alignEvents);
+            if any(mask)
+                error('TrialData alignment depends on event %s', ...
+                    strjoin(alignEvents(mask)));
+            end
+            
+            % remove from condition info
+            conditionParams = td.conditionInfo.attributeNames;
+            mask = ismember(names, conditionParams);
+            if any(mask)
+                warning('TrialData condition depends on params %s, removing from grouping axes', ...
+                    strjoin(conditionParams(mask)));
+                td.conditionInfo = td.conditionInfo.removeAttribute(names(mask));
+            end
+            
+            td = dropChannels@ConditionDescriptor(td, names);
         end
     end
 
     % ConditionInfo control
     methods
+        % parameters that are either scalar or strings
+        function names = listConditionInfoCompatibleParamChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && ...
+                (cd.isScalarByField{1} || cd.isStringByField{1}), ...
+                channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+        
+        function paramStruct = getConditionInfoCompatibleParamStruct(td)
+            names = td.listConditionInfoCompatibleParamChannels();
+            paramStruct = keepfields(td.data, names);
+        end
+        
         function td = initializeConditionInfo(td)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = ConditionInfo();
-            td.conditionInfo.applyToTrialData(td);
+            paramStruct = emptyStructArray(td.nTrials);
+            td.conditionInfo = ConditionInfo.fromStruct(paramStruct);
         end
-
-        function td = createCopyConditionInfo(td)
+        
+        function td = addChannel(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.copy();
+            td = addChannel@TrialData(td, varargin{:});
+            
+            % Don't do this anymore, we no longer auto-add attributes to
+            % conditionInfo until they are needed
+            
+%             % detect whether any new condition info compatible params
+%             % have been added
+%             namesOld = td.listConditionInfoCompatibleParamChannels();
+%             td = addChannel@TrialData(td, varargin{:});
+%             names = td.listConditionInfoCompatibleParamChannels();
+%             
+%             % if so, add them to the condition info with valueLists
+%             % specified
+%             newAttr = setdiff(names, namesOld);
+%             for iA = 1:numel(newAttr)
+%                 td.conditionInfo = td.conditionInfo.addAttribute(newAttr{iA}, ...
+%                     'values', td.getParam(newAttr{iA}));
+%             end
         end
 
         function td = selectTrials(td, mask)
             td.warnIfNoArgOut(nargout);
             td = selectTrials@TrialData(td, mask);
-            td = td.createCopyConditionInfo();
-            td.conditionInfo.selectTrials(mask);
+            td.conditionInfo = td.conditionInfo.selectTrials(mask);
             td.alignInfo = td.alignInfo.selectTrials(mask);
         end
         
-        function td = groupBy(td, paramList, varargin)
+        function td = addAttribute(td, names)
+            % add attributes in names that aren't already in ConditionInfo
+            new = setdiff(names, td.conditionInfo.attributeNames);
+            
+            for i = 1:numel(new)
+                td.conditionInfo = td.conditionInfo.addAttribute(new{i}, ...
+                    'values', td.getParam(new{i}));
+            end
+        end
+        
+        function td = groupBy(td, varargin)
             td.warnIfNoArgOut(nargout);
-            p = inputParser;
-            p.addRequired('paramList', @(x) isempty(x) || ischar(x) || iscellstr(x));
-            p.parse(paramList, varargin{:});
-
-            paramList = p.Results.paramList;
-            if isempty(paramList)
-                paramList = {};
-            end
-            if ischar(paramList)
-                paramList = {paramList};
-            end
-
-            % TrialData are not handle classes, copy conditionInfo to
-            % achieve independence
-            td.conditionInfo = ConditionInfo();
-            td.conditionInfo.noUpdateCache = true;
             
-            for iAttr = 1:numel(paramList)
-                td.conditionInfo.addAttribute(paramList{iAttr});
+            % add any needed attributes to condition info
+            for i = 1:numel(varargin)
+                td = td.addAttribute(varargin{i});
             end
-            td.conditionInfo.groupBy(paramList);
-            td.conditionInfo.applyToTrialData(td);
             
-            td.conditionInfo.noUpdateCache = false;
-            td.conditionInfo.updateCache();
-
+            td.conditionInfo = td.conditionInfo.groupBy(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = ungroup(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.groupBy();
+        end
+        
+        % will undo any filtering by attribute value lists and removing
+        % binning
+        function td = setAllAttributeValueListsAuto(td)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setAllAttributeValueListsAuto();
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = setAttributeValueListAuto(td, attr)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setAttributeValueListAuto(attr);
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = binAttribute(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.addAttribute(varargin{1});
+            td.conditionInfo = td.conditionInfo.binAttribute(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+            
+        function td = binAttributeUniform(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.addAttribute(varargin{1});
+            td.conditionInfo = td.conditionInfo.binAttributeUniform(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = binAttributeQuantiles(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.addAttribute(varargin{1});
+            td.conditionInfo = td.conditionInfo.binAttributeQuantiles(varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
         function td = setAttributeValueList(td, attrName, valueList)
             td.warnIfNoArgOut(nargout);
-            td = td.createCopyConditionInfo();
-            td.conditionInfo.setValueList(attrName, valueList);
+            td = td.addAttribute(attrName);
+            td.conditionInfo = td.conditionInfo.setAttributeValueList(attrName, valueList);
         end
         
         function valueList = getAttributeValueList(td, attrName)
+            td = td.addAttrbute(attrName);
             valueList = td.conditionInfo.getAttributeValueList(attrName);
         end
         
@@ -124,7 +224,6 @@ classdef TrialDataConditionAlign < TrialData
         % filter trials that are valid based on ConditionInfo
         function td = filterValidTrialsConditionInfo(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.createCopyConditionInfo();
             td = td.selectTrials(td.conditionInfo.valid);
         end
 
@@ -156,9 +255,21 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.conditions(td)
             v = td.conditionInfo.conditions;
         end
+        
+        function v = get.conditionsAsStrings(td)
+            v = td.conditionInfo.conditionsAsStrings;
+        end
 
         function n = get.nConditions(td)
             n = td.conditionInfo.nConditions;
+        end
+        
+        function v = get.axisValueLists(td)
+            v = td.conditionInfo.axisValueLists;
+        end
+        
+        function v = get.axisValueListsAsStrings(td)
+            v = td.conditionInfo.axisValueListsAsStrings;
         end
 
         function v = get.conditionNames(td)
@@ -194,13 +305,21 @@ classdef TrialDataConditionAlign < TrialData
     methods
         % given a cellvec or nmeric vector, group its elements
         function varargout = groupElements(td, varargin)
-            varargout = cell(size(varargin));
+            varargout = cell(nargout, 1);
             for i = 1:numel(varargin)
                 data = varargin{i};
                 assert(size(data,1) == td.nTrials, ...
                     'Data must have size nTrials along 1st dimension');
-                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition, 'UniformOutput', false);
+                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition, ...
+                    'UniformOutput', false);
             end
+        end
+        
+        % given data with dimension 1 with size nTrials, group by condition
+        % and map out{i} = fn(group{i})
+        function out = mapByGroup(td, fn, varargin)
+            dataByGroup = td.groupElements(varargin{:});
+            out = cellfun(fn, dataByGroup, 'UniformOutput', false);
         end
 
         function [dCell, tCell] = getAnalogGrouped(td, name)
@@ -250,6 +369,11 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateAlignInfo();
         end
         
+        function td = unalign(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.align('TrialStart:TrialEnd');
+        end
+        
         % add a padding window to the AlignInfo
         % may change which trials are valid
         % usage: pad([pre post]) or pad(pre, post)
@@ -259,7 +383,6 @@ classdef TrialDataConditionAlign < TrialData
             td.alignInfo = td.alignInfo.pad(varargin{:});
             td = td.postUpdateAlignInfo();
         end
-        
         
         % filter trials that are valid based on AlignInfo
         function td = filterValidTrialsAlignInfo(td, varargin)
@@ -273,70 +396,82 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
-    % AlignInfo data access
+    % Aligned data access via AlignInfo
     methods
+        function offsets = getTimeOffsetsFromZeroEachTrial(td)
+            offsets = td.alignInfo.getZeroByTrial();
+        end
+        
         % return aligned analog channel
         function [data, time] = getAnalog(td, name)
             [data, time] = getAnalog@TrialData(td, name);
-            [data, time] = td.alignInfo.getAlignedTimeseries(data, time);
+            [data, time] = td.alignInfo.getAlignedTimeseries(data, time, false);
         end
         
         % return aligned event times
         function timesCell = getEvent(td, name)
             timesCell = getEvent@TrialData(td, name);
-            timesCell = td.alignInfo.getAlignedTimes(timesCell);
+            timesCell = td.alignInfo.getAlignedTimes(timesCell, false);
         end
 
         % return aligned unit spike times
-        function [timesCell] = getSpikeTimesForUnit(td, unitName)
-            timesCell = getSpikeTimesForUnit@TrialData(td, unitName);
-            timesCell = td.alignInfo.getAlignedTimes(timesCell);
+        function [timesCell] = getSpikeTimes(td, unitName)
+            timesCell = getSpikeTimes@TrialData(td, unitName);
+            timesCell = td.alignInfo.getAlignedTimes(timesCell, true);
         end
-        
-     
-        
     end
 
     % Spike data
     methods
-        function sr = buildSpikeRasterForUnit(td, unitName)
+        function sr = buildSpikeRaster(td, unitName)
             sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfo);
             sr.useWidestCommonValidTimeWindow = false;
         end
-        
-        function [rates, tvec] = getFilteredSpikeRateEachTrial(td, unitName, varargin)
+           
+        function [rates, tvec] = getSpikeRateFilteredEachTrial(td, unitName, varargin)
             p = inputParser;
+            p.addParamValue('tWindow', [], @isvector);
             p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
-            spikeCell = td.getSpikeTimesForUnit(unitName);
+            
+            % Pad trial data alignment for spike filter
+            td = td.pad([sf.preWindow sf.postWindow]);
+            
+            spikeCell = td.getSpikeTimes(unitName);
             timeInfo = td.alignInfo.timeInfo;
             
             % convert to .zero relative times since that's what spikeCell
-            % will be in
+            % will be in (when called in this class)
+            tWindow = p.Results.tWindow;
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
-            [rates, tvec] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial);
+            [rates, tvec] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, tWindow);
         end
         
-        function [rateCell, tvec] = getFilteredSpikeRateGroupedEachTrial(td, unitName, varargin)
-            [rateMat, tvec] = td.getFilteredSpikeRateEachTrial(unitName, varargin{:});
+        function [rateCell, tvec] = getSpikeRateFilteredGrouped(td, unitName, varargin)
+            [rateMat, tvec] = td.getSpikeRateFilteredEachTrial(unitName, varargin{:});
             rateCell = td.groupElements(rateMat);
         end
         
-        function timesCellofCells = getSpikeTimesForUnitGrouped(td, unitName)
-            timesCell = td.getSpikeTimesForUnit(unitName);
+        function [psthMatrix, tvec] = getSpikeRateFilteredMeanByGroup(td, unitName, varargin)
+            [rateCell, tvec] = getFilteredSpikeRateGrouped(td, unitName, varargin{:});
+            psthMatrix = cell2mat(cellfun(@(r) nanmean(r, 1), rateCell, 'UniformOutput', false));
+        end
+        
+        function timesCellofCells = getSpikeTimesGrouped(td, unitName)
+            timesCell = td.getSpikeTimes(unitName);
             timesCellofCells = td.groupElements(timesCell);
         end
         
-        function countsCell = getSpikeCountsForUnitGrouped(td, unitName)
-            counts = td.getSpikeCountsForUnit(unitName);
+        function countsCell = getSpikeCountsGrouped(td, unitName)
+            counts = td.getSpikeCounts(unitName);
             countsCell = td.groupElements(counts);
         end
         
-        function rateCell = getSpikeRatePerSecForUnitGrouped(td, unitName)
-            rates = td.getSpikeRatePerSecForUnit(unitName);
+        function rateCell = getSpikeMeanRateGrouped(td, unitName)
+            rates = td.getSpikeMeanRate(unitName);
             rateCell = td.groupElements(rates);
         end
     end

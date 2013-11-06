@@ -1,4 +1,4 @@
-classdef TrialData
+classdef(ConstructOnLoad) TrialData
 % TrialData represents a collection of trials, whose data is accessed via
 % a TrialDataInterface. 
 %
@@ -7,20 +7,22 @@ classdef TrialData
 % will be done via copy-on-write, so that changes will not propagate to another
 % TrialData instance.
     
-    % Obtained from TrialDataInterface
-    properties% (SetAccess=protected)
-        initialized = false; % has initialize() been called yet?
-
-        trialDataInterfaceClass = '';
-
-        data = struct();  % standardized format nTrials x 1 struct with all trial data  
-        
-        valid
-
+    % Properties stored on disk
+    properties
         datasetName = ''; % string describing entire collection of trials dataset
 
-        datasetMeta
+        datasetMeta % arbitrary 
+    end
+    
+    properties(SetAccess=protected)
+        data = struct();  % standardized format nTrials x 1 struct with all trial data  
         
+        initialized = false; % has initialize() been called yet?
+
+        trialDataInterfaceClass = ''; % how did we access the original data?
+        
+        manualValid
+
         timeUnitName
         
         timeUnitsPerSecond
@@ -29,6 +31,7 @@ classdef TrialData
     end
 
     properties(Dependent) 
+        valid
         nTrials
         nTrialsValid
         nChannels
@@ -39,12 +42,36 @@ classdef TrialData
     methods
         function td = TrialData(varargin)
             if ~isempty(varargin)
-                td = td.initialize(varargin{:});
+                if isa(varargin{1}, 'TrialData')
+                    td = td.initializeFromTrialData(varargin{1});
+                elseif isa(varargin{1}, 'TrialDataInterface')
+                    td = td.initializeFromTrialDataInterface(varargin{:});
+                else
+                    error('Unknown initializer');
+                end
             end
         end
 
+        function td = initializeFromTrialData(td, tdOther)
+            % this is used by subclasses, so can't copy to output
+            meta = ?TrialData;
+            props = meta.PropertyList;
+
+            for iProp = 1:length(props)
+                prop = props(iProp);
+                if prop.Dependent || prop.Constant || prop.Transient
+                    continue;
+                else
+                    name = prop.Name;
+                    td.(name) = tdOther.(name);
+                end
+            end
+        end
+        
         % copy everything over from the TrialDataInterface
-        function td = initialize(td, varargin)
+        function td = initializeFromTrialDataInterface(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
             p.parse(varargin{:});
@@ -72,21 +99,21 @@ classdef TrialData
             % combine all channelDescriptors together
             channelDescriptors = [specialParams; regularChannels];
 
-            nTrials = tdi.getTrialCount();
+            %nTrials = tdi.getTrialCount();
             nChannels = numel(channelDescriptors);
 
             % request all channel data at once
-            data = tdi.getChannelData(channelDescriptors); 
+            data = tdi.getChannelData(channelDescriptors);  %#ok<PROP>
 
             % loop over channels and verify
-            fprintf('Validating channel data...\n');
+            %fprintf('Validating channel data...\n');
             ok = falsevec(nChannels);
             msg = cellvec(nChannels);
             for iChannel = 1:nChannels
                 chd = channelDescriptors(iChannel); 
 
                 % check to make sure all fields were provided as expected 
-                [ok(iChannel), msg{iChannel}] = chd.checkData(data);
+                [ok(iChannel), msg{iChannel}] = chd.checkData(data); %#ok<PROP>
             end
 
             if any(~ok)
@@ -98,14 +125,14 @@ classdef TrialData
                 error('Missing data provided by getChannelData');
             end
 
-            fprintf('Repairing and converting channel data...\n');
+            %fprintf('Repairing and converting channel data...\n');
             for iChannel = 1:nChannels
                 chd = channelDescriptors(iChannel); 
-                data = chd.repairData(data);
-                %data = chd.convertData(data);
+                data = chd.repairData(data); %#ok<PROP>
+                data = chd.convertDataToMemoryClass(data); %#ok<PROP>
             end
 
-            td.data = data;
+            td.data = data; %#ok<PROP>
         
             % build channelDescriptorByName
             td.channelDescriptorsByName = struct();
@@ -113,23 +140,28 @@ classdef TrialData
                 td.channelDescriptorsByName.(channelDescriptors(i).name) = channelDescriptors(i);
             end
             
-            td.valid = truevec(td.nTrials);
+            td.manualValid = truevec(td.nTrials);
             td.initialized = true;
         end
 
         function printDescriptionShort(td)
-            tcprintf('inline', '{yellow}%s: {bright blue}%d trials (%d valid) with %d channels\n', ...
+            tcprintf('inline', '{yellow}%s: {none}%d trials (%d valid) with %d channels\n', ...
                 class(td), td.nTrials, td.nTrialsValid, td.nChannels);
+            if ~isempty(td.datasetName)
+                tcprintf('inline', '{yellow}Dataset: {none}%s\n', td.datasetName);
+            end
         end
         
         function printChannelInfo(td)
             tcprintf('inline', '{bright cyan}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Event : {none}%s\n', strjoin(td.listEventChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Param : {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{bright cyan}Spike: {none}%s\n', strjoin(td.listSpikeUnits(), ', '));
         end
 
         function disp(td)
             td.printDescriptionShort();
+            fprintf('\n');
             td.printChannelInfo();
             fprintf('\n');
         end
@@ -137,6 +169,18 @@ classdef TrialData
     
     % Dependent property implementations
     methods % get. accessors for above properties which simply refer to tdi.?
+        function valid = get.valid(td)
+            valid = td.buildValid();
+        end
+        
+        function valid = buildValid(td)
+            if isempty(td.manualValid)
+                valid = truevec(td.nTrials);
+            else
+                valid = td.manualValid;
+            end
+        end
+        
         function nTrials = get.nTrials(td)
             nTrials = numel(td.data);
         end
@@ -161,7 +205,11 @@ classdef TrialData
         function td = selectTrials(td, mask)
             td.warnIfNoArgOut(nargout);
             td.data = td.data(mask);
-            td.valid = td.valid(mask);
+            if isempty(td.manualValid)
+                td.manualValid = truevec(numel(td.data));
+            else
+                td.manualValid = td.manualValid(mask);
+            end
         end
         
         function td = selectValidTrials(td)
@@ -185,9 +233,17 @@ classdef TrialData
             end
         end
         
+        function vals = replaceInvalidMaskWithValue(td, vals, value)
+            if iscell(vals)
+                [vals{~td.valid}] = deal(value);
+            else
+                vals(~td.valid) = value;
+            end
+        end
+        
         function obj = copyIfHandle(obj)
             if isa(obj, 'handle')
-                obj = obj.copy();
+                obj = obj.copy(); %#ok<MCNPN>
             end
         end
     end
@@ -201,23 +257,41 @@ classdef TrialData
             assert(td.hasChannel(name), 'TrialData does not have channel %s', name);
         end
         
+        function names = listChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            names = {channelDescriptors.name}';
+        end
+        
+        function names = listSpecialChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) cd.special, channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+
+        function names = listNonSpecialChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            mask = arrayfun(@(cd) ~cd.special, channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+        
         % get the time window for each trial
         function durations = getValidDurations(td)
             starts = td.getEventFirst('TrialStart');
             ends = td.getEventLast('TrialEnd');
             durations = ends - starts;
+            durations = td.replaceInvalidMaskWithValue(durations, NaN);
         end
         
         function cds = getChannelDescriptorArray(td)
             fields = fieldnames(td.channelDescriptorsByName);
             for iF = 1:length(fields)
-                cds(iF) = td.channelDescriptorsByName.(fields{iF});
+                cds(iF) = td.channelDescriptorsByName.(fields{iF}); %#ok<AGROW>
             end
         end
         
         function td = setChannelData(td, name, varargin)
             td.warnIfNoArgOut(nargout);
-            fields = td.channelDescriptorsByName.(name).getDataFields();
+            fields = td.channelDescriptorsByName.(name).dataFields;
             % for now just set first field
             fld = fields{1};
             vals = varargin{1};
@@ -226,6 +300,75 @@ classdef TrialData
             end
             
             [td.data.(fld)] = deal(vals{:});
+        end
+        
+        % channels may reference common data fields in .data to prevent
+        % data duplication. This function returns the list of channels
+        % which reference a particular data field. fields is a cellstr
+        % and nameCell is a cell of cellstr
+        function namesByField = getChannelsReferencingFields(td, fields)
+            if ischar(fields)
+                wasCell = false;
+                fields = {fields};
+            else
+                wasCell = true;
+            end
+            channels = fieldnames(td.channelDescriptorsByName);
+            fieldsByChannel = structfun(@(cd) cd.dataFields, ...
+                td.channelDescriptorsByName, 'UniformOutput', false);
+            
+            namesByField = cellvec(numel(fields));
+            for iF = 1:numel(fields)
+                assert(isfield(td.data, fields{iF}), 'TrialData does not have data field %s', fields{iF});
+                mask = structfun(@(chFields) ismember(fields{iF}, chFields), fieldsByChannel);
+                namesByField{iF} = channels(mask);
+            end
+            if ~wasCell
+                namesByField = namesByField{1};
+            end
+        end
+        
+        % drops all channel data except specified and special
+        % parameter channels
+        function td = dropNonSpecialChannelsExcept(td, names)
+            td.warnIfNoArgOut(nargout);
+            removeNames = setdiff(td.listNonSpecialChannels(), names);
+            td = td.dropChannels(removeNames);
+        end
+        
+        % drop all channels except specified and 
+        function td = dropChannelsExcept(td, names)
+            td.warnIfNoArgOut(nargout);
+            removeNames = setdiff(td.listChannels(), names);
+            td = td.dropChannels(removeNames);
+        end
+        
+        function td = dropChannels(td, names)
+            if ischar(names)
+                names = {names};
+            end
+            
+            % first hold onto the to-be-removed channel descriptors
+            cds = cellvec(numel(names));
+            for i = 1:numel(names)
+                cds{i} = td.channelDescriptorsByName.(names{i});
+            end
+            
+            % remove the channel descriptors
+            td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, names);
+            
+            % for the removed data channels' fields, figure out which ones 
+            % aren't referenced by any other channels
+            fieldsRemoveByChannel = cellfun(@(cd) makecol(cd.dataFields), ...
+                cds, 'UniformOutput', false);
+            fieldsRemove = unique(cat(1, fieldsRemoveByChannel{:}));
+            
+            otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
+            maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
+            fieldsRemove = fieldsRemove(maskRemove);
+            
+            td.data = rmfield(td.data, fieldsRemove);
+            td = td.updatePostDataChange();
         end
     end
     
@@ -236,10 +379,18 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
-        function [data, time] = getAnalog(td, name)
+        function [data, time] = getAnalogRaw(td, name)
             cd = td.channelDescriptorsByName.(name);
-            data = {td.data.(name)}';
-            time = {td.data.(cd.timeField)}';
+            
+            data = {td.data.(cd.dataFields{1})}';
+            time = {td.data.(cd.dataFields{2})}';
+        end
+        
+        % same as raw, except empty out invalid trials
+        function [data, time] = getAnalog(td, name)
+            [data, time] = td.getAnalogRaw(name);
+            data = td.replaceInvalidMaskWithValue(data, []);
+            time = td.replaceInvalidMaskWithValue(time, []);
         end
         
         function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
@@ -263,14 +414,20 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
 
-        function timesCell = getEvent(td, name)
-            timesCell = {td.data.(name)}';
-        end
-        
         % used mainly by AlignInfo to make sure it can access unaligned
         % event info
         function eventStruct = getRawEventStruct(td)
             eventStruct = copyStructField(td.data, [], td.listEventChannels());
+        end
+                
+        function timesCell = getEventRaw(td, name)
+            timesCell = {td.data.(name)}';
+        end
+        
+        % replace invalid trials with []
+        function timesCell = getEvent(td, name)
+            timesCell = td.getEventRaw(name);
+            timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
         
         function timesCell = getEvents(td, nameCell)
@@ -307,7 +464,7 @@ classdef TrialData
         end
 
         function times = getEventFirst(td, name)  
-            times = getEventNthOccurrence(td, name, 1);
+            times = getEventNth(td, name, 1);
         end
 
         function times = getEventLast(td, name)  
@@ -335,13 +492,41 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
-        % Basic access methods, very fast
-        function values = getParam(td, name)
-            values = {td.data.(name)}';
+        function names = listScalarParamChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray(); 
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.isScalar, ...
+                channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+
+        function names = getStringParamChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray(); 
+            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.isString, ...
+                channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+        
+        function values = getParamRaw(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            values = {td.data.(cd.dataFields{1})}';
             % if this channel is marked as a scalar, convert to a numeric array
-            if ~td.channelDescriptorsByName.(name).collectAsCell
+            if ~cd.collectAsCellByField(1)
                 values = cell2mat(values);
             end
+        end
+        % Basic access methods, very fast
+        function values = getParam(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            values = td.getParamRaw(name);
+            values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
+        end
+
+        function paramStruct = getRawChannelDataAsStruct(td, names)
+            paramStruct = copyStructField(td.data, [], names);
+        end
+        
+        function paramStruct = getParamStruct(td)
+            paramStruct = copyStructField(td.data, [], td.listParamChannels());
         end
         
         function td = setParam(td, name, vals)
@@ -362,22 +547,23 @@ classdef TrialData
             names = cellfun(@SpikeChannelDescriptor.convertChannelNameToUnitName, chNames, ...
                 'UniformOutput', false);
         end
-
-        function timesCell = getSpikeTimesForUnit(td, unitName, varargin) 
-            timesCell = td.getRawSpikeTimesForUnit(unitName);
-        end
         
-        function timesCell = getRawSpikeTimesForUnit(td, unitName)
+        function timesCell = getRawSpikeTimes(td, unitName)
             name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
             timesCell = {td.data.(name)}';
         end
+
+        function timesCell = getSpikeTimes(td, unitName, varargin) 
+            timesCell = td.getRawSpikeTimes(unitName);
+            timesCell = td.replaceInvaidMaskWithValue(timesCell, []);
+        end
             
-        function counts = getSpikeCountsForUnit(td, unitName)
-            counts = cellfun(@numel, td.getSpikeTimesForUnit(unitName));
+        function counts = getSpikeCounts(td, unitName)
+            counts = cellfun(@numel, td.getSpikeTimes(unitName));
         end
         
-        function rates = getSpikeRatePerSecForUnit(td, unitName)
-            counts = td.getSpikeCountsForUnit(unitName);
+        function rates = getSpikeMeanRate(td, unitName)
+            counts = td.getSpikeCounts(unitName);
             durations = td.getValidDurations();
             rates = counts ./ durations * td.timeUnitsPerSecond;
         end
@@ -387,7 +573,70 @@ classdef TrialData
         function td = updatePostDataChange(td)
             td.warnIfNoArgOut(nargout);
         end
+        
+        % when adding new data to the trial, all times are stored relative
+        % to the current time zero. This will be overridden in 
+        % TrialDataConditionAlign. This will be added automatically
+        % to all new channel time data to match the offsets produced when
+        % getting data
+        function offsets = getTimeOffsetsFromZeroEachTrial(td)
+            offsets = zerosvec(td.nTrials);
+        end
+        
+        function td = addChannel(td, cd, valueCell, varargin)
+            p = inputParser();
+            p.addParamValue('ignoreOverwriteChannel', false, @islogical);
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            
+            % check for overwrite if requested
+            assert(isa(cd, 'ChannelDescriptor'), 'Argument cd must be ChannelDescriptor');
+            if ~p.Results.ignoreOverwriteChannel && td.hasChannel(cd.name)
+                warning('Overwriting existing channel %s', cd.name);
+            end
+            
+            dataFields = cd.dataFields;
+            nFields = numel(dataFields);
+            
+            % check that one value list was provided for each data field
+            % referenced by the ChannelDescriptor
+            assert(numel(valueCell) == nFields, ...
+                'Channel Descriptor references %d fields but only %d field value lists provided', ...
+                numel(nFields), numel(valueCell));
+            
+            for iF = 1:nFields
+                % IMPORTANT: DO NOT ACCEPT DATA ON INVALID TRIALS
+                if any(~td.valid)
+                    warning('New data will be cleared on invalid trials. Recommended to call filterValidTrials() before manipulating data.');
+                    valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
+                end
+                
+                % if valueCell{iF} is a string, copy that field's values
+                % (if necessary)
+                if ischar(valueCell{iF})
+                    if ~strcmp(valueCell{iF}, dataFields{iF})
+                        % copy field values since the field names differ
+                        td.data = copyStructField(td.data, td.data, valueCell{iF}, dataFields{iF});
+                    end
+                else
+                    % check whether we're overwriting data used by other
+                    % channels (besides this one) and throw an error if we are
+                    if isfield(td.data, dataFields{iF})
+                        otherChannels = setdiff(td.getChannelsReferencingFields(dataFields{iF}), cd.name);
+                        if any(otherChannels)
+                            error('Refusing to overwrite data field %s referenced by other channels %s', ...
+                                strjoin(otherChannels, ', '));
+                        end
+                    end
+                end
+                td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF});
+            end 
 
+            td.channelDescriptorsByName.(cd.name) = cd;
+            td = td.updatePostDataChange();
+        end
+        
         function td = addParam(td, name, values, varargin)
             td.warnIfNoArgOut(nargout);
 
@@ -408,15 +657,81 @@ classdef TrialData
             end
             cd.name = name;
 
-            td.data = assignIntoStructArray(td.data, name, values);
-            td.channelDescriptorsByName.(name) = cd;
-            td = td.updatePostDataChange();
+            td = td.addChannel(cd, {values});
         end
-    end
+        
+        function td = addAnalog(td, name, times, values, units)
+            td.warnIfNoArgOut(nargout);
+            
+            if ischar(times)
+                if td.hasChannel(times)
+                    % treat times as analog channel name
+                    % share that existing channel's time field 
+                    cd = td.channelDescriptorsByName.(times);
+                    assert(isa(cd, 'AnalogChannelDescriptor'), ...
+                        'Channel %s is not an analog channel', times);
+                    timeField = cd.timeField;
+                    times = {td.data.(timeField)};
+                    
+                elseif isfield(td.data, times)
+                    % use directly specified time field in .data
+                    timeField = times;
+                    times = {td.data.(timeField)};
+                    
+                else
+                    error('%s is not a channel or data field name', times);
+                end
+            elseif iscell(times) || isnumeric(times)
+                % pass specified times along directly as cell
+                % and generate unique time field name
+                timeField = genvarname(sprintf('%s_time', name), fieldnames(td.data));
+                
+            else
+                error('Times must be channel/field name or cell array');
+            end
+                
+            % build a channel descriptor for the data
+            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units);
+            
+            % check the values and convert to nTrials cellvec
+            if ismatrix(values) && isnumeric(values)
+                % values must be nTrials x nTimes
+                assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
+                values = mat2cell(values', size(values, 2), onesvec(td.nTrials))';
+            elseif iscell(values)
+                assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
+            else
+                error('Values must be numeric matrix or cell array');
+            end
+                
+            if ismatrix(times)
+                if isvector(times)
+                    times = repmat(makerow(times), td.nTrials, 1);
+                end
+                assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
+                times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
+            elseif iscell(values)
+                assert(numel(times) == td.nTrials, 'numel(times) must match nTrials');  
+            else
+                error('Times must be numeric matrix or cell array');
+            end
+            
+            % check each trial's time vector against its value vector
+            sizeMatch = cellfun(@(time, vals) numel(time) == numel(vals), times, values);
+            assert(all(sizeMatch), 'Sizes of times vs. values vectors do not match on %d trials', nnz(sizeMatch));
+            
+            % add the zero offset to the time vector for each trial
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+            
+            % AnalogChannelDescriptor declares data fields as data, times
+            td = td.addChannel(cd, {values, times});
+        end
+    end 
 
     methods % Plotting functions
         function str = getAxisLabelForChannel(td, name)
-            str = td.channelDescriptorsByName.(name).getAxisLabel();
+            str = td.channelDescriptorsByName.(name).getAxisLabelPrimary();
         end
 
         function str = getTimeAxisLabel(td)
@@ -424,7 +739,7 @@ classdef TrialData
         end
 
         % general utility to send plots to the correct axis
-        function axh = getRequestedPlotAxis(td, varargin)
+        function axh = getRequestedPlotAxis(td, varargin) %#ok<INUSL>
             p = inputParser();
             p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
             p.addParamValue('cla', false, @islogical); 
@@ -452,7 +767,7 @@ classdef TrialData
 
             axh = td.getRequestedPlotAxis(p.Unmatched);
 
-            [dataCell timeCell] = td.getAnalog(name);     
+            [dataCell, timeCell] = td.getAnalog(name);     
 
             dataCell = dataCell(td.valid);
             timeCell = timeCell(td.valid);
