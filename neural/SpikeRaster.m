@@ -132,7 +132,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
 
             rawSpikes = obj.getSpikesFn(R, unit);
             % grab extra data to accommodate SpikeFilter
-            obj.padWindow = [obj.spikeFilter.preWindowMs obj.spikeFilter.postWindowMs];
+            obj.padWindow = [obj.spikeFilter.preWindow obj.spikeFilter.postWindow];
             
             if isempty(alignDescriptor) && isempty(alignInfo)
                 error('Please provide alignDescriptor or alignInfo argument to describe how to align and segment spikes'); 
