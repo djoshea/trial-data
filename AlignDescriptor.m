@@ -35,7 +35,7 @@ classdef AlignDescriptor
     end
     
     properties(Access=protected)
-        % ValueMap : eventName -> abbreviatedName, overrides auto abbreviation
+        % eventAbbrevLookup.eventName == abbreviatedName, overrides auto abbreviation
         % use ad = ad.abbrev(eventName, abbrev) to add an entry
         eventAbbrevLookup
     end
@@ -334,7 +334,7 @@ classdef AlignDescriptor
 
     methods % constructor, manual event specification
         function ad = AlignDescriptor(varargin)
-            ad.eventAbbrevLookup = ValueMap('KeyType', 'char', 'ValueType', 'char');
+            ad.eventAbbrevLookup = struct();
 
             ad.startEvent  = 'TrialStart';
             ad.stopEvent = 'TrialEnd';
@@ -616,7 +616,7 @@ classdef AlignDescriptor
         % store an abbreviation for an event name
         function ad = abbrev(ad, eventName, abbrev)
             ad.warnIfNoArgOut(nargout);
-            ad.eventAbbrevLookup(eventName) = abbrev;
+            ad.eventAbbrevLookup.(eventName) = abbrev;
         end
 
         % replace the start and end event with a particular zero-relative
@@ -927,9 +927,9 @@ classdef AlignDescriptor
                 % just the offset
                 abbrev = '';
 
-            elseif ad.eventAbbrevLookup.isKey(name) 
+            elseif isfield(ad.eventAbbrevLookup, name) 
                 % abbrev has been specified via addEventAbbrev
-                abbrev = ad.eventAbbrevLookup(name);
+                abbrev = ad.eventAbbrevLookup.(name);
 
             elseif ad.autoAbbreviateLabels 
                 % auto abbreviate:
