@@ -15,7 +15,7 @@ classdef AlignInfo < AlignDescriptor
         % this function maps (R, eventList) --> eventTimes array nTrials x nEvents
         getEventTimesFn = @AlignInfo.defaultGetEventTimesFn;
 
-        eventTimeRoundFn = @ceil;
+        eventTimeRoundFn = @(x) x;
         
         % struct array of nTrials x 1 containing the absolute times of each event
         % for the trials, as returned by getEventTimesFn

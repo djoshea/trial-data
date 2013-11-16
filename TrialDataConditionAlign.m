@@ -455,9 +455,10 @@ classdef TrialDataConditionAlign < TrialData
             rateCell = td.groupElements(rateMat);
         end
         
-        function [psthMatrix, tvec] = getSpikeRateFilteredMeanByGroup(td, unitName, varargin)
-            [rateCell, tvec] = getFilteredSpikeRateGrouped(td, unitName, varargin{:});
+        function [psthMatrix, tvec, semMatrix] = getSpikeRateFilteredMeanByGroup(td, unitName, varargin)
+            [rateCell, tvec] = getSpikeRateFilteredGrouped(td, unitName, varargin{:});
             psthMatrix = cell2mat(cellfun(@(r) nanmean(r, 1), rateCell, 'UniformOutput', false));
+            semMatrix =  cell2mat(cellfun(@(r) nansem(r, 1),  rateCell, 'UniformOutput', false));
         end
         
         function timesCellofCells = getSpikeTimesGrouped(td, unitName)

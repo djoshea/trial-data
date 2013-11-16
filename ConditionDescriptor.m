@@ -279,7 +279,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.axisAttributes{idx} = attr;
             ci.axisValueListsManual{idx} = p.Results.valueList;
             ci.axisRandomizeModes(idx) = ci.AxisOriginal;
-            ci.axisValueListsOccupiedOnly(idx) = true;
+            ci.axisValueListsOccupiedOnly(idx) = false;
 
             ci = ci.invalidateCache();
         end
