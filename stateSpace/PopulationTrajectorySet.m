@@ -6,27 +6,11 @@ classdef PopulationTrajectorySet < handle & matlab.mixin.Copyable
 % The set of conditions is specified by a ConditionDescriptor
 % Common time alignment is specified by an AlignDescriptor
 
-    properties(SetAccess=protected)
-        % if true, the raw sources used to build the data will be maintained within
-        % this instance, which allows things like resampling and shuffling
-        % to operate on the raw data sources
-        hasDataSources 
-
-        % a cell array of unknown length which stores the union of all trial data 
-        % instances used by all bases
-        trialDataSources
-
-        % a pointer list of size nBases x 1 which indicates which element of 
-        % trialDataSources a particular basis derives its data 
-        trialDataIndByBasis
-
-    end
-
-    properties %(SetAccess=?StateSpaceProjection)
-        % unit names 
+    properties 
+        % bases names 
         basisNames = {};
 
-        % unit meta data
+        % arbitrary basis meta data
         basisMeta = {};
 
         % nBases x nConditions x nAlign cell array of aligned time vectors 
@@ -43,7 +27,6 @@ classdef PopulationTrajectorySet < handle & matlab.mixin.Copyable
         % trials contributed to data
         nTrialsData
 
-        
         % active time window, respected by getDataTimeWindowed, but doesn't
         % actually truncate data
         % nBases x nConditions x nAlign
