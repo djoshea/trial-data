@@ -660,7 +660,7 @@ classdef(ConstructOnLoad) TrialData
             td = td.addChannel(cd, {values});
         end
         
-        function td = addAnalog(td, name, times, values, units)
+        function td = addAnalog(td, name, values, times, units)
             td.warnIfNoArgOut(nargout);
             
             if ischar(times)
@@ -704,14 +704,15 @@ classdef(ConstructOnLoad) TrialData
                 error('Values must be numeric matrix or cell array');
             end
                 
-            if ismatrix(times)
+            if iscell(times)
+                assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
+            elseif ismatrix(times)
                 if isvector(times)
                     times = repmat(makerow(times), td.nTrials, 1);
                 end
                 assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
                 times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
-            elseif iscell(values)
-                assert(numel(times) == td.nTrials, 'numel(times) must match nTrials');  
+            
             else
                 error('Times must be numeric matrix or cell array');
             end
