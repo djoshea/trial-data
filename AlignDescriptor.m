@@ -559,6 +559,7 @@ classdef AlignDescriptor
 
         function ad = truncateAfter(ad, eventName, offset, varargin)
             p = inputParser;
+            p.addOptional('offset', 0, @isscalar);
             p.addOptional('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
@@ -571,7 +572,7 @@ classdef AlignDescriptor
             ad.warnIfNoArgOut(nargout);
             ad.truncateAfterEvents{end+1} = eventName;
             ad.truncateAfterEventsIndex{end+1} = index;
-            ad.truncateAfterOffsets(end+1) = offset;
+            ad.truncateAfterOffsets(end+1) = p.Results.offset;
 
             ad = ad.update();
         end

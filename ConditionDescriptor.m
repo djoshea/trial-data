@@ -279,7 +279,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.axisAttributes{idx} = attr;
             ci.axisValueListsManual{idx} = p.Results.valueList;
             ci.axisRandomizeModes(idx) = ci.AxisOriginal;
-            ci.axisValueListsOccupiedOnly(idx) = true;
+            ci.axisValueListsOccupiedOnly(idx) = false;
 
             ci = ci.invalidateCache();
         end
@@ -1038,9 +1038,10 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                             if iscell(valueList{i})
                                 % could have multiple attribute values
                                 % grouped together as one element
+                                valueList{i} = cellfun(@(i) sprintf('%.3g', i), valueList{i}, 'UniformOutput', false);
                                 valueList{i} = cellfun(@(vals) strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
                             else
-                                valueList{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
+                                valueList{i} = arrayfun(@(i) sprintf('%.3g', i), valueList{i}, 'UniformOutput', false);
                             end
                         else
                             % non-numeric, can leave as is unless...
