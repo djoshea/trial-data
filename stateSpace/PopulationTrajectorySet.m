@@ -6,53 +6,83 @@ classdef PopulationTrajectorySet < handle & matlab.mixin.Copyable
 % The set of conditions is specified by a ConditionDescriptor
 % Common time alignment is specified by an AlignDescriptor
 
-    properties 
+    % TrialData data sources
+    properties(SetAccess=protected)
+        trialDataSourceSet = {};
+    end
+
+    properties(Access=protected)
+        % odc is an instance of PopulationTrajectorySetOnDemandCache
+        % which is a handle class. Properties which derive from 
+        odc
+    end
+
+    % Raw data that is either provided manually or extracted from trialData sources
+    properties(SetAccess=protected) 
         % bases names 
         basisNames = {};
 
         % arbitrary basis meta data
         basisMeta = {};
 
-        % nBases x nConditions x nAlign cell array of aligned time vectors 
+        % indicates how the elements in data are computed from individual trials
+        % see DATAMODE_* constants below
+        dataMode = PopulationTrajectorySet.DATAMODE_TRIALAVERAGE;
+
+        % nBases x nConditions x nAlign x nTrials cell array of aligned time vectors 
         timeData = {};
         
-        % nBases x nConditions x nAlign cell array to firing rate traces
+        % nBases x nConditions x nAlign x nTrials cell array to firing rate traces
         data = {};
+
+        % the following have the same format as data, but reflect other statistics
+        % when data is the trial average 
+        dataSem = {};
         
-        % nBases x nConditions x nAlign logical array indicating whether to include
-        % the conditions across 
+        % size(data) logical array indicating whether there is  
+        % valid data in the corresponding cell, which is required when the conditions
+        % matrix isn't complete (all conditions valid) or only some alignments are valid
+        % for a given condition
         dataValid
         
-        % nBases x nConditions x nAlign scalar array indicating how many
-        % trials contributed to data
+        % size(data) scalar array indicating how many
+        % trials contributed to data in each cell
         nTrialsData
 
-        % active time window, respected by getDataTimeWindowed, but doesn't
-        % actually truncate data
+        % size(data) arrays indicating active time window for each cell
+        % respected by getDataTimeWindowed, but doesn't
+        % actually truncate data, will override the AlignDescriptor time window
         % nBases x nConditions x nAlign
         tMinDataManual
         tMaxDataManual
     end
     
+    properties(Constant)
+        DATAMODE_TRIALAVERAGE = 1;
+        DATAMODE_SINGLETRIAL = 1;
+    end
+    
     properties % these properties have set methods which check the new value
-        % alignment information (AlignDescriptor cell array)
+        % nAlign x 1 cell of alignment information (AlignDescriptor cell array)
         alignDescriptorSet = {};
 
-        % condition information (ConditionDescriptor)
+        % scalar ConditionDescriptor describing condition information 
         conditionDescriptor
     end
 
     properties(Dependent)
         % number of separate alignDescriptors
-        nAlign
-
         nBases
 
         nConditions
         
-        dataSize % [nBases nConditions nAlign]
+        nAlign
+
+        nTrials
         
-        nConditionsValid % number of conditions which are valid in all bases, all aligns
+        dataSize % [nBases nConditions nAlign nTrials]
+        
+        %nConditionsValid % number of conditions which are valid in all bases, all aligns
 
         conditionsSize % pass-thru to .conditionDescriptor
         
@@ -73,28 +103,12 @@ classdef PopulationTrajectorySet < handle & matlab.mixin.Copyable
         DIM_BASES = 1;
         DIM_CONDITIONS = 2;
         DIM_ALIGN = 3;
+        DIM_TRIALS = 4; % for SINGLETRIAL only
     end
 
     methods % Constructor 
         function pset = PopulationTrajectorySet(varargin)
-            % will need to fix this to copy ad's 
-            p = inputParser;
-            p.addParamValue('alignDescriptor', [], @(x) isa(x, 'AlignDescriptor'));
-            p.addParamValue('alignDescriptorSet', [], @iscell);
-            p.addParamValue('conditionDescriptor', [], @(x) isa(x, 'ConditionDescriptor'));
-            p.addParamValue('storeDataSources', false, @islogical);
-            p.parse(varargin{:});
-
-            if ~isempty(p.Results.alignDescriptor)
-                % use only one alighDescriptor
-                pset.alignDescriptorSet = { p.Results.alignDescriptor };
-            elseif ~isempty(p.Results.alignDescriptorSet)
-                pset.alignDescriptorSet = p.Results.alignDescriptorSet;
-            end
-
-            pset.conditionDescriptor = p.Results.conditionDescriptor;
-
-            pset.storeDataSources = p.Results.storeDataSources;
+            
         end
     end
 
@@ -112,19 +126,15 @@ classdef PopulationTrajectorySet < handle & matlab.mixin.Copyable
             p.parse(idx);
             alignIdx = makecol(p.Results.alignIdx);
 
-            pset.data = pset.data(:, :, alignIdx);
-            pset.timeData = pset.timeData(:, :, alignIdx);
-            pset.alignTimeInfoData = pset.alignTimeInfoData(:, :, alignIdx);
+            pset.data = pset.data(:, :, alignIdx, :);
+            pset.dataSem = pset.dataSem(:, :, alignIdx, :);
+            pset.timeData = pset.timeData(:, :, alignIdx, :);
+            pset.alignTimeInfoData = pset.alignTimeInfoData(:, :, alignIdx, :);
             pset.alignDescriptorSet = pset.alignDescriptorSet(alignIdx);
             pset.dataValid = pset.dataValid(:, :, alignIdx);
             pset.nTrialsData = pset.nTrialsData(:, :, alignIdx);
             pset.tMinDataManual = pset.tMinDataManual(:, :, alignIdx);
             pset.tMinDataManual = pset.tMaxDataManual(:, :, alignIdx);
-           
-            if pset.storeDataSources
-                pset.dataSources = pset.dataSources(:, alignIdx);
-                pset.dataSourcesOrig = pset.dataSourcesOrig(:, alignIdx);
-            end
         end
         
         function filterBases(pset, idx)
