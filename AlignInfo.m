@@ -130,7 +130,10 @@ classdef AlignInfo < AlignDescriptor
         % internal utility functions for accessing specific event times
         
         % n must be a scalar, times is a numeric array
-        function times = getEventNthTimeVector(ad, event, n)
+        function times = getEventNthTimeVector(ad, event, n, offset)
+            if nargin < 4
+                offset = 0;
+            end
             if strcmp(n, 'end')
                 fn = @(info) info.(event)(end);
             else
@@ -138,15 +141,18 @@ classdef AlignInfo < AlignDescriptor
             end
             times = arrayfun(fn, ad.eventInfo, ...
                 'ErrorHandler', @(varargin) NaN);
-            times = ad.eventTimeRoundFn(times);
+            times = makecol(ad.eventTimeRoundFn(times)) + offset;
         end
         
         % n may be an index or a selector (e.g. '2:end')
-        function timeCell = getEventIndexedTimeCell(ad, event, n)
+        function timeCell = getEventIndexedTimeCell(ad, event, n, offset)
+            if nargin < 4
+                offset = 0;
+            end
             % similar to above but returns cell array, and n may be be a
             % string of the form '1:2', '1:end', ':', etc
             if ~ischar(n) || strcmp(n, 'end')
-                timeCell = num2cell(ad.getEventNthTimeVector(event, n));
+                timeCell = num2cell(ad.getEventNthTimeVector(event, n, offset));
             else
                 % must have a colon, parse into tokens
                 pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
@@ -209,10 +215,11 @@ classdef AlignInfo < AlignDescriptor
         end
         
         % same as above but empty cells are filled with NaN
-        function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n)
-            timeCell  = ad.getEventIndexedTimeCell(event, n);
+        function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n, offset)
+            timeCell  = ad.getEventIndexedTimeCell(event, n, offset);
             emptyMask = cellfun(@isempty, timeCell);
             [timeCell{emptyMask}] = deal(NaN);
+            
         end
         
         % get the aligned start/stop/zero/mark time windows for each trial, 
@@ -335,9 +342,9 @@ classdef AlignInfo < AlignDescriptor
             end
             
             % include the interval times
-            for iInt = 1:size(ad.intervalEvents, 1)
-                startTimes = ad.getEventIndexedTimeVector(ad.intervalEventsStart{iInt}, ad.intervalEventsIndexStart, ad.intervalOffsetsStart(iInt));
-                stopTimes = ad.getEventIndexedTimeVector(ad.intervalEventsStop{iInt}, ad.intervalEventsIndexStop, ad.intervalOffsetsStop(iInt));
+            for iInt = 1:size(ad.intervalEventsStart, 1)
+                startTimes = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.intervalEventsStart{iInt}, ad.intervalEventsIndexStart, ad.intervalOffsetsStart(iInt));
+                stopTimes = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.intervalEventsStop{iInt}, ad.intervalEventsIndexStop,  ad.intervalOffsetsStop(iInt));
                 for iTrial = 1:nTrials
                     timeInfo(iTrial).intervalStart{iInt} = startTimes{iTrial};
                     timeInfo(iTrial).intervalStop{iInt} = stopTimes{iTrial};
@@ -701,10 +708,9 @@ classdef AlignInfo < AlignDescriptor
             
             % TODO Implement condition matching
             valid = [timeInfo.valid];
-            ci = ciOrig.copy();
-            ci.markInvalid(~valid);
+            ci = ciOrig.markInvalid(~valid);
             
-            nIntervals = size(ad.intervalEvents,1);
+            nIntervals = size(ad.intervalEventsStart,1);
             info = struct();
              
             for iC = 1:ci.nConditions
@@ -718,13 +724,15 @@ classdef AlignInfo < AlignDescriptor
                     else
                         % check that all trials within condition have the same number
                         % of periods for this interval
-                        nPeriods = arrayfun(@(ti) size(ti.interval{iInt}, 1), timeInfo(rMask));
+                        nPeriods = arrayfun(@(ti) size(ti.intervalStart{iInt}, 1), timeInfo(rMask));
                         if length(unique(nPeriods)) > 1
                             debug('WARNING: Trials within condition have differing number of periods for interval %d\n', iInt);
                         end
 
                         % grab the interval info from the first trial
-                        info(iC).interval{iInt} = timeInfo(rMask(1)).interval{iInt} - timeInfo(rMask(1)).zero;
+                        info(iC).intervalStart{iInt} = timeInfo(rMask(1)).intervalStart{iInt} - timeInfo(rMask(1)).zero;
+                        info(iC).intervalStop{iInt} = timeInfo(rMask(1)).intervalStop{iInt} - timeInfo(rMask(1)).zero;
+                        
                     end
                 end
             end

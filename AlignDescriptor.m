@@ -92,9 +92,12 @@ classdef AlignDescriptor
         markMarkData
 
         % for marking time intervals on the time axis as colored rectangles
-        intervalEvents = {}; % n x 2 cell array of start/stop events
-        intervalEventsIndex % n x 2 array of event indices
-        intervalOffsets % n x 2 array of offsets
+        intervalEventsStart = {}; % n x 1 cell array of start/stop events
+        intervalEventsStop = {}; % n x 1 cell array of start/stop events
+        intervalEventsIndexStart % n x 1 array of event indices
+        intervalEventsIndexStop % n x 1 array of event indices
+        intervalOffsetsStart % n x 1 array of offsets
+        intervalOffsetsStop % n x 1 array of offsets
         intervalLabelsStored = {};
         intervalColors = {}; % color of rectangle used for the interval
 
@@ -166,7 +169,9 @@ classdef AlignDescriptor
         end
 
         function tf = get.isIntervalFixedTime(ad)
-            tf = strcmp(ad.zeroEvent, ad.intervalEvents) & isequal(ad.zeroEventIndex, ad.intervalEventsIndex);
+            tf = strcmp(ad.zeroEvent, ad.intervalEventsStart) & strcmp(ad.zeroEvent, ad.intervalEventsStop) & ...
+                isequal(ad.zeroEventIndex, ad.intervalEventsIndexStart) & ...
+                isequal(ad.zeroEventIndex, ad.intervalEventsIndexStop);
         end
 
         function tf = get.isStartZero(ad)
@@ -261,7 +266,7 @@ classdef AlignDescriptor
         end
 
         function intervalLabels = get.intervalLabels(ad)
-            nIntervals = size(ad.intervalEvents, 1);
+            nIntervals = size(ad.intervalEventsStart, 1);
             if isempty(ad.intervalLabelsStored)
                 ad.intervalLabelsStored = cell(nIntervals, 1);
             end
@@ -272,17 +277,17 @@ classdef AlignDescriptor
                     % manual label
                     intervalLabels{i} = ad.intervalLabelsStored{i};
                 else
-                    if ad.isIntervalFixedTime(i, 1) && ad.omitRedundantLabel
+                    if ad.isIntervalFixedTime(i) && ad.omitRedundantLabel
                         % same as zero, just include the offset (e.g. '+100')
-                        label1 = ad.buildLabel('', [], ad.intervalOffsets(i, 1));
+                        label1 = ad.buildLabel('', [], ad.intervalOffsetsStart(i));
                     else
-                        label1 = ad.buildLabel(ad.intervalEvents{i, 1}, ad.intervalEventsIndex{i,1}, ad.intervalOffsets(i, 1));
+                        label1 = ad.buildLabel(ad.intervalEventsStart{i}, ad.intervalEventsIndexStart{i}, ad.intervalOffsetsStart(i));
                     end
-                    if ad.isIntervalFixedTime(i, 2) && ad.omitRedundantLabel
+                    if ad.isIntervalFixedTime(i) && ad.omitRedundantLabel
                         % same as zero, just include the offset (e.g. '+100')
-                        label2 = ad.buildLabel('', [], ad.intervalOffsets(i, 2));
+                        label2 = ad.buildLabel('', [], ad.intervalOffsetsStop(i));
                     else
-                        label2 = ad.buildLabel(ad.intervalEvents{i, 2}, ad.intervalEventsIndex{i,2}, ad.intervalOffsets(i, 2));
+                        label2 = ad.buildLabel(ad.intervalEventsStop{i}, ad.intervalEventsIndexStop{i}, ad.intervalOffsetsStop(i));
                     end
 
                     intervalLabels{i} = sprintf('%s : %s', label1, label2);
@@ -311,8 +316,13 @@ classdef AlignDescriptor
 
         function strCell = get.intervalUnabbreviatedLabels(ad)
             % TODO fix this
-            strCell = cellfun(@ad.buildUnabbreviatedLabel, ad.intervalEvents, ...
-                ad.intervalEventsIndex, num2cell(ad.intervalOffsets), 'UniformOutput', false);
+            strCellStart = cellfun(@ad.buildUnabbreviatedLabel, ad.intervalEventsStart, ...
+                ad.intervalEventsIndexStart, num2cell(ad.intervalOffsetsStart), 'UniformOutput', false);
+            strCellStop = cellfun(@ad.buildUnabbreviatedLabel, ad.intervalEventsStop, ...
+                ad.intervalEventsIndexStop, num2cell(ad.intervalOffsetsStop), 'UniformOutput', false);
+            
+            strCell = cellfun(@(s1, s2) sprintf('%s:%s', s1, s2), strCellStart, strCellStop, ...
+                'UniformOutput', false);
         end
 
         function strCell = get.invalidateUnabbreviatedLabels(ad)
@@ -357,7 +367,7 @@ classdef AlignDescriptor
         function eventList = getEventList(ad)
             eventList = unique({ad.startEvent ad.stopEvent ad.zeroEvent ...
                 ad.truncateBeforeEvents{:} ad.truncateAfterEvents{:} ad.invalidateEvents{:} ...
-                ad.markEvents{:} ad.intervalEvents{:}});
+                ad.markEvents{:} ad.intervalEventsStart{:} ad.intervalEventsStop{:}});
             eventList = union(eventList, {'TrialStart', 'TrialEnd'});
         end
 
@@ -483,7 +493,7 @@ classdef AlignDescriptor
             as = p.Results.as;
             conditionMatch = p.Results.conditionMatch;
 
-            iInterval = size(ad.intervalEvents,1)+1;
+            iInterval = size(ad.intervalEventsStart,1)+1;
             ad.intervalEventsStart{iInterval} = eventNameStart; 
             ad.intervalEventsStop{iInterval} = eventNameStop; 
             ad.intervalEventsIndexStart{iInterval} = p.Results.indexStart;
@@ -1036,10 +1046,9 @@ classdef AlignDescriptor
                 tcprintf('inline', '\tmark {white}%s{none} as {bright blue}%s\n', ...
                     ad.markUnabbreviatedLabels{i}, ad.markLabels{i}); 
             end
-            for i = 1:size(ad.intervalEvents, 1)
-                tcprintf('inline', '\tinterval {white}%s{none} : {white}%s{none} as {bright blue}%s\n', ...
-                    ad.intervalUnabbreviatedLabels{i, 1}, ...
-                    ad.intervalUnabbreviatedLabels{i, 1}, ...
+            for i = 1:size(ad.intervalEventsStart, 1)
+                tcprintf('inline', '\tinterval {white}%s{none} as {bright blue}%s\n', ...
+                    ad.intervalUnabbreviatedLabels{i}, ...
                     ad.intervalLabels{i}); 
                 % TODO add condition match description
             end
