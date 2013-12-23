@@ -152,7 +152,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             
             %obj.alignTimeInfo = obj.alignDescriptor.getTimeInfo(R, obj.padWindow);
            % [obj.spikes] = obj.alignDescriptor.getAlignedTimes(obj.alignTimeInfo, rawSpikes);
-            obj.spikes = obj.alignInfo.getAlignedTimes(rawSpikes);
+            obj.spikes = obj.alignInfo.getAlignedTimes(rawSpikes, true);
             
             obj.spikesExcludingPad = obj.getSpikesExcludingPad();
 
@@ -1386,7 +1386,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             yConditionGap = 10;
             axh = [];
             drawConditionNames = true;
-            yLabelPSTH = 'Hz';
+            yLabelPSTH = 'spikes/sec';
             psthYLim = [];
             assignargs(varargin);
 
