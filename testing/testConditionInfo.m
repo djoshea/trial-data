@@ -12,4 +12,4 @@ ci = ci.binAttributeQuantiles('rt', 5);
 ci = ci.binAttributeUniform('delay', 5);
 
 ci = ci.groupByAll();
-ci
+ci = ci.axisShuffle('target');

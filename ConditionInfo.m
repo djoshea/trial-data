@@ -3,6 +3,8 @@
 % of each attribute for each trial. If not bound to anything, this function will receive
 % [] as its first argument, with the assumption being that the function handle in this
 % case is already bound to a specific set of trial data.
+%
+% NOTE: shuffling and resampling along axes affects listByCondition, but not conditionSubs
 classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
 
     properties
@@ -41,14 +43,21 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         conditionIdx % T x 1 array of linear index into conditions for each trials
         
         % T x A matrix of which condition each trial belongs to as a row vector of subscript indices
-        conditionSubsIncludingManualInvalid
+        conditionSubsRaw
 
         % T x A matrix of which condition each trial belongs to as a row
         % vector of subscript indices, except invalid trials will have all
         % NaNs in their row
         conditionSubs 
-        
+
         % nConditions x 1 cell array of idx in each condition
+        listByConditionRaw
+
+        % NONE OF THE ABOVE is affected by axis randomization
+        % only listByCondition
+
+        % nConditions x 1 cell array of idx in each condition
+        % listByCondition IS affected by axis randomization
         listByCondition
     end
 
@@ -94,17 +103,17 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci.odc.conditionIdx = v;
         end
         
-        function v = get.conditionSubsIncludingManualInvalid(ci)
-            v = ci.odc.conditionSubsIncludingManualInvalid;            
+        function v = get.conditionSubsRaw(ci)
+            v = ci.odc.conditionSubsRaw;            
             if isempty(v)
-                ci.odc.conditionSubsIncludingManualInvalid = ci.buildConditionSubsIncludingManualInvalid();
-                v = ci.odc.conditionSubsIncludingManualInvalid;
+                ci.odc.conditionSubsRaw = ci.buildConditionSubsRaw();
+                v = ci.odc.conditionSubsRaw;
             end
         end
         
-        function ci = set.conditionSubsIncludingManualInvalid(ci, v)
+        function ci = set.conditionSubsRaw(ci, v)
             ci.odc = ci.odc.copy();
-            ci.odc.conditionSubsIncludingManualInvalid = v;
+            ci.odc.conditionSubsRaw = v;
         end
         
         function v = get.conditionSubs(ci)
@@ -118,6 +127,19 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         function ci = set.conditionSubs(ci, v)
             ci.odc = ci.odc.copy();
             ci.odc.conditionSubs = v;
+        end
+
+        function v = get.listByConditionRaw(ci)
+            v = ci.odc.listByConditionRaw;            
+            if isempty(v)
+                ci.odc.listByConditionRaw = ci.buildListByConditionRaw();
+                v = ci.odc.listByConditionRaw;
+            end
+        end
+        
+        function ci = set.listByConditionRaw(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.listByConditionRaw = v;
         end
         
         function v = get.listByCondition(ci)
@@ -145,8 +167,8 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         end
         
         % compute which condition each trial falls into, without writing
-        % NaNs for manualInvalid marked trials
-        function subsMat = buildConditionSubsIncludingManualInvalid(ci)
+        % NaNs for manualInvalid marked trials and without applying randomization along each axis
+        function subsMat = buildConditionSubsRaw(ci)
             % filter out any that don't have a valid attribute value
             % along the other non-axis attributes which act as a filter
             % (i.e. have a manual value list as well)
@@ -186,12 +208,16 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
         end
         
+
+        % mark manual invalid trials as NaNs in all conditionSubs 
+        % DO NOT PERFORM AXIS RANDOMIZATION 
         function subsMat = buildConditionSubs(ci)
-            subsMat = ci.conditionSubsIncludingManualInvalid;
+            subsMat = ci.conditionSubsRaw;
             subsMat(ci.manualInvalid, :) = NaN;
+
         end
-        
-        function list = buildListByCondition(ci)
+
+        function list = buildListByConditionRaw(ci)
             list = cell(ci.conditionsSize);
             for iC = 1:ci.nConditions
                 list{iC} = makecol(find(ci.conditionIdx == iC));
@@ -202,15 +228,43 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 end
             end
         end
+
+        % Perform axis randomization to listByConditionRaw
+        % successively along each randomized axis
+        function list = buildListByCondition(ci)
+            list = ci.listByConditionRaw;
+            
+            ci = ci.seedRandomStream();
+            
+            for iA = 1:ci.nAxes
+                replace = ci.axisRandomizeWithReplacement(iA);
+                switch ci.axisRandomizeModes(iA)
+                    case ci.AxisOriginal
+                        continue;
+                    case ci.AxisShuffled
+                        list = TensorUtils.listShuffleAlongDimension(list, iA, replace); 
+                    case ci.AxisResampleFromSpecified
+                        list = TensorUtils.listResampleFromSpecifiedAlongDimension(list, ci.axisResampleFromList{iA}, iA);
+                    otherwise
+                        error('Unknown randomize mode for axis %d', iA);
+                end
+            end
+            
+            % and finally, if resampleWithinConditions is true,
+            % resampleFromSame everything
+            if ci.resampleWithinConditions
+                list = TensorUtils.listResampleFromSame(list);
+            end
+        end
         
     end
-
+    
     methods % ConditionDescriptor overrides and utilities for auto list generation
         function printOneLineDescription(ci)           
             if ci.nAxes == 0
                 axisStr = 'no grouping axes';
             else
-                axisStr = strjoin(ci.axisDescriptions, ' , ');
+                axisStr = strjoin(ci.axisDescriptions, ', ');
             end
             
             attrFilter = ci.attributeNames(ci.attributeActsAsFilter);
@@ -306,6 +360,8 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 binEdges = makecol(linspace(minV, maxV, nBins + 1));
                 bins = [ binEdges(1:end-1), binEdges(2:end) ];
             end
+            
+            bins = mat2cell(bins, ones(size(bins, 1), 1), 2);
         end
         
         function bins = computeAutoQuantileBinsForAttribute(ci, attrIdx)
@@ -318,6 +374,8 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 binEdges = makecol(quantile(vals, linspace(0, 1, nBins+1)));
                 bins = [ binEdges(1:end-1), binEdges(2:end) ];
             end
+            
+            bins = mat2cell(bins, ones(size(bins, 1), 1), 2);
         end
         
         function valueListAsStrings = buildAttributeValueListsAsStrings(ci)
@@ -421,6 +479,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
             
             function binAccept = matchAgainstBins(vals, bins)
+                bins = cell2mat(bins);
                 binAccept = any(bsxfun(@ge, vals, bins(:, 1)') & bsxfun(@le, vals, bins(:, 2)'), 2);
             end
         end
@@ -480,7 +539,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         
         function computedValid = get.computedValid(ci)
             if ci.nTrials > 0
-                computedValid = all(~isnan(ci.conditionSubsIncludingManualInvalid), 2);
+                computedValid = all(~isnan(ci.conditionSubsRaw), 2);
             else
                 computedValid = [];
             end
@@ -664,10 +723,65 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         end
     end
 
-    methods % convert to ConditionDescriptor
-        % build a static ConditionDescriptor for the current groupByList
+    methods % Convert value lists to manual
+        function ci = fixAttributeValueList(ci, name)
+            ci.warnIfNoArgOut(nargout);
+            iAttr = ci.assertHasAttribute(name);
+            
+            switch(ci.attributeValueModes(iAttr))
+                case {ci.AttributeValueListManual, ci.AttributeValueBinsManual}
+                    % it's manual already
+                    return;
+                case ci.AttributeValueListAuto
+                    ci = ci.setAttributeValueList(name, ci.attributeValueLists{iAttr});
+                case {ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
+                    ci = ci.binAttribute(name, ci.attributeValueLists{iAttr});
+                otherwise
+                    error('Unknown attributeValueList mode');
+            end
+               
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = fixAllAttributeValueLists(ci)
+            ci.warnIfNoArgOut(nargout);
+            for iA = 1:ci.nAttributes
+                ci = ci.fixAttributeValueList(iA);
+            end
+        end
+       
+        function ci = fixAxisValueList(ci, axisSpec)
+            ci.warnIfNoArgOut(nargout);
+            idx = ci.axisLookupByAttributes(axisSpec);
+            ci = ci.setAxisValueList(idx, ci.axisValueLists{idx});
+        end
+        
+        function ci = fixAllAxisValueLists(ci)
+            ci.warnIfNoArgOut(nargout);
+            for iA = 1:ci.nAxes
+                ci = ci.fixAxisValueList(iA);
+            end
+        end
+        
+        function ci = fixAllValueLists(ci)
+            ci.warnIfNoArgOut(nargout);
+            ci = ci.fixAllAttributeValueLists();
+            ci = ci.fixAllAxisValueLists();
+        end
+    end
+    
+    methods % Conversion to ConditionDescriptor
+
+        % build a static ConditionDescriptor with the same specs as this
+        % ConditionInfo
         function cd = getConditionDescriptor(ci, varargin)
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
+        end
+        
+        % build a static ConditionDescriptor with the same specs as this
+        % ConditionInfo WITH ALL VALUE LISTS AND BINS FIXED
+        function cd = getFixedConditionDescriptor(ci)
+            cd = ci.fixAllValueLists().getConditionDescriptor();
         end
     end
 

@@ -30,7 +30,22 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
         axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
+
         axisRandomizeModes % G x 1 numeric of constants beginning with Axis* (see below)
+        axisRandomizeWithReplacement % G x 1 logical indicating whether ot not to use replacement
+        axisRandomizeResampleFromList % G x 1 cell of cells: each specifies which axis value bin to resample from, 
+            % i.e. {2 1} would be sampling from trials with value 2 to fill bin 1, and from trials with value 1 to fill bin 2, like a swap
+            % {1 2 3} would be the equivalent of AxisResampleFromSame
+            
+        resampleWithinConditions % boolean flag indicating whether to resampleFromSame the listByCondition
+                      % after building it, which resamples with replacement
+                      % without changing condition labels.
+
+        randomSeed = [];
+        
+        % scalar numeric seed initializing the RandStream which will generate shuffling or resampling along each axis
+        % the persistence of this seed ensures that the randomization can reliably be repeated, but the results may change if anything
+        % about any of the attributes / axes is changed.
     end
     
     properties(Hidden, SetAccess=protected)
@@ -73,7 +88,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         
         axisValueLists % G dimensional cell array of structs which select attribute values for that position along an axis
         axisValueListsAsStrings
-        axisValueListModes % G dimensional array of 
+        axisValueListModes % G dimensional array of AxisValueList* constants below indicating how axis value lists are generated
+
     end
     
     % how are attribute values determined for a given attribute?
@@ -86,10 +102,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         AttributeValueBinsAutoQuantiles = 5;
         
         % for axisRandomizeModes
-        AxisOriginal = 1;
-        AxisShuffled = 2;
-        AxisResampled = 3;
-        AxisResampledFromFirst = 4;
+        AxisOriginal = 1; % use original axis ordering
+        AxisShuffled = 2; % shuffle the labels along this axis preserving the original counts within each bin
+        AxisResampledFromSpecified = 3; % resample with replacement from a different bin (see axisRandomizeResampleFromList)
         
         % for axisValueListModes
         AxisValueListAutoAll = 1;
@@ -109,6 +124,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         nAxes % how many dimensions of grouping axe
         nValuesAlongAxes % X x 1 array of number of elements along the axis
         axisDescriptions % strcell describing each axis
+
+        axisValueListModesAsStrings
+        axisRandomizeModesAsStrings
         
         nConditions % how many total conditions
         conditionsSize 
@@ -228,41 +246,70 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function desc = get.axisDescriptions(ci)
             desc = cellvec(ci.nAxes);
             
+            vlStrCell = ci.axisValueListModesAsStrings;
+            randStrCell = ci.axisRandomizeModesAsStrings;
             for iX = 1:ci.nAxes
                 attr = ci.axisAttributes{iX};
                 nv = ci.conditionsSize(iX);
+                vlStr = vlStrCell{iX};
+                randStr = randStrCell{iX}; 
+                if ~isempty(vlStr)
+                    vlStr = [' ' vlStr];
+                end
+                if ~isempty(randStr)
+                    randStr = [' ' randStr];
+                end
+                desc{iX} = sprintf('%s (%d%s%s)', ...
+                    strjoin(attr, ' x '), nv, vlStr, randStr);
+            end
+        end
+        
+        function strCell = get.axisValueListModesAsStrings(ci)
+            strCell = cellvec(ci.nAxes);
+            for iX = 1:ci.nAxes
                 switch ci.axisValueListModes(iX)
                     case ci.AxisValueListAutoAll
-                        vlStr = ' auto';
+                        vlStr = 'auto';
                     case ci.AxisValueListAutoOccupied
-                        vlStr = ' autoOccupied';
+                        vlStr = 'autoOccupied';
                     case ci.AxisValueListManual
-                        vlStr = ' manual';
+                        vlStr = 'manual';
+                    otherwise
+                        error('Unknown axisValueListMode for axis %d', iX);
                 end
-                        
+                strCell{iX} = vlStr;
+            end
+        end
+
+        function strCell = get.axisRandomizeModesAsStrings(ci)
+            strCell = cellvec(ci.nAxes);
+            for iX = 1:ci.nAxes
+                if ci.axisRandomizeWithReplacement(iX)
+                    replaceStr = 'WithReplacement';
+                else
+                    replaceStr = '';
+                end
                 switch ci.axisRandomizeModes(iX)
                     case ci.AxisOriginal
                         randStr = '';
                     case ci.AxisShuffled
-                        randStr = ' shuffled';
-                    case ci.AxisResampled
-                        randStr = ' resampled';
-                    case ci.AxisResampledFromFirst
-                        randStr = ' resampledFromFirst';
+                        randStr = ['shuffled' replaceStr];
+                    case ci.AxisResampledFromSpecified
+                        randStr = ['resampled' replaceStr];
+                    otherwise
+                        error('Unknown axisRandomizeMode for axis %d', iX);
                 end
-                
-                desc{iX} = sprintf('%s%s (%d%s)', ...
-                    strjoin(attr, ' x '), randStr, nv, vlStr);
+                strCell{iX} = randStr;
             end
         end
-        
+
         function ci = addAxis(ci, varargin)
             ci.warnIfNoArgOut(nargout);
 
             p = inputParser;
             p.addOptional('attributes', {}, @(x) ischar(x) || iscellstr(x));
             p.addParamValue('name', '', @ischar);
-            p.addParamValue('valueList', [], @(x) true);
+            p.addParamValue('valueList', {}, @(x) true);
             p.parse(varargin{:});
 
             if ~iscell(p.Results.attributes)
@@ -279,6 +326,9 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.axisAttributes{idx} = attr;
             ci.axisValueListsManual{idx} = p.Results.valueList;
             ci.axisRandomizeModes(idx) = ci.AxisOriginal;
+            ci.axisRandomizeWithReplacement(idx) = false;
+            ci.axisRandomizeResampleFromList{idx} = [];
+            
             ci.axisValueListsOccupiedOnly(idx) = false;
 
             ci = ci.invalidateCache();
@@ -290,6 +340,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci.axisAttributes = ci.axisAttributes(mask);
             ci.axisValueListsManual = ci.axisValueListsManual(mask);
             ci.axisRandomizeModes = ci.axisRandomizeModes(mask);
+            ci.axisRandomizeWithReplacement = ci.axisRandomizeWithReplacement(mask);
+            ci.axisRandomizeResampleFromList = ci.axisRandomizeResampleFromList(mask);
             ci.axisValueListsOccupiedOnly = ci.axisValueListsOccupiedOnly(mask);
             
             ci = ci.invalidateCache();
@@ -338,6 +390,13 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 end
                 
                 % remove this attribute from axis iX
+                if ci.axisRandomizeModes(iX) ~= ci.AxisOriginal
+                    error('Cowardly refusing to remove attributes from axis with randomization applied');
+                end
+                if ci.axisValueListModes(iX) == ci.AxisValueListManual
+                    error('Cowardly refusing to remove attributes from axis with manual value list specified');
+                end
+                
                 maskInAxis = strcmp(ci.axisAttributes{iX}, attrNames{iAI});
                 if all(maskInAxis)
                     removeAxisMask(iX) = true;
@@ -353,8 +412,21 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             ci = ci.maskAxes(~removeAxisMask);
         end
         
+        function ci = setAxisValueList(ci, axisSpec, valueList)
+            ci.warnIfNoArgOut(nargout);
+            idx = ci.axisLookupByAttributes(axisSpec);
+            
+            assert(isstruct(valueList) && isvector(valueList), ....
+                'Value list must be a struct vector');
+            assert(isempty(setxor(fieldnames(valueList), ci.axisAttributes{idx})), ...
+                'Value list fields must match axis attributes');
+            ci.axisValueListsManual{idx} = valueList;
+            
+            ci = ci.invalidateCache();
+        end
+        
         function nv = get.conditionsSize(ci)
-            nv = size(ci.conditions);
+            nv = TensorUtils.expandSizeToNDims(size(ci.conditions), ci.nAxes);
         end
 
         function linearInds = get.conditionsAsLinearInds(ci)
@@ -363,6 +435,96 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 
         function n = get.nConditions(ci)
             n = prod(ci.conditionsSize);
+        end
+
+        % lookup axis idx by attribute cellstr, or cell of attribute cellstr
+        % if numeric indices are passed in, returns them through
+        % if not found, throws an error
+        % useful for accepting either axis idx or attributes in methods
+        function idx = axisLookupByAttributes(ci, attr)
+            if isnumeric(attr)
+                assert(all(attr >= 1 & attr <= ci.nAxes), 'Axis index out of range');
+                idx = attr;
+                return;
+            end
+
+            if ischar(attr)
+                attr = {attr};
+            end
+            if iscellstr(attr)
+                attr = {attr};
+            end
+
+            idx = nanvec(numel(attr));
+            for i = 1:numel(attr)
+                % FIX THIS
+                idx(i) = find(strcmp(ci.axisAttributes, attr{i}));
+                assert(~isempty(idx), 'Axis with attributes %s not found', strjoin(attr, ' x '));
+            end
+        end
+    end
+
+    methods % Axis randomization related
+        function ci = setRandomSeed(ci, seed)
+            ci.warnIfNoArgOut(nargout);
+            ci.randomSeed = seed; 
+        end
+        
+        function ci = newRandomSeed(ci)
+            ci.warnIfNoArgOut(nargout);
+            ci = ci.setRandomSeed(RandStream.shuffleSeed());
+        end
+        
+        function ci = newRandomSeedIfEmpty(ci)
+            ci.warnIfNoArgOut(nargout);
+            if isempty(ci.randomSeed)
+                ci = ci.newRandomSeed();
+            end
+        end
+        
+        function ci = seedRandStream(ci)
+            ci.warnIfNoArgOut(nargout);
+            ci = ci.newRandomSeedIfEmpty();
+            s = RandStream('mt19937ar', 'Seed', seed);
+            RandStream.setGlobalStream(s);
+        end
+        
+        function ci = axisShuffle(ci, idxOrAttr, replace) 
+            ci.warnIfNoArgOut(nargout);
+            if nargin < 3
+                replace = false;
+            end
+            idx = ci.axisLookupByAttributes(idxOrAttr);
+            ci.axisRandomizeModes(idx) = ci.AxisShuffled;
+            ci.axisResampleFromList{idx} = [];
+            ci.axisRandomizeWithReplacement(idx) = replace;
+            ci = ci.invalidateCache();
+        end
+
+        function ci = axisResampleFromSpecified(ci, axisIdxOrAttr, resampleFromList, replace) 
+            ci.warnIfNoArgOut(nargout);
+            if nargin < 4
+                replace = false;
+            end
+            idx = ci.axisLookupByAttributes(axisIdxOrAttr);
+            assert(isscalar(idx), 'Method operates on only one axis');
+
+            nValues = ci.nValuesAlongAxes(idx);
+            if isscalar(resampleFromList)
+                % all resampling from same, clone to length of axis
+                resampleFromList = repmat(resampleFromList, nValues, 1);
+            end
+            if isvector (resampleFromList)
+                % convert to cell array
+                resampleFromList = num2cell(resampleFromList);
+            end
+
+            assert(numel(resampleFromList) == ci.nValues, 'Resample from list must match number of values along axis');
+            ci.axisRandomizeModes(idx) = ci.AxisResampleFromSpecified;
+            ci.axisResampleFromLists{idx} = resampleFromList;
+            ci.axisRandomizeWithReplacement(idx) = replace;
+
+            ci = ci.invalidateCache();
         end
     end
 
@@ -644,22 +806,27 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function ci = binAttribute(ci, name, bins)
             ci.warnIfNoArgOut(nargout);
 
-            if isvector(bins)
+            if isvector(bins) && isnumeric(bins)
                 assert(issorted(bins), 'Bins specified as vector must be in sorted order');
                 binsMat = nan(numel(bins)-1, 2);
                 binsMat(:, 1) = bins(1:end-1);
                 binsMat(:, 2) = bins(2:end);
+            elseif iscell(bins)
+                binsMat = cell2mat(bins);
             else
-                assert(ismatrix(bins) && size(bins, 2) == 2, 'Bins matrix must be nBins x 2');
-                assert(all(bins(:, 2) >= bins(:, 1)), 'Bins matrix must have larger value in second column than first');
-
                 binsMat = bins;
-            end 
+            end
+            
+            assert(ismatrix(binsMat) && size(binsMat, 2) == 2, 'Bins matrix must be nBins x 2');
+            assert(all(binsMat(:, 2) >= binsMat(:, 1)), 'Bins matrix must have larger value in second column than first');
+            
+            % convert nBins x 2 matrix to nBins x 1 cellvec 
+            binsCell = mat2cell(binsMat, ones(size(binsMat, 1), 1), 2);
 
             iAttr = ci.getAttributeIdx(name); 
-            ci.attributeValueBinsManual{iAttr} = binsMat;
+            ci.attributeValueBinsManual{iAttr} = binsCell;
             ci.attributeNumeric(iAttr) = true;
-            ci.attributeValueListManual{iAttr} = {};
+            ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
 
@@ -934,6 +1101,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function strCell = buildAxisValueListsAsStrings(ci)
             strCell = cellvec(ci.nAxes);
             valueLists = ci.axisValueLists;
+            randStrCell = ci.axisRandomizeModesAsStrings;
             
             % describe the list of values selected for along each position on each axis
             for iX = 1:ci.nAxes  
@@ -949,13 +1117,20 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                                 ci.AttributeValueBinsAutoQuantiles}
                             % convert valueList from 1 x 2 vector to '#-#' string
                             for iV = 1:numel(valueLists{iX})
-                                valueLists{iX}(iV).(attr{iA}) = sprintf('%g-%g', valueLists{iX}(iV).(attr{iA}));
+                                if ~iscellstr(valueLists{iX}(iV).(attr{iA}))
+                                    valueLists{iX}(iV).(attr{iA}) = sprintf('%g-%g', cell2mat(valueLists{iX}(iV).(attr{iA})));
+                                end
                             end
                     end
                 end
                 
                 strCell{iX} = arrayfun(@structToString, makecol(valueLists{iX}), ...
                    'UniformOutput', false);
+
+                % append randomization indicator when axis is randomized
+                if ci.axisRandomizeModes(iX) ~= ci.AxisOriginal
+                    strCell{iX} = cellfun(@(s) [s ' ' randStrCell{iX}], strCell{iX}, 'UniformOutput', false);
+                end
             end
         end
 
@@ -967,7 +1142,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     fn = @ConditionDescriptor.defaultNameFn;
                 end
                 names = fn(ci);
-                assert(iscellstr(names) && isequal(size(names), ci.conditionsSize), ...
+                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
                     'nameFn must return cellstr with same size as .conditions');
             else
                 names = {};
