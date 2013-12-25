@@ -10,6 +10,7 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
         conditionIdx
         conditionSubsRaw
         conditionSubs 
+        listByConditionRaw
         listByCondition
     end
     
@@ -19,6 +20,7 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
             c.conditionIdx = [];
             c.conditionSubs = [];
             c.conditionSubsRaw = [];
+            c.listByConditionRaw = [];
             c.listByCondition = [];
         end
     end

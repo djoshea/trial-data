@@ -2,6 +2,36 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
 % ConditionDescriptor is a static representation of a A-dimensional combinatorial
 % list of attribute values
 
+    % the following properties are computed dynamically on the fly as they
+    % are easy to compute
+    properties(Dependent, Transient)
+        nAttributes % how many attributes: ndims(values)
+        nValuesByAttribute % how many values per attribute: size(values)
+        
+        nAxes % how many dimensions of grouping axe
+        nValuesAlongAxes % X x 1 array of number of elements along the axis
+        
+        nConditions % how many total conditions
+        conditionsSize 
+    end
+        
+    % the following properties are computed dynamically on the fly as they
+    % are easy to compute
+    properties(Dependent, Transient)
+        attributeDescriptions
+        attributeAlongWhichAxis % A x 1 array indicating which axis an attribute contributes to (or NaN)
+        attributeValueModes % A x 1 array of AttributeValue* constants above
+        attributeActsAsFilter % A x 1 logical array : does this attribute have a
+                % value list or manual bin setup that would invalidate trials?
+        
+        axisDescriptions % strcell describing each axis
+
+        axisValueListModesAsStrings
+        axisRandomizeModesAsStrings
+        
+        conditionsAsLinearInds % linear index corresponding to each condition if flattened 
+    end
+
     properties
         description = '';
         
@@ -21,7 +51,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
     end
     
-    properties(SetAccess=protected)
+    properties(SetAccess=protected, Hidden)
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value? 
         attributeValueListsManual = {}; % A x 1 cell array of permitted values (or cells of values) for this attribute
         attributeValueBinsManual = {}; % A x 1 cell array of value Nbins x 2 value bins to use for numeric lists
@@ -37,7 +67,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             % i.e. {2 1} would be sampling from trials with value 2 to fill bin 1, and from trials with value 1 to fill bin 2, like a swap
             % {1 2 3} would be the equivalent of AxisResampleFromSame
             
-        resampleWithinConditions % boolean flag indicating whether to resampleFromSame the listByCondition
+        isResampledWithinConditions % boolean flag indicating whether to resampleFromSame the listByCondition
                       % after building it, which resamples with replacement
                       % without changing condition labels.
 
@@ -60,7 +90,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
     
     % END OF STORED TO DISK PROPERTIES
     
-    properties(Transient, Access=protected)
+    properties(Hidden, Transient, Access=protected)
         odc % handle to a ConditionDescriptorOnDemandCache
     end
     
@@ -89,7 +119,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         axisValueLists % G dimensional cell array of structs which select attribute values for that position along an axis
         axisValueListsAsStrings
         axisValueListModes % G dimensional array of AxisValueList* constants below indicating how axis value lists are generated
-
     end
     
     % how are attribute values determined for a given attribute?
@@ -111,27 +140,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         AxisValueListAutoOccupied = 2;
         AxisValueListManual = 3;
     end
-        
-    properties(Dependent, Transient)
-        nAttributes % how many attributes: ndims(values)
-        attributeDescriptions
-        nValuesByAttribute % how many values per attribute: size(values)
-        attributeAlongWhichAxis % A x 1 array indicating which axis an attribute contributes to (or NaN)
-        attributeValueModes % A x 1 array of AttributeValue* constants above
-        attributeActsAsFilter % A x 1 logical array : does this attribute have a
-                % value list or manual bin setup that would invalidate trials?
-        
-        nAxes % how many dimensions of grouping axe
-        nValuesAlongAxes % X x 1 array of number of elements along the axis
-        axisDescriptions % strcell describing each axis
+    
 
-        axisValueListModesAsStrings
-        axisRandomizeModesAsStrings
-        
-        nConditions % how many total conditions
-        conditionsSize 
-        conditionsAsLinearInds % linear index corresponding to each condition if flattened 
-    end
     
     % Constructor, load, save methods
     methods
@@ -183,7 +193,21 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function printDescription(ci) 
             tcprintf('yellow', '%s:\n', class(ci));
             tcprintf('inline', '\t{bright blue}Attributes: {white}%s\n', strjoin(ci.attributeDescriptions));
-            tcprintf('inline', '\t{bright blue}Axes: {white}%s\n', strjoin(ci.axisDescriptions, ' , '));
+            tcprintf('inline', '\t{bright blue}Axes: {white}%s\n', strjoin(ci.axisDescriptions, ', '));
+            
+            nRandom = nnz(ci.axisRandomizeModes ~= ci.AxisOriginal);
+            if nRandom > 0
+                if nRandom == 1
+                    s = 'axis';
+                else
+                    s = 'axes';
+                end
+                tcprintf('inline', '\t{bright red}%d %s with randomization applied\n', nRandom, s);
+            end
+            
+            if ci.isResampledWithinConditions
+                tcprintf('inline', '\t{bright red}Trials resampled within conditions\n');
+            end
         end
         
         function printOneLineDescription(ci)           
@@ -437,8 +461,8 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             n = prod(ci.conditionsSize);
         end
 
-        % lookup axis idx by attribute cellstr, or cell of attribute cellstr
-        % if numeric indices are passed in, returns them through
+        % lookup axis idx by attribute char or cellstr, or cell of attribute cellstr
+        % if a numeric indices are passed in, returns them through.
         % if not found, throws an error
         % useful for accepting either axis idx or attributes in methods
         function idx = axisLookupByAttributes(ci, attr)
@@ -454,13 +478,24 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             if iscellstr(attr)
                 attr = {attr};
             end
-
+            
+            % attr is a cell of cellstr of attributes, and axisAttributes is a cell
+            % of such cellstr (the attributes along each axis).
+            % Consequently, we're looking for an EXACT match between attr
+            % and an axis
             idx = nanvec(numel(attr));
-            for i = 1:numel(attr)
-                % FIX THIS
-                idx(i) = find(strcmp(ci.axisAttributes, attr{i}));
-                assert(~isempty(idx), 'Axis with attributes %s not found', strjoin(attr, ' x '));
+            for iAttr = 1:numel(attr)
+                for i = 1:ci.nAxes
+                    if isempty(setxor(attr{iAttr}, ci.axisAttributes{i}))
+                        idx(iAttr) = i;
+                        break;
+                    end
+                end
+                
+                assert(~isnan(idx(iAttr)), 'Axis with attributes %s not found', ...
+                    strjoin(attr{iAttr}, ' x '));
             end
+            
         end
     end
 
@@ -478,25 +513,54 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         function ci = newRandomSeedIfEmpty(ci)
             ci.warnIfNoArgOut(nargout);
             if isempty(ci.randomSeed)
+                warning('Automatically selecting random seed. Call .setRandomSeed(seed) for deterministic resuls');
                 ci = ci.newRandomSeed();
             end
         end
         
-        function ci = seedRandStream(ci)
-            ci.warnIfNoArgOut(nargout);
-            ci = ci.newRandomSeedIfEmpty();
-            s = RandStream('mt19937ar', 'Seed', seed);
+        function seedRandStream(ci)
+            if isempty(ci.randomSeed)
+                error('Random seed must be set first, call .newRandomSeed');
+            end
+                
+            s = RandStream('mt19937ar', 'Seed', ci.randomSeed);
             RandStream.setGlobalStream(s);
         end
         
+        function ci = noRandomization(ci)
+            ci.warnIfNoArgOut(nargout);
+            ci.isResampledWithinConditions = true;
+            for i = 1:ci.nAxes
+                ci = ci.axisNoRandomization(i);
+            end
+        end  
+        
+        function ci = resampleTrialsWithinConditions(ci)
+            ci.warnIfNoArgOut(nargout);
+            ci = ci.newRandomSeedIfEmpty();
+            ci.isResampledWithinConditions = true;
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = axisNoRandomization(ci, idxOrAttr)
+            ci.warnIfNoArgOut(nargout);
+            idx = ci.axisLookupByAttributes(idxOrAttr);
+            ci.axisRandomizeModes(idx) = ci.AxisOriginal;
+            ci.axisRandomizeResampleFromList{idx} = [];
+            ci.axisRandomizeWithReplacement(idx) = false;
+            ci = ci.invalidateCache();
+        end
+                   
         function ci = axisShuffle(ci, idxOrAttr, replace) 
             ci.warnIfNoArgOut(nargout);
             if nargin < 3
                 replace = false;
             end
+            
+            ci = ci.newRandomSeedIfEmpty();
             idx = ci.axisLookupByAttributes(idxOrAttr);
             ci.axisRandomizeModes(idx) = ci.AxisShuffled;
-            ci.axisResampleFromList{idx} = [];
+            ci.axisRandomizeResampleFromList{idx} = [];
             ci.axisRandomizeWithReplacement(idx) = replace;
             ci = ci.invalidateCache();
         end
@@ -506,6 +570,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             if nargin < 4
                 replace = false;
             end
+            ci = ci.newRandomSeedIfEmpty();
             idx = ci.axisLookupByAttributes(axisIdxOrAttr);
             assert(isscalar(idx), 'Method operates on only one axis');
 
@@ -553,7 +618,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             na = length(ci.attributeNames);
         end
 
-                function idxList = getAttributeIdx(ci,name)
+        function idxList = getAttributeIdx(ci,name)
             if isempty(name)
                 idxList = [];
                 return;
@@ -635,7 +700,7 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                     case ci.AttributeValueBinsManual
                         suffix = sprintf('(%d bins)', nValues);
                     case ci.AttributeValueBinsAutoUniform
-                        suffix = sprintf('(%d bins)', nAutoBins);
+                        suffix = sprintf('(%d uniform-bins)', nAutoBins);
                     case ci.AttributeValueBinsAutoQuantiles
                         suffix = sprintf('(%d quantiles)', nAutoBins);
                 end

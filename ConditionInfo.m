@@ -7,7 +7,7 @@
 % NOTE: shuffling and resampling along axes affects listByCondition, but not conditionSubs
 classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
 
-    properties
+    properties(Hidden)
         % function with signature:
         % valuesByAttribute = getAttributeValueFn(trialData, attributeNames)
         % 
@@ -234,7 +234,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         function list = buildListByCondition(ci)
             list = ci.listByConditionRaw;
             
-            ci = ci.seedRandomStream();
+            seeded = false;
             
             for iA = 1:ci.nAxes
                 replace = ci.axisRandomizeWithReplacement(iA);
@@ -242,8 +242,10 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                     case ci.AxisOriginal
                         continue;
                     case ci.AxisShuffled
+                        if ~seeded, ci.seedRandStream(); end
                         list = TensorUtils.listShuffleAlongDimension(list, iA, replace); 
                     case ci.AxisResampleFromSpecified
+                        if ~seeded, ci.seedRandStream(); end
                         list = TensorUtils.listResampleFromSpecifiedAlongDimension(list, ci.axisResampleFromList{iA}, iA);
                     otherwise
                         error('Unknown randomize mode for axis %d', iA);
@@ -252,7 +254,8 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             
             % and finally, if resampleWithinConditions is true,
             % resampleFromSame everything
-            if ci.resampleWithinConditions
+            if ci.isResampledWithinConditions
+                if ~seeded, ci = ci.seedRandStream(); end
                 list = TensorUtils.listResampleFromSame(list);
             end
         end
