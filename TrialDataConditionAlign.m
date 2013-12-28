@@ -135,6 +135,20 @@ classdef TrialDataConditionAlign < TrialData
 %                     'values', td.getParam(newAttr{iA}));
 %             end
         end
+        
+        function td = setConditionDescriptor(td, cd)
+            td.warnIfNoArgOut(nargout);
+            
+            % manually accept a condition descriptor instance
+            assert(isequal(class(cd), 'ConditionDescriptor'), 'Must be a ConditionDescriptor instance');
+            
+            % grab the param data to feed to the condition descriptor
+            paramData = getRawChannelDataAsStruct(cd.attributeRequestAs);
+            
+            % build condition info from condition descriptor
+            td.conditionInfo = ConditionInfo.fromConditionDescriptor(cd, paramData);
+            td = td.invalidateCache();
+        end
 
         function td = selectTrials(td, mask)
             td.warnIfNoArgOut(nargout);
@@ -382,6 +396,11 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td.alignInfo = td.alignInfo.pad(varargin{:});
             td = td.postUpdateAlignInfo();
+        end
+        
+        function td = round(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.round(varargin{:});
         end
         
         % filter trials that are valid based on AlignInfo

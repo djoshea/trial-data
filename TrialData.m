@@ -11,7 +11,7 @@ classdef(ConstructOnLoad) TrialData
     properties
         datasetName = ''; % string describing entire collection of trials dataset
 
-        datasetMeta % arbitrary 
+        datasetMeta % arbitrary
     end
     
     properties(SetAccess=protected)

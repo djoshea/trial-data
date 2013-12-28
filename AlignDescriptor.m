@@ -105,6 +105,14 @@ classdef AlignDescriptor
         %intevalMultiTrialMode = 'first';
         intervalConditionMatch = {}; % n x 1 cell array of structs with .attrName = attrValue(s)
         intervalInfo % miscellaneous
+        
+        % Timestamp rounding. If active,
+        % timeseries and timestamps will be shifted such that the
+        % difference between each timestamp and zero is an exact integer multiple of
+        % minTimeDelta. The alignment will be performed to maintain single
+        % timestamp alignments (i.e. start == stop) as a single time point
+        roundTimes = false; % boolean indicating whether resampling is active
+        minTimeDelta % the minimum acceptable spacing between timestamps to which alignment will be enforced, relative to the zero event
     end
 
     properties(Constant, Hidden)
@@ -129,7 +137,6 @@ classdef AlignDescriptor
     end
 
     properties(Dependent)
-
         isFixedLength % is the time window guaranteed fixed length
         isStartFixedTime % is the start event always at a fixed time relative to zero
         isStopFixedTime % is the start event always at a fixed time relative to zero
@@ -346,7 +353,7 @@ classdef AlignDescriptor
         function ad = AlignDescriptor(varargin)
             ad.eventAbbrevLookup = struct();
 
-            ad.startEvent  = 'TrialStart';
+            ad.startEvent = 'TrialStart';
             ad.stopEvent = 'TrialEnd';
             ad.zeroEvent = 'TrialStart';
 
@@ -365,10 +372,10 @@ classdef AlignDescriptor
 
         % return a list of event names this AlignDescriptor references, plus 'start' and 'end'
         function eventList = getEventList(ad)
-            eventList = unique({ad.startEvent ad.stopEvent ad.zeroEvent ...
-                ad.truncateBeforeEvents{:} ad.truncateAfterEvents{:} ad.invalidateEvents{:} ...
-                ad.markEvents{:} ad.intervalEventsStart{:} ad.intervalEventsStop{:}});
-            eventList = union(eventList, {'TrialStart', 'TrialEnd'});
+            eventList = unique([{'TrialStart', 'TrialEnd'}...
+                {ad.startEvent ad.stopEvent ad.zeroEvent}, ...
+                ad.truncateBeforeEvents, ad.truncateAfterEvents, ad.invalidateEvents, ...
+                ad.markEvents, ad.intervalEventsStart, ad.intervalEventsStop]);
         end
 
         function ad = start(ad, eventName, varargin)
@@ -636,6 +643,13 @@ classdef AlignDescriptor
             ad.warnIfNoArgOut(nargout);
             ad = ad.start(ad.zeroEvent, tStart); 
             ad = ad.stop(ad.zeroEvent, tStop);
+        end
+        
+        function ad = round(ad, timeDelta)
+            ad.warnIfNoArgOut(nargout);
+            ad.roundTimes = true;
+            ad.minTimeDelta = timeDelta;
+            ad = ad.update();
         end
     end
 

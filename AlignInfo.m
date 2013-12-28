@@ -15,8 +15,6 @@ classdef AlignInfo < AlignDescriptor
         % this function maps (R, eventList) --> eventTimes array nTrials x nEvents
         getEventTimesFn = @AlignInfo.defaultGetEventTimesFn;
 
-        eventTimeRoundFn = @(x) x;
-        
         % struct array of nTrials x 1 containing the absolute times of each event
         % for the trials, as returned by getEventTimesFn
         eventInfo 
@@ -85,7 +83,6 @@ classdef AlignInfo < AlignDescriptor
             end
         end
 
-        
         function ad = update(ad)
             if ~ad.applied
                 % nothing to udpate if we haven't applied to trial data yet
@@ -130,10 +127,7 @@ classdef AlignInfo < AlignDescriptor
         % internal utility functions for accessing specific event times
         
         % n must be a scalar, times is a numeric array
-        function times = getEventNthTimeVector(ad, event, n, offset)
-            if nargin < 4
-                offset = 0;
-            end
+        function times = getEventNthTimeVector(ad, event, n, offset, roundRelativeTo)
             if strcmp(n, 'end')
                 fn = @(info) info.(event)(end);
             else
@@ -141,14 +135,17 @@ classdef AlignInfo < AlignDescriptor
             end
             times = arrayfun(fn, ad.eventInfo, ...
                 'ErrorHandler', @(varargin) NaN);
-            times = makecol(ad.eventTimeRoundFn(times)) + offset;
+            %times = makecol(ad.eventTimeRoundFn(times)) + offset;
+            
+            if ~isempty(roundRelativeTo) && ad.roundTimes
+                % shift event times to maintain an integer multiple of
+                % timeDelta offset from .zero
+                times = ad.roundTimesRelativeTo(times, roundRelativeTo);
+            end
         end
         
         % n may be an index or a selector (e.g. '2:end')
-        function timeCell = getEventIndexedTimeCell(ad, event, n, offset)
-            if nargin < 4
-                offset = 0;
-            end
+        function timeCell = getEventIndexedTimeCell(ad, event, n, offset, roundRelativeTo)
             % similar to above but returns cell array, and n may be be a
             % string of the form '1:2', '1:end', ':', etc
             if ~ischar(n) || strcmp(n, 'end')
@@ -156,70 +153,65 @@ classdef AlignInfo < AlignDescriptor
             else
                 % must have a colon, parse into tokens
                 pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
-                %str = 'end-1:end';
                 info = regexp(n, pat, 'names', 'once');
-                
+
                 if isempty(info)
                     error('Unable to parse event index %s(%s)', event, n);
                 end
-                
+
                 % convert ind1, ind2 to doubles
                 if isempty(info.ind1)
-                    ind1 = 0;
+                    ind1 = 1;
                 else
                     ind1 = str2double(info.ind1);
                 end
                 if isempty(info.ind2)
                     ind2 = 0;
                 else
-                    pat = '(?<end1>end)?(?<ind1>-?\d*)?:(?<end2>end)?(?<ind2>-?\d*)?';
-                    str = 'end-1:end';
-                    info = regexp(n, pat, 'names', 'once');
-
-                    if isempty(info)
-                        error('Unable to parse event index %s(%s)', event, n);
-                    end
-
-                    % convert ind1, ind2 to doubles
-                    if isempty(info.ind1)
-                        ind1 = 1;
+                    ind2 = str2double(info.ind2);
+                end
+                if isempty(info.end1)
+                    if isempty(info.end2)
+                        fn = @(info) info.(event)(ind1:ind2);
                     else
-                        ind1 = str2double(info.ind1);
+                        fn = @(info) info.(event)(ind1:end+ind2);
                     end
-                    if isempty(info.ind2)
-                        ind2 = 0;
+                else
+                    if isempty(info.end2)
+                        fn = @(info) info.(event)(end+ind1:ind2);
                     else
-                        ind2 = str2double(info.ind2);
-                    end
-                    if isempty(info.end1)
-                        if isempty(info.end2)
-                            fn = @(info) info.(event)(ind1:ind2);
-                        else
-                            fn = @(info) info.(event)(ind1:end+ind2);
-                        end
-                    else
-                        if isempty(info.end2)
-                            fn = @(info) info.(event)(end+ind1:ind2);
-                        else
-                            fn = @(info) info.(event)(end+ind1:end+ind2);
-                        end
+                        fn = @(info) info.(event)(end+ind1:end+ind2);
                     end
                 end
                         
                 timeCell = arrayfun(fn, ad.eventInfo, ...
                     'ErrorHandler', @(varargin) [], 'UniformOutput', false);
-                timeCell = cellfun(@ad.eventTimeRoundFn, timeCell, 'UniformOutput', false);
+                %timeCell = cellfun(@ad.eventTimeRoundFn, timeCell, 'UniformOutput', false);
             end
             
             timeCell = cellfun(@(x) x + offset, timeCell, 'UniformOutput', false);
+            if ~isempty(roundRelativeTo) && ~isempty(roundRelativeTo)
+                % shift event times to maintain an integer multiple of
+                % timeDelta offset from .zero
+                timeCell = ad.roundTimesRelativeTo(timeCell, roundRelativeTo);
+            end
         end
         
         % same as above but empty cells are filled with NaN
-        function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n, offset)
-            timeCell  = ad.getEventIndexedTimeCell(event, n, offset);
+        function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n, offset, roundRelativeTo)
+            timeCell  = ad.getEventIndexedTimeCell(event, n, offset, roundRelativeTo);
             emptyMask = cellfun(@isempty, timeCell);
             [timeCell{emptyMask}] = deal(NaN);
-            
+        end
+        
+        function times = roundTimesRelativeTo(ad, times, ref)
+            delta = ad.minTimeDelta;
+            roundFn = @(times, ref) round((times - ref) / delta) * delta + ref;
+            if isnumeric(times)
+                times = roundFn(times, ref);
+            else
+                times = cellfun(roundFn, times, num2cell(ref), 'UniformOutput', false);
+            end
         end
         
         % get the aligned start/stop/zero/mark time windows for each trial, 
@@ -239,27 +231,27 @@ classdef AlignInfo < AlignDescriptor
             t.valid = truevec(nTrials);
             t.invalidCause = cellvec(nTrials);
 
-            t.trialStart = ad.getEventNthTimeVector('TrialStart', 1); 
-            t.trialStop = ad.getEventNthTimeVector('TrialEnd', 1);
+            % get zero alignment event without rounding
+            t.zero= ad.getEventNthTimeVector(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, []);
+            noZero = isnan(t.zero);
+            [t.invalidCause{noZero & t.valid}] = deal(sprintf('Missing zero event %s', ad.zeroUnabbreviatedLabel));
+            t.valid(noZero) = false;
+            
+            t.trialStart = ad.getEventNthTimeVector('TrialStart', 1, 0, t.zero); 
+            t.trialStop = ad.getEventNthTimeVector('TrialEnd', 1, 0, t.zero);
 
             % get start event
-            t.start = ad.getEventNthTimeVector(ad.startEvent, ad.startEventIndex) + ad.startOffset;
+            t.start = ad.getEventNthTimeVector(ad.startEvent, ad.startEventIndex, ad.startOffset, t.zero);
             noStart = isnan(t.start);
             [t.invalidCause{noStart}] = deal(sprintf('Missing start event %s', ad.startUnabbreviatedLabel));
             t.valid(noStart & t.valid) = false;
 
             % get stop event
-            t.stop = ad.getEventNthTimeVector(ad.stopEvent, ad.stopEventIndex) + ad.stopOffset;
+            t.stop = ad.getEventNthTimeVector(ad.stopEvent, ad.stopEventIndex, ad.stopOffset, t.zero);
             noStop = isnan(t.stop);
             [t.invalidCause{noStop & t.valid}] = deal(sprintf('Missing stop event %s', ad.stopUnabbreviatedLabel));
             t.valid(noStop) = false;
-
-            % get zero alignment event
-            t.zero= ad.getEventNthTimeVector(ad.zeroEvent, ad.zeroEventIndex) + ad.zeroOffset;
-            noZero = isnan(t.zero);
-            [t.invalidCause{noZero & t.valid}] = deal(sprintf('Missing zero event %s', ad.zeroUnabbreviatedLabel));
-            t.valid(noZero) = false;
-                        
+        
             % get pad window
             t.startPad = t.start - padPre;
             t.stopPad = t.stop + padPost;
@@ -267,7 +259,7 @@ classdef AlignInfo < AlignDescriptor
             % truncate trial end (including padding) based on truncateAfter events
             t.isTruncatedStop = falsevec(nTrials);
             for i = 1:length(ad.truncateAfterEvents)
-                times = ad.getEventNthTimeVector(ad.truncateAfterEvents{i}, ad.truncateAfterEventsIndex{i}) + ad.truncateAfterOffsets(i);
+                times = ad.getEventNthTimeVector(ad.truncateAfterEvents{i}, ad.truncateAfterEventsIndex{i}, ad.truncateAfterOffsets(i), t.zero);
                 t.isTruncatedStop = t.isTruncatedStop | times < t.stopPad;
                 t.stopPad = nanmin(t.stop, times);
                 t.stop = t.stopPad - padPost;
@@ -276,7 +268,7 @@ classdef AlignInfo < AlignDescriptor
             % truncate trial start (including padding) based on truncateBefore events
             t.isTruncatedStart = falsevec(nTrials);
             for i = 1:length(ad.truncateBeforeEvents)
-                times = ad.getEventNthTimeVector(ad.truncateBeforeEvents{i}, ad.truncateBeforeEventsIndex{i}) + ad.truncateBeforeOffsets(i);
+                times = ad.getEventNthTimeVector(ad.truncateBeforeEvents{i}, ad.truncateBeforeEventsIndex{i}, ad.truncateBeforeOffsets(i), t.zero);
                 t.isTruncatedStart = t.isTruncatedStart | times > t.startPad;
                 t.startPad = nanmax(t.startPad, times);
                 t.start = t.startPad + padPre;
@@ -284,7 +276,7 @@ classdef AlignInfo < AlignDescriptor
 
             % mark trials as invalid if startPad:stopPad includes any invalidateEvents
             for i = 1:length(ad.invalidateEvents)
-                timesCell = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.invalidateEvents{i}, ad.invalidateEventsIndex{i}, ad.invalidateOffsets(i));
+                timesCell = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.invalidateEvents{i}, ad.invalidateEventsIndex{i}, ad.invalidateOffsets(i), t.zero);
                 maskInvalid = falsevec(length(t.startPad));
                 for iT = 1:length(t.startPad)
                     maskInvalid(iT) = any(timesCell{iT} > t.startPad(iT) & timesCell{iT} < t.stopPad(iT));
@@ -343,8 +335,8 @@ classdef AlignInfo < AlignDescriptor
             
             % include the interval times
             for iInt = 1:size(ad.intervalEventsStart, 1)
-                startTimes = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.intervalEventsStart{iInt}, ad.intervalEventsIndexStart, ad.intervalOffsetsStart(iInt));
-                stopTimes = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.intervalEventsStop{iInt}, ad.intervalEventsIndexStop,  ad.intervalOffsetsStop(iInt));
+                startTimes = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.intervalEventsStart{iInt}, ad.intervalEventsIndexStart, ad.intervalOffsetsStart(iInt), t.zero);
+                stopTimes = ad.getEventIndexedTimeCellFillEmptyWithNaN(ad.intervalEventsStop{iInt}, ad.intervalEventsIndexStop,  ad.intervalOffsetsStop(iInt), t.zero);
                 for iTrial = 1:nTrials
                     timeInfo(iTrial).intervalStart{iInt} = startTimes{iTrial};
                     timeInfo(iTrial).intervalStop{iInt} = stopTimes{iTrial};
@@ -363,31 +355,31 @@ classdef AlignInfo < AlignDescriptor
             %     .list
             return;
             
-            events = ad.getEventList(); 
-
-            zeroTimes = [ad.timeInfo.(ad.zeroEvent)];
-
-            for iEv = 1:length(events)
-                event = events{iEv};
-
-                times = ad.timeInfo;
-
-                evi.fixed = true;
-                evi.relativeMedian = ad.startOffset - ad.zeroOffset;
-                evi.relativeList = repmat(ad.nTrials, 1, evi.relativeMedian); 
-                evi.relativeMin = evi.relativeMedian;
-                evi.relativeMax = evi.relativeMedian;
-
-                ad.startOffset - ad.zeroOffset;
-                labelInfo(counter).name = ad.startLabel;
-                labelInfo(counter).time = ad.startOffset - ad.zeroOffset;
-                labelInfo(counter).align = 'left';
-                labelInfo(counter).info = ad.startInfo;
-                labelInfo(counter).markData = ad.startMarkData;
-                labelInfo(counter).fixed = true;
-                counter = counter + 1;
-                drewStartLabel = true;
-            end
+%             events = ad.getEventList(); 
+% 
+%             zeroTimes = [ad.timeInfo.(ad.zeroEvent)];
+% 
+%             for iEv = 1:length(events)
+%                 event = events{iEv};
+% 
+%                 times = ad.timeInfo;
+% 
+%                 evi.fixed = true;
+%                 evi.relativeMedian = ad.startOffset - ad.zeroOffset;
+%                 evi.relativeList = repmat(ad.nTrials, 1, evi.relativeMedian); 
+%                 evi.relativeMin = evi.relativeMedian;
+%                 evi.relativeMax = evi.relativeMedian;
+% 
+%                 ad.startOffset - ad.zeroOffset;
+%                 labelInfo(counter).name = ad.startLabel;
+%                 labelInfo(counter).time = ad.startOffset - ad.zeroOffset;
+%                 labelInfo(counter).align = 'left';
+%                 labelInfo(counter).info = ad.startInfo;
+%                 labelInfo(counter).markData = ad.startMarkData;
+%                 labelInfo(counter).fixed = true;
+%                 counter = counter + 1;
+%                 drewStartLabel = true;
+%             end
         end
     end
 
@@ -511,7 +503,7 @@ classdef AlignInfo < AlignDescriptor
             % also, if 'tMin' and 'tMax' are specified, they will be drawn as well provided that 
             % the start and stop events aren't fixed relative to zero 
             
-            timeInfo = ad.timeInfo; 
+            timeInfo = ad.timeInfo;  %#ok<*PROP>
             
             % optionally provide time window which filters which labels will be included
             tMin = [];
@@ -651,7 +643,7 @@ classdef AlignInfo < AlignDescriptor
                     labelInfo(counter).markData = false; % this is just convenience, don't mark on data
                     labelInfo(counter).fixed = true;
                     counter = counter + 1;
-                    drewStartLabel = true;
+                    drewStartLabel = true; %#ok<NASGU>
                 end
             end
                      
@@ -665,7 +657,7 @@ classdef AlignInfo < AlignDescriptor
                     labelInfo(counter).align = 'right';
                     labelInfo(counter).markData = false;
                     labelInfo(counter).fixed = true;
-                    counter = counter + 1;
+                    counter = counter + 1; %#ok<NASGU>
                 end
             end
 
@@ -746,7 +738,7 @@ classdef AlignInfo < AlignDescriptor
 
             % uses ad.labelInfo to call drawPrettyAxis
             tLims = [];
-            xLabel = ''; 
+           % xLabel = ''; 
             axh = [];
             drawY = true; % also draw the y axis while we're here? otherwise they'll be nothing there
             setXLim = false;
@@ -757,7 +749,7 @@ classdef AlignInfo < AlignDescriptor
             end
             if isempty(tLims)
                 if setXLim
-                    tLims = ad.getTimeAxisLims(timeInfo);
+                    tLims = ad.getTimeAxisLims(timeInfo); %#ok<UNRCH>
                 else
                     tLims = xlim(axh);
                 end
