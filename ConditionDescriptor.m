@@ -1437,6 +1437,14 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             cd = cd.addAttributes(fieldnames(s));
         end
     end
+    
+    methods
+        function cd = getConditionDescriptor(cd)
+            % this does nothing here since it's already a condition
+            % descriptor. This is used for "casting" back to ConditionDescriptor 
+            % from subclasses.
+        end
+    end
 
     methods(Access=protected) % Utility methods
         function warnIfNoArgOut(obj, nargOut)
