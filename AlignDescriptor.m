@@ -651,6 +651,14 @@ classdef AlignDescriptor
             ad.minTimeDelta = timeDelta;
             ad = ad.update();
         end
+        
+        function ad = noRound(ad)
+            ad.warnIfNoArgOut(nargout);
+            ad.roundTimes = false;
+            ad.minTimeDelta = [];
+            ad = ad.update();
+        end
+            
     end
 
     methods % Equivalence to other descriptors

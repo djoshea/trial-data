@@ -141,8 +141,6 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
         AxisValueListManual = 3;
     end
     
-
-    
     % Constructor, load, save methods
     methods
         function ci = ConditionDescriptor()

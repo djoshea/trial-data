@@ -8,4 +8,6 @@ tdca = TrialDataConditionAlign(td);
 
 %tdca = tdca.groupBy({'targetX', 'targetY'});
 tdca = tdca.align('@TrialStart');
-tdca = tdca.round(10);
+
+tdca = tdca.selectTrials(tdca.getParam('duration') < 8000);
+%tdca = tdca.round(10);

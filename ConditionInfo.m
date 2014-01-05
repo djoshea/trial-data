@@ -793,21 +793,17 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
         function ci = fromConditionDescriptor(cd, varargin)
             p = inputParser;
             p.addOptional('trialData', [], @(x) true);
-            p.addParamValue('getAttributeFn', @ConditionInfo.defaultGetAttributeFn, @(x) isa(x, 'function_handle'));
-            p.addParamValue('getNTrialsFn', @ConditionInfo.defaultGetNTrialsFn, @(x) isa(x, 'function_handle'));
             p.parse(varargin{:});
             
             % build up the condition info
             ci = ConditionInfo();
-            ci.getAttributeFn = p.Results.getAttributeFn;
-            ci.getNTrialsFn = p.Results.getNTrialsFn;
             
             % Have conditionDescriptor copy over the important details
             ci = ConditionDescriptor.fromConditionDescriptor(cd, ci);
             
             % and then apply to the trialData
             if ~isempty(p.Results.trialData)
-                ci.applyToTrialData(p.Results.trialData);
+                ci = ci.applyToTrialData(p.Results.trialData);
             end
         end
         

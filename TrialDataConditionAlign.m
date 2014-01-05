@@ -6,7 +6,7 @@ classdef TrialDataConditionAlign < TrialData
     end
 
     % Properties which read through to ConditionInfo
-    properties(Dependent)
+    properties(Dependent, SetAccess=protected)
         nConditions
         listByCondition
         conditionIdx
@@ -22,6 +22,11 @@ classdef TrialDataConditionAlign < TrialData
         conditionAppearanceFn
     end
 
+    % Properties which read through to AlignInfo
+    properties(Dependent, SetAccess=protected)
+        minTimeDelta
+    end
+    
     % Initializing and building
     methods
         function td = TrialDataConditionAlign(varargin)
@@ -143,11 +148,11 @@ classdef TrialDataConditionAlign < TrialData
             assert(isequal(class(cd), 'ConditionDescriptor'), 'Must be a ConditionDescriptor instance');
             
             % grab the param data to feed to the condition descriptor
-            paramData = getRawChannelDataAsStruct(cd.attributeRequestAs);
+            paramData = td.getRawChannelDataAsStruct(cd.attributeRequestAs);
             
             % build condition info from condition descriptor
             td.conditionInfo = ConditionInfo.fromConditionDescriptor(cd, paramData);
-            td = td.invalidateCache();
+            td = td.postUpdateConditionInfo();
         end
 
         function td = selectTrials(td, mask)
@@ -313,6 +318,10 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.conditionSubs(td)
             v = td.conditionInfo.conditionSubs;
         end
+        
+        function minTimeDelta = get.minTimeDelta(td)
+            minTimeDelta = td.alignDescriptor.minTimeDelta;
+        end
     end
 
     % Data access by group via ConditionInfo
@@ -344,7 +353,7 @@ classdef TrialDataConditionAlign < TrialData
         function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
             [dataVec, timeVec] = td.getAnalogSample(name);
             [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
-        end 
+        end
 
         function dCell = getEventGrouped(td, name)
             dCell = td.groupElements(td.getAnalog(name));
@@ -388,19 +397,30 @@ classdef TrialDataConditionAlign < TrialData
             td = td.align('TrialStart:TrialEnd');
         end
         
-        % add a padding window to the AlignInfo
-        % may change which trials are valid
-        % usage: pad([pre post]) or pad(pre, post)
-        % pre > 0 means add padding before the start (typical case)
         function td = pad(td, varargin)
+            % add a padding window to the AlignInfo
+            % may change which trials are valid
+            % usage: pad([pre post]) or pad(pre, post)
+            % pre > 0 means add padding before the start (typical case)
             td.warnIfNoArgOut(nargout);
             td.alignInfo = td.alignInfo.pad(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
+        function td = padForSpikeFilter(td, sf)
+            % Pad trial data alignment for spike filter
+            td.warnIfNoArgOut(nargout);
+            td = td.pad([sf.preWindow sf.postWindow]);
+        end
+        
         function td = round(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.alignInfo = td.alignInfo.round(varargin{:});
+        end
+        
+        function td = noRound(td)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.noRound();
         end
         
         % filter trials that are valid based on AlignInfo
@@ -412,6 +432,10 @@ classdef TrialDataConditionAlign < TrialData
         % get the time window for each trial
         function durations = getValidDurations(td)
             durations = td.alignInfo.getValidDurationByTrial();
+        end
+        
+        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrial(td)
+            [tMinByTrial, tMaxByTrial] = td.alignInfo.getStartStopRelativeToZeroByTrial();
         end
     end
     
@@ -426,6 +450,33 @@ classdef TrialDataConditionAlign < TrialData
             [data, time] = getAnalog@TrialData(td, name);
             [data, time] = td.alignInfo.getAlignedTimeseries(data, time, false);
         end
+        
+        function [mat, tvec] = getAnalogAsMatrix(td, name, varargin)
+            % return aligned analog channel, resampled and interpolated to
+            % a uniformly spaced time vector around t=0 such that the
+            % result can be embedded in a nTrials x nTime matrix. time will
+            % be chosen to encapsulate the min / max timestamps across all
+            % trials. Missing samples will be returned as NaN
+            
+            p = inputParser;
+            p.addParameter('timeDelta', [], @isscalar);
+            p.parse(varargin{:});
+            
+            timeDelta = p.Results.timeDelta;
+            if isempty(timeDelta)
+                timeDelta = td.alignInfo.minTimeDelta;
+                if isempty(timeDelta)
+                    timeDelta = td.getAnalogTimeDelta(name);
+                    warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
+                end
+            end
+            
+            [dataCell, timeCell] = td.getAnalog(name);
+            
+            [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, ...
+                'timeDelta', timeDelta, 'timeReference', 0, ...
+                'interpolate', true);
+        end 
         
         % return aligned event times
         function timesCell = getEvent(td, name)
@@ -446,11 +497,10 @@ classdef TrialDataConditionAlign < TrialData
             sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfo);
             sr.useWidestCommonValidTimeWindow = false;
         end
-           
-        function [rates, tvec] = getSpikeRateFilteredEachTrial(td, unitName, varargin)
+        
+        function [rateCell, timeCell] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
-            p.addParamValue('tWindow', [], @isvector);
-            p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -463,15 +513,45 @@ classdef TrialDataConditionAlign < TrialData
             
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
-            tWindow = p.Results.tWindow;
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
-            [rates, tvec] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, tWindow);
+            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, ...
+                tMinByTrial, tMaxByTrial, td.timeUnitsPerSec);
+        end
+           
+        function [rates, tvec] = getSpikeRateFilteredAsMatrix(td, unitName, varargin)
+            p = inputParser;
+            p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.addParameter('timeDelta', 1, @isscalar);
+            p.parse(varargin{:});
+            
+            sf = p.Results.spikeFilter;
+            timeDelta = p.Results.timeDelta;
+            
+            % Pad trial data alignment for spike filter
+            td = td.pad([sf.preWindow sf.postWindow]);
+            
+            spikeCell = td.getSpikeTimes(unitName);
+            timeInfo = td.alignInfo.timeInfo;
+            
+            % convert to .zero relative times since that's what spikeCell
+            % will be in (when called in this class)
+            tMinByTrial = [timeInfo.start] - [timeInfo.zero];
+            tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
+            [rates, tvec] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
+                tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond, ...
+                'timeDelta', timeDelta);
+        end
+
+        function [rateCell, timeCell] = getSpikeRateFilteredGrouped(td, unitName, varargin)
+            [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
+            rateCell = td.groupElements(rateCell);
+            timeCell = td.groupElements(timeCell);
         end
         
-        function [rateCell, tvec] = getSpikeRateFilteredGrouped(td, unitName, varargin)
-            [rateMat, tvec] = td.getSpikeRateFilteredEachTrial(unitName, varargin{:});
-            rateCell = td.groupElements(rateMat);
+        function [rateCell, tvec] = getSpikeRateFilteredAsMatrixGrouped(td, unitName, varargin)
+            [rates, tvec] = td.getSpikeRateFiltered(unitName, varargin{:});
+            rateCell = td.groupElements(rates);
         end
         
         function [psthMatrix, tvec, semMatrix] = getSpikeRateFilteredMeanByGroup(td, unitName, varargin)

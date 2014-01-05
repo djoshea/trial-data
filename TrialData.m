@@ -153,10 +153,10 @@ classdef(ConstructOnLoad) TrialData
         end
         
         function printChannelInfo(td)
-            tcprintf('inline', '{bright cyan}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
-            tcprintf('inline', '{bright cyan}Spike: {none}%s\n', strjoin(td.listSpikeUnits(), ', '));
+            tcprintf('inline', '{bright blue}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
+            tcprintf('inline', '{bright blue}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{bright blue}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{bright blue}Spike: {none}%s\n', strjoin(td.listSpikeUnits(), ', '));
         end
 
         function disp(td)
@@ -174,10 +174,17 @@ classdef(ConstructOnLoad) TrialData
         end
         
         function valid = buildValid(td)
+            % compute the valid flag considering only trials marked as
+            % manually invalid to be invalid. This will be overriden in
+            % TDCA to consider the condition and align invalid as well
+            valid = td.getManualValid();
+        end
+        
+        function valid = getManualValid(td)
             if isempty(td.manualValid)
                 valid = truevec(td.nTrials);
             else
-                valid = td.manualValid;
+                valid = makecol(td.manualValid);
             end
         end
         
@@ -255,6 +262,15 @@ classdef(ConstructOnLoad) TrialData
         
         function assertHasChannel(td, name)
             assert(td.hasChannel(name), 'TrialData does not have channel %s', name);
+        end
+        
+        function cd = getChannelDescriptor(td, name)
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+        end
+        
+        function type = getChannelType(td, name)
+            type = td.getChannelDescriptor(name).getType();
         end
         
         function names = listChannels(td)
@@ -373,10 +389,27 @@ classdef(ConstructOnLoad) TrialData
     end
     
     methods % Analog channel methods
+        function tf = hasAnalogChannel(td, name) 
+            if td.hasChannel(name)
+                tf = isa(td.getChannelDescriptor(name), 'AnalogChannelDescriptor');
+            else
+                tf = false;
+            end
+        end
+        
         function names = listAnalogChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
+        end
+        
+        function delta = getAnalogTimeDelta(td, name)
+            % compute the median delta betwen successive samples of an
+            % analog channel
+            [~, time] = td.getAnalog(name);
+            
+            % median of medians is faster and close enough
+            delta = nanmedian(cellfun(@(x) nanmedian(diff(x)), time));
         end
         
         function [data, time] = getAnalogRaw(td, name)
@@ -408,6 +441,14 @@ classdef(ConstructOnLoad) TrialData
     end
     
     methods % Event channel methods
+        function tf = hasEventChannel(td, name) 
+            if td.hasChannel(name)
+                tf = isa(td.getChannelDescriptor(name), 'EventChannelDescriptor');
+            else
+                tf = false;
+            end
+        end
+        
         function names = listEventChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), channelDescriptors);
@@ -486,6 +527,14 @@ classdef(ConstructOnLoad) TrialData
     end
     
     methods % Param channel methods
+        function tf = hasParamChannel(td, name) 
+            if td.hasChannel(name)
+                tf = isa(td.getChannelDescriptor(name), 'ParamChannelDescriptor');
+            else
+                tf = false;
+            end
+        end
+        
         function names = listParamChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), channelDescriptors);
@@ -536,6 +585,26 @@ classdef(ConstructOnLoad) TrialData
     end
 
     methods % Spike channel methods
+        function tf = hasSpikeChannel(td, name)
+            if td.hasChannel(name)
+                tf = isa(td.getChannelDescriptor(name), 'SpikeChannelDescriptor');
+            else
+                tf = false;
+            end
+        end
+        
+        function tf = hasSpikeUnit(td, unitName)
+            name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+            tf = td.hasSpikeChannel(name);
+        end
+        
+        function tf = hasSpikeChannelOrUnit(td, name)
+            tf = td.hasSpikeChannel(name);
+            if ~tf
+                tf = td.hasSpikeUnit(name);
+            end
+        end
+        
         function names = listSpikeChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
@@ -549,7 +618,11 @@ classdef(ConstructOnLoad) TrialData
         end
         
         function timesCell = getRawSpikeTimes(td, unitName)
-            name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+            if td.hasSpikeChannel(unitName)
+                name = unitName;
+            else
+                name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+            end
             timesCell = {td.data.(name)}';
         end
 
@@ -731,6 +804,14 @@ classdef(ConstructOnLoad) TrialData
     end 
 
     methods % Plotting functions
+        function units = getChannelUnitsPrimary(td, name)
+            if td.hasSpikeChannelOrUnit(name)
+                units = 'spikes / sec';
+            else
+                units = td.getChannelDescriptor(name).unitsPrimary;
+            end
+        end
+        
         function str = getAxisLabelForChannel(td, name)
             str = td.channelDescriptorsByName.(name).getAxisLabelPrimary();
         end

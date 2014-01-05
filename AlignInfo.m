@@ -133,9 +133,9 @@ classdef AlignInfo < AlignDescriptor
             else
                 fn = @(info) info.(event)(n);
             end
-            times = arrayfun(fn, ad.eventInfo, ...
-                'ErrorHandler', @(varargin) NaN);
-            %times = makecol(ad.eventTimeRoundFn(times)) + offset;
+            times = makecol(arrayfun(fn, ad.eventInfo, ...
+                'ErrorHandler', @(varargin) NaN));
+            times = times + offset;
             
             if ~isempty(roundRelativeTo) && ad.roundTimes
                 % shift event times to maintain an integer multiple of

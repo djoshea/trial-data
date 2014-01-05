@@ -1,23 +1,57 @@
-classdef PopulationTrajectorySetOnDemandCache < handle
+classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable 
 
     properties
         basisNames
-        timeData
-        data
+        basisUnits
+        
+        dataByTrial
+        tMinForDataByTrial
+        tMaxForDataByTrial
+        tMinByTrial
+        tMaxByTrial
+        alignValidByTrial
+        
+        dataMean
         dataSem
         dataValid
-        nTrialsData
+        dataNTrials
+        tMinForDataMean
+        tMaxForDataMean
     end
 
-end
+    methods
+        function flush(odc)
+            odc.basisNames = {};
+            odc.basisUnits = {};
+            
+            odc.dataByTrial = {};
+            odc.tMinForDataByTrial = {};
+            odc.tMaxForDataByTrial = {};
+            odc.tMinByTrial = {};
+            odc.tMaxByTrial = {};
+            odc.alignValidByTrial = {};
+            
+            odc.flushTrialAveragedData
+        end
+        
+        function flushTrialAveragedData(odc)
+            odc.dataMean = {};
+            odc.dataSem = {};
+            odc.dataValid = {};
+            odc.dataNTrials = {};
+            odc.tMinForDataMean = {};
+            odc.tMaxForDataMean = {};
+        end
 
-% extract data from trial data
+%         function selectAlongDimension(odc, dim, idx)
+%             fields = properties(odc);
+%             for i = 1:numel(fields)
+%                 odc.(fields{i}) = TensorUtils.selectAlongDimension(odc.(fields{i}), dim, idx);
+%             end
+%         end
+    end
 
-for iBasis = 1:numel(trialDataSet)
-     % figure out which channel to extract
-     [rateMean, time, rateSem] = td.getSpikeRateFilteredMeanByGroup(unitStr{iBasis});
 
 
- end
 
 end

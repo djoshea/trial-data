@@ -18,6 +18,10 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %       tMin:timeDelta:tMax formula, but tMin and tMax will be adjusted so
 %       that timeReference would be an exact integer multiple of timeDelta
 %       away. default = 0.
+% 
+%    fixDuplicateTimes: remove timestamps which are duplicates of previous
+%       timestamps, which can result from rounding and breaks the
+%       monotonicity required by interpolation
 %
 %    interpolate: boolean. if false, it will be assumed that the timeStamps
 %       within each dataCell have consistent spacing and each timestamp lies
@@ -33,14 +37,20 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addRequired('timeCell', @(x) iscell(x) && isvector(x));
     p.addParameter('timeDelta', 1, @isscalar);
     p.addParameter('timeReference', 0, @isscalar);
+    p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
     p.addParameter('interpolate', true, @(x) islogical(x) && isscalar(x));
     p.addParameter('interpolateMethod', 'linear', @ischar);
     p.parse(dataCell, timeCell, varargin{:});
 
     timeDelta = p.Results.timeDelta;
     timeReference = p.Results.timeReference;
+    fixDuplicateTimes = p.Results.fixDuplicateTimes;
     interpolate = p.Results.interpolate;
     interpolateMethod = p.Results.interpolateMethod;
+    
+    if fixDuplicateTimes
+        [dataCell, timeCell] = cellfun(@fix, dataCell, timeCell, 'UniformOutput', false);
+    end
     
     % compute the global min / max timestamps
     [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
@@ -56,6 +66,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     end
     
     if ~interpolate
+        tol = 1e-9;
         if  (any(abs(tMin - tMinRaw) > tol) || any(abs(tMax - tMaxRaw) > tol))
             error('Timestamps do not align with timeReference. Set ''interpolate'' to true');
         end
@@ -76,17 +87,38 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     if interpolate
         for i = 1:N
-            mat(i, indStart(i):indStop(i)) = interp1(timeCell{i}, dataCell{i}, ...
-                tvec(indStart(i):indStop(i)), interpolateMethod, 'extrap');
+            if ~isnan(indStart(i)) && ~isnan(indStop(i))
+                mat(i, indStart(i):indStop(i)) = interp1(timeCell{i}, dataCell{i}, ...
+                    tvec(indStart(i):indStop(i)), interpolateMethod, 'extrap');da
+            end
         end
     else
         for i = 1:N
-            mat(indStart(i):indStop(i)) = dataCell{i};
+            if ~isnan(indStart(i)) && ~isnan(indStop(i))
+                mat(i, indStart(i):indStop(i)) = dataCell{i};
+            end
         end
     end
+    end
+
+function [d, t] = fix(d, t)
+    diffT = diff(t);
+    stuck = find(diffT(1:end-1) == 0 & diffT(2:end) == 2);
+    t(stuck+1) = t(stuck+1) + 1;
+    skip = find(diffT(1:end-1) == 2 & diffT(2:end) == 0);
+    t(skip+1) = t(skip+1) - 1;
+
+    tMask = diff(t)>0;
+    t = t(tMask);
+    d = d(tMask);
 end
 
 function [mn, mx] = minmax(x)
-    mn = nanmin(x);
-    mx = nanmax(x);
+    if isempty(x)
+        mn = NaN;
+        mx = NaN;
+    else
+        mn = nanmin(x);
+        mx = nanmax(x);
+    end
 end

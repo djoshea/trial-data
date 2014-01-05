@@ -106,7 +106,7 @@ classdef MatUdpTrialDataInterface < TrialDataInterface
                 if ismember(info.type, {'analog', 'param'})
                     if all(emptyMask)
                         warning('R struct contains no non-empty values for %s, assuming class double', info.name);
-                        cd.storageDataClass = 'double';
+                        cd.originalDataClassByField = 'double';
                     else
                         % determine original class in R struct
                         classes = unique(cellfun(@class, fieldValues(~emptyMask), 'UniformOutput', false));
