@@ -276,10 +276,10 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
                 vlStr = vlStrCell{iX};
                 randStr = randStrCell{iX}; 
                 if ~isempty(vlStr)
-                    vlStr = [' ' vlStr];
+                    vlStr = [' ' vlStr]; %#ok<AGROW>
                 end
                 if ~isempty(randStr)
-                    randStr = [' ' randStr];
+                    randStr = [' ' randStr]; %#ok<AGROW>
                 end
                 desc{iX} = sprintf('%s (%d%s%s)', ...
                     strjoin(attr, ' x '), nv, vlStr, randStr);

@@ -33,7 +33,7 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
 % .get accessor will check the corresponding manual property, named
 % .manualProperty, and return that value if not empty.
 
-    properties(Access=protected)
+    properties(SetAccess=protected, Hidden, Transient)
         % odc is an instance of PopulationTrajectorySetOnDemandCache
         % which is a handle class. Properties which derive from 
         odc
@@ -41,11 +41,18 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
     
     % properties which control the behavior of the pset
     properties
-        timeDelta % numeric scalar indicating spacing between successive time points
+        % The following parameters affect data extraction:
         
+        % numeric scalar indicating spacing between successive time points
+        % all channels timeseries will be interpolated to a time vector
+        % with this spacing
+        timeDelta 
+        
+        % SpikeFilter instance to use when converting spiking units to
+        % firing rate channels
         spikeFilter
         
-        % The following parameters affect trial-averaging
+        % The following parameters affect trial-averaging:
         
         % The minimum number of trials over which to compute a trial
         % average. This parameter determines the valid time windows for
@@ -64,11 +71,35 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         % valid for ALL alignments will be considered 
         includeOnlyTrialsValidAllAlignments = false;
     end
+    
+    % alignDescriptors, conditionDescriptor, and translationNormalization
+    % which align, group, and translate/normalize the data generated from
+    % the dataSources. These may be set using eponymous methods prefixed with set*
+    properties(Hidden, SetAccess=protected)
+        % nAlign x 1 cell of alignDescriptors
+        alignDescriptorSet = {};
 
+        % ConditionDescriptor instance describing condition information 
+        conditionDescriptor
+        
+        % StateSpaceTranslationNormalization instance describing the
+        % translation and normalization to apply to each basis.
+        % This will be applied during buildDataByTrial for dataSourceManual
+        % = false psets (thus being reflected in the trial-averages automatically)
+        % or applied manually to dataByTrial (if non-empty) and dataMean
+        % (if non-empty) for dataSourceManual = false
+        translationNormalization
+    end
+
+    % These properties store raw data sources (TrialDataConditionAlign instances)
+    % from which data is extracted, as well as track from where each basis
+    % originates.
     properties(SetAccess=?PopulationTrajectorySetBuilder)
-        % indicates how the elements in data are computed from individual trials
-        % see DATAMODE_* constants below
-        dataMode = PopulationTrajectorySet.DATAMODE_NONSIMULTANEOUS;
+        % is trial averaged data computed from byTrial data (false) or
+        % specified manually (true). This flag controls whether property
+        % values are computed dynamically from the dataSources and stored
+        % in the .odc, or stored persistently in .manualData
+        dataSourceManual = false;
         
         % TrialData data sources which source all data for the trajectories
         % this may be a single trial data object or many. If there is only
@@ -81,22 +112,11 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         % nBases x 1 cellstr indicating which channel name to extract data
         % from
         basisDataSourceChannelNames
-
     end
     
-    properties(Hidden, Constant)
-        % these constants are for .dataMode above
-        DATAMODE_NONSIMULTANEOUS = 0;
-        DATAMODE_SIMULTANEOUS = 1;
-
-        % these dimensions describe how .data, .timeData are organized
-%         DIM_BASES = 1;
-%         DIM_CONDITIONS = 2;
-%         DIM_ALIGN = 3;
-    end
-    
-    % These properties exist within the odc
-    properties(Transient, SetAccess=protected, Dependent)
+    % Properties whose values are computed dynamically and persist within odc
+    % or are specified manually and persist within manualData
+    properties(Dependent, Transient, SetAccess=protected)
         % nBases x 1 cellstr: names for each basis 
         basisNames = {};
         
@@ -152,7 +172,52 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         dataValid
     end
     
-    methods % Constructor
+    % Properties within *Manual properties store manually-specified values for each of the
+    % above properties. These are used to store persistent copies of
+    % the data when .dataSourceManual is true
+    properties(Hidden, Access=protected) 
+        basisNamesManual
+        basisUnitsManual
+        dataByTrialManual
+        tMinForDataByTrialManual
+        tMaxForDataByTrialManual
+        alignValidByTrialManual
+        tMinByTrialManual
+        tMaxByTrialManual
+        tMinForDataMeanManual
+        tMaxForDataMeanManual
+        dataMeanManual
+        dataSemManual
+        dataNTrialsManual
+        dataValidManual
+    end
+    
+    % Dependent properties which we compute on the fly rather than cache
+    properties(Dependent)
+        % indicates how the elements in data are computed from individual trials
+        % true means all trials correspond one-to-one with each other
+        % false means trials were not simultaneous, implying that only
+        % trial-averages should be compared
+        simultaneous = false;
+        
+        % number of data sources used across all bases
+        nDataSources
+        
+        nBases % number of bases (e.g. units, analog channels)
+
+        nConditions % number of conditions in conditionDescriptor
+        
+        nAlign % number of alignments in alignDescriptorSet
+        
+        conditionsSize % pass-thru to .conditionDescriptor
+        
+        alignNames % names pulled from the alignDescriptors
+
+        conditionNames % condition names pulled from conditionDescriptor
+    end
+   
+    % Constructor, initialization, cache invalidation
+    methods 
         function pset = PopulationTrajectorySet()
             pset = pset.initialize();
         end
@@ -225,23 +290,24 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         function pset = set.minTrialsForTrialAveraging(pset, v)
             % only affects trial averaging
             pset.minTrialsForTrialAveraging = v;
-            pset = pset.invalidateTrialAveragedData()
+            pset = pset.invalidateTrialAveragedData();
         end
         
         function pset = set.minFractionTrialsForTrialAveraging(pset, v)
             % only affects trial averaging
             pset.minFractionTrialsForTrialAveraging = v;
-            pset = pset.invalidateTrialAveragedData()
+            pset = pset.invalidateTrialAveragedData();
         end
         
         function pset = set.includeOnlyTrialsValidAllAlignments(pset, v)
             % only affects trial averaging
             pset.includeOnlyTrialsValidAllAlignments = v;
-            pset = pset.invalidateTrialAveragedData()
+            pset = pset.invalidateTrialAveragedData();
         end
     end
     
-    methods(Access=protected) % General utility methods
+    % General utility methods
+    methods(Access=protected)
         function warnIfNoArgOut(obj, nargOut)
         % call using obj.warnIfNoArgOut(nargout);
             if nargOut == 0 && ~isa(obj, 'handle')
@@ -257,192 +323,304 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         end
     end
     
-    methods % get and set properties from and flush for odc
+    % get and set properties from odc, deferring to build* methods for
+    % initial computation and storage in the odc
+    methods
         function v = get.dataByTrial(pset)
-            v = pset.odc.dataByTrial;
-            if isempty(v)
-                pset.buildDataByTrial();
+            if ~pset.dataSourceManual
                 v = pset.odc.dataByTrial;
+                if isempty(v)
+                    pset.buildDataByTrial();
+                    v = pset.odc.dataByTrial;
+                end
+            else
+                v = pset.dataByTrialManual;
             end
         end 
         
         function pset = set.dataByTrial(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.dataByTrial = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataByTrial = v;
+            else
+                pset.dataByTrialManual = v;
+            end
         end
         
         function v = get.tMinForDataByTrial(pset)
-            v = pset.odc.tMinForDataByTrial;
-            if isempty(v)
-                pset.buildDataByTrial();
+            if ~pset.dataSourceManual
                 v = pset.odc.tMinForDataByTrial;
+                if isempty(v)
+                    pset.buildDataByTrial();
+                    v = pset.odc.tMinForDataByTrial;
+                end
+            else
+                v = pset.tMinForDataByTrialManual;
             end
         end 
         
         function pset = set.tMinForDataByTrial(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.tMinForDataByTrial = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMinForDataByTrial = v;
+            else
+                pset.tMinForDataByTrialManual = v;
+            end
         end
         
         function v = get.tMaxForDataByTrial(pset)
-            v = pset.odc.tMaxForDataByTrial;
-            if isempty(v)
-                pset.buildDataByTrial();
+            if ~pset.dataSourceManual
                 v = pset.odc.tMaxForDataByTrial;
+                if isempty(v)
+                    pset.buildDataByTrial();
+                    v = pset.odc.tMaxForDataByTrial;
+                end
+            else
+                v = pset.tMaxForDataByTrialManual;
             end
         end 
         
         function pset = set.tMaxForDataByTrial(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.tMaxForDataByTrial = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMaxForDataByTrial = v;
+            else
+                pset.tMaxForDataByTrialManual = v;
+            end
         end
         
-         function v = get.alignValidByTrial(pset)
-            v = pset.odc.alignValidByTrial;
-            if isempty(v)
-                pset.buildDataByTrial();
+        function v = get.alignValidByTrial(pset)
+            if ~pset.dataSourceManual
                 v = pset.odc.alignValidByTrial;
+                if isempty(v)
+                    pset.buildDataByTrial();
+                    v = pset.odc.alignValidByTrial;
+                end
+            else
+                v = pset.alignValidByTrialManual;
             end
         end 
         
         function pset = set.alignValidByTrial(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.alignValidByTrial = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.alignValidByTrial = v;
+            else
+                pset.alignValidByTrialManual = v;
+            end
         end
         
         function v = get.tMinByTrial(pset)
-            v = pset.odc.tMinByTrial;
-            if isempty(v)
-                pset.buildDataByTrial();
+            if ~pset.dataSourceManual
                 v = pset.odc.tMinByTrial;
+                if isempty(v)
+                    pset.buildDataByTrial();
+                    v = pset.odc.tMinByTrial;
+                end
+            else
+                v = pset.tMinByTrialManual;
             end
         end 
         
         function pset = set.tMinByTrial(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.tMinByTrial = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMinByTrial = v;
+            else
+                pset.tMinByTrialManual = v;
+            end
         end
         
         function v = get.tMaxByTrial(pset)
             v = pset.odc.tMaxByTrial;
             if isempty(v)
                 pset.buildDataByTrial();
-                v = pset.odc.tMaxByTrial;
+                v = pset.odc.tMaxByTrialManual;
             end
         end 
         
         function pset = set.tMaxByTrial(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.tMaxByTrial = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMaxByTrial = v;
+            else
+                pset.tMaxByTrialManual = v;
+            end
         end
         
         function v = get.basisNames(pset)
-            v = pset.odc.basisNames;
-            if isempty(v)
-                pset.buildBasisNamesUnits();
+            if ~pset.dataSourceManual
                 v = pset.odc.basisNames;
+                if isempty(v)
+                    pset.buildBasisNamesUnits();
+                    v = pset.odc.basisNames;
+                end
+            else
+                v = pset.basisNamesManual;
             end
         end 
         
         function pset = set.basisNames(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.basisNames = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.basisNames = v;
+            else
+                pset.basisNamesManual = v;
+            end
         end
         
         function v = get.basisUnits(pset)
-            v = pset.odc.basisUnits;
-            if isempty(v)
-                pset.buildBasisNamesUnits();
+            if ~pset.dataSourceManual
                 v = pset.odc.basisUnits;
+                if isempty(v)
+                    pset.buildBasisNamesUnits();
+                    v = pset.odc.basisUnits;
+                end
+            else
+                v = pset.basisUnitsManual;
             end
         end 
         
         function pset = set.basisUnits(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.basisUnits = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.basisUnits = v;
+            else
+                pset.basisUnitsManual = v;
+            end
         end
         
         function v = get.tMinForDataMean(pset)
-            v = pset.odc.tMinForDataMean;
-            if isempty(v)
-                pset.buildDataMean();
-                v = pset.odc.tMinByTrial;
+            if ~pset.dataSourceManual
+                v = pset.odc.tMinForDataMean;
+                if isempty(v)
+                    pset.buildDataMean();
+                    v = pset.odc.tMinByTrial;
+                end
+            else
+                v = pset.tMinForDataMeanManual;
             end
         end 
         
         function pset = set.tMinForDataMean(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.tMinForDataMean = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMinForDataMean = v;
+            else
+                pset.tMinForDataMeanManual = v;
+            end
         end
         
         function v = get.tMaxForDataMean(pset)
-            v = pset.odc.tMaxForDataMean;
-            if isempty(v)
-                pset.buildDataMean();
+            if ~pset.dataSourceManual
                 v = pset.odc.tMaxForDataMean;
+                if isempty(v)
+                    pset.buildDataMean();
+                    v = pset.odc.tMaxForDataMean;
+                end
+            else
+                v = pset.tMaxForDataMeanManual;
             end
         end 
         
         function pset = set.tMaxForDataMean(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.tMaxForDataMean = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMaxForDataMean = v;
+            else
+                pset.tMaxForDataMeanManual = v;
+            end
         end
         
         function v = get.dataValid(pset)
-            v = pset.odc.dataValid;
-            if isempty(v)
-                pset.buildDataMean();
+            if ~pset.dataSourceManual
                 v = pset.odc.dataValid;
+                if isempty(v)
+                    pset.buildDataMean();
+                    v = pset.odc.dataValid;
+                end
+            else
+                v = pset.dataValidManual;
             end
         end 
         
         function pset = set.dataValid(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.dataValid = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataValid = v;
+            else
+                pset.dataValidManual = v;
+            end
         end
         
         function v = get.dataMean(pset)
-            v = pset.odc.dataMean;
-            if isempty(v)
-                pset.buildDataMean();
+            if ~pset.dataSourceManual
                 v = pset.odc.dataMean;
+                if isempty(v)
+                    pset.buildDataMean();
+                    v = pset.odc.dataMean;
+                end
+            else
+                v = pset.dataMeanManual;
             end
         end
         
         function pset = set.dataMean(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.dataMean = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataMean = v;
+            else
+                pset.dataMeanManual = v;
+            end
         end
         
         function v = get.dataSem(pset)
-            v = pset.odc.dataSem;
-            if isempty(v)
-                pset.buildDataMean();
+            if ~pset.dataSourceManual
                 v = pset.odc.dataSem;
+                if isempty(v)
+                    pset.buildDataMean();
+                    v = pset.odc.dataSem;
+                end
+            else
+                v = pset.dataSemManual;
             end
         end 
         
         function pset = set.dataSem(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.dataSem = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataSem = v;
+            else
+                pset.dataSemManual = v;
+            end
         end
         
         function v = get.dataNTrials(pset)
-            v = pset.odc.dataNTrials;
-            if isempty(v)
-                pset.buildDataMean();
+            if ~pset.dataSourceManual
                 v = pset.odc.dataNTrials;
+                if isempty(v)
+                    pset.buildDataMean();
+                    v = pset.odc.dataNTrials;
+                end
+            else
+                v = pset.dataNTrialsManual;
             end
         end 
         
         function pset = set.dataNTrials(pset, v)
-            pset.odc = pset.odc.copy();
-            pset.odc.dataNTrials = v;
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataNTrials = v;
+            else
+                pset.dataNTrialsManual = v;
+            end
         end
        
     end
   
-    methods
+    % methods which set and apply the conditionDescriptor,
+    % alignDescriptorSet, and translationNormalization applied to this pset
+    methods 
         function pset = setConditionDescriptor(pset, cd)
             pset.warnIfNoArgOut(nargout);
             assert(isequal(class(cd), 'ConditionDescriptor'), ...
@@ -497,6 +675,77 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             % changing alignments invalidates everything
             pset = pset.invalidateCache();
         end
+        
+        function pset = applyTranslationNormalization(pset, trNorm)
+            pset.warnIfNoArgOut(nargout);
+            
+            % only allow a single translation / normalization for
+            % simplicity.
+            if ~isempty(pset.translationNormalization)
+                error('Translation / normalization already applied');
+            end
+            
+            pset.translationNormalization = trNorm;
+            
+            if pset.dataSourceManual
+                % for manual data, we apply this now to all data stored
+                % manually since it will not be regenerated later
+                if ~isempty(pset.dataByTrial)
+                    pset.dataByTrial = trNorm.applyTranslationNormalizationToData(pset.dataByTrial);
+                end
+                if ~isempty(pset.dataMean)
+                    pset.dataMean = trNorm.applyTranslationNormalizationToData(pset.dataMean);
+                end
+                if ~isempty(pset.dataSem)
+                    pset.dataSem = trNorm.applyTranslationNormalizationToData(pset.dataSem);
+                end
+            else
+                % for auto-computed data, we can check whether the data has
+                % been already computed (by checking the odc properties).
+                % if so we can do the transformation to save time.
+                % otherwise, we can defer until the buildData* methods
+                % apply the translation / normalization
+                if ~isempty(pset.odc.dataByTrial)
+                    pset.dataByTrial = trNorm.applyTranslationNormalizationToData(pset.dataByTrial);
+                end
+                
+                % and invalidate the trial averaged data to reflect this
+                % normalization
+                pset = pset.invalidateTrialAveragedData();
+            end
+        end
+        
+        function pset = clearTranslationNormalization(pset, trNorm)
+             pset.warnIfNoArgOut(nargout);
+            
+            if isempty(pset.translationNormalization)
+                error('No translation / normalization applied');
+            end
+            
+            if pset.dataSourceManual
+                % for manual data, we reverse this now to all data stored
+                % manually since it will not be regenerated later
+                if ~isempty(pset.dataByTrial)
+                    pset.dataByTrial = trNorm.undoTranslationNormalizationToData(pset.dataByTrial);
+                end
+                if ~isempty(pset.dataMean)
+                    pset.dataMean = trNorm.undoTranslationNormalizationToData(pset.dataMean);
+                end
+                if ~isempty(pset.dataSem)
+                    pset.dataSem = trNorm.undoTranslationNormalizationToData(pset.dataSem);
+                end
+            else
+                % for auto-computed data, we can check whether the data has
+                % been already computed (by checking the odc properties).
+                % if so we can do the transformation to save time.
+                % otherwise, we can defer until the buildData* methods
+                % apply the translation / normalization
+                if ~isempty(pset.odc.dataByTrial)
+                    pset.dataByTrial = trNorm.undoTranslationNormalizationToData(pset.dataByTrial);
+                end
+                pset = pset.invalidateTrialAveragedData();
+            end
+        end
     end
     
     % build methods for the odc properties, each must store results 
@@ -527,6 +776,12 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 
                 % this call works for unit names as well
                 basisUnits{iBasis} = td.getChannelUnitsPrimary(chName);
+            end
+            
+            % convert the basis units as specified by the
+            % translationNormalization
+            if ~isempty(pset.translationNormalization)
+                basisUnits = pset.translationNormalization.convertBasisUnits(basisUnits);
             end
             
             % we're modifying the odc handle class here
@@ -615,6 +870,11 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                         'Time vector returned by TrialData has invalid limits');
                 end
                 prog.finish();
+            end
+            
+            % apply translation / normalization to data
+            if ~isempty(pset.translationNormalization)
+                dataByTrial = pset.translationNormalization.applyTranslationNormalizationToData(dataByTrial);
             end
             
             % store the results in the odc without copying
@@ -754,6 +1014,9 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             end
             prog.finish();
             
+            % no need to apply translation / normalization here since it is
+            % already applied to dataByTrial!
+            
             % store in odc without copying
             c = pset.odc;
             c.dataMean = dataMean;
@@ -765,56 +1028,7 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         end
     end
     
-    properties(SetAccess=protected) % these properties have set methods which check the new value
-        % nAlign x 1 cell of alignment information (AlignDescriptor cell array)
-        alignDescriptorSet = {};
-
-        % scalar ConditionDescriptor describing condition information 
-        conditionDescriptor
-    end
-
-    % These properties are cheap enough to compute entirely on the fly
-    properties(Dependent)
-        nDataSources
-        
-        nBases
-
-        nConditions
-        
-        nAlign
-
-        nTrials
-        
-        dataSize % [nBases nConditions nAlign nTrials]
-        
-        %nConditionsValid % number of conditions which are valid in all bases, all aligns
-
-        conditionsSize % pass-thru to .conditionDescriptor
-        
-        alignNames
-
-        conditionNames 
-        
-        % nConditions x nAlign scalar array indicating whether this element
-        % is valid across all bases
-        conditionAlignsValidAllBases
-        
-        % nConditions array indicating whether this condition has valid
-        % data across all bases and all alignments
-        conditionsValidAllBasesAlign
-        
-        nConditionsValid
-    end
-    
-    
-%     methods(Access=protected) % copyElement for deep copy
-%         % deep copy all handle class properties
-%         function pset2 = copyElement(pset)
-%             pset2 = copyElement@matlab.mixin.Copyable(pset);
-%         end
-%     end
-
-    methods % Filtering bases, conditions
+    methods % Filtering bases, conditions (NOT WORKING)
         function filterAlign(pset, idx)
             p = inputParser;
             p.addRequired('alignIdx', @isvector);
@@ -911,27 +1125,7 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 sz = pset.conditionDescriptor.conditionsSize;
             end
         end
-
-        function sz = get.dataSize(pset)
-            sz = [pset.nBases pset.nConditions pset.nAlign];
-        end
-        
-        function n = get.nConditionsValid(pset)
-            if isempty(pset.conditionDescriptor)
-                n = 0;
-            else
-                n = nnz(pset.conditionsValidAllBasesAlign);
-            end
-        end
-        
-        function valid = get.conditionAlignsValidAllBases(pset)
-            valid = shiftdim(any(pset.dataValid, 1), 1);
-        end
-        
-        function valid = get.conditionsValidAllBasesAlign(pset)
-            valid = any(pset.conditionAlignsValidAllBases, 2);
-        end
-            
+   
         function names = get.conditionNames(pset)
             if isempty(pset.conditionDescriptor)
                 names = {};
@@ -942,341 +1136,6 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
 
         function names = get.alignNames(pset)
             names = cellfun(@(ad) ad.name, pset.alignDescriptorSet, 'Uniform', false);
-        end
-        
-%         function t = get.tMinDataManual(pset)
-%             if isempty(pset.tMinDataManual)
-%                 pset.tMinDataManual = nan(pset.dataSize);
-%             end
-%             t = pset.tMinDataManual;
-%         end
-%         
-%         function t = get.tMaxDataManual(pset)
-%             if isempty(pset.tMaxDataManual)
-%                 pset.tMaxDataManual = nan(pset.dataSize);
-%             end
-%             t = pset.tMaxDataManual;
-%         end
-    end
-
-    methods % Adding bases / units
-%         function initialize(pset)
-%             % create appropriately sized empty arrays for storing data,
-%             % timeData, alignTimeInfo, etc.
-%             if isempty(pset.conditionDescriptor)
-%                 error('Set .conditionDescriptor before calling initialize()');
-%             end
-%             if isempty(pset.alignDescriptorSet)
-%                 error('Set .alignDescriptorSet before calling initialize()');
-%             end
-%             
-%             nAlign = length(pset.alignDescriptorSet);
-%             [pset.timeData, pset.data, pset.alignTimeInfoData] = ...
-%                 deal(cell(0, pset.nConditions, nAlign));
-%             pset.dataValid = false(0, pset.nConditions, nAlign);
-%             pset.dataNTrials = nan(0, pset.nConditions, nAlign);
-%             pset.tMinDataManual = nan(0, pset.nConditions, pset.nAlign);
-%             pset.tMaxDataManual = nan(0, pset.nConditions, pset.nAlign);
-%                         
-%             % initialize data source store if asked
-%             if pset.storeDataSources
-%                 pset.dataSources = cell(0, nAlignAdd);
-%                 pset.dataSourcesOrig = cell(0, nAlignAdd);
-%             end
-%             
-%             pset.basisNames = cell(0, 1);
-%             pset.basisMeta = cell(0, 1);
-%         end
-        
-%         function addEmptyBases(pset, nBasesAdd)
-%             if nargin < 2
-%                 nBasesAdd = 1;
-%             end
-%             
-%             expand = @(in) TensorUtils.expandAlongDims(in, pset.DIM_BASES, nBasesAdd);
-%             
-%             pset.data = expand(pset.data);
-%             pset.timeData = expand(pset.timeData);
-%             pset.alignTimeInfoData = expand(pset.alignTimeInfoData);
-%             pset.dataValid = expand(pset.dataValid);
-%             pset.dataNTrials = cat(1, pset.dataNTrials, dataNTrials);
-%                 
-%             pset.basisNames = cat(1, pset.basisNames, names);
-%             pset.basisMeta = cat(1, pset.basisMeta, meta);   
-%         end 
-%         
-        function initializeFromSpikeRaster(pset, srCell)
-            % set alignDescriptorSet and conditionDescriptor based off a
-            % SpikeRaster or cell vector of SpikeRasters
-            % then call intiialize
-            if ~iscell(srCell)
-                srCell = {srCell};
-            end
-            
-            srCell = makecol(srCell);
-            pset.conditionDescriptor = srCell{1}.conditionInfo.getConditionDescriptor();
-            pset.alignDescriptorSet = cellfun(@(sr) sr.alignDescriptor, srCell, 'UniformOutput', false);
-            
-            pset.initialize();
-        end
-        
-        function addUnitFromSpikeRaster(pset, srCell, varargin)
-            % srCell should be a cell array of nUnitsToAdd x nAlign of spike rasters
-            % if there is only one alignment, ensure srCell is a column vector of units
-            % if only one alignment and only one unit to add, no need to wrap in {}
-            p = inputParser;
-            p.addRequired('srCell', @(x) iscell(x) || isa(x, 'SpikeRaster'));
-            p.addParamValue('name', [], @ischar); 
-            p.addParamValue('meta', [], @(x) true);
-            p.parse(srCell, varargin{:});
-
-            if ~iscell(srCell)
-                srCell = {srCell};
-            end
-
-            nUnitsAdd = size(srCell, 1);
-            nAlignAdd = size(srCell, 2);
-
-            names = p.Results.name;
-            if isempty(names)
-                names = cell(nUnitsAdd, 1);
-                for i = 1:nUnitsAdd
-                    names{i} = srCell{i}.name;
-                    if isempty(names{i});
-                        names{i} = sprintf('Unit %d', pset.nBases + i);
-                    end
-                end
-            end
-
-            if isempty(pset.alignDescriptorSet)
-                % haven't been initialized yet, learn the nAlign from the srCell
-                pset.alignDescriptorSet = cell(nAlignAdd, 1);
-            else
-                assert(nAlignAdd == pset.nAlign, ...
-                    'Please provide a cell array of SpikeRasters corresponding to the %d AlignDescriptors used in this PopulationTrajectorySet', ...
-                    pset.nAlign);
-            end
-            
-            nBases = pset.nBases;
-                
-            % do error checking and validation first, then store data
-            prog = ProgressBar(nUnitsAdd, 'Validating compatible AlignDescriptors, ConditionDescriptors...');
-            for iUnit = 1:nUnitsAdd
-                prog.update(iUnit);
-                for iAlign = 1:nAlignAdd
-                    sr = srCell{iUnit, iAlign};
-
-                    % fetch or validate conditionDescriptor
-                    cdFromSR = sr.conditionInfo.getConditionDescriptor();
-                    if isempty(pset.conditionDescriptor)
-                        % use the condition Descriptor from this raster
-                        pset.conditionDescriptor = cdFromSR;
-                    else
-                        % check that the condition descriptor matches
-                        assert(isequal(cdFromSR, pset.conditionDescriptor), ...
-                            'ConditionDescriptor does not match this SpikeRaster''s');
-                    end
-
-                    % fetch or validate alignDescriptor 
-                    adFromSR = sr.alignInfo;
-         
-                    if isempty(adFromSR.name)
-                        adFromSR.name = sprintf('Align %d', iAlign);
-                    end
-                    if isempty(pset.alignDescriptorSet{iAlign})
-                        % use the align descriptor from this raster
-                        pset.alignDescriptorSet{iAlign} = adFromSR;
-
-                    else
-                        % check that the align descriptor matches
-                        assert(adFromSR.isCompatibleWith(pset.alignDescriptorSet{iAlign}), ...
-                            'AlignDescriptor does not match this SpikeRaster''s');
-                    end
-
-                end
-            end
-            prog.finish();
-
-            prog = ProgressBar(nUnitsAdd, 'Adding bases from SpikeRasters');
-            for iUnit = 1:nUnitsAdd
-                prog.update(iUnit);
-                iBasis = nBases + iUnit;
-                for iAlign = 1:nAlignAdd
-                    sr = srCell{iUnit, iAlign};
-                    [psthByCondition, ~, timeBins] = sr.getPSTHByCondition();
-                    
-                    if iBasis == 1 && iAlign == 1
-                        % TODO eventually want to instantiate this in its own function
-                        [pset.timeData pset.data pset.alignTimeInfoData] = deal(cell(1, pset.nConditions, nAlignAdd));
-                        pset.dataValid = false(1, pset.nConditions, nAlignAdd);
-                        pset.dataNTrials = nan(1, pset.nConditions, nAlignAdd);
-                        
-                        % initialize data source store if asked
-                        if pset.storeDataSources
-                            pset.dataSources = cell(1, nAlignAdd);
-                            pset.dataSourcesOrig = cell(1, nAlignAdd);
-                        end
-                    end
-
-                    % add the align time info for each trial to facilitate proper time axis drawing
-                    % could make this more efficient by changing AlignDescriptor to accept the medians directly
-                    alignTimeInfoByCondition = sr.getAlignTimeInfoByCondition();
-                    nTrialsByCondition = sr.nTrialsByCondition;
-                    for iCondition = 1:pset.nConditions
-                        if nTrialsByCondition(iCondition) > 1
-                            % crucial that everything stays a column vector for cell2mat to work appropriately
-                            pset.timeData{iBasis, iCondition, iAlign} = makecol(timeBins);
-                            pset.data{iBasis, iCondition, iAlign} = makecol(psthByCondition(iCondition, :));
-                        end
-                        
-                        pset.alignTimeInfoData{iBasis, iCondition, iAlign} = makecol(alignTimeInfoByCondition{iCondition});    
-                        
-                        % store whether this spike raster contributed any trials
-                        pset.dataValid(iBasis, :, iAlign) = nTrialsByCondition(:) > 0;
-                        pset.dataNTrials(iBasis, :, iAlign) = nTrialsByCondition(:);
-                    end
-
-                    name = p.Results.name;
-                    if isempty(name)
-                        name = srCell{1}.name;
-                    end
-                    pset.basisNames{iBasis} = name;
-                    pset.basisMeta{iBasis} = p.Results.meta;
-
-                    % hold on to the SpikeRaster if requested
-                    if pset.storeDataSources
-                        pset.dataSources{iBasis, iAlign} = sr;
-                        pset.dataSourcesOrig{iBasis, iAlign} = sr;
-                    end
-                end
-                
-                pset.tMinDataManual = cat(1, pset.tMinDataManual, nan(1, pset.nConditions, pset.nAlign));
-                pset.tMaxDataManual = cat(1, pset.tMaxDataManual, nan(1, pset.nConditions, pset.nAlign));
-            end
-            prog.finish();
-            
-        end
-        
-        function addBasisFromRawData(pset, dataCell, timeCell, alignTimeInfoCell, varargin)
-            % Add raw data directly to PopulationTrajectorySet
-            %
-            % dataCell, timeCell, alignTimeInfoCell :
-            %    nBases x nConditions x nAlign cell tensors containing the
-            %    appropriate data vector for that basis x condition x
-            %    alignment.
-            p = inputParser;
-            p.addRequired('dataCell', @(x) iscell(x));
-            p.addRequired('timeCell', @(x) iscell(x));
-            % nUnitsToAdd x nAlign x nCondition cell
-            p.addRequired('alignTimeInfoCell', @(x) iscell(x));
-            p.addParamValue('names', [], @(x) ischar(x) || iscell(x)); 
-            p.addParamValue('meta', [], @iscell);
-            p.parse(dataCell, timeCell, alignTimeInfoCell, varargin{:});
-
-            nUnitsAdd = size(dataCell, 1);
-            nConditionsAdd = size(dataCell, 2);
-            nAlignAdd = size(dataCell, 3);
-            
-            names = p.Results.names;
-            if isempty(names) || ~iscell(names)
-                names = cell(nUnitsAdd, 1);
-                for i = 1:nUnitsAdd         
-                    names{i} = sprintf('Basis %d', pset.nBases + i);
-                end
-            end
-            names = makecol(names);
-            assert(iscellstr(names), isvector(names) && length(names) == nUnitsAdd, ...
-                'Names must be a cellstr vector whose length matches size(dataCell, 1)');
-            
-            meta = p.Results.meta;
-            meta = makecol(meta);
-            if isempty(meta)
-                meta = cell(nUnitsAdd, 1);
-            end
-            assert(iscell(meta) && isvector(meta) && length(meta) == nUnitsAdd, ...
-                'Meta must be a cell vector whose length matches size(dataCell, 1)');
-            
-            if ~isempty(pset.alignDescriptorSet)
-                assert(nAlignAdd == pset.nAlign, ...
-                    'size(dataCell, 3) must match .nAlign==%d', ...
-                    pset.nAlign);
-            else
-                error('Set .alignDescriptorSet first');
-            end
-            
-            if isempty(pset.conditionDescriptor)
-                error('Set .conditionDescriptor first');
-            else
-                assert(nConditionsAdd == pset.nConditions, ...
-                    'size(dataCell, 2) must match .nConditions==%d', pset.nConditions);
-            end  
-            
-            nBases = pset.nBases;
-            
-            assert(isequal(size(dataCell), size(timeCell)), ...
-                'Size of dataCell and timeCell must match');
-            assert(isequal(size(dataCell), size(alignTimeInfoCell)), ...
-                'Size of dataCell and alignTimeInfoCell must match');
-            
-            % make sure everything is a column vector for cell2mat to work
-            % correctly
-            dataCell = cellfun(@makecol, dataCell, 'UniformOutput', false);
-            timeCell = cellfun(@makecol, timeCell, 'UniformOutput', false);
-            alignTimeInfoCell = cellfun(@makecol, alignTimeInfoCell, 'UniformOutput', false);
-            dataValid = cellfun(@(x) any(~isnan(x)), dataCell);
-            dataNTrials = nan(nUnitsAdd, nConditionsAdd, nAlignAdd);
-            
-            pset.data = cat(1, pset.data, dataCell);
-            pset.timeData = cat(1, pset.timeData, timeCell);
-            pset.alignTimeInfoData = cat(1, pset.alignTimeInfoData, alignTimeInfoCell);
-            pset.dataValid = cat(1, pset.dataValid, dataValid);
-            pset.dataNTrials = cat(1, pset.dataNTrials, dataNTrials);
-            
-            pset.tMinDataManual = cat(1, pset.tMinDataManual, nan(nUnitsAdd, pset.nConditions, pset.nAlign));
-            pset.tMaxDataManual = cat(1, pset.tMaxDataManual, nan(nUnitsAdd, pset.nConditions, pset.nAlign));
-                
-            pset.basisNames = cat(1, pset.basisNames, names);
-            pset.basisMeta = cat(1, pset.basisMeta, meta);   
-        end
-    end
-
-    methods(Static)
-        % take all units from each trial data as bases, not collected simultaneously
-        function pset = buildFromTrialDataSetAllUnits(tdCell, varargin)
-            p = inputParser();
-            p.parse(varargin{:});
-
-            nTD = numel(tdCell);
-            unitsByTD = cellfun(@(td) td.listAllUnits(), tdCell);
-            nBasesByTD = cellfun(@numel, unitsByTD);
-
-            iBasis = 0;
-            for iTD = 1:nTD
-                for iUnitThisTD = 1:nBasesByTD(iTD)
-                    iBasis = iBasis + 1;
-                    td.trialDataSet{iBasis} = tdCell{iTD};
-                end 
-            end
-        end
-
-        function pset = buildfromRawData(dataCell)    
-            timeCell = cellfun(@(d) (1:numel(d))', dataCell, 'UniformOutput', false);
-            
-            alignTimeInfoCell = cellfun(@(d) struct('valid', true, 'start', 0, ...
-                'stop', numel(d)-1, 'startPad', 0, 'stopPad', numel(d)-1, 'zero', 0, ...
-                'mark', {{}}, 'interval', {{}}), dataCell, 'UniformOutput', false);
-            
-            nConditions = size(dataCell, 2);
-            cd = ConditionDescriptor();
-            cd  = cd.addAttribute('condition', 'valueList', 1:nConditions, 'groupBy', true);
-            
-            nAlign = size(dataCell, 3);
-            for i = 1:nAlign
-                alignDescriptorSet{i} = AlignDescriptor('start:stop');
-            end
-            
-            pset = PopulationTrajectorySet('conditionDescriptor', cd, 'alignDescriptorSet', alignDescriptorSet);
-            pset.addBasisFromRawData(dataCell, timeCell, alignTimeInfoCell);
         end
     end
     
@@ -1296,30 +1155,6 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         function resampleSourcesFromSingleAttributeValue(pset, attr, value)
             assert(pset.storeDataSources, 'PopulationTrajectorySet must be configured with .storeDataSources==true in order to accomplish this');
             pset.dataSources = cellfun(@(sr) sr.buildResampledFromSingleAttributeValue(attr, value), pset.dataSourcesOrig, 'UniformOutput', false); 
-            pset.updateFromDataSources();
-        end
-
-        function updateFromDataSources(pset)
-            % TODO this should work with sources besides SpikeRaster, and should probably
-            % be utilized by the addUnitsFrom spike rasters
-            
-            for iBasis = 1:pset.nBases
-                for iAlign = 1:pset.nAlign
-                    % get psth across conditions
-                    sr = pset.dataSources{iBasis, iAlign};
-                    [psthByCondition, ~, time] = sr.getPSTHByCondition();
-
-                    pset.data(iBasis, :, iAlign) = mat2cell(psthByCondition, ones(pset.nConditions, 1), length(time));
-                    [pset.timeData{iBasis, :, iAlign}] = deal(makecol(time));
-                    pset.alignTimeInfoData(iBasis, :, iAlign) = TensorUtils.flatten(sr.getAlignTimeInfoByCondition());
-                end
-            end
-        end
-
-        function restoreFromOriginalDataSources(pset)
-            % TODO this should work with sources besides SpikeRaster, and should probably
-            % be utilized by the addUnitsFrom spike rasters
-            pset.dataSources = pset.dataSourcesOrig;
             pset.updateFromDataSources();
         end
     end

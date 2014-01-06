@@ -255,7 +255,7 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             % and finally, if resampleWithinConditions is true,
             % resampleFromSame everything
             if ci.isResampledWithinConditions
-                if ~seeded, ci = ci.seedRandStream(); end
+                if ~seeded, ci.seedRandStream(); end
                 list = TensorUtils.listResampleFromSame(list);
             end
         end
