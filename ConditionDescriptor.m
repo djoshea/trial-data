@@ -1,4 +1,4 @@
-classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor 
+classdef(ConstructOnLoad) ConditionDescriptor 
 % ConditionDescriptor is a static representation of a A-dimensional combinatorial
 % list of attribute values
 
@@ -67,11 +67,11 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             % i.e. {2 1} would be sampling from trials with value 2 to fill bin 1, and from trials with value 1 to fill bin 2, like a swap
             % {1 2 3} would be the equivalent of AxisResampleFromSame
             
-        isResampledWithinConditions % boolean flag indicating whether to resampleFromSame the listByCondition
+        isResampledWithinConditions = false; % boolean flag indicating whether to resampleFromSame the listByCondition
                       % after building it, which resamples with replacement
                       % without changing condition labels.
 
-        randomSeed = [];
+        randomSeed = 0;
         
         % scalar numeric seed initializing the RandStream which will generate shuffling or resampling along each axis
         % the persistence of this seed ensures that the randomization can reliably be repeated, but the results may change if anything
@@ -516,12 +516,12 @@ classdef(HandleCompatible, ConstructOnLoad) ConditionDescriptor
             end
         end
         
-        function seedRandStream(ci)
-            if isempty(ci.randomSeed)
-                error('Random seed must be set first, call .newRandomSeed');
+        function seedRandStream(ci, seed)
+            if nargin < 2
+                seed = ci.randomSeed;
             end
                 
-            s = RandStream('mt19937ar', 'Seed', ci.randomSeed);
+            s = RandStream('mt19937ar', 'Seed', seed);
             RandStream.setGlobalStream(s);
         end
         

@@ -1,8 +1,22 @@
-classdef TrialDataConditionAlign < TrialData
+classdef(ConstructOnLoad) TrialDataConditionAlign < TrialData
 
+    % ConditionInfo and AlignInfo stores
     properties(SetAccess=protected)
+        % ConditionInfo instance
         conditionInfo
+        
+        % AlignInfo instance
         alignInfo
+    end
+    
+    % On Demand Cache handle
+    properties(Transient, Access=protected)
+        odc % TrialDataConditionAlignOnDemandCache instance
+    end
+    
+    % properties which are stored in odc, see get/set below
+    properties(Transient, Dependent, SetAccess=protected)
+        alignSummary
     end
 
     % Properties which read through to ConditionInfo
@@ -31,10 +45,38 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function td = TrialDataConditionAlign(varargin)
             td = td@TrialData(varargin{:});
+            td.odc = TrialDataConditionAlignOnDemandCache();
             td = td.initializeConditionInfo();
             td = td.initializeAlignInfo();
             td = td.updateValid();
         end
+    end
+    
+    % Get / set accessors that write through to ODC
+    methods
+        function v = get.alignSummary(td)
+            v = td.odc.alignSummary;            
+            if isempty(v)
+                td.buildAlignSummary();
+                v = td.odc.alignSummary;
+            end
+        end
+        
+        function td = set.alignSummary(td, v)
+            td.odc = td.odc.copy();
+            td.odc.alignSummary = v;
+        end
+    end
+    
+    % build* methods for properties stored in odc
+    methods
+       function buildAlignSummary(td)
+            alignSummary = AlignSummary.buildFromConditionAlignInfo(...
+                td.conditionInfo, td.alignInfo);
+            
+            c = td.odc;
+            c.alignSummary = alignSummary;
+       end
     end
     
     % General utilites
@@ -94,6 +136,9 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             td = dropChannels@ConditionDescriptor(td, names);
+            
+            % in case we lost some event channels, update the alignInfo
+            td = td.applyAlignInfo();
         end
     end
 
@@ -115,8 +160,16 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = initializeConditionInfo(td)
             td.warnIfNoArgOut(nargout);
-            paramStruct = emptyStructArray(td.nTrials);
-            td.conditionInfo = ConditionInfo.fromStruct(paramStruct);
+            if isempty(td.conditionInfo)
+                paramStruct = emptyStructArray(td.nTrials);
+                td.conditionInfo = ConditionInfo.fromStruct(paramStruct);
+            end
+        end
+        
+        function td = addEvent(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = addEvent@TrialData(td, varargin{:});
+            td = td.applyAlignInfo();
         end
         
         function td = addChannel(td, varargin)
@@ -160,6 +213,7 @@ classdef TrialDataConditionAlign < TrialData
             td = selectTrials@TrialData(td, mask);
             td.conditionInfo = td.conditionInfo.selectTrials(mask);
             td.alignInfo = td.alignInfo.selectTrials(mask);
+            td.alignSummary = [];
         end
         
         function td = addAttribute(td, names)
@@ -238,6 +292,7 @@ classdef TrialDataConditionAlign < TrialData
         function td = postUpdateConditionInfo(td)
             td.warnIfNoArgOut(nargout);
             td = td.updateValid();
+            td.alignSummary = [];
         end
         
         % filter trials that are valid based on ConditionInfo
@@ -368,13 +423,22 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function td = initializeAlignInfo(td)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = AlignInfo();
+            if isempty(td.alignInfo)
+                td.alignInfo = AlignInfo();
+                td = td.applyAlignInfo();
+            end
+        end
+        
+        function td = applyAlignInfo(td)
+            td.warnIfNoArgOut(nargout);
             td.alignInfo = td.alignInfo.applyToTrialData(td);
+            td = td.postUpdateAlignInfo();
         end
         
         function td = postUpdateAlignInfo(td)
             td.warnIfNoArgOut(nargout);
             td = td.updateValid();
+            td.alignSummary = [];
         end
 
         function td = align(td, ad)
@@ -388,14 +452,15 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
 
-            td.alignInfo = ad.applyToTrialData(td);
-            td = td.postUpdateAlignInfo();
+            td = td.applyAlignInfo();
         end
         
         function td = unalign(td)
             td.warnIfNoArgOut(nargout);
             td = td.align('TrialStart:TrialEnd');
         end
+        
+        % the following methods pass-thru to alignInfo:
         
         function td = pad(td, varargin)
             % add a padding window to the AlignInfo
@@ -421,6 +486,72 @@ classdef TrialDataConditionAlign < TrialData
         function td = noRound(td)
             td.warnIfNoArgOut(nargout);
             td.alignInfo = td.alignInfo.noRound();
+        end
+        
+        function td = start(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.start(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = stop(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.stop(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = zero(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.zero(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = mark(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.mark(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = interval(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.interval(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = truncateBefore(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.truncateBefore(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = truncateAfter(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.truncateAfter(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = invalidateOverlap(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.invalidateOverlap(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = setOutsideOfTrialTruncate(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.setOutsideOfTrialTruncate(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = setOutsideOfTrialInvalidate(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.setOutsideOfTrialInvalidate(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = setOutsideOfTrialIgnore(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfo = td.alignInfo.setOutsideOfTrialIgnore(varargin{:});
+            td = td.postUpdateAlignInfo();
         end
         
         % filter trials that are valid based on AlignInfo

@@ -733,6 +733,48 @@ classdef(ConstructOnLoad) TrialData
             td = td.addChannel(cd, {values});
         end
         
+        function td = addEvent(td, name, times, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser;
+            p.addRequired('name', @ischar);
+            p.addRequired('times', @isvector);
+            p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            p.parse(name, times, varargin{:});
+            cd = p.Results.channelDescriptor;
+            
+            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
+            assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
+            times = makecol(times);
+                
+            if iscell(times)
+                % multiple occurrence event
+                cd = EventChannelDescriptor.buildMultipleEvent(name, td.timeUnitName);
+                
+                % check contents
+                assert(all(cellfun(@(x) isvector(x) && isnumeric(x), times)), ...
+                    'Cell elements must be numeric vector of event occurrence times');
+            elseif isnumeric(times)
+                % single occurrence event
+                cd = EventChannelDescriptor.buildSingleEvent(name, td.timeUnitName);
+            else
+                error('Times must be numeric vector or cell vector of numeric vectors');
+            end
+         
+            % for TDCA, assume events come in aligned to the current 'zero' time
+            % we add the zero offset to the times so that they are stored
+            % as absolute time points
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            
+            if iscell(times)
+                times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+            else
+                times = times + offsets;
+            end
+            
+            td = td.addChannel(cd, {times});
+        end
+        
         function td = addAnalog(td, name, values, times, units)
             td.warnIfNoArgOut(nargout);
             

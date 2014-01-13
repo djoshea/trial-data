@@ -5,7 +5,7 @@
 % case is already bound to a specific set of trial data.
 %
 % NOTE: shuffling and resampling along axes affects listByCondition, but not conditionSubs
-classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
+classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
 
     properties(Hidden)
         % function with signature:
@@ -81,10 +81,11 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
 
     methods % constructor, odc build
         function ci = ConditionInfo()
-            ci = ci@ConditionDescriptor();
+            ci = ci@ConditionDescriptor(); % calls buildOdc
         end
              
         function odc = buildOdc(ci) %#ok<MANU>
+            % called by ConditionDescriptor's loader
             odc = ConditionInfoOnDemandCache();
         end
     end
@@ -208,13 +209,11 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
         end
         
-
         % mark manual invalid trials as NaNs in all conditionSubs 
-        % DO NOT PERFORM AXIS RANDOMIZATION 
+        % DO NOT PERFORM AXIS RANDOMIZATION HERE
         function subsMat = buildConditionSubs(ci)
             subsMat = ci.conditionSubsRaw;
             subsMat(ci.manualInvalid, :) = NaN;
-
         end
 
         function list = buildListByConditionRaw(ci)
@@ -228,24 +227,24 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 end
             end
         end
-
-        % Perform axis randomization to listByConditionRaw
-        % successively along each randomized axis
-        function list = buildListByCondition(ci)
-            list = ci.listByConditionRaw;
-            
-            seeded = false;
+        
+        function list = generateSingleRandomizedListByCondition(ci, list, seed)
+            if all(ci.axisRandomizeModes == ci.AxisOriginal) && ~ci.isResampledWithinConditions
+                % no randomization to be done
+                return;
+            end
+                
+            % seed the random number generator exactly once
+            ci.seedRandStream(seed);
             
             for iA = 1:ci.nAxes
-                replace = ci.axisRandomizeWithReplacement(iA);
                 switch ci.axisRandomizeModes(iA)
                     case ci.AxisOriginal
                         continue;
                     case ci.AxisShuffled
-                        if ~seeded, ci.seedRandStream(); end
+                        replace = ci.axisRandomizeWithReplacement(iA);
                         list = TensorUtils.listShuffleAlongDimension(list, iA, replace); 
                     case ci.AxisResampleFromSpecified
-                        if ~seeded, ci.seedRandStream(); end
                         list = TensorUtils.listResampleFromSpecifiedAlongDimension(list, ci.axisResampleFromList{iA}, iA);
                     otherwise
                         error('Unknown randomize mode for axis %d', iA);
@@ -255,11 +254,48 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             % and finally, if resampleWithinConditions is true,
             % resampleFromSame everything
             if ci.isResampledWithinConditions
-                if ~seeded, ci.seedRandStream(); end
                 list = TensorUtils.listResampleFromSame(list);
             end
         end
+
+        % Perform axis randomization to listByConditionRaw
+        % successively along each randomized axis
+        function list = buildListByCondition(ci)
+            list = ci.generateSingleRandomizedListByCondition(ci.listByConditionRaw, ci.randomSeed);
+        end
         
+        % When axis randomization is applied, generate a specific number of
+        % listByCondition cells (i.e. cell tenors containing lists of trial indexes)
+        % by using successive integer random seeds. This is useful when
+        % performing statistical tests using axisRandomization techniques.
+        function listCell = generateMultipleRandomizedListByCondition(ci, varargin)
+            p = inputParser();
+            p.addOptional('n', 100, @isscalar);
+            p.addParameter('initialSeed', ci.randomSeed, @(x) isscalar(x));
+            p.addParameter('showProgress', true, @islogical);
+            p.parse(varargin{:});
+            
+            N = p.Results.n;
+            initialSeed = p.Results.initialSeed;
+            showProgress = p.Results.showProgress;
+
+            if showProgress
+                prog = ProgressBar(N, 'Building n=%d randomized trial lists', N);
+            end
+            
+            listOriginal = ci.listByConditionRaw;
+            
+            listCell = cellvec(N);
+            for i = 1:N
+                if showProgress
+                    prog.update(i);
+                end
+                listCell{i} = ci.generateSingleRandomizedListByCondition(listOriginal, initialSeed+i-1);
+            end
+            if showProgress
+                prog.finish();
+            end
+        end
     end
     
     methods % ConditionDescriptor overrides and utilities for auto list generation
@@ -281,7 +317,6 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             
             tcprintf('inline', '{yellow}%s: {none}%s, %s %s\n', ...
                 class(ci), axisStr, filterStr, validStr);
-        
         end
         
         function ci = freezeAppearances(ci)
@@ -566,6 +601,32 @@ classdef (ConstructOnLoad) ConditionInfo < ConditionDescriptor
             ci.manualInvalid = ci.manualInvalid(selector);
             ci.values = ci.values(selector, :);
             ci = ci.invalidateCache();
+        end
+        
+        % given a cellvec or nmeric vector, group its elements
+        function varargout = groupElements(ci, varargin)
+            varargout = cell(nargout, 1);
+            for i = 1:numel(varargin)
+                data = varargin{i};
+                assert(size(data,1) == ci.nTrials, ...
+                    'Data must have size nTrials along 1st dimension');
+                varargout{i} = cellfun(@(idx) data(idx,:), ci.listByCondition, ...
+                    'UniformOutput', false);
+            end
+        end
+        
+        % like groupElements, but returns flattened nConditions x 1 cells
+        % rather than tensors in the shape of conditionsSize
+        function varargout = groupElementsFlattened(ci, varargin)
+            varargout = cell(nargout, 1);
+            for i = 1:numel(varargin)
+                data = varargin{i};
+                assert(size(data,1) == ci.nTrials, ...
+                    'Data must have size nTrials along 1st dimension');
+                varargout{i} = cellfun(@(idx) data(idx,:), ci.listByCondition, ...
+                    'UniformOutput', false);
+                varargout{i} = varargout{i}(:);
+            end
         end
     end
     
