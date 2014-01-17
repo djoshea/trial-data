@@ -452,6 +452,7 @@ classdef(ConstructOnLoad) TrialDataConditionAlign < TrialData
                 end
             end
 
+            td.alignInfo = ad;
             td = td.applyAlignInfo();
         end
         

@@ -13,6 +13,10 @@ classdef(ConstructOnLoad) ConditionDescriptor
         
         nConditions % how many total conditions
         conditionsSize 
+        
+        allAxisValueListsManual
+        allAttributeValueListsManual
+        allValueListsManual % true if all attribute lists and axis lists are manually (not automatically determined)
     end
         
     % the following properties are computed dynamically on the fly as they
@@ -230,6 +234,29 @@ classdef(ConstructOnLoad) ConditionDescriptor
             ci.printDescription();
             fprintf('\n');
             builtin('disp', ci);
+        end
+        
+        function tf = get.allAxisValueListsManual(ci)
+            % returns true if all axis value
+            % lists are manually specified, false otherwise if anything is
+            % automatically determined
+            
+            tf = all(ci.axisValueListModes == ci.AxisValueListManual);
+        end
+        
+        function tf = get.allAttributeValueListsManual(ci)
+            % returns true if all attribute value lists 
+            % are manually specified, false otherwise if anything is
+            % automatically determined
+            
+            tf = all(ismember(ci.attributeValueModes, [ci.AttributeValueListManual, ci.AttributeValueBinsManual]));
+        end
+        
+        function tf = get.allValueListsManual(ci)
+            % returns true if all attribute value lists and axis value
+            % lists are manually specified, false otherwise if anything is
+            % automatically determined
+            tf = ci.allAxisValueListsManual && ci.allAttributeValueListsManual;
         end
     end
 
@@ -527,7 +554,7 @@ classdef(ConstructOnLoad) ConditionDescriptor
         
         function ci = noRandomization(ci)
             ci.warnIfNoArgOut(nargout);
-            ci.isResampledWithinConditions = true;
+            ci.isResampledWithinConditions = false;
             for i = 1:ci.nAxes
                 ci = ci.axisNoRandomization(i);
             end
@@ -1441,6 +1468,17 @@ classdef(ConstructOnLoad) ConditionDescriptor
             % this does nothing here since it's already a condition
             % descriptor. This is used for "casting" back to ConditionDescriptor 
             % from subclasses.
+            cd.warnIfNoArgOut(nargout);
+        end
+        
+        function cdManual = fixValueListsByApplyingToTrialData(cd, td)
+            % converts automatic attribute and axis value lists to manual
+            % lists, by building a ConditionInfo instance, applying to a
+            % TrialData instance, fixing all value lists, and converting
+            % back to a condition descriptor
+            cd.warnIfNoArgOut(nargout);
+            ci = ConditionInfo.fromConditionDescriptor(cd, td);
+            cdManual = ci.getFixedConditionDescriptor();
         end
     end
 

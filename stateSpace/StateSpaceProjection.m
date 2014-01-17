@@ -1,8 +1,6 @@
 classdef StateSpaceProjection < handle
 
     properties
-        useCommonValidTimeWindow = false;
-        
         coeff % N x K matrix of component weights; coeff(i,j) is component j from neuron i 
 
         basisOffsetsSource % N x 1 matrix of basis means

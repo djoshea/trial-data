@@ -5,6 +5,7 @@ classdef PopulationTrajectorySetBuilder
             nUnits = numel(units);
             
             pset = PopulationTrajectorySet();
+            pset.datasetName = td.datasetName;
             
             tdca = TrialDataConditionAlign(td);
             pset.dataSources = {tdca};

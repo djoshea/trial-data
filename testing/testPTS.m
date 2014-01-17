@@ -10,6 +10,8 @@ cd = cd.addAttribute('targetDirection');
 cd = cd.addAttribute('delayNominal');
 cd = cd.groupByAll();
 
+cd = cd.fixValueListsByApplyingToTrialData(td);
+
 adPlan = AlignDescriptor('TargetOnset-100:GoCue+100');
 adMove = AlignDescriptor('Move-100:Move+500');
 

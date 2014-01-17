@@ -148,7 +148,11 @@ classdef(ConstructOnLoad) AlignInfo < AlignDescriptor
 
         function printOneLineDescription(ad)
             desc = ad.getStartStopZeroPadDescription();
-            validStr = sprintf('(%d valid)', nnz(ad.computedValid));
+            if ad.applied
+                validStr = sprintf('(%d valid)', nnz(ad.computedValid));
+            else
+                validStr = '(not applied)';
+            end
             if ~ad.nameDefault
                 tcprintf('inline', '{yellow}%s: {bright blue}%s : {none}%s %s\n', class(ad), ad.name, desc, validStr);
             else
@@ -376,6 +380,10 @@ classdef(ConstructOnLoad) AlignInfo < AlignDescriptor
             % timeInfo(i).valid and valid(i) indicate whether trial i satisfied inclusion criteria
             % as specified by the various means of trial invalidation 
            
+            if ~ad.applied
+                return;
+            end
+            
             padPre = ad.padPre;
             padPost = ad.padPost;
 

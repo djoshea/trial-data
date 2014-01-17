@@ -20,6 +20,8 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         dataNTrials
         tMinForDataMean
         tMaxForDataMean
+        tvecDataMean
+        nTimeDataMean
         
         dataMeanRandomized
     end
@@ -47,8 +49,9 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.dataSem = {};
             odc.dataValid = {};
             odc.dataNTrials = {};
-            odc.tMinForDataMean = {};
-            odc.tMaxForDataMean = {};
+            odc.tMinForDataMean = [];
+            odc.tMaxForDataMean = [];
+            odc.nTimeDataMean = [];
         end
 
 %         function selectAlongDimension(odc, dim, idx)

@@ -1145,12 +1145,11 @@ classdef AlignDescriptor
                 tcprintf('inline', '{yellow}%s: {none}%s\n', class(ad), desc);
             end
         end
-
-        function disp(ad)
+        
+        function printDescription(ad)
             ad.printOneLineDescription();
             
             tcprintf('inline', '\toutside trial {bright blue}%s\n', ad.outsideOfTrialMode);
-            
             tcprintf('inline', '\tminimum duration {bright blue}%d\n', ad.minDuration);
 
             for i = 1:length(ad.markEvents);
@@ -1173,6 +1172,12 @@ classdef AlignDescriptor
                 tcprintf('inline', '\tinvalidate overlap {white}%s{none}\n', ad.invalidateUnabbreviatedLabels{i});
             end
 
+            
+        end
+
+        function disp(ad)
+            ad.printDescription();
+            
             fprintf('\n');
             builtin('disp', ad);
         end

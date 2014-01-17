@@ -4,7 +4,7 @@ classdef StateSpaceTranslationNormalization
 % of each basis) followed by a normalization (multiplication of each basis
 % by a scalar).
 
-    properties
+    properties(SetAccess=protected)
         % nBases x 1 numeric vector of offsets to ADD to each basis
         translationByBasis
         
@@ -22,20 +22,66 @@ classdef StateSpaceTranslationNormalization
         nBases
     end
     
-    methods
+    methods(Access=protected)
         function obj = StateSpaceTranslationNormalization()
-            obj.translationDescription = 'manual offset';
-            obj.normalizationDescription = 'manual normalization';
+            % should be built using factory methods below
         end
-        
+    end
+    
+    methods
         function v = get.nBases(obj)
             v = numel(obj.translationByBasis);
         end
         
+        function obj = assertValid(obj)
+            obj.warnIfNoArgOut(nargout);
+            
+            assert(~isempty(obj.translationByBasis) && isvector(obj.translationByBasis) && isnumeric(obj.translationByBasis), ...
+                'translationByBasis must be numeric vector');
+            assert(~isempty(obj.normalizationByBasis) && isvector(obj.normalizationByBasis) && isnumeric(obj.normalizationByBasis), ...
+                'normalizationByBasis must be numeric vector');
+            assert(length(obj.normalizationByBasis) == length(obj.translationByBasis), ...
+                'normalizationByBasis and translationByBasis must have the same length (nBases)');
+            
+            assert(ischar(obj.normalizationDescription), ...
+                'normalizationDescription must be string');
+            assert(ischar(obj.translationDescription), ...
+                'translationDescription must be string');
+            
+            assert(~any(obj.normalizationByBasis == 0), 'normalizationByBasis cannot contain 0 values');
+            
+            obj.translationByBasis = makecol(obj.translationByBasis);
+            obj.normalizationByBasis = makecol(obj.normalizationByBasis);
+        end
+        
+    end
+    
+    methods % subclasses might wish to override
         function desc = getDescription(obj)
             % generate a textual description of the applied translation and
             % normalization
-            desc = sprintf('%s, %s', obj.translationDescription, obj.normalizationDescription);
+            if isempty(obj.translationDescription)
+                if isempty(obj.normalizationDescription)
+                    desc = '';
+                else
+                    desc = obj.normalizationDescription;
+                end
+            elseif isempty(obj.normalizationDescription)
+                desc = obj.translationDescription;
+            else
+                desc = sprintf('%s, %s', obj.translationDescription, obj.normalizationDescription);
+            end
+        end
+        
+        function printOneLineDescription(obj)
+            tcprintf('inline', '{yellow}%s: {none}%s\n', ...
+                class(obj), obj.getDescription());
+        end
+        
+        function disp(obj)
+            obj.printOneLineDescription();
+            fprintf('\n');
+            builtin('disp', obj);
         end
         
         function convertedBasisUnits = convertBasisUnits(basisUnits)
@@ -44,28 +90,78 @@ classdef StateSpaceTranslationNormalization
             convertedBasisUnits = cellfun(@(s) sprintf('norm %s', s), ...
                 basisUnits, 'UniformOutput', false);
         end
+        
+        function obj = combineWith(obj, varargin)
+            for i = 1:numel(varargin)
+                new = varargin{i};
+                obj.translationByBasis = obj.translationByBasis + new.translationByBasis;
+                obj.normalizationByBasis = obj.normalizationByBasis .* new.normalizationByBasis;
+                if isempty(obj.translationDescription)
+                    obj.translationDescription = new.translationDescription;
+                elseif ~isempty(new.translationDescription)
+                        obj.translationDescription = [obj.translationDescription, ', ', new.translationDescription];
+                end
+                if isempty(obj.normalizationDescription)
+                    obj.normalizationDescription = new.normalizationDescription;
+                elseif ~isempty(new.normalizationDescription)
+                    obj.normalizationDescription = [obj.normalizationDescription, ', ', new.normalizationDescription];
+                end
+            end
+        end
     end
-    
-     methods(Static)
+        
+    methods(Static)
+        % subclasses should redefine this method to construct their own
+        % normalizer
         function obj = buildFromPopulationTrajectorySet(pset)
-            % determine the coefficients for the translation and
-            % normalization using data in a PopulationTrajectorySet
-            % this will be more usefully defined in subclasses
-            obj.translationByBasis = zerovec(pset.nBases);
-            obj.normalizationByBasis = onesvec(pset.nBases);
+            obj = StateSpaceTranslationNormalization.buildManual(...
+                zeros(pset.nBases, 1), ones(pset.nBases, 1));
+        end
+    end
+       
+    methods(Static, Sealed)
+        function obj = buildManual(varargin)
+            p = inputParser();
+            p.addRequired('translationByBasis', @isvector);
+            p.addRequired('normalizationByBasis', @isvector);
+            p.addParameter('translationDescription', 'manual offset', @ischar);
+            p.addParameter('normalizationDescription', 'manual normalization', @ischar);
+            p.parse(varargin{:});
+            
+            obj = StateSpaceTranslationNormalization();
+            
+            obj.translationByBasis = p.Results.translationByBasis;
+            if all(obj.translationByBasis == 0)
+                obj.translationDescription = '';
+            else
+                obj.translationDescription = p.Results.translationDescription;
+            end
+            
+            obj.normalizationByBasis = p.Results.normalizationByBasis;
+            if all(obj.normalizationByBasis == 1)
+                obj.normalizationDescription = '';
+            else
+                obj.normalizationDescription = p.Results.normalizationDescription;
+            end
+            
+            obj = obj.assertValid();
         end
     end
     
-    methods % apply translation and/or normalization to data as a vector or cell array
+    methods(Sealed) % apply translation and/or normalization to data as a vector or cell array
         function newData = applyTranslationNormalizationToData(obj, data)
-            assert(isvector(data) && numel(data) == obj.nBases, ...
-                'Data must be nBases vector');
+            assert(size(data, 1) == obj.nBases, ...
+                'Data must be nBases along dimension 1');
+            sz = size(data);
+            sz(1) = 1;
+            
             if iscell(data)
+                offCell = num2cell(repmat(obj.translationByBasis, sz));
+                normCell = num2cell(repmat(obj.normalizationByBasis, sz));
                 newData = cellfun(@(x, offset, mult) (x + offset) * mult, data, ...
-                    num2cell(obj.translationByBasis), num2cell(obj.normalizationByBasis), ...
-                    'UniformOutput', false);
+                    offCell, normCell, 'UniformOutput', false);
             else
-                newData = (data + obj.translationByBasis) .* obj.normalizationByBasis;
+                newData = bsxfun(@rdivide, bsxfun(@plus, data, obj.translationByBasis), obj.normalizationByBasis);
             end
         end
         
@@ -77,7 +173,7 @@ classdef StateSpaceTranslationNormalization
                     num2cell(obj.translationByBasis), ...
                     'UniformOutput', false);
             else
-                newData = data + obj.translationByBasis;
+                newData = bsxfun(@plus, data, obj.translationByBasis);
             end
         end
         
@@ -89,19 +185,23 @@ classdef StateSpaceTranslationNormalization
                     num2cell(obj.normalizationByBasis), ...
                     'UniformOutput', false);
             else
-                newData = data .* obj.normalizationByBasis;
+                newData = bsxfun(@times, data, obj.normalizationByBasis);
             end
         end
         
         function newData = undoTranslationNormalizationToData(obj, data)
-            assert(isvector(data) && numel(data) == obj.nBases, ...
-                'Data must be nBases vector');
+            assert(size(data, 1) == obj.nBases, ...
+                'Data must be nBases along dimension 1');
+            sz = size(data);
+            sz(1) = 1;
+            
             if iscell(data)
+                offCell = num2cell(repmat(obj.translationByBasis, sz));
+                normCell = num2cell(repmat(obj.normalizationByBasis, sz));
                 newData = cellfun(@(x, offset, mult) (x ./ mult) - offset, data, ...
-                    num2cell(obj.translationByBasis), num2cell(obj.normalizationByBasis), ...
-                    'UniformOutput', false);
+                    offCell, normCell, 'UniformOutput', false);
             else
-                newData = (data ./ obj.normalizationByBasis) - obj.translationByBasis;
+                newData = bsxfun(@minus, bsxfun(@rdivide, data, obj.normalizationByBasis), obj.translationByBasis);
             end
         end
         
@@ -113,7 +213,7 @@ classdef StateSpaceTranslationNormalization
                     num2cell(obj.translationByBasis), ...
                     'UniformOutput', false);
             else
-                newData = data - obj.translationByBasis;
+                newData = bsxfun(@minus, data, obj.translationByBasis);
             end
         end
         
@@ -125,11 +225,20 @@ classdef StateSpaceTranslationNormalization
                     num2cell(obj.normalizationByBasis), ...
                     'UniformOutput', false);
             else
-                newData = data ./ obj.normalizationByBasis;
+                newData = bsxfun(@rdivide, data, obj.normalizationByBasis);
             end
         end
     end
     
-   
+    methods(Sealed, Access=protected) % Utility methods
+        function warnIfNoArgOut(obj, nargOut)
+            if nargOut == 0 && ~ishandle(obj)
+                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                    class(obj));
+                expr = sprintf('debug(''%s'')', message);
+                evalin('caller', expr); 
+            end
+        end
+    end
     
 end
