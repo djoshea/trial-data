@@ -606,6 +606,12 @@ classdef(ConstructOnLoad) AlignInfo < AlignDescriptor
                 includePadding = false;
             end
             
+            if isempty(rawTimesCell)
+                alignedTimes = rawTimesCell;
+                rawTimesMask = rawTimesCell;
+                return;
+            end
+            
             % filter the spikes within the window and recenter on zero
             if includePadding
                 start = num2cell([ad.timeInfo.startPad]);

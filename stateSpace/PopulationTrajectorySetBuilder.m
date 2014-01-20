@@ -1,4 +1,78 @@
 classdef PopulationTrajectorySetBuilder
+    % these properties are used to construct PopulationTrajectorySets
+    % manually by holding property values temporarily in the factory
+    % instance. See PopulationTrajectorySet for documentation on the
+    % meanings of these values
+    
+    properties
+        %% fSettings
+        timeDelta 
+        spikeFilter
+        minTrialsForTrialAveraging
+        minFractionTrialsForTrialAveraging
+        includeOnlyTrialsValidAllAlignments
+        nRandomSamples
+        randomSeed
+        dataErrorType
+        dataErrorTypeParam
+        
+        %% fBasisInfo
+        basisNames
+        basisUnits
+        
+        %% fDataSourceInfo
+        dataSources
+        basisDataSourceIdx
+        basisDataSourceChannelNames
+        
+        %% fSingleTrial
+        dataByTrial
+        tMinForDataByTrial
+        tMaxForDataByTrial
+        alignValidByTrial
+        tMinByTrial
+        tMaxByTrial
+        
+        %% fDescriptors
+        alignDescriptorSet
+        conditionDescriptor
+        translationNormalization
+ 
+        %% fTrialAvg
+        tMinForDataMean
+        tMaxForDataMean
+        dataMean
+        dataErrorHigh
+        dataErrorLow
+        dataNTrials
+        dataValid
+        alignSummaryData
+        basisAlignSummaryLookup
+        
+        %% fTrialAvgRandomized
+        dataMeanRandomized
+    end
+    
+    % Lists of fields within PopulationTrajectorySet to simplify the
+    % copying and assert ~isempty checks below.
+    properties(Constant)
+        fSettings = {'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
+            'minFractionTrialsForTrialAveraging', 'includeOnlyTrialsValidAllAlignments', ...
+            'nRandomSamples', 'randomSeed', 'dataErrorType', 'dataErrorTypeParam'};
+        
+        fBasisInfo = {'basisNames', 'basisUnits'};
+        
+        fDataSourceInfo = {'dataSources', 'basisDataSourceIdx', 'basisDataSourceChannelNames'};
+        
+        fSingleTrial = {'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
+            'alignValidByTrial', 'tMinByTrial', 'tMaxByTrial'};
+            
+        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
+        
+        fTrialAvg = {'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataErrorHigh', 'dataErrorLow', ...
+                'dataNTrials', 'dataValid', 'alignSummaryData', 'basisAlignSummaryLookup'}
+    end
+        
     methods(Static)
         function pset = fromAllUnitsInTrialData(td)
             units = td.listSpikeUnits();
@@ -11,6 +85,96 @@ classdef PopulationTrajectorySetBuilder
             pset.dataSources = {tdca};
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
+            
+            pset = pset.initialize();
+        end
+    end
+    
+    methods
+        function pset = buildManualWithSingleTrialData(bld)
+            bld.assertNonEmpty(...
+                PopulationTrajectorySetBuilder.fDescriptors, ...
+                PopulationTrajectorySetBuilder.fBasisInfo, ...
+                PopulationTrajectorySetBuilder.fDataSourceInfo, ...
+                PopulationTrajectorySetBuilder.fSingleTrial, ...
+                PopulationTrajectorySetBuilder.fTrialAvg);
+            
+            pset = bld.buildManualWithFields(...
+                PopulationTrajectorySetBuilder.fSettings, ...
+                PopulationTrajectorySetBuilder.fDescriptors, ...
+                PopulationTrajectorySetBuilder.fBasisInfo, ...
+                PopulationTrajectorySetBuilder.fDataSourceInfo, ...
+                PopulationTrajectorySetBuilder.fSingleTrial, ...
+                PopulationTrajectorySetBuilder.fTrialAvg);
+        end
+        
+        function pset = buildManualWithTrialAveragedData(bld)
+            bld.assertNonEmpty(...
+                PopulationTrajectorySetBuilder.fDescriptors, ...
+                PopulationTrajectorySetBuilder.fBasisInfo, ...
+                PopulationTrajectorySetBuilder.fTrialAvg);
+            
+            pset = bld.buildManualWithFields(...
+                PopulationTrajectorySetBuilder.fSettings, ...
+                PopulationTrajectorySetBuilder.fDescriptors, ...
+                PopulationTrajectorySetBuilder.fBasisInfo, ...
+                PopulationTrajectorySetBuilder.fTrialAvg);
+        end
+    end
+    
+    methods(Static)
+        function bld = copyFromPopulationTrajectorySet(pset)
+            % copy all values from population trajectory set
+            bld = PopulationTrajectorySetBuilder();
+            
+            fields = [...
+                PopulationTrajectorySetBuilder.fSettings, ...
+                PopulationTrajectorySetBuilder.fDescriptors, ...
+                PopulationTrajectorySetBuilder.fBasisInfo, ...
+                PopulationTrajectorySetBuilder.fDataSourceInfo, ...
+                PopulationTrajectorySetBuilder.fSingleTrial, ...
+                PopulationTrajectorySetBuilder.fTrialAvg ...
+                ]   ;
+            
+            for iF = 1:length(fields)
+                fld = fields{iF};
+                bld.(fld) = pset.(fld);
+            end
+        end
+        
+        function psetManual = convertToManualWithSingleTrialData(pset)
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset);
+            psetManual = bld.buildManualWithSingleTrialData();
+        end
+        
+        function psetManual = convertToManualWithTrialAveragedData(pset)
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset);
+            psetManual = bld.buildManualWithTrialAveragedData();
+        end
+    end
+    
+    methods(Access=protected)
+        function assertNonEmpty(bld, varargin)
+            % assert that all fields in field are non empty
+            fields = [varargin{:}];
+            isEmpty = cellfun(@(fld) isempty(bld.(fld)), fields);
+            if any(isEmpty)
+                error('Values must be specified for these fields: %s', ...
+                    strjoin(fields(isEmpty), ', '));
+            end
+        end
+        
+        function pset = buildManualWithFields(bld, varargin)
+            pset = PopulationTrajectorySet();
+            pset.dataSourceManual = true;
+            
+            for iArg = 1:numel(varargin)
+                fields = varargin{iArg};
+                for iFld = 1:numel(fields)
+                    fld = fields{iFld};
+                    pset.(fld) = bld.(fld);
+                end 
+            end
             
             pset = pset.initialize();
         end
