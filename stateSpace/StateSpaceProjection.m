@@ -1,34 +1,12 @@
-classdef StateSpaceProjection < handle
+classdef StateSpaceProjection 
+% Abstract base class representing a set of coefficients per basis with which
+% to project PopulationTrajectorySet instances. Typically these are built using 
+% fromPopulationTrajectorySet to compute the coefficients, in a manner determined
+% by subclasses
 
     properties
+        translationNormalization
         coeff % N x K matrix of component weights; coeff(i,j) is component j from neuron i 
-
-        basisOffsetsSource % N x 1 matrix of basis means
-        basisNormalizationSource 
-
-        % subtract the mean of each basis before building the projection matrix
-        offsetMode = 'meanSubtract'; 
-        normalizationMode = 'softMaxStd'; % normalization mode
-        softMaxAlpha = 5;
-
-        basisNamesSource = {};
-        basisMetaSource = {};
-
-        basisNames = {};
-        basisMeta = {};
-        
-        % nBases x nBases covariance matrix
-        corrSource
-        covSource
-        latent
-        explained
-        
-        % only populated if useCommonValidTimeWindow is true
-        covMarginalized
-        latentMarginalized
-        basisMixtures % normalized version of above, nBases x nMarginalizations
-        basisMixtureNames
-        basisMixtureColors
     end
 
     properties(Dependent)
@@ -79,10 +57,6 @@ classdef StateSpaceProjection < handle
             end
         end
         
-        function meta = getBasisMeta(proj, pset, data)
-            meta = cell(proj.nBasesProj, 1);
-        end
-        
         function [tByNEachCA, tvecByConditionAlign] = extractDataForProjection(proj, pset)
             [tByNEachCA, tvecByConditionAlign] = pset.buildTByNEachCA('timeValidAcrossConditions', proj.useCommonValidTimeWindow);
         end 
@@ -102,86 +76,32 @@ classdef StateSpaceProjection < handle
             % defers to calculateProjectionMatrix for the actual basis computation
             p = inputParser;
             p.addRequired('pset', @(x) isa(x, 'PopulationTrajectorySet'));
-            
-            % THIS IS A HACK
-            % if true, don't update any internal coefficients, etc.
-            % just recompute the explained variance etc.
-            p.addParamValue('reapplyWithSameCoeff', false, @islogical);
             p.parse(pset, varargin{:});
-            reapply = p.Results.reapplyWithSameCoeff;
 
-            proj.basisNamesSource = pset.basisNames;
-            proj.basisMetaSource = pset.basisMeta;
+            results = StateSpaceProjectionResults();
+
+            % make any necessary transformations, particularly translation / normalization
+            pset = proj.preparePsetForInference(pset);
+
+            % extract the translation normalization that will be applied before projection
+            proj.translationNormalization = pset.translationNormalization;
 
             % build psth matrix nConditions*nTimepoints*nAlignments x nNeurons
-            ctaByN = proj.extractDataForSelection(pset);
+            CTAbyN = pset.buildCTAbyN();
 
-            proj.basisOffsetsSource = proj.calculateBasisOffsets(pset, ctaByN); 
-            if ~reapply
-                proj.basisNormalizationSource = proj.calculateBasisNormalization(pset, ctaByN);
-            end
-
-            ctaByN = proj.prepareBases(ctaByN, 2);
-
-            if ~reapply
-                proj.coeff = proj.calculateBasisCoefficients(pset, ctaByN);
-            end
+            proj.coeff = proj.calculateBasisCoefficients(pset, ctaByN);
             
-            proj.basisNames = proj.getBasisNames(pset, ctaByN);
-            proj.basisMeta = proj.getBasisMeta(pset, ctaByN);
+            [results.covSource results.corrSource] = proj.calculateSourceBasisCovariance(pset, ctaByN);
+            results.latent = proj.calculateLatentVariance();
             
-            [proj.covSource proj.corrSource] = proj.calculateSourceBasisCovariance(pset, ctaByN);
-            proj.latent = proj.calculateLatentVariance();
+            results.explained = results.latent / trace(results.covSource);
             
-            proj.explained = proj.latent / trace(proj.covSource);
-            
-            if proj.useCommonValidTimeWindow
-                [covFull proj.covMarginalized proj.basisMixtureNames] = ...
-                    proj.calculateMarginalizedCovariances(pset);
-                [proj.latentMarginalized proj.basisMixtures] = ...
-                    proj.calculateLatentVarianceMarginalized();
-                proj.basisMixtureColors = jet(length(proj.basisMixtureNames));
-            end 
+            [covFull results.covMarginalized results.basisMixtureNames] = ...
+                proj.calculateMarginalizedCovariances(pset);
+            [results.latentMarginalized results.basisMixtures] = ...
+                proj.calculateLatentVarianceMarginalized();
         end
 
-        function plotExplained(proj, varargin)
-            p = inputParser();
-            p.addParamValue('threshold', 90, @issclalar);
-            p.parse(varargin{:});
-            threshold = p.Results.threshold;
-            
-            cumExplained = cumsum(proj.explained) * 100;
-            cla;
-            plot(1:length(cumExplained), cumExplained, 'x--', ...
-                'Color', [0.7 0.7 0.7], 'MarkerEdgeColor', 'r', ...
-                'LineWidth', 2);
-            box off;
-            xlabel('Basis');
-            ylabel('Cumulative % variance explained')
-
-            if(cumExplained(end) >= threshold)
-                hold on
-                xl = get(gca, 'XLim');
-                plot(xl, [threshold threshold], '--', 'Color', 0.8*ones(3,1)); 
-
-                % find the first pc that explains threshold variance
-                indCross = find(cumExplained > threshold, 1, 'first');
-                if ~isempty(indCross)
-                    title(sprintf('%d bases explain %.1f%%  of variance', indCross, threshold));
-                end
-
-                yl = get(gca, 'YLim');
-                yl(2) = 100;
-                ylim(yl);
-            end
-        end
-        
-        function plotCovSource(proj, varargin)
-            clf;
-            pmat(proj.covSource);
-            box off;
-            title('Source Covariance');
-        end
     end
 
     methods
@@ -193,7 +113,8 @@ classdef StateSpaceProjection < handle
             n = size(proj.coeff, 2);
         end
 
-        function offsets = calculateBasisOffsets(proj, pset, ctaByN)
+        function offsets = preparePsetForInference(proj, pset)
+            pset = pset.meanSubtractBases();
             nBases = size(ctaByN, 2);
             switch proj.offsetMode
                 case ''

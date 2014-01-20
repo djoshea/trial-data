@@ -20,6 +20,10 @@ classdef StateSpaceTranslationNormalization
     
     properties(Dependent)
         nBases
+        
+        isTranslation
+        
+        isNormalization
     end
     
     methods(Access=protected)
@@ -33,12 +37,20 @@ classdef StateSpaceTranslationNormalization
             v = numel(obj.translationByBasis);
         end
         
+        function tf = get.isTranslation(obj)
+            tf = any(obj.translationByBasis ~= 0);
+        end
+        
+        function tf = get.isNormalization(obj)
+            tf = any(obj.normalizationByBasis ~= 1);
+        end
+        
         function obj = assertValid(obj)
             obj.warnIfNoArgOut(nargout);
             
-            assert(~isempty(obj.translationByBasis) && isvector(obj.translationByBasis) && isnumeric(obj.translationByBasis), ...
+            assert(isempty(obj.translationByBasis) || (isvector(obj.translationByBasis) && isnumeric(obj.translationByBasis)), ...
                 'translationByBasis must be numeric vector');
-            assert(~isempty(obj.normalizationByBasis) && isvector(obj.normalizationByBasis) && isnumeric(obj.normalizationByBasis), ...
+            assert(isempty(obj.normalizationByBasis) || (isvector(obj.normalizationByBasis) && isnumeric(obj.normalizationByBasis)), ...
                 'normalizationByBasis must be numeric vector');
             assert(length(obj.normalizationByBasis) == length(obj.translationByBasis), ...
                 'normalizationByBasis and translationByBasis must have the same length (nBases)');
@@ -84,11 +96,15 @@ classdef StateSpaceTranslationNormalization
             builtin('disp', obj);
         end
         
-        function convertedBasisUnits = convertBasisUnits(basisUnits)
+        function convertedBasisUnits = convertBasisUnits(obj, basisUnits)
             % convert nBases x 1 cellstr basisUnits to nBases x 1 cellstr
             % convertedBasisUnits
-            convertedBasisUnits = cellfun(@(s) sprintf('norm %s', s), ...
-                basisUnits, 'UniformOutput', false);
+            if ~obj.isTranslation && ~obj.isNormalization
+                convertedBasisUnits = basisUnits;
+            else
+                convertedBasisUnits = cellfun(@(s) sprintf('norm %s', s), ...
+                    basisUnits, 'UniformOutput', false);
+            end
         end
         
         function obj = combineWith(obj, varargin)
@@ -114,6 +130,10 @@ classdef StateSpaceTranslationNormalization
         % subclasses should redefine this method to construct their own
         % normalizer
         function obj = buildFromPopulationTrajectorySet(pset)
+            obj = StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
+        end
+        
+        function obj = buildIdentityForPopulationTrajectorySet(pset)
             obj = StateSpaceTranslationNormalization.buildManual(...
                 zeros(pset.nBases, 1), ones(pset.nBases, 1));
         end
