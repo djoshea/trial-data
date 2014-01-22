@@ -83,16 +83,6 @@ classdef(ConstructOnLoad) ConditionDescriptor
         % about any of the attributes / axes is changed.
     end
     
-    properties(Hidden, SetAccess=protected)
-        % When re-arranging the axes, default condition appearances can get shuffled around
-        % which can make comparison across figures difficult. These cache
-        % the condition appearances to make things easier. Call
-        % freezeAppearances to activate()
-        appearanceFrozen = false;
-        frozenAppearanceConditions
-        frozenAppearanceData
-    end
-    
     % END OF STORED TO DISK PROPERTIES
     
     properties(Hidden, Transient, Access=protected)
@@ -170,17 +160,6 @@ classdef(ConstructOnLoad) ConditionDescriptor
             % recompute this for us
             ci.odc  = ci.odc.copy();
             ci.odc.flush();
-        end
-
-        % Manually freeze the condition appearances so that they don't
-        % change when we downsample the conditions
-        function ci = freezeAppearances(ci)
-            ci.warnIfNoArgOut(nargout);
-
-            % freeze current appearance information
-            ci.frozenAppearanceConditions = ci.conditions;
-            ci.frozenAppearanceData = ci.appearances;
-            ci.appearanceFn = @ConditionDescriptor.frozenAppearanceFn;
         end
 
         function ci = set.nameFn(ci, fn)
@@ -1251,22 +1230,14 @@ classdef(ConstructOnLoad) ConditionDescriptor
         function appearances = buildAppearances(ci)
             if ci.nConditions > 0
                 appearFn = ci.appearanceFn;
-                defaultFn = eval(sprintf('@%s.defaultAppearanceFn', class(ci)));
-                defaults = defaultFn(ci);
 
                 if isempty(appearFn)
-                    % use the default function built into ConditionDescriptor
-                    % or whatever subclass version of
-                    % defaultAppearanceFn there is (namely ConditionInfo)
-                    appearances = defaults;
+                    appearances = ci.defaultAppearanceFn();
                 else
-                    appearances = appearFn(ci, defaults);
-                    % ensure that no fields have been lost from the
-                    % defaults
-                    appearances = structMerge(defaults, appearances, 'warnOnOverwrite', false);
+                    appearances = appearFn(ci);
                 end
             else
-                appearances = struct([]);
+                appearances = [];
             end
         end
 
@@ -1352,18 +1323,9 @@ classdef(ConstructOnLoad) ConditionDescriptor
             [tf, valueIdx] = ismember(value, ci.getAttributeValueLists(attr));
             assert(tf, 'Value not found in attribute %s valueList', attr);
         end
-    end
-    
-    methods(Static) % Default nameFn and appearanceFn
-        function nameCell = defaultNameFn(ci, varargin) 
-            % receives the condition descriptor itself and returns a
-            %  a cell tensor specifying the names of each condition
-            
-            nameCell = ci.conditionsAsStrings;
-        end
-
+        
         function a = defaultAppearanceFn(ci, varargin)
-            % returns a struct specifying the default set of appearance properties 
+            % returns a AppearSpec array specifying the default set of appearance properties 
             % for the given group. indsGroup is a length(ci.groupByList) x 1 array
             % of the inds where this group is located in the high-d array, and dimsGroup
             % gives the full dimensions of the list of groups.
@@ -1375,67 +1337,29 @@ classdef(ConstructOnLoad) ConditionDescriptor
 
             nConditions = ci.nConditions;
 
-            a = emptyStructArray(ci.conditionsSize, {'color', 'lineWidth'});
+            a(ci.conditionsSize()) = AppearanceSpec();
 
             if nConditions == 1
                 cmap = [0.3 0.3 1];
             else
-                %cmap = jet(nConditions);
                 if nConditions > 256
                     cmap = jet(nConditions);
                 else
-                    cmap =pmkmp(nConditions, 'isol');
+                    cmap = distinguishable_colors(nConditions);
                 end
             end
 
             for iC = 1:nConditions
-                a(iC).lineWidth = 2;
-                a(iC).color = cmap(iC, :);
+                a(iC).Color = cmap(iC, :);
             end
         end
-
-        function a = frozenAppearanceFn(ci, a, varargin)
-            % this function looks at ci.frozenAppearanceConditions and
-            % .frozenAppearanceData and does a lookup of the stored
-            % appearance for each condition, essentially allowing you to
-            % freeze the condition appearance through filtering,
-            % regrouping, etc.
-            %
-            % Call .freezeAppearance() to activate
-
-            % for each condition in ci, search
-            % ci.frozenAppearanceConditions for the first match
-
-            matchIdx = nan(ci.nConditions, 1);
-            fieldsCurrent = fieldnames(ci.conditions);
-            if ~isempty(ci.frozenAppearanceConditions)
-                fieldsFrozen = fieldnames(ci.frozenAppearanceConditions);
-            else
-                fieldsFrozen = {};
-            end
-            fieldsCheck = intersect(fieldsCurrent, fieldsFrozen);
-            nFrozenConditions = numel(ci.frozenAppearanceConditions);
-
-            for iC = 1:ci.nConditions
-                for iCFrozen = 1:nFrozenConditions
-                    isMatch = true;
-                    for iF = 1:numel(fieldsCheck)
-                        fld = fieldsCheck{iF};
-                        if ~isequal(ci.conditions(iC).(fld), ci.frozenAppearanceConditions(iCFrozen).(fld))
-                            isMatch = false;
-                            break;
-                        end                        
-                    end
-
-                    if isMatch
-                        matchIdx(iC) = iCFrozen;
-                        break;
-                    end
-                end
-            end
-
-            mask = ~isnan(matchIdx);
-            a(mask) = ci.frozenAppearanceData(matchIdx(mask));
+    end
+    
+    methods(Static) % Default nameFn and appearanceFn
+        function nameCell = defaultNameFn(ci, varargin) 
+            % receives the condition descriptor itself and returns a
+            %  a cell tensor specifying the names of each condition
+            nameCell = ci.conditionsAsStrings;
         end
     end
 

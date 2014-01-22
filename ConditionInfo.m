@@ -319,21 +319,6 @@ classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 class(ci), axisStr, filterStr, validStr);
         end
         
-        function ci = freezeAppearances(ci)
-            % freeze current appearance information, but only store
-            % conditions that have a trial in them now (which can save
-            % significant searching time)
-            ci.warnIfNoArgOut(nargout);
-            if ~ci.applied
-                ci = freezeAppearances@ConditionDescriptor(ci);
-                return;
-            end
-            mask = ci.countByCondition > 0;
-            ci.frozenAppearanceConditions = ci.conditions(mask);
-            ci.frozenAppearanceData = ci.appearances(mask);
-            ci.appearanceFn = @ConditionDescriptor.frozenAppearanceFn;
-        end
-        
         function valueList = buildAttributeValueLists(ci)
             if ~ci.applied
                 % act like ConditionDescriptor before applied to trial data
@@ -786,6 +771,46 @@ classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
             end
         end
     end
+    
+    methods
+        % same as ConditionDescriptor, except skips conditions with no
+        % trials so that the colors stay maximally separated
+        function a = defaultAppearanceFn(ci, varargin)
+            % returns a struct specifying the default set of appearance properties 
+            % for the given group. indsGroup is a length(ci.groupByList) x 1 array
+            % of the inds where this group is located in the high-d array, and dimsGroup
+            % gives the full dimensions of the list of groups.
+            %
+            % We vary color along all axes simultaneously, using the linear
+            % inds.
+            %
+            % Alternatively, if no arguments are passed, simply return a set of defaults
+            nConditionsNonEmpty = ci.nConditionsNonEmpty;
+            countsByCondition = ci.countByCondition;
+            
+            nConditions = ci.nConditions;
+
+            a(ci.conditionsSize()) = AppearanceSpec();
+
+            if nConditions == 1
+                cmap = [0.3 0.3 1];
+            else
+                if nConditions > 256
+                    cmap = jet(nConditions);
+                else
+                    cmap = distinguishable_colors(nConditionsNonEmpty);
+                end
+            end
+
+            colorInd = 1;
+            for iC = 1:nConditions
+                if countsByCondition(iC) > 0
+                    a(iC).Color = cmap(colorInd, :);
+                    colorInd = colorInd + 1;
+                end
+            end
+        end
+    end
 
     methods % Convert value lists to manual
         function ci = fixAttributeValueList(ci, name)
@@ -907,45 +932,6 @@ classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
                 nTrials = data.nTrials;
             end
         end
-        
-        % same as ConditionDescriptor, except skips conditions with no
-        % trials so that the colors stay maximally separated
-        function a = defaultAppearanceFn(ci, varargin)
-            % returns a struct specifying the default set of appearance properties 
-            % for the given group. indsGroup is a length(ci.groupByList) x 1 array
-            % of the inds where this group is located in the high-d array, and dimsGroup
-            % gives the full dimensions of the list of groups.
-            %
-            % We vary color along all axes simultaneously, using the linear
-            % inds.
-            %
-            % Alternatively, if no arguments are passed, simply return a set of defaults
-
-            nConditions = ci.nConditions;
-            nConditionsNonEmpty = ci.nConditionsNonEmpty;
-            countsByCondition = ci.countByCondition;
-            
-            a = emptyStructArray(ci.conditionsSize, {'color', 'lineWidth'});
-
-            if nConditionsNonEmpty == 1
-                cmap = [0.3 0.3 1];
-            else
-                cmap = distinguishable_colors(nConditionsNonEmpty);
-            end
-             
-            colorInd = 1;
-            for iC = 1:nConditions
-                 if countsByCondition(iC) == 0
-                     a(iC).lineWidth = 1;
-                     a(iC).color = 'k';
-                 else
-                     a(iC).lineWidth = 2;
-                     a(iC).color = cmap(colorInd, :);
-                     colorInd = colorInd + 1;
-                 end
-            end
-        end
-
     end
 
 end
