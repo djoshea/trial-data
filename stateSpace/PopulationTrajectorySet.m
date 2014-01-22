@@ -1250,7 +1250,7 @@ classdef PopulationTrajectorySet
                     % currently will request either analog trials or
                     % filtered spike rates channels
                     if src.hasAnalogChannel(chName)
-                        [mat, tvec] = src.getAnalogMatrix(chName, 'timeDelta', pset.timeDelta);
+                        [mat, tvec] = src.getAnalogAsMatrix(chName, 'timeDelta', pset.timeDelta);
                     elseif src.hasSpikeChannelOrUnit(chName)
                         src = src.padForSpikeFilter(pset.spikeFilter);
                         [mat, tvec] = src.getSpikeRateFilteredAsMatrix(chName, ...
@@ -1279,9 +1279,16 @@ classdef PopulationTrajectorySet
                     [tMinByTrial{iBasis, iAlign}, ...
                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
                  
-                    assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
-                           max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
-                        'Time vector returned by TrialData has invalid limits');
+                    % bring trial start stop in within the limits of tvec,
+                    % to deal with any rounding issues
+                    tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
+                        tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
+                    tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
+                        tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
+                 
+%                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
+%                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
+%                         'Time vector returned by TrialData has invalid limits');
                 end
                 prog.finish();
             end
@@ -1558,7 +1565,7 @@ classdef PopulationTrajectorySet
             
             for iAlign = 1:pset.nAlign
                 ad = pset.alignDescriptorSet{iAlign};
-                prog = ProgressBar(pset.nBases, 'Computing alignment summary statistics for align %d', iAlign);
+                prog = ProgressBar(pset.nDataSources, 'Computing alignment summary statistics for align %d', iAlign);
                 for iSrc = pset.nDataSources
                     prog.update(iSrc);
                     if iAlign == 1
@@ -1647,7 +1654,7 @@ classdef PopulationTrajectorySet
 %         end
     end
 
-    methods % Dependent properties
+    methods % Compute on-the-fly Dependent properties
         function n = get.nDataSources(pset)
             n = numel(pset.dataSources);
         end
@@ -1724,21 +1731,7 @@ classdef PopulationTrajectorySet
 %         end
     end
 
-    methods % Simple statistics
-        function varargout = mapDataMeanEachAlign(pset, fn, varargin)
-            % runs varargout = fn(dataMean{iAlign}, tvecDataMean{iAlign}) on
-            % each dataMean{iAlign} and returns the results in nAlign x 1
-            % cellvec(s).
-            
-            nOut = nargout;
-            outCollect = cellvec(pset.nAlign, nOut);
-            for iAlign = 1:pset.nAlign
-                [outCollect{iAlign, 1:nOut}] = fn(pset.dataMean{iAlign}, pset.tvecDataMean{iAlign});
-            end
-            
-            varargout = mat2cell(outCollect, pset.nAlign, onesvec(nOut));
-        end
-        
+    methods % Simple statistics     
         function meanByBasis = computeMeanByBasis(pset)
             CTAbyN = pset.buildCTAbyN();
             meanByBasis = nanmean(CTAbyN, 1)';
@@ -1752,272 +1745,338 @@ classdef PopulationTrajectorySet
             stdByBasis = nanstd(pset.buildCTAbyN(), 0, 1)';
         end
   
-        function [maxValues maxTimes] = getMaximumByBasisEachConditionEachAlign(pset, varargin)
-            % maxValues: nAlign x nBases x nConditions matrices with the maximum value
-            % time of occurrence
-
-            maxValues = nan(pset.nAlign, pset.nBases, pset.nConditions);
-            for iAlign = 1:pset.nAlign 
-                [maxValues(iAlign, :, :), maxTimes(iAlign, :, :)] = ...
-                    max();
-            end
-
-            function [valMax timeMax] = findMaxFn(time,data)
-                [valMax i] = max(data);
-                timeMax = time(i);
-            end
-        end
-
-        function [minValues minTimes] = findMinimum(pset, varargin)
-            % return nBases x nConditions x nAlign matrices with the minimum value and
-            % time of minimum value for each basis x condition x align
-
-            [minValues minTimes] = pset.alignBasisConditionDataFun(@findMinFn, 'asMatrix', [true true]);
-
-            function [valMin timeMin] = findMinFn(time,data)
-                [valMin i] = min(data);
-                timeMin = time(i);
-            end
-        end
-
-        function maxByBasis = findMaximumAcrossConditions(pset)
-            % return a nBases x nAlign vector of maximum values across conditions
-            
-            maxValues = pset.findMaximum();
-            maxByBasis = max(maxValues, [], 2);
-        end
-
-        function minByBasis = findMinimumAcrossConditions(pset)
-            % return a nBases x nAlign vector of minimum values across conditions
-            
-            minValues = pset.findMinimum();
-            minByBasis = min(minValues, [], 2);
-        end
-        
-        function varData = computeVarianceOverTime(pset)
-            % varData is nBases x nConditions x nAlign
-            
-            varData = pset.alignBasisConditionDataFun(@var, 'asMatrix', true);
-        end
-
-        function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionVariance(pset)
-            % compute variance across conditions per condition over time for each basis x align
-            % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
-            % tVecByAlign has the same size and carries the time vector associated with each ccv vector
-
-            [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
-
-            ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
-                'contentsFn', @getCCV, 'asCell', true);
-
-            function ccv = getCCV(iBasis, iAlign)
-                % time by conditions matrix for this basis x align
-                tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
-
-                % t by 1 vector of variance across conditions
-                ccv = makecol(var(tByC, [], 2));
-            end
-        end
-        
-        function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionStd(pset)
-            % compute variance across conditions per condition over time for each basis x align
-            % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
-            % tVecByAlign has the same size and carries the time vector associated with each ccv vector
-
-            [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
-
-            ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
-                'contentsFn', @getCCS, 'asCell', true);
-
-            function ccv = getCCS(iBasis, iAlign)
-                % time by conditions matrix for this basis x align
-                tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
-
-                % t by 1 vector of variance across conditions
-                ccv = makecol(std(tByC, [], 2));
-            end
-        end
+%         function [maxValues maxTimes] = getMaximumByBasisEachConditionEachAlign(pset, varargin)
+%             % maxValues: nAlign x nBases x nConditions matrices with the maximum value
+%             % time of occurrence
+% 
+%             maxValues = nan(pset.nAlign, pset.nBases, pset.nConditions);
+%             for iAlign = 1:pset.nAlign 
+%                 [maxValues(iAlign, :, :), maxTimes(iAlign, :, :)] = ...
+%                     max();
+%             end
+% 
+%             function [valMax timeMax] = findMaxFn(time,data)
+%                 [valMax i] = max(data);
+%                 timeMax = time(i);
+%             end
+%         end
+% 
+%         function [minValues minTimes] = findMinimum(pset, varargin)
+%             % return nBases x nConditions x nAlign matrices with the minimum value and
+%             % time of minimum value for each basis x condition x align
+% 
+%             [minValues minTimes] = pset.alignBasisConditionDataFun(@findMinFn, 'asMatrix', [true true]);
+% 
+%             function [valMin timeMin] = findMinFn(time,data)
+%                 [valMin i] = min(data);
+%                 timeMin = time(i);
+%             end
+%         end
+% 
+%         function maxByBasis = findMaximumAcrossConditions(pset)
+%             % return a nBases x nAlign vector of maximum values across conditions
+%             
+%             maxValues = pset.findMaximum();
+%             maxByBasis = max(maxValues, [], 2);
+%         end
+% 
+%         function minByBasis = findMinimumAcrossConditions(pset)
+%             % return a nBases x nAlign vector of minimum values across conditions
+%             
+%             minValues = pset.findMinimum();
+%             minByBasis = min(minValues, [], 2);
+%         end
+%         
+%         function varData = computeVarianceOverTime(pset)
+%             % varData is nBases x nConditions x nAlign
+%             
+%             varData = pset.alignBasisConditionDataFun(@var, 'asMatrix', true);
+%         end
+% 
+%         function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionVariance(pset)
+%             % compute variance across conditions per condition over time for each basis x align
+%             % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
+%             % tVecByAlign has the same size and carries the time vector associated with each ccv vector
+% 
+%             [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
+% 
+%             ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
+%                 'contentsFn', @getCCV, 'asCell', true);
+% 
+%             function ccv = getCCV(iBasis, iAlign)
+%                 % time by conditions matrix for this basis x align
+%                 tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
+% 
+%                 % t by 1 vector of variance across conditions
+%                 ccv = makecol(var(tByC, [], 2));
+%             end
+%         end
+%         
+%         function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionStd(pset)
+%             % compute variance across conditions per condition over time for each basis x align
+%             % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
+%             % tVecByAlign has the same size and carries the time vector associated with each ccv vector
+% 
+%             [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
+% 
+%             ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
+%                 'contentsFn', @getCCS, 'asCell', true);
+% 
+%             function ccv = getCCS(iBasis, iAlign)
+%                 % time by conditions matrix for this basis x align
+%                 tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
+% 
+%                 % t by 1 vector of variance across conditions
+%                 ccv = makecol(std(tByC, [], 2));
+%             end
+%         end
     end
 
     methods % Visualization and plotting utilities
-        function alignTimeInfo = drawTimeAxisForAlign(pset, iAlign, alignTimeInfo)
-            ad = pset.alignDescriptorSet{iAlign};
-            if ~exist('alignTimeInfo', 'var')
-                alignTimeInfo = pset.alignTimeInfoData(:, :, iAlign);
-                emptyMask = cellfun(@isempty, alignTimeInfo);
-                alignTimeInfo = alignTimeInfo(~emptyMask);
-                alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
-            end
-            %ad.drawTimeAxis(alignTimeInfo);
-        end
-        
-        function drawTimeAxisForConditionAlign(pset, iCondition, iAlign)
-            ad = pset.alignDescriptorSet{iAlign};
-            alignTimeInfo = pset.alignTimeInfoData(:, iCondition, iAlign);
-            alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
-            ad.drawTimeAxis(alignTimeInfo);
-        end
+%         function alignTimeInfo = drawTimeAxisForAlign(pset, iAlign, alignTimeInfo)
+%             ad = pset.alignDescriptorSet{iAlign};
+%             if ~exist('alignTimeInfo', 'var')
+%                 alignTimeInfo = pset.alignTimeInfoData(:, :, iAlign);
+%                 emptyMask = cellfun(@isempty, alignTimeInfo);
+%                 alignTimeInfo = alignTimeInfo(~emptyMask);
+%                 alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
+%             end
+%             %ad.drawTimeAxis(alignTimeInfo);
+%         end
+%         
+%         function drawTimeAxisForConditionAlign(pset, iCondition, iAlign)
+%             ad = pset.alignDescriptorSet{iAlign};
+%             alignTimeInfo = pset.alignTimeInfoData(:, iCondition, iAlign);
+%             alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
+%             ad.drawTimeAxis(alignTimeInfo);
+%         end
 
-        function plotConditionPanels(pset, varargin)
-            % draw all bases superimposed in figure panels by condition
+%         function plotConditionPanels(pset, varargin)
+%             % draw all bases together, with each condition as a panel
+%             %fig();
+%             clf
+%             p = panel();
+%             p.pack(nRow, nCol);
+%             p.margin = 10;
+%             
+%             % determine how to layout the conditions, use a row if 1-d conditions
+%             % 2-d if necessary
+%             nDims = min(2, pset.conditionDescriptor.nAxes);
+%             conditionInds = pset.conditionDescriptor.conditionsAsLinearInds;
+%             
+%             if pset.ConditionDescriptor.nAxes == 1
+%                 nRows = 1;
+%                 nCols = 
+%                 
+%                 
+%             for iAlign = 1:pset.nAlign 
+%                 if nDims == 1
+%                     % if there is only one attribute, plot it along one row
+%                     nRow = 1;
+% 
+%                     % we need a column for every valid condition on this align
+%                     nCol = nnz(conditionsValidThisAlign);
+%                     
+%                     conditionByRowCol = makerow(conditionInds(conditionsValidThisAlign));
+%                 else
+%                     % one row for each value of the first attribute
+%                     nRow = pset.conditionDescriptor.nValuesByAttributeGroupBy(1);
+%                     
+%                     % reshape conditionsValid into nRow rows and the rest
+%                     % as columns
+%                     conditionIndsReshaped = reshape(conditionInds(:), nRow, []);
+%                     conditionsValidReshaped = reshape(conditionsValidThisAlign, nRow, []);
+%                     
+%                     % pare down the rows and columns that have at least one
+%                     % valid condition in them
+%                     rowMask = any(conditionsValidReshaped, 2);
+%                     colMask = any(conditionsValidReshaped, 1);
+%                     conditionByRowCol = conditionIndsReshaped(rowMask, colMask);
+%                     
+%                     nRow = nnz(rowMask);
+%                     nCol = nnz(colMask);
+%                 end
+%                 
+%                 
+% 
+%                 % build a nice colormap
+%                 cmap = cbrewer('qual', 'Set1', pset.nBases);
+%                 cmap = jet(pset.nBases);
+%                 
+%                 % loop over row and column panels
+%                 yl = nan(pset.nConditions, 2);
+%                 panelHasData = false(nRow, nCol);
+%                 for iCol = 1:nCol
+%                     for iRow = 1:nRow
+%                         
+%                         iCondition = conditionByRowCol(iRow, iCol);
+%                         if ~conditionsValidThisAlign(iCondition)
+%                             continue;
+%                         end
+%                         
+%                         h(iCondition) = p(iRow, iCol).select();
+% 
+%                         [tMin, tMax, yMin, yMax] = deal(NaN);
+%                        
+%                         for iBasis = 1:pset.nBases
+%                             dataVec = data{iBasis, iCondition, iAlign};
+%                             tvec = time{iBasis, iCondition, iAlign};
+%                             
+%                             if ~isempty(dataVec) && any(~isnan(dataVec))
+%                                 panelHasData(iRow, iCol) = true;
+%                             end
+%                             
+%                             tMin = min([tMin min(tvec)]);
+%                             tMax = max([tMax max(tvec)]);
+%                             yMin = min([yMin min(dataVec)]);
+%                             yMax = max([yMax max(dataVec)]);
+%                             
+%                             plot(tvec, dataVec, '-', 'LineWidth', 2, 'Color', cmap(iBasis,:));
+%                             hold on
+%                             
+%                             yl(iCondition, :) = get(gca, 'YLim');
+%                         end
+%                         
+%                         xlim([tMin tMax]);
+%                         ylim([yMin yMax]);
+%                         
+%                         title(sprintf('%s (%s)', pset.conditionNames{iCondition}, pset.alignNames{iAlign}));
+%                     end
+%                 end
+%                 
+%                 % draw time axes
+%                 for iCol = 1:nCol
+%                     for iRow = 1:nRow
+%                         p(iRow, iCol).select();
+%                         iCondition = conditionByRowCol(iRow, iCol);
+%                         if ~panelHasData(iRow, iCol)
+%                             axis off;
+%                         else
+%                             pset.drawTimeAxisForConditionAlign(iCondition, iAlign);
+%                         end
+%                     end
+%                 end
+%                 %whitebg(gcf, [0 0 0]);
+%                 p.refresh();
+%             end
+%         end
+% 
+%         function plotBasisPanels(pset, varargin)
+%             p = inputParser;
+%             p.addParamValue('basisIdx', [1:6], @(x) isvector(x) && ...
+%                 all(inRange(x, [1 pset.nBases])));
+%             p.parse(varargin{:});
+% 
+%             basisIdx = intersect(p.Results.basisIdx, 1:pset.nBases);
+%             nBasesPlot = length(basisIdx);
+% 
+%             [data, time] = pset.getDataTimeWindowed();
+% 
+%             for iAlign = 1:pset.nAlign
+%                 fig();
+%                 clf;
+%                 p = panel();
+%                 p.pack(nBasesPlot,1);
+% 
+%                 for iBasisIdx = 1:nBasesPlot
+%                     p(iBasisIdx,1).select();
+%                     iBasis = basisIdx(iBasisIdx);
+% 
+%                     for iCondition = 1:pset.nConditions
+%                         timeVec = time{iBasis, iCondition, iAlign};
+%                         dataVec = data{iBasis, iCondition, iAlign};
+% 
+%                         appear = pset.conditionDescriptor.appearances(iCondition);
+% 
+%                         plot(timeVec, dataVec, ...
+%                             'Color', appear.color, 'LineWidth', appear.lineWidth);
+%                         hold on
+%                     end
+%                     hold off
+%                     box off
+%                     title(sprintf('%s (%s)', pset.basisNames{iBasis}, pset.alignNames{iAlign}));
+%                     pset.drawTimeAxisForAlign(iAlign);
+%                     drawnow;
+%                 end
+%                 
+%                 p.margin = 10;
+%             end
+%         end
+
+        function plotBases(pset, varargin)
+            % plot bases one above the next 
             p = inputParser;
-            p.addParamValue('windowed', false, @islogical);
-            p.parse(varargin{:});
-            windowed = p.Results.windowed;
-
-            if windowed
-                [data, time] = pset.getDataTimeWindowed();
-            else
-                data = pset.data;
-                time = pset.timeData;
-            end
-
-            % determine how to layout the conditions, use a row if 1-d conditions
-            % 2-d if necessary
-            nDims = min(2, pset.conditionDescriptor.nAttributes);
-
-            conditionInds = pset.conditionDescriptor.conditionsAsLinearInds;
-            conditionAlignsValid = pset.conditionAlignsValidAllBases;
-            
-            for iAlign = 1:pset.nAlign
-                
-                % nConditions x 1 logical vector
-                conditionsValidThisAlign = conditionAlignsValid(:, iAlign);
-                
-                if nDims == 1
-                    % if there is only one attribute, plot it along one row
-                    nRow = 1;
-
-                    % we need a column for every valid condition on this align
-                    nCol = nnz(conditionsValidThisAlign);
-                    
-                    conditionByRowCol = makerow(conditionInds(conditionsValidThisAlign));
-                else
-                    % one row for each value of the first attribute
-                    nRow = pset.conditionDescriptor.nValuesByAttributeGroupBy(1);
-                    
-                    % reshape conditionsValid into nRow rows and the rest
-                    % as columns
-                    conditionIndsReshaped = reshape(conditionInds(:), nRow, []);
-                    conditionsValidReshaped = reshape(conditionsValidThisAlign, nRow, []);
-                    
-                    % pare down the rows and columns that have at least one
-                    % valid condition in them
-                    rowMask = any(conditionsValidReshaped, 2);
-                    colMask = any(conditionsValidReshaped, 1);
-                    conditionByRowCol = conditionIndsReshaped(rowMask, colMask);
-                    
-                    nRow = nnz(rowMask);
-                    nCol = nnz(colMask);
-                end
-                
-                %fig();
-                clf
-                p = panel();
-                p.pack(nRow, nCol);
-                p.margin = 10;
-
-                % build a nice colormap
-                cmap = cbrewer('qual', 'Set1', pset.nBases);
-                cmap = jet(pset.nBases);
-                
-                % loop over row and column panels
-                yl = nan(pset.nConditions, 2);
-                panelHasData = false(nRow, nCol);
-                for iCol = 1:nCol
-                    for iRow = 1:nRow
-                        
-                        iCondition = conditionByRowCol(iRow, iCol);
-                        if ~conditionsValidThisAlign(iCondition)
-                            continue;
-                        end
-                        
-                        h(iCondition) = p(iRow, iCol).select();
-
-                        [tMin, tMax, yMin, yMax] = deal(NaN);
-                       
-                        for iBasis = 1:pset.nBases
-                            dataVec = data{iBasis, iCondition, iAlign};
-                            tvec = time{iBasis, iCondition, iAlign};
-                            
-                            if ~isempty(dataVec) && any(~isnan(dataVec))
-                                panelHasData(iRow, iCol) = true;
-                            end
-                            
-                            tMin = min([tMin min(tvec)]);
-                            tMax = max([tMax max(tvec)]);
-                            yMin = min([yMin min(dataVec)]);
-                            yMax = max([yMax max(dataVec)]);
-                            
-                            plot(tvec, dataVec, '-', 'LineWidth', 2, 'Color', cmap(iBasis,:));
-                            hold on
-                            
-                            yl(iCondition, :) = get(gca, 'YLim');
-                        end
-                        
-                        xlim([tMin tMax]);
-                        ylim([yMin yMax]);
-                        
-                        title(sprintf('%s (%s)', pset.conditionNames{iCondition}, pset.alignNames{iAlign}));
-                    end
-                end
-                
-                % draw time axes
-                for iCol = 1:nCol
-                    for iRow = 1:nRow
-                        p(iRow, iCol).select();
-                        iCondition = conditionByRowCol(iRow, iCol);
-                        if ~panelHasData(iRow, iCol)
-                            axis off;
-                        else
-                            pset.drawTimeAxisForConditionAlign(iCondition, iAlign);
-                        end
-                    end
-                end
-                %whitebg(gcf, [0 0 0]);
-                p.refresh();
-            end
-        end
-
-        function plotBasisPanels(pset, varargin)
-            p = inputParser;
-            p.addParamValue('basisIdx', [1:6], @(x) isvector(x) && ...
+            p.addParamValue('basisIdx', 1:pset.nBases, @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nBases])));
+            p.addParamValue('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
+                all(inRange(x, [1 pset.nCOnditions])));
+            % plot each basis at it's original scale or normalized to fit
+            % the bands
+            p.addParamValue('normalize', true, @islogical);
+            % each basis starts at y = 1, 2, 3 and data is scaled to fit a
+            % band with y-height scaling
+            p.addParamValue('scaling', 0.95, @isscalar);
+            
+            % usually plot first basis at top, last basis at bottom
+            p.addParamValue('reverse', false, @islogical);
+            
+            p.addParamValue('alignGapFraction', 0.05, @isscalar);
+            p.addParamValue('xOffset', 0, @isscalar);
+            p.addParamValue('yOffset', 0, @isscalar);
+            p.addParamValue('plotArgs', {}, @iscell)
             p.parse(varargin{:});
 
             basisIdx = intersect(p.Results.basisIdx, 1:pset.nBases);
-            nBasesPlot = length(basisIdx);
-
-            [data, time] = pset.getDataTimeWindowed();
-
+            nBasesPlot = numel(basisIdx);
+            conditionIdx = p.Results.conditionIdx;
+            nConditionsPlot = numel(conditionIdx);
+            
+            scaling = p.Results.scaling;
+            normalize = p.Results.normalize;
+            reverse = p.Results.reverse;
+            alignGapFraction = p.Results.alignGapFraction;
+            xOffset = p.Results.xOffset;
+            yOffset = p.Results.yOffset;
+            plotArgs = p.Results.plotArgs;
+            
+            % compute absolute x-gap between alignments
+            alignGap = alignGapFraction*sum(pset.nTimeDataMean) / (1 - alignGapFraction*pset.nAlign);
+            
             for iAlign = 1:pset.nAlign
-                fig();
-                clf;
-                p = panel();
-                p.pack(nBasesPlot,1);
-
-                for iBasisIdx = 1:nBasesPlot
-                    p(iBasisIdx,1).select();
-                    iBasis = basisIdx(iBasisIdx);
-
-                    for iCondition = 1:pset.nConditions
-                        timeVec = time{iBasis, iCondition, iAlign};
-                        dataVec = data{iBasis, iCondition, iAlign};
-
-                        appear = pset.conditionDescriptor.appearances(iCondition);
-
-                        plot(timeVec, dataVec, ...
-                            'Color', appear.color, 'LineWidth', appear.lineWidth);
-                        hold on
-                    end
-                    hold off
-                    box off
-                    title(sprintf('%s (%s)', pset.basisNames{iBasis}, pset.alignNames{iAlign}));
-                    pset.drawTimeAxisForAlign(iAlign);
-                    drawnow;
+                tvec = pset.tvecDataMean{iAlign};
+                tvec = tvec - min(tvec) + xOffset;
+                
+                data = pset.dataMean{iAlign}(basisIdx, conditionIdx, :);
+                
+                if normalize
+                    % all data will range from 0 to 1 by row
+                    mat = reshape(data, nBasesPlot, nConditionsPlot * numel(tvec));
+                    mat = bsxfun(@minus, mat, nanmin(mat, 2));
+                    mat = bsxfun(@rdivide, mat, nanmax(mat, 2));
+                    data = reshape(mat, nBasesPlot, nConditionsPlot, numel(tvec));
+                else
+                    % all data will range from 0 to 1, but keep the same
+                    % relative scaling
+                    data = data - nanmin(data(:));
+                    data = data / nanmax(data(:));
                 end
                 
-                p.margin = 10;
+                data = bsxfun(@plus, data, (nBasesPlot:-1:1)');
+                
+                data = data * scaling + yOffset;
+                
+                if reverse
+                    data = flipud(data);
+                end
+                
+                for iCondition = 1:nConditionsPlot
+                    dataC = squeeze(data(:, iCondition, :));
+                    plotArgsC = pset.conditionDescriptor.appearances(conditionIdx(iCondition)).getPlotArgs();
+                    plot(tvec, dataC, '-', plotArgsC{:}, plotArgs{:})
+                    hold on
+                end
+                
+                xOffset = xOffset + max(tvec) + alignGap;
             end
         end
 
@@ -2187,8 +2246,6 @@ classdef PopulationTrajectorySet
 %                 end
 %             end
 %         end
-%         
-% 
 %         
     end
 

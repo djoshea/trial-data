@@ -94,6 +94,20 @@ classdef PopulationTrajectorySetBuilder
             
             pset = pset.initialize();
         end
+        
+        function pset = fromAnalogChannelsInTrialData(td)
+            chNames = td.listAnalogChannels();
+            
+            pset = PopulationTrajectorySet();
+            pset.datasetName = td.datasetName;
+            
+            tdca = TrialDataConditionAlign(td);
+            pset.dataSources = {tdca};
+            pset.basisDataSourceIdx = onesvec(numel(chNames));
+            pset.basisDataSourceChannelNames = chNames;
+            
+            pset = pset.initialize();
+        end
     end
     
     methods

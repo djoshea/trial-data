@@ -95,40 +95,56 @@ classdef StateSpaceProjection
             b.tMinForDataMean = pset.tMinForDataMean;
             b.tMaxForDataMean = pset.tMaxForDataMean;
 
-            % dataNTrials is nAlign x nBases x nConditions
-            % sum across bases for projection
+            % sum across bases for projection (dataNTrials is nAlign x nBases x nConditions)
             b.dataNTrials = repmat(sum(pset.dataNTrials, 2), 1, proj.nBasesProj, 1);
+            % all across bases for validity
             b.dataValid = repmat(all(pset.dataValid, 2), 1, proj.nBasesProj, 1);
         
-            b.dataMean = cell(pset.nAlign, 1); 
+            % project dataMean, leave dataSem as NaN
+            [b.dataMean, b.dataSem] = deal(cell(pset.nAlign, 1));
             for iAlign = 1:pset.nAlign
-                b.dataMean{iAlign} = nan(proj.nBasesProj, pset.nConditions, pset.nTimeDataMean(iAlign));
-                for iCondition = 1:pset.nConditions
-                    % mat is N x T, coeff is N x K 
-                    mat = squeeze(pset.dataMean{iAlign}(:, iCondition, :));
-                    % projMat is K x T
-                    projMat = proj.coeff' * mat;
 
-                    b.dataMean{iAlign}(:, iCondition, :) = projMat;
-                end
+                % mat is N x CT, coeff is N x K
+                mat = reshape(pset.dataMean{iAlign}, pset.nBases, ...
+                    pset.nConditions * pset.nTimeDataMean(iAlign));
+                projMat = proj.coeff' * mat;
+                b.dataMean{iAlign} = reshape(projMat, proj.nBasesProj, ...
+                    pset.nConditions, pset.nTimeDataMean(iAlign));
+
+                % leave sem as NaN
+                b.dataSem{iAlign} = nan(proj.nBasesProj, pset.nConditions, pset.nTimeDataMean(iAlign));
             end
           
-            %if proj.propagateDataError
-                %data interval  low /high mean randomized
-            %end
+            % project randomized data, recompute intervals
+            if proj.propagateDataError
+                [b.dataMeanRandomized, b.dataIntervalLow, b.dataIntervalHigh] = deal(cell(pset.nAlign, 1));
+                for iAlign = 1:pset.nAlign
+                    % mat is N x CTS, coeff is N x K, where S is nRandomSamples 
+                    mat = reshape(pset.dataMeanRandomized{iAlign}, pset.nBases, ...
+                        pset.nConditions*pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
+                    projMat = proj.coeff' * mat;
+                    b.dataMeanRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
+                        pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
 
-            % alignSummaryData
-            %basisAlignSummaryLookup
+                    quantiles = quantile(b.dataMeanRandomized{iAlign}, ...
+                        [pset.dataIntervalQuantileLow, pset.dataIntervalQuantileHigh], 4);
+                    b.dataIntervalQuantileLow{iAlign} = quantiles(:, :, :, 1);
+                    b.dataIntervalQuantileHigh{iAlign} = quantiles(:, :, :, 2);
+                end
+            end
+
+            % aggregate AlignSummary data. Each projected basis samples trials from all original
+            % trials, so we aggregate all AlignSummary instances into one
+            alignSummarySet = cell(1, pset.nAlign);
+            for iAlign = 1:pset.nAlign
+                alignSummarySet{iAlign} = AlignSummary.buildByAggregation(pset.alignSummaryData(:, iAlign)); 
+            end
+            b.alignSummaryData = alignSummarySet;
+            b.basisAlignSummaryLookup = ones(pset.nBases, 1);
             
             psetProjected = b.buildManualWithTrialAveragedData();
             stats = proj.computeProjectionStatistics(pset);
         end
-        
-        function dataTensor = extractDataForMarginalization(proj, pset)
-            proj.assertCommonValidTime();
-            dataTensor = pset.buildNByTAByAttributeTensor();
-        end
-        
     end
 
     methods(Access=protected, Sealed)
@@ -143,11 +159,11 @@ classdef StateSpaceProjection
     end
 
     methods
-        function names = getBasisUnits(proj, pset) 
+        function names = getBasisUnits(proj, pset)  %#ok<INUSL>
             names = repmat({''}, pset.nBases, 1);
         end
     
-        function pset = preparePsetForInference(proj, pset)
+        function pset = preparePsetForInference(proj, pset) %#ok<INUSL>
             % apply any appropriate translations, normalizations, or other adjustments
             % to pset before inferring coefficients for projection. The .translationNormalization
             % found in pset after this function runs will be used to normalize all psets

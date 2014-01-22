@@ -1,4 +1,4 @@
-classdef(ConstructOnLoad) AlignSummary
+classdef AlignSummary
 % this class stores aggregate statistics regarding event timing and is
 % typically generated and stored within an AlignInfo instance. Its purpose
 % is to store this information encapsulated from AlignInfo data.
@@ -99,7 +99,7 @@ classdef(ConstructOnLoad) AlignSummary
         intervalStopMeanByCondition
     end
     
-    methods(Access=protected)
+    methods
         function as = AlignSummary()
             
         end
@@ -228,14 +228,14 @@ classdef(ConstructOnLoad) AlignSummary
             % objects
             
             if iscell(alignSummarySet)
-                set = makecol(cell2mat(alignSummarySet(:)));
+                set = makecol([alignSummarySet{:}]);
             else
                 set = makecol(alignSummarySet);
             end
             
             as = AlignSummary();
-            as.alignDescriptor = alignSummarySet(1).alignDescriptor;
-            as.conditionDescriptor = alignSummarySet(1).conditionDescriptor;
+            as.alignDescriptor = set(1).alignDescriptor;
+            as.conditionDescriptor = set(1).conditionDescriptor;
             
             % TODO could check that all alignDescriptors and
             % conditionDescriptors are valid here, but would be slow

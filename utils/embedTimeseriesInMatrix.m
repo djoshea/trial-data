@@ -58,8 +58,10 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % expand the global min / max timestamps to align with timeReference
     if interpolate
         %ceilfix = @(x)ceil(abs(x)).*sign(x);
-        tMin = timeReference + round((tMinRaw - timeReference) / timeDelta) * timeDelta;
-        tMax = timeReference + round((tMaxRaw - timeReference) / timeDelta) * timeDelta;
+        % these used to be round, changed to match start / stop in Trial
+        % Data
+        tMin = timeReference + floor((tMinRaw - timeReference) / timeDelta) * timeDelta;
+        tMax = timeReference + ceil((tMaxRaw - timeReference) / timeDelta) * timeDelta;
     else
         tMin = tMinRaw;
         tMax = tMaxRaw;
@@ -102,6 +104,12 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     end
 
 function [d, t] = fix(d, t)
+    if isempty(t) || isempty(d)
+        d = [];
+        t = [];
+        return;
+    end
+    
     diffT = diff(t);
     stuck = find(diffT(1:end-1) == 0 & diffT(2:end) == 2);
     t(stuck+1) = t(stuck+1) + 1;
