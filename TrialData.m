@@ -1,4 +1,4 @@
-classdef(ConstructOnLoad) TrialData
+classdef TrialData
 % TrialData represents a collection of trials, whose data is accessed via
 % a TrialDataInterface. 
 %

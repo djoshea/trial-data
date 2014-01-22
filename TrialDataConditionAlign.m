@@ -1,4 +1,4 @@
-classdef(ConstructOnLoad) TrialDataConditionAlign < TrialData
+classdef TrialDataConditionAlign < TrialData
 
     % ConditionInfo and AlignInfo stores
     properties(SetAccess=protected)
@@ -49,6 +49,13 @@ classdef(ConstructOnLoad) TrialDataConditionAlign < TrialData
             td = td.initializeConditionInfo();
             td = td.initializeAlignInfo();
             td = td.updateValid();
+        end
+    end
+    
+    methods(Static)
+        function td = loadobj(td)
+            td = builtin('loadobj', td);
+            td.odc = TrialDataConditionAlignOnDemandCache();
         end
     end
     
