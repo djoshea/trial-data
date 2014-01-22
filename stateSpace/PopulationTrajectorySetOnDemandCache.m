@@ -15,8 +15,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         alignValidByTrial
         
         dataMean
-        dataErrorHigh
-        dataErrorLow
+        dataSem
         dataValid
         dataNTrials
         tMinForDataMean
@@ -25,6 +24,8 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         nTimeDataMean
         
         dataMeanRandomized
+        dataIntervalHigh
+        dataIntervalLow
     end
 
     methods
@@ -47,17 +48,21 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.basisAlignSummaryLookup = [];
             
             odc.dataMean = {};
-            odc.dataErrorHigh = {};
-            odc.dataErrorLow = {};
+            odc.dataSem = {};
             odc.dataValid = {};
             odc.dataNTrials = {};
             odc.tMinForDataMean = [];
             odc.tMaxForDataMean = [];
             odc.nTimeDataMean = [];
+
+            odc.flushRandomizedTrialAveragedData();
+        end
+
+        function flushRandomizedTrialAveragedData(odc)
+            odc.dataMeanRandomized = {};
+            odc.dataIntervalHigh = {};
+            odc.dataIntervalLow = {};
         end
     end
-
-
-
 
 end

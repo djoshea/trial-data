@@ -1,4 +1,4 @@
-classdef(ConstructOnLoad) PopulationTrajectorySet
+classdef PopulationTrajectorySet
 % class for storing a set of population trajectories, one for each of multiple conditions
 % or possibly one for each of many trials
 %
@@ -84,17 +84,13 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         % random seed to use as initial seed when generating random data
         % sets
         randomSeed
+
+        % quantile of trial data to use for dataIntervalLow
+        dataIntervalQuantileLow
+
+        % quantile of trial data to use for dataIntervalHigh
+        dataIntervalQuantileHigh
     end
-    
-    properties(SetAccess=?PopulationTrajectorySetBuilder, Hidden)
-        % Scalar constant from DataErrorType* constants below indicating
-        % the type of error intervals computed in dataError. Set using
-        % setDataErrorType()
-        dataErrorType
-        
-        % Any parameters associated with dataErrorType
-        dataErrorTypeParam
-    end 
     
     % alignDescriptors, conditionDescriptor, and translationNormalization
     % which align, group, and translate/normalize the data generated from
@@ -194,7 +190,7 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         % NaNs.
         
         % nAlign x 1 numeric vectors indicating the time window used for each
-        % alignmnet for the dataMean and dataErrorHigh/Low cells
+        % alignmnet for the dataMean and dataIntervalHigh/Low cells
         tMinForDataMean
         tMaxForDataMean
         
@@ -210,17 +206,11 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign) 
         % numeric array of single trial-averaged traces
         dataMean
+
+        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign) 
+        % numeric array of single trial-averaged trace standard error
+        dataSem
         
-        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
-        % numeric array containing the height of the error bar ABOVE
-        % dataMean (relative to the value in dataMean)
-        dataErrorHigh
-        
-        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
-        % numeric array containing the height of the error bar BELOW
-        % dataMean (relative to the value in dataMean)
-        dataErrorLow
-                        
         % size(data) scalar array indicating how many
         % trials contributed to data in each cell
         dataNTrials
@@ -234,6 +224,16 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         % nAlign x 1 cell with nBases x nCondition x nTime(iAlign) x nRandomSamples numeric
         % tensors containing randomly generated dataMean
         dataMeanRandomized
+
+        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
+        % numeric array containing the lower confidence interval value for
+        % dataMean
+        dataIntervalLow
+        
+        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
+        % numeric array containing the upper confidence interval value for
+        % dataMean
+        dataIntervalHigh
     end
     
     % Properties within *Manual properties store manually-specified values for each of the
@@ -254,8 +254,9 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         tMaxForDataMeanManual
         nTimeDataMeanManual % this could easily be computed from tMin/tMaxForDataMean
         dataMeanManual
-        dataErrorHighManual
-        dataErrorLowManual
+        dataSemManual
+        dataIntervalHighManual
+        dataIntervalLowManual
         dataNTrialsManual
         dataValidManual
         dataMeanRandomizedManual
@@ -286,25 +287,24 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
 
         conditionNames % condition names pulled from conditionDescriptor
         
-        dataErrorTypeAsString % dataErrorType summarized as a string
-    end
-    
-    properties(Constant)
-        % types of error bars that can be computed as .dataErrorHigh/Low
-        DataErrorTypeNone = 0;
-        DataErrorTypeStandardError = 1;
-        DataErrorTypeResampledInterval = 2;
+        dataIntervalQuantilesAsString % dataIntervalQuantileLow/High summarized as a string
     end
    
     % Constructor, initialization, cache invalidation
-    methods(Access=?PopulationTrajectorySetBuilder)
+    methods
         function pset = PopulationTrajectorySet()
-            % pset = pset.initialize();
+            pset = pset.initialize();
+        end
+    end
+    
+    methods(Static)
+        function pset = loadobj(pset)
+            pset = builtin('loadobj', pset);
+            pset = pset.initialize();
         end
     end
     
     methods
-
         function pset = initialize(pset)
             pset.warnIfNoArgOut(nargout);
             
@@ -325,7 +325,7 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 pset = pset.applyConditionDescriptor();
             end
             
-            if isempty(pset.translationNormalization)
+            if isempty(pset.translationNormalization) || pset.translationNormalization.nBases ~= pset.nBases
                 pset.translationNormalization = ...
                     StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
             end
@@ -350,8 +350,12 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 pset.includeOnlyTrialsValidAllAlignments = false;
             end
             
-            if isempty(pset.dataErrorType)
-                pset.dataErrorType = PopulationTrajectorySet.DataErrorTypeStandardError;
+            if isempty(pset.dataIntervalQuantileLow)
+                pset.dataIntervalQuantileLow = 0.025;
+            end
+            
+            if isempty(pset.dataIntervalQuantileHigh)
+                pset.dataIntervalQuantileHigh = 0.975;
             end
             
             if isempty(pset.nRandomSamples)
@@ -397,6 +401,15 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 pset.odc.flushTrialAveragedData();
             end
         end
+
+        function pset = invalidateRandomizedTrialAveragedData(pset)
+            pset.warnIfNoArgOut(nargout);
+            if ~isempty(pset.odc)
+                pset.odc = pset.odc.copy();
+                pset.odc.flushRandomizedTrialAveragedData();
+            end
+        end
+
     end
     
     % Display / description
@@ -459,6 +472,16 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             % only affects trial averaging
             pset.includeOnlyTrialsValidAllAlignments = v;
             pset = pset.invalidateTrialAveragedData();
+        end
+
+        function pset = set.dataIntervalQuantileLow(pset, v)
+            pset.dataIntervalQuantileLow = v;
+            pset = pset.invalidateRandomizedTrialAveragedData();
+        end
+
+        function pset = set.dataIntervalQuantileHigh(pset, v)
+            pset.dataIntervalQuantileHigh = v;
+            pset = pset.invalidateRandomizedTrialAveragedData();
         end
     end
     
@@ -803,45 +826,24 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             end
         end
         
-        function v = get.dataErrorHigh(pset)
+        function v = get.dataSem(pset)
             if ~pset.dataSourceManual
-                v = pset.odc.dataErrorHigh;
+                v = pset.odc.dataSem;
                 if isempty(v)
                     pset.buildDataMean();
-                    v = pset.odc.dataErrorHigh;
+                    v = pset.odc.dataSem;
                 end
             else
-                v = pset.dataErrorHighManual;
-            end
-        end 
-        
-        function pset = set.dataErrorHigh(pset, v)
-            if ~pset.dataSourceManual
-                pset.odc = pset.odc.copy();
-                pset.odc.dataErrorHigh = v;
-            else
-                pset.dataErrorHighManual = v;
+                v = pset.dataSemManual;
             end
         end
         
-        function v = get.dataErrorLow(pset)
-            if ~pset.dataSourceManual
-                v = pset.odc.dataErrorLow;
-                if isempty(v)
-                    pset.buildDataMean();
-                    v = pset.odc.dataErrorLow;
-                end
-            else
-                v = pset.dataErrorLowManual;
-            end
-        end 
-        
-        function pset = set.dataErrorLow(pset, v)
+        function pset = set.dataSem(pset, v)
             if ~pset.dataSourceManual
                 pset.odc = pset.odc.copy();
-                pset.odc.dataErrorLow = v;
+                pset.odc.dataSem = v;
             else
-                pset.dataErrorLowManual = v;
+                pset.dataSemManual = v;
             end
         end
 
@@ -884,6 +886,48 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 pset.odc.dataMeanRandomized = v;
             else
                 pset.dataMeanRandomizedManual = v;
+            end
+        end
+        
+        function v = get.dataIntervalLow(pset)
+            if ~pset.dataSourceManual
+                v = pset.odc.dataIntervalLow;
+                if isempty(v)
+                    pset.buildDataRandomized();
+                    v = pset.odc.dataIntervalLow;
+                end
+            else
+                v = pset.dataIntervalLowManual;
+            end
+        end
+        
+        function pset = set.dataIntervalLow(pset, v)
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataIntervalLow = v;
+            else
+                pset.dataIntervalLowManual = v;
+            end
+        end
+
+        function v = get.dataIntervalHigh(pset)
+            if ~pset.dataSourceManual
+                v = pset.odc.dataIntervalHigh;
+                if isempty(v)
+                    pset.buildDataRandomized();
+                    v = pset.odc.dataIntervalHigh;
+                end
+            else
+                v = pset.dataIntervalHighManual;
+            end
+        end
+        
+        function pset = set.dataIntervalHigh(pset, v)
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataIntervalHigh = v;
+            else
+                pset.dataIntervalHighManual = v;
             end
         end
     end
@@ -965,20 +1009,23 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 pset.translationNormalization = trNorm;
             end
             
+            cellApplyToDataFn = @(data) cellfun(@trNorm.applyTranslationNormalizationToData, ...
+                data, 'UniformOutput', false);
+            
             if pset.dataSourceManual
                 % for manual data, we apply this now to all data stored
                 % manually since it will not be regenerated later
                 if ~isempty(pset.dataByTrial)
-                    pset.dataByTrial = trNorm.applyTranslationNormalizationToData(pset.dataByTrial);
+                    pset.dataByTrial = pset.dataByTrial;
                 end
                 if ~isempty(pset.dataMean)
-                    pset.dataMean = trNorm.applyTranslationNormalizationToData(pset.dataMean);
+                    pset.dataMean = cellApplyToDataFn(pset.dataMean);
                 end
-                if ~isempty(pset.dataErrorHigh)
-                    pset.dataErrorHigh = trNorm.applyTranslationNormalizationToData(pset.dataErrorHigh);
+                if ~isempty(pset.dataIntervalHigh)
+                    pset.dataIntervalHigh = cellApplyToDataFn(pset.dataIntervalHigh);
                 end
-                if ~isempty(pset.dataErrorLow)
-                    pset.dataErrorLow = trNorm.applyTranslationNormalizationToData(pset.dataErrorLow);
+                if ~isempty(pset.dataIntervalLow)
+                    pset.dataIntervalLow = cellApplyToDataFn(pset.dataIntervalLow);
                 end
             else
                 % for auto-computed data, we can check whether the data has
@@ -987,18 +1034,16 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 % otherwise, we can defer until the buildData* methods
                 % apply the translation / normalization
                 if ~isempty(pset.odc.dataByTrial)
-                    pset.dataByTrial = trNorm.applyTranslationNormalizationToData(pset.dataByTrial);
+                    pset.dataByTrial = pset.dataByTrial;
                 end
                 if ~isempty(pset.odc.dataMean)
-                    pset.dataMean = cellfun(@trNorm.applyTranslationNormalizationToData, pset.dataMean, 'UniformOutput', false);
+                    pset.dataMean = cellApplyToDataFn(pset.dataMean);
                 end
-                if ~isempty(pset.odc.dataErrorHigh)
-                    pset.dataErrorHigh = cellfun(@trNorm.applyTranslationNormalizationToData, ...
-                        pset.dataErrorHigh, 'UniformOutput', false);
+                if ~isempty(pset.odc.dataIntervalHigh)
+                    pset.dataIntervalHigh = cellApplyToDataFn(pset.dataIntervalHigh);
                 end
-                if ~isempty(pset.odc.dataErrorLow)
-                    pset.dataErrorLow = cellfun(@trNorm.applyTranslationNormalizationToData, ...
-                        pset.dataErrorLow, 'UniformOutput', false);
+                if ~isempty(pset.odc.dataIntervalLow)
+                    pset.dataIntervalLow = cellApplyToDataFn(pset.dataIntervalLow);
                 end
                 
                 % not necessary to invalidate if we're careful about making
@@ -1029,11 +1074,11 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 if ~isempty(pset.dataMean)
                     pset.dataMean = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataMean, 'UniformOutput', false);
                 end
-                if ~isempty(pset.dataErrorHigh)
-                    pset.dataErrorHigh = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataErrorHigh, 'UniformOutput', false);
+                if ~isempty(pset.dataIntervalHigh)
+                    pset.dataIntervalHigh = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataIntervalHigh, 'UniformOutput', false);
                 end
-                if ~isempty(pset.dataErrorLow)
-                    pset.dataErrorLow = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataErrorLow, 'UniformOutput', false);
+                if ~isempty(pset.dataIntervalLow)
+                    pset.dataIntervalLow = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataIntervalLow, 'UniformOutput', false);
                 end
             else
                 % for auto-computed data, we can check whether the data has
@@ -1047,11 +1092,11 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 if ~isempty(pset.odc.dataMean)
                     pset.dataMean = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataMean, 'UniformOutput', false);
                 end
-                if ~isempty(pset.odc.dataErrorHigh)
-                    pset.dataErrorHigh = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataErrorHigh, 'UniformOutput', false);
+                if ~isempty(pset.odc.dataIntervalHigh)
+                    pset.dataIntervalHigh = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataIntervalHigh, 'UniformOutput', false);
                 end
-                if ~isempty(pset.odc.dataErrorLow)
-                    pset.dataErrorLow = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataErrorLow, 'UniformOutput', false);
+                if ~isempty(pset.odc.dataIntervalLow)
+                    pset.dataIntervalLow = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataIntervalLow, 'UniformOutput', false);
                 end
                 
                 % not necessary to invalidate if we're careful about making
@@ -1255,7 +1300,7 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
         end
         
         function buildDataMean(pset)
-            % computes and stores dataMean, dataErrorHigh/Low, and dataNTrials into odc
+            % computes and stores dataMean, dataIntervalHigh/Low, and dataNTrials into odc
             % this function computes summary statistics across trials,
             % especially dataMean. It selects time windows which are
             % consistent across all bases and conditions for a specific
@@ -1339,9 +1384,9 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             % now that we've determined the time window, we can compute the
             % trial average using data from these windows
             
-            [dataMean, dataErrorHigh, dataErrorLow] = deal(cellvec(pset.nAlign));
+            [dataMean, dataSem] = deal(cellvec(pset.nAlign));
             for iAlign = 1:pset.nAlign
-                [dataMean{iAlign}, dataErrorHigh{iAlign}, dataErrorLow{iAlign}] = ...
+                [dataMean{iAlign}, dataSem{iAlign}] = ...
                     deal(nan(pset.nBases, pset.nConditions, nTimeByAlign(iAlign)));
             end
             [dataValid, dataNTrials] = deal(nan(pset.nAlign, pset.nBases, pset.nConditions));
@@ -1388,15 +1433,11 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                         m = nanmean(mat, 1)';
                         m(nTrialsByTime < minTrials) = NaN;
                         
-                        switch(pset.dataErrorType)
-                            case PopulationTrajectorySet.DataErrorTypeStandardError
-                                se = nansem(mat, 1)';
-                                se(nTrialsByTime < minTrials) = NaN;
-                                dataErrorHigh{iAlign}(iBasis, iCondition, :) = se;
-                                dataErrorLow{iAlign}(iBasis, iCondition, :) = se;
-                        end
-                        
+                        se = nansem(mat, 1)';
+                        se(nTrialsByTime < minTrials) = NaN;
+
                         dataMean{iAlign}(iBasis, iCondition, :) = m;
+                        dataSem{iAlign}(iBasis, iCondition, :) = se;
                         dataNTrials(iAlign, iBasis, iCondition) = nTrials;
                         dataValid(iAlign, iBasis, iCondition) = size(mat, 1) > 0;
                     end
@@ -1410,8 +1451,7 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             % store in odc without copying
             c = pset.odc;
             c.dataMean = dataMean;
-            c.dataErrorHigh = dataErrorHigh;
-            c.dataErrorLow = dataErrorLow;
+            c.dataSem = dataSem;
             c.dataNTrials = dataNTrials;
             c.dataValid = dataValid;
             c.nTimeDataMean = nTimeByAlign;
@@ -1489,8 +1529,20 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
                 end
             end
             prog.finish();
-            
+                
+            % compute the quantiles to use as intervals
+            [dataIntervalHigh, dataIntervalLow] = deal(cellvec(pset.nAlign));
+            qLow = pset.dataIntervalQuantileLow;
+            qHigh = pset.dataIntervalQuantileHigh;
+            for iAlign = 1:pset.nAlign
+                dataIntervals = quantile(dataMeanRandomized{iAlign}, [qLow qHigh], 4);
+                dataIntervalLow{iAlign} = dataIntervals(:, :, :, 1);
+                dataIntervalHigh{iAlign} = dataIntervals(:, :, :, 2);
+            end
+
             c = pset.odc;
+            c.dataIntervalHigh = dataIntervalHigh;
+            c.dataIntervalLow = dataIntervalLow;
             c.dataMeanRandomized = dataMeanRandomized;
         end
         
@@ -1640,15 +1692,9 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             names = cellfun(@(ad) ad.name, pset.alignDescriptorSet, 'Uniform', false);
         end
         
-        function str = get.dataErrorTypeAsString(pset)
-            switch(pset.dataErrorType)
-                case PopulationTrajectorySet.DataErrorTypeNone
-                    str = '';
-                case PopulationTrajectorySet.DataErrorTypeStandardError
-                    str = 'sem';
-                case PopulationTrajectorySet.DataErrorTypeResampledPercentInterval
-                    str = sprintf('resampled %g %% interval', 100*pset.dataErrorTypeParam);
-            end
+        function str = get.dataIntervalQuantilesAsString(pset)
+            str = sprintf('[%g - %g] %%', 100*pset.dataIntervalQuantileLow, ...
+                100*pset.dataIntervalQuantileHigh);
         end
     end
     
@@ -2075,6 +2121,16 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
             nvec = labelsOut{2};
         end
 
+         function NbyTAbyAttr = buildNbyTAbyConditionAttributes(pset, varargin)
+             % build a tensor of N by T by nValsAttr1 by nValsAttr2 x ...
+             % this tensor is the format used by dpca_covs
+             NbyTAbyC = permute(pset.buildNbyCbyTA(), [1 3 2]);
+             N = pset.nBases;
+             TA = size(NbyTAbyC, 2);
+             condSize = pset.conditionDescriptor.conditionsSize;
+             NbyTAbyAttr = reshape(NbyTAbyC, [N TA makerow(condSize)]);
+         end
+
 %         function [out tvecByConditionAlign] = buildCTByNEachA(pset, varargin)
 %             % out: A cell vector of CT x N matrices 
 %             % timeVec: nAlign cell of time vectors common to alignment
@@ -2130,19 +2186,10 @@ classdef(ConstructOnLoad) PopulationTrajectorySet
 %         
 % 
 %         
-%         function out = buildNByTAByAttributeTensor(pset, varargin)
-%             % build a tensor of N by T by nValsAttr1 by nValsAttr2 x ...
-%             % this tensor is the format used by dpca_covs
-%             taByCByN = pset.buildTAByCByN();
-%             nTime = size(taByCByN, 1);
-%             condSize = pset.conditionDescriptor.conditionsSize;
-%             nByTAByC = permute(taByCByN, [3 1 2]);
-%             out = reshape(nByTAByC, [pset.nBases nTime makerow(condSize)]);
-%         end
     end
 
     methods % Comparative statistics
-        function [distByFromAlign timeVecByFromAlign] = getDistanceBetween(pset, cFromList, cToList, varargin)
+        function [distByFromAlign, timeVecByFromAlign] = getDistanceBetween(pset, cFromList, cToList, varargin)
             % dist: length(fromAlign) cell of T x length(cFromList) distance traces as columns
             % comparing each condition cFromList(i) to condition cToList(i)
 

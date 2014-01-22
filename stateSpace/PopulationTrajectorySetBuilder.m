@@ -3,7 +3,9 @@ classdef PopulationTrajectorySetBuilder
     % manually by holding property values temporarily in the factory
     % instance. See PopulationTrajectorySet for documentation on the
     % meanings of these values
-    
+   
+    % These properties hold temporary data for injecting into a PopulationTrajectorySet
+    % when building 
     properties
         %% fSettings
         timeDelta 
@@ -15,6 +17,11 @@ classdef PopulationTrajectorySetBuilder
         randomSeed
         dataErrorType
         dataErrorTypeParam
+
+        %% fDescriptors
+        alignDescriptorSet
+        conditionDescriptor
+        translationNormalization
         
         %% fBasisInfo
         basisNames
@@ -33,17 +40,11 @@ classdef PopulationTrajectorySetBuilder
         tMinByTrial
         tMaxByTrial
         
-        %% fDescriptors
-        alignDescriptorSet
-        conditionDescriptor
-        translationNormalization
- 
         %% fTrialAvg
         tMinForDataMean
         tMaxForDataMean
         dataMean
-        dataErrorHigh
-        dataErrorLow
+        dataSem
         dataNTrials
         dataValid
         alignSummaryData
@@ -51,6 +52,8 @@ classdef PopulationTrajectorySetBuilder
         
         %% fTrialAvgRandomized
         dataMeanRandomized
+        dataIntervalHigh
+        dataIntervalLow
     end
     
     % Lists of fields within PopulationTrajectorySet to simplify the
@@ -59,6 +62,8 @@ classdef PopulationTrajectorySetBuilder
         fSettings = {'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
             'minFractionTrialsForTrialAveraging', 'includeOnlyTrialsValidAllAlignments', ...
             'nRandomSamples', 'randomSeed', 'dataErrorType', 'dataErrorTypeParam'};
+
+        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
         
         fBasisInfo = {'basisNames', 'basisUnits'};
         
@@ -66,11 +71,12 @@ classdef PopulationTrajectorySetBuilder
         
         fSingleTrial = {'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
             'alignValidByTrial', 'tMinByTrial', 'tMaxByTrial'};
-            
-        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
         
-        fTrialAvg = {'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataErrorHigh', 'dataErrorLow', ...
-                'dataNTrials', 'dataValid', 'alignSummaryData', 'basisAlignSummaryLookup'}
+        fTrialAvg = {'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
+                'dataNTrials', 'dataValid', ...
+                'alignSummaryData', 'basisAlignSummaryLookup'}
+        
+        fTrialAvgRandomized = {'dataIntervalHigh', 'dataIntervalLow', 'dataMeanRandomized'};
     end
         
     methods(Static)
@@ -105,7 +111,8 @@ classdef PopulationTrajectorySetBuilder
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
                 PopulationTrajectorySetBuilder.fDataSourceInfo, ...
                 PopulationTrajectorySetBuilder.fSingleTrial, ...
-                PopulationTrajectorySetBuilder.fTrialAvg);
+                PopulationTrajectorySetBuilder.fTrialAvg, ...
+                PopulationTrajectorySetBuilder.fTrialAvgRandomized);
         end
         
         function pset = buildManualWithTrialAveragedData(bld)
@@ -118,28 +125,38 @@ classdef PopulationTrajectorySetBuilder
                 PopulationTrajectorySetBuilder.fSettings, ...
                 PopulationTrajectorySetBuilder.fDescriptors, ...
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
-                PopulationTrajectorySetBuilder.fTrialAvg);
+                PopulationTrajectorySetBuilder.fTrialAvg, ...
+                PopulationTrajectorySetBuilder.fTrialAvgRandomized);
         end
     end
     
     methods(Static)
-        function bld = copyFromPopulationTrajectorySet(pset)
-            % copy all values from population trajectory set
+        function bld = copyFromPopulationTrajectorySet(pset, fields)
+            % copy values from population trajectory set, all fields by default
             bld = PopulationTrajectorySetBuilder();
             
-            fields = [...
-                PopulationTrajectorySetBuilder.fSettings, ...
-                PopulationTrajectorySetBuilder.fDescriptors, ...
-                PopulationTrajectorySetBuilder.fBasisInfo, ...
-                PopulationTrajectorySetBuilder.fDataSourceInfo, ...
-                PopulationTrajectorySetBuilder.fSingleTrial, ...
-                PopulationTrajectorySetBuilder.fTrialAvg ...
-                ]   ;
+            if nargin < 2
+                fields = [...
+                    PopulationTrajectorySetBuilder.fSettings, ...
+                    PopulationTrajectorySetBuilder.fDescriptors, ...
+                    PopulationTrajectorySetBuilder.fBasisInfo, ...
+                    PopulationTrajectorySetBuilder.fDataSourceInfo, ...
+                    PopulationTrajectorySetBuilder.fSingleTrial, ...
+                    PopulationTrajectorySetBuilder.fTrialAvg ...
+                    PopulationTrajectorySetBuilder.fTrialAvgRandomized
+                    ]   ;
+            end
             
             for iF = 1:length(fields)
                 fld = fields{iF};
                 bld.(fld) = pset.(fld);
             end
+        end
+
+        function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet([ ...
+                PopulationTrajectorySetBuilder.fSettings, ...
+                PopulationTrajectorySet.fDescriptors ]);
         end
         
         function psetManual = convertToManualWithSingleTrialData(pset)
