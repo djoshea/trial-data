@@ -28,6 +28,7 @@ classdef(ConstructOnLoad) ConditionDescriptor
         attributeActsAsFilter % A x 1 logical array : does this attribute have a
                 % value list or manual bin setup that would invalidate trials?
         
+        axisNames % strcell with a short name for each axis
         axisDescriptions % strcell describing each axis
 
         axisValueListModesAsStrings
@@ -290,6 +291,14 @@ classdef(ConstructOnLoad) ConditionDescriptor
         function tf = get.attributeActsAsFilter(ci)
             modes = ci.attributeValueModes;
             tf = ismember(modes, [ci.AttributeValueListManual, ci.AttributeValueBinsManual]);
+        end
+        
+        function names = get.axisNames(ci)
+            names = cellvec(ci.nAxes);            
+            for iX = 1:ci.nAxes
+                attr = ci.axisAttributes{iX};
+                names{iX} = strjoin(attr, ' x ');
+            end
         end
         
         function desc = get.axisDescriptions(ci)
