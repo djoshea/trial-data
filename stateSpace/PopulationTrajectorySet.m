@@ -305,6 +305,10 @@ classdef PopulationTrajectorySet
     end
     
     methods
+        function pset = saveobj(pset)
+
+        end
+        
         function pset = initialize(pset)
             pset.warnIfNoArgOut(nargout);
             

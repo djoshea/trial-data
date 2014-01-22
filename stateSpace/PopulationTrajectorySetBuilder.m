@@ -15,8 +15,8 @@ classdef PopulationTrajectorySetBuilder
         includeOnlyTrialsValidAllAlignments
         nRandomSamples
         randomSeed
-        dataErrorType
-        dataErrorTypeParam
+        dataIntervalQuantileHigh
+        dataIntervalQuantileLow
 
         %% fDescriptors
         alignDescriptorSet
@@ -61,7 +61,7 @@ classdef PopulationTrajectorySetBuilder
     properties(Constant)
         fSettings = {'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
             'minFractionTrialsForTrialAveraging', 'includeOnlyTrialsValidAllAlignments', ...
-            'nRandomSamples', 'randomSeed', 'dataErrorType', 'dataErrorTypeParam'};
+            'nRandomSamples', 'randomSeed', 'dataIntervalQuantileLow', 'dataIntervalQuantileHigh'};
 
         fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
         
@@ -116,10 +116,10 @@ classdef PopulationTrajectorySetBuilder
         end
         
         function pset = buildManualWithTrialAveragedData(bld)
-            bld.assertNonEmpty(...
-                PopulationTrajectorySetBuilder.fDescriptors, ...
-                PopulationTrajectorySetBuilder.fBasisInfo, ...
-                PopulationTrajectorySetBuilder.fTrialAvg);
+%             bld.assertNonEmpty(...
+%                 PopulationTrajectorySetBuilder.fDescriptors, ...
+%                 PopulationTrajectorySetBuilder.fBasisInfo, ...
+%                 PopulationTrajectorySetBuilder.fTrialAvg);
             
             pset = bld.buildManualWithFields(...
                 PopulationTrajectorySetBuilder.fSettings, ...
@@ -154,9 +154,9 @@ classdef PopulationTrajectorySetBuilder
         end
 
         function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet([ ...
-                PopulationTrajectorySetBuilder.fSettings, ...
-                PopulationTrajectorySet.fDescriptors ]);
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
+                [ PopulationTrajectorySetBuilder.fSettings, ...
+                  PopulationTrajectorySetBuilder.fDescriptors ]);
         end
         
         function psetManual = convertToManualWithSingleTrialData(pset)
