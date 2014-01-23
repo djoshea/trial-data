@@ -379,6 +379,14 @@ classdef(ConstructOnLoad) TrialData
             names = {channelDescriptors(mask).name}';
         end
         
+        function td = selectAnalogChannels(td, names)
+            td.warnIfNoArgOut(nargout);
+            full = td.listAnalogChannels();
+            assert(all(ismember(names, full)), 'Missing analog channels %s', ...
+                strjoin(setdiff(names, full), ', ')); 
+            td = td.dropChannels(setdiff(full, names));
+        end
+        
         function [data, time] = getAnalogRaw(td, name)
             cd = td.channelDescriptorsByName.(name);
             
@@ -540,6 +548,21 @@ classdef(ConstructOnLoad) TrialData
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
+        end
+        
+        function td = selectSpikeChannels(td, names)
+            td.warnIfNoArgOut(nargout);
+            full = td.listSpikeChannels();
+            assert(all(ismember(names, full)), 'Missing spike channels %s', ...
+                strjoin(setdiff(names, full), ', ')); 
+            td = td.dropChannels(setdiff(full, names));
+        end
+        
+        function td = selectSpikeUnits(td, names)
+            td.warnIfNoArgOut(nargout);
+            chNames = cellfun(@SpikeChannelDescriptor.convertUnitNameToChannelName, names, ...
+                'UniformOutput', false);  
+            td = td.selectSpikeChannels(chNames);
         end
         
         function names = listSpikeUnits(td)
