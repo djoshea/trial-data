@@ -1,23 +1,68 @@
-classdef PopulationTrajectorySetOnDemandCache < handle
+classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable 
 
     properties
         basisNames
-        timeData
-        data
+        basisUnits
+        
+        alignSummaryData
+        basisAlignSummaryLookup
+        
+        dataByTrial
+        tMinForDataByTrial
+        tMaxForDataByTrial
+        tMinByTrial
+        tMaxByTrial
+        alignValidByTrial
+        
+        dataMean
         dataSem
         dataValid
-        nTrialsData
+        dataNTrials
+        tMinForDataMean
+        tMaxForDataMean
+        tvecDataMean
+        nTimeDataMean
+        
+        dataMeanRandomized
+        dataIntervalHigh
+        dataIntervalLow
     end
 
-end
+    methods
+        function flush(odc)
+            odc.basisNames = {};
+            odc.basisUnits = {};
+           
+            odc.dataByTrial = {};
+            odc.tMinForDataByTrial = {};
+            odc.tMaxForDataByTrial = {};
+            odc.tMinByTrial = {};
+            odc.tMaxByTrial = {};
+            odc.alignValidByTrial = {};
+            
+            odc.flushTrialAveragedData();
+        end
+        
+        function flushTrialAveragedData(odc)
+            odc.alignSummaryData = {};
+            odc.basisAlignSummaryLookup = [];
+            
+            odc.dataMean = {};
+            odc.dataSem = {};
+            odc.dataValid = {};
+            odc.dataNTrials = {};
+            odc.tMinForDataMean = [];
+            odc.tMaxForDataMean = [];
+            odc.nTimeDataMean = [];
 
-% extract data from trial data
+            odc.flushRandomizedTrialAveragedData();
+        end
 
-for iBasis = 1:numel(trialDataSet)
-     % figure out which channel to extract
-     [rateMean, time, rateSem] = td.getSpikeRateFilteredMeanByGroup(unitStr{iBasis});
-
-
- end
+        function flushRandomizedTrialAveragedData(odc)
+            odc.dataMeanRandomized = {};
+            odc.dataIntervalHigh = {};
+            odc.dataIntervalLow = {};
+        end
+    end
 
 end

@@ -24,7 +24,9 @@ classdef EventChannelDescriptor < ChannelDescriptor
     methods(Static)
         function cd = buildSingleEvent(name, timeUnits)
             cd = EventChannelDescriptor(name);
-            cd.elementTypeByField = cd.SCALAR;
+%             cd.elementTypeByField = cd.SCALAR;
+%           Switching this to be vector always for consistency
+            cd.elementTypeByField = cd.VECTOR;
             if nargin > 1
                 cd.unitsByField = {timeUnits};
             end

@@ -77,16 +77,19 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             fld = ['unit', strrep(unitStr, '.', '_')];
         end
         
-        function unitStr = convertChannelNameToUnitName(ch)
+        function [unitStr, valid] = convertChannelNameToUnitName(ch)
             info = regexp(ch, 'unit(?<channel>\d+)_(?<unit>\d+)', 'names', 'once');
             if isempty(info)
-                error('Could not parse channel name %s as unit', ch);
+                unitStr = '';
+                valid = false;
+                %error('Could not parse channel name %s as unit', ch);
             else
                 if isempty(info.unit)
                     unitStr = sprintf('%s', info.channel);
                 else
                     unitStr = sprintf('%s.%s', info.channel, info.unit);
                 end
+                valid = true;
             end
         end
         

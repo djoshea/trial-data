@@ -86,6 +86,8 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
                         dataFieldMain = sprintf('%s_%s', group.name, name);
                     end
                     
+                    dataCell = {tdi.R.(dataFieldMain)};
+                    
                     switch(group.type)
                         case 'analog'
                             timeField = sprintf('%s_time', group.name);
@@ -100,7 +102,7 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
 
                     cd.groupName = group.name;
 
-                    dataCell = {tdi.R.(dataFieldMain)};
+                    
                     if strcmp(group.type, 'analog')
                         timeCell = {tdi.R.(timeField)};
                         cd = cd.inferAttributesFromData(dataCell, timeCell);

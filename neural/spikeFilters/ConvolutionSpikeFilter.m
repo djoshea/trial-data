@@ -40,34 +40,36 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 
         % spikeCell is nTrains x 1 cell array of time points which will include 
         %   times in the preceding and postceding window
-        function rates = subclassFilterSpikeTrains(sf, spikeCell, tWindow)
+        function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec)
             % build filter
             filt = sf.filter;
             filt = filt ./ sum(filt);
-
-            tMin = tWindow(1);
-            tMax = tWindow(2);
-            tvec = tMin:tMax;
-            nTime = length(tvec);
-
-            % get time vector including pre and post padding to accomodate filter
+            
             nPre = sf.preWindow;
             nPost = sf.postWindow;
-            tvecPad = tMin-nPre:tMax+nPost+1;
-            nTimePad = length(tvecPad);
-            
+
+            tMinByTrial = tWindowByTrial(:, 1);
+            tMaxByTrial = tWindowByTrial(:, 2);
+
             % filter via valid convolution, which automatically removes the padding
-            nTrains = length(spikeCell);
-            rates = zeros(nTrains, nTime);
-            for i = 1:nTrains
+            nTrials = length(spikeCell);
+            rateCell = cellvec(nTrials);
+            timeCell = cellvec(nTrials);
+            
+            for i = 1:nTrials
+                % get time vector including pre and post padding to accomodate filter
+                tvecPad = tMinByTrial(i)-nPre:tMaxByTrial(i)+nPost+1;
+                
+                % timeCell contains time vector without padding
+                timeCell{i} = (tMinByTrial(i):tMaxByTrial(i))';
+                
                 if ~isempty(spikeCell{i})
                     countsPad = histc(spikeCell{i}, tvecPad);
-                    rates(i, :) = conv(countsPad(1:end-1), filt, 'valid');
+                    rateCell{i} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec);
+                else
+                    rateCell{i} = zeros(size(timeCell{i}));
                 end
             end
-
-            % correct from spikes/ms to spikes/s
-            rates = rates * 1000;
         end
     end
 
