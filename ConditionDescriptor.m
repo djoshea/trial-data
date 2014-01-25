@@ -742,7 +742,7 @@ classdef(ConstructOnLoad) ConditionDescriptor
             % is this attribute always numeric?
             % list of allowed values for this value (other values will be ignored)
             p.addParamValue('requestAs', '', @ischar);
-            p.addParamValue('valueList', {}, @(x) isnumeric(x) || iscell(x)); 
+            p.addParamValue('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
             p.addParamValue('valueBins', {}, @(x) isnumeric(x) || iscell(x));
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
@@ -763,7 +763,7 @@ classdef(ConstructOnLoad) ConditionDescriptor
             if isempty(valueList)
                 ci.attributeValueListsManual{iAttr} = {};
             else
-                assert(isnumeric(valueList) || iscell(valueList), 'ValueList must be numeric or cell');
+                %assert(isnumeric(valueList) || iscell(valueList), 'ValueList must be numeric or cell');
                 % filter for unique values or 
                 ci.attributeValueListsManual{iAttr} = unique(valueList, 'stable');
             %    if ~iscell(valueList)
@@ -1231,10 +1231,9 @@ classdef(ConstructOnLoad) ConditionDescriptor
             if ci.nConditions > 0
                 appearFn = ci.appearanceFn;
 
-                if isempty(appearFn)
-                    appearances = ci.defaultAppearanceFn();
-                else
-                    appearances = appearFn(ci);
+                appearances = ci.defaultAppearanceFn();
+                if ~isempty(appearFn)
+                    appearances = appearFn(ci, appearances);
                 end
             else
                 appearances = [];

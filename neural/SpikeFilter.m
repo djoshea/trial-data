@@ -84,7 +84,7 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
             % before and after each trial. tvec is the time vector that
             % indicates time along the columns.
             p = inputParser;
-            p.addParameter('timeDelta', 1, @isscalar);
+            p.addParamValue('timeDelta', 1, @isscalar);
             p.parse(varargin{:});
             
             [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);

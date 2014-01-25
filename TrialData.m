@@ -762,9 +762,9 @@ classdef TrialData
             p = inputParser;
             p.addRequired('name', @ischar);
             p.addRequired('times', @isvector);
-            p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.parse(name, times, varargin{:});
-            cd = p.Results.channelDescriptor;
+            %cd = p.Results.channelDescriptor;
             
             assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
             assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);

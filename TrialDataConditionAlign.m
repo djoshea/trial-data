@@ -78,8 +78,7 @@ classdef TrialDataConditionAlign < TrialData
     % build* methods for properties stored in odc
     methods
        function buildAlignSummary(td)
-            alignSummary = AlignSummary.buildFromConditionAlignInfo(...
-                td.conditionInfo, td.alignInfo);
+            alignSummary = AlignSummary.buildFromConditionAlignInfo(td.conditionInfo, td.alignInfo);
             
             c = td.odc;
             c.alignSummary = alignSummary;
@@ -142,11 +141,24 @@ classdef TrialDataConditionAlign < TrialData
                 td.conditionInfo = td.conditionInfo.removeAttribute(names(mask));
             end
             
-            td = dropChannels@ConditionDescriptor(td, names);
+            td = dropChannels@TrialData(td, names);
             
             % in case we lost some event channels, update the alignInfo
             td = td.applyAlignInfo();
         end
+        
+        function td = dropNonConditionAlignChannelsExcept(td, names)
+            % drop all channels except specified and param/events that could be 
+            % used for condition grouping and alignment
+            
+            if ~iscell(names)
+                names = {names};
+            end
+            
+            td.warnIfNoArgOut(nargout);
+            td = td.dropChannelsExcept([td.listEventChannels(); td.listParamChannels(); makecol(names)]);
+        end
+            
     end
 
     % ConditionInfo control
@@ -598,7 +610,7 @@ classdef TrialDataConditionAlign < TrialData
             % trials. Missing samples will be returned as NaN
             
             p = inputParser;
-            p.addParameter('timeDelta', [], @isscalar);
+            p.addParamValue('timeDelta', [], @isscalar);
             p.parse(varargin{:});
             
             timeDelta = p.Results.timeDelta;
@@ -639,7 +651,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function [rateCell, timeCell] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
-            p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -655,13 +667,13 @@ classdef TrialDataConditionAlign < TrialData
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
             [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, ...
-                tMinByTrial, tMaxByTrial, td.timeUnitsPerSec);
+                tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond);
         end
            
         function [rates, tvec] = getSpikeRateFilteredAsMatrix(td, unitName, varargin)
             p = inputParser;
-            p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
-            p.addParameter('timeDelta', 1, @isscalar);
+            p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.addParamValue('timeDelta', 1, @isscalar);
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -689,12 +701,14 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function [rateCell, tvec] = getSpikeRateFilteredAsMatrixGrouped(td, unitName, varargin)
-            [rates, tvec] = td.getSpikeRateFiltered(unitName, varargin{:});
+            [rates, tvec] = td.getSpikeRateFilteredAsMatrix(unitName, varargin{:});
             rateCell = td.groupElements(rates);
         end
         
         function [psthMatrix, tvec, semMatrix] = getSpikeRateFilteredMeanByGroup(td, unitName, varargin)
-            [rateCell, tvec] = getSpikeRateFilteredGrouped(td, unitName, varargin{:});
+            [rateCell, tvec] = getSpikeRateFilteredAsMatrixGrouped(td, unitName, varargin{:});
+            % flatten the rateCell
+            rateCell = rateCell(:);
             psthMatrix = cell2mat(cellfun(@(r) nanmean(r, 1), rateCell, 'UniformOutput', false));
             semMatrix =  cell2mat(cellfun(@(r) nansem(r, 1),  rateCell, 'UniformOutput', false));
         end

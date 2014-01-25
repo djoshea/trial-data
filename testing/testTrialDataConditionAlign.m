@@ -1,6 +1,6 @@
 if ~exist('td', 'var')
     debug('Loading test TrialData\n');
-    td = cacheLoad('testTrialData');
+    td = cacheLoad('testTrialDataWithUnits');
 end
 
 debug('Constructing TrialDataConditionAlign\n');

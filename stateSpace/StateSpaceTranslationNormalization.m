@@ -144,8 +144,8 @@ classdef StateSpaceTranslationNormalization
             p = inputParser();
             p.addRequired('translationByBasis', @isvector);
             p.addRequired('normalizationByBasis', @isvector);
-            p.addParameter('translationDescription', 'manual offset', @ischar);
-            p.addParameter('normalizationDescription', 'manual normalization', @ischar);
+            p.addParamValue('translationDescription', 'manual offset', @ischar);
+            p.addParamValue('normalizationDescription', 'manual normalization', @ischar);
             p.parse(varargin{:});
             
             obj = StateSpaceTranslationNormalization();

@@ -143,6 +143,10 @@ classdef PopulationTrajectorySet
         % basis. built by buildAlignSummary
         alignSummaryData
         
+        % nAlign x 1 cell containing an alignSummary instance for
+        % each align, aggregated over all bases
+        alignSummaryAggregated
+        
         % nBases x 1 vector of indices into alignSummaryData indicating
         % the AlignSummary instance which corresponds to each basis
         basisAlignSummaryLookup
@@ -548,6 +552,27 @@ classdef PopulationTrajectorySet
                 pset.odc.basisAlignSummaryLookup = v;
             else
                 pset.basisAlignSummaryLookupManual = v;
+            end
+        end
+        
+        function v = get.alignSummaryAggregated(pset)
+            if ~pset.dataSourceManual
+                v = pset.odc.alignSummaryAggregated;
+                if isempty(v)
+                    pset.buildAlignSummaryData();
+                    v = pset.odc.alignSummaryAggregated;
+                end
+            else
+                v = pset.alignSummaryAggregatedManual;
+            end
+        end 
+        
+        function pset = set.alignSummaryAggregated(pset, v)
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.alignSummaryAggregated = v;
+            else
+                pset.alignSummaryAggregatedManual = v;
             end
         end
         
@@ -1566,7 +1591,7 @@ classdef PopulationTrajectorySet
             for iAlign = 1:pset.nAlign
                 ad = pset.alignDescriptorSet{iAlign};
                 prog = ProgressBar(pset.nDataSources, 'Computing alignment summary statistics for align %d', iAlign);
-                for iSrc = pset.nDataSources
+                for iSrc = 1:pset.nDataSources
                     prog.update(iSrc);
                     if iAlign == 1
                         % already aligned
@@ -1660,7 +1685,11 @@ classdef PopulationTrajectorySet
         end
         
         function n = get.nBases(pset)
-            n = numel(pset.basisDataSourceIdx);
+            if pset.dataSourceManual
+                n = size(pset.dataMean{1}, 1);
+            else
+                n = numel(pset.basisDataSourceIdx);
+            end
         end
         
         function n = get.nConditions(pset)
@@ -2009,24 +2038,24 @@ classdef PopulationTrajectorySet
             p.addParamValue('basisIdx', 1:pset.nBases, @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nBases])));
             p.addParamValue('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
-                all(inRange(x, [1 pset.nCOnditions])));
+                all(inRange(x, [1 pset.nConditions])));
             % plot each basis at it's original scale or normalized to fit
             % the bands
             p.addParamValue('normalize', true, @islogical);
             % each basis starts at y = 1, 2, 3 and data is scaled to fit a
             % band with y-height scaling
-            p.addParamValue('scaling', 0.95, @isscalar);
+            p.addParamValue('scaling', 0.8, @isscalar);
             
             % usually plot first basis at top, last basis at bottom
             p.addParamValue('reverse', false, @islogical);
             
-            p.addParamValue('alignGapFraction', 0.05, @isscalar);
+            p.addParamValue('alignGapFraction', 0.02, @isscalar);
             p.addParamValue('xOffset', 0, @isscalar);
             p.addParamValue('yOffset', 0, @isscalar);
             p.addParamValue('plotArgs', {}, @iscell)
             p.parse(varargin{:});
 
-            basisIdx = intersect(p.Results.basisIdx, 1:pset.nBases);
+            basisIdx = p.Results.basisIdx;
             nBasesPlot = numel(basisIdx);
             conditionIdx = p.Results.conditionIdx;
             nConditionsPlot = numel(conditionIdx);
@@ -2039,8 +2068,10 @@ classdef PopulationTrajectorySet
             yOffset = p.Results.yOffset;
             plotArgs = p.Results.plotArgs;
             
+            timeWidthByAlign = pset.nTimeDataMean*pset.timeDelta;
+            
             % compute absolute x-gap between alignments
-            alignGap = alignGapFraction*sum(pset.nTimeDataMean) / (1 - alignGapFraction*pset.nAlign);
+            alignGap = alignGapFraction*sum(timeWidthByAlign) / (1 - alignGapFraction*pset.nAlign);
             
             for iAlign = 1:pset.nAlign
                 tvec = pset.tvecDataMean{iAlign};
@@ -2051,8 +2082,8 @@ classdef PopulationTrajectorySet
                 if normalize
                     % all data will range from 0 to 1 by row
                     mat = reshape(data, nBasesPlot, nConditionsPlot * numel(tvec));
-                    mat = bsxfun(@minus, mat, nanmin(mat, 2));
-                    mat = bsxfun(@rdivide, mat, nanmax(mat, 2));
+                    mat = bsxfun(@minus, mat, nanmin(mat, [], 2));
+                    mat = bsxfun(@rdivide, mat, nanmax(mat, [], 2));
                     data = reshape(mat, nBasesPlot, nConditionsPlot, numel(tvec));
                 else
                     % all data will range from 0 to 1, but keep the same
@@ -2061,9 +2092,8 @@ classdef PopulationTrajectorySet
                     data = data / nanmax(data(:));
                 end
                 
-                data = bsxfun(@plus, data, (nBasesPlot:-1:1)');
-                
                 data = data * scaling + yOffset;
+                data = bsxfun(@plus, data, (nBasesPlot:-1:1)');
                 
                 if reverse
                     data = flipud(data);
@@ -2076,8 +2106,10 @@ classdef PopulationTrajectorySet
                     hold on
                 end
                 
-                xOffset = xOffset + max(tvec) + alignGap;
+                xOffset = xOffset + timeWidthByAlign(iAlign) + alignGap;
             end
+            
+            box off;
         end
 
         function plotStateSpace(pset, varargin)
@@ -2085,73 +2117,67 @@ classdef PopulationTrajectorySet
             p = inputParser;
             p.addParamValue('basisIdx', 1:min(pset.nBases, 3), @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nBases])));
-            % plot alignments in separate state spaces
-            p.addParamValue('separateAlign', false, @islogical);
-            p.addParamValue('tMin', [], @isscalar);
-            p.addParamValue('tMax', [], @isscalar);
+            p.addParamValue('plotArgs', {}, @iscell)
             p.parse(varargin{:});
-
-            separateAlign = p.Results.separateAlign();
+            
             basisIdx = p.Results.basisIdx;
-            if length(basisIdx) == 2
-                use3d = false;
-            elseif length(basisIdx) == 3;
-                use3d = true;
-            else
-                error('Number of bases must be 2 or 3');
+            nBasesPlot = numel(basisIdx);
+            plotArgs = p.Results.plotArgs;
+
+            switch(nBasesPlot)
+                case 2
+                    use3d = false;
+                case 3
+                    use3d = true;
+                otherwise
+                    error('Number of bases must be 2 or 3');
             end
 
-            [data, time, tvecByAlign] = pset.getDataTimeWindowedValidAcrossBasesConditions();
-
             for iAlign = 1:pset.nAlign
-                if separateAlign %|| iAlign == 1
-                    fig();
-                end
-                timeVec = tvecByAlign{iAlign};
+                tvec = pset.tvecDataMean{iAlign};
+                data = pset.dataMean{iAlign};
 
                 for iCondition = 1:pset.nConditions
-                    dataVec1 = data{basisIdx(1), iCondition, iAlign};
-                    dataVec2 = data{basisIdx(2), iCondition, iAlign};
-
                     appear = pset.conditionDescriptor.appearances(iCondition);
-
+                    plotArgsC = appear.getPlotArgs();
+                    
+                    dataMat = squeeze(data(basisIdx, iCondition, :));
+                    
                     if use3d
-                        dataVec3 = data{basisIdx(3), iCondition, iAlign};
-                        dataMat = [dataVec1 dataVec2 dataVec3];
-                        plot3(dataVec1, dataVec2, dataVec3, ...
-                            'Color', appear.color, 'LineWidth', appear.lineWidth);
+                        plot3(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+                            plotArgsC{:}, plotArgs{:});
                     else
                         dataMat = [dataVec1 dataVec2];
-                        plot(dataVec1, dataVec2, ...
-                            'Color', appear.color, 'LineWidth', appear.lineWidth);
+                        plot(dataMat(1, :), dataMat(2, :), ...
+                            plotArgsC{:}, plotArgs{:});
                     end
 
                     hold on
-                    ti = cell2mat(pset.alignTimeInfoData(:, iCondition, iAlign));
-                    
-                    pset.alignDescriptorSet{iAlign}.drawOnData({ti}, {timeVec}, {dataMat}, ...
-                        'drawLegend', iCondition == 1);
                 end
-
-                if separateAlign || iAlign == pset.nAlign
-                    hold off
-                    box off
-                    xlabel(pset.basisNames{basisIdx(1)});
-                    ylabel(pset.basisNames{basisIdx(2)});
-                   
-                    if separateAlign
-                        title(pset.alignNames{iAlign});
-                    end
-                     if use3d
-                        zlabel(pset.basisNames{basisIdx(3)});
-                        view([-40 20]);
-                    end
+            
+                % annotate data with marks / intervals
+                for iBasis = 1:pset.nBases
+                    as = pset.alignSummaryData{pset.basisAlignSummaryLookup(iBasis), iAlign};
                     
-                    axis tight
-                    axis square
-                    axis vis3d
-                end
+                    % data is nBases x C x T
+                    % drawOnTimeseriesByConditions needs T x nBasesPlot x C
+                    dataForDraw = permute(data(basisIdx, :, :), [3 1 2]);
+                    as.drawOnTimeseriesByCondition(dataForDraw); 
+                end 
             end
+
+            box off
+            xlabel(pset.basisNames{basisIdx(1)});
+            ylabel(pset.basisNames{basisIdx(2)});
+
+             if use3d
+                zlabel(pset.basisNames{basisIdx(3)});
+                view([-40 20]);
+            end
+
+            axis tight
+            axis square
+            axis vis3d
         end
         
     end

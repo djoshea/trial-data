@@ -6,7 +6,7 @@ classdef AlignSummary
 % ConditionDescriptor objects, because they generate a separate set of
 % aggregate event occurrence statistics for each condition
 
-    properties
+    properties(SetAccess=protected)
         % AlignDescriptor object from which this was generated
         alignDescriptor
         
@@ -97,15 +97,18 @@ classdef AlignSummary
         intervalStopMinByCondition
         
         intervalStopMeanByCondition
+    
+        % these are build by initialize() 
+        labelInfo
+        intervalInfo
     end
     
     methods
         function as = AlignSummary()
-            
         end
     end
     
-    methods
+    methods % Simple dependent properties
         function n = get.nConditions(as)
             n = numel(as.nTrialsByCondition);
         end
@@ -126,6 +129,7 @@ classdef AlignSummary
             as.alignDescriptor = AlignDescriptor.fromAlignDescriptor(alignInfo);
             as.conditionDescriptor = ConditionDescriptor.fromConditionDescriptor(conditionInfo);
             
+            % request aligned, ungrouped data for start/stop/marks/intervals
             [startData, stopData] = alignInfo.getStartStopRelativeToZeroByTrial();
             markData = alignInfo.getAlignedMarkData();
             [intervalStartData, intervalStopData] = alignInfo.getAlignedIntervalData();
@@ -167,6 +171,8 @@ classdef AlignSummary
                 statsMultipleEventByCondition(intervalStartGrouped);
             [as.intervalStopMinByCondition, as.intervalStopMaxByCondition, as.intervalStopMeanByCondition] = ...
                 statsMultipleEventByCondition(intervalStopGrouped);
+            
+            as = as.initialize();
   
             function [mn, mx, avg] = statsSingleEvent(data)
                 mn = nanmin(data);
@@ -238,7 +244,7 @@ classdef AlignSummary
             as.conditionDescriptor = set(1).conditionDescriptor;
             
             % TODO could check that all alignDescriptors and
-            % conditionDescriptors are valid here, but would be slow
+            % conditionDescriptors are equivalent here, but would be slow
             
             aggNTrials = makecol([set.nTrials]); % used in nested functions below
             
@@ -292,6 +298,8 @@ classdef AlignSummary
                 aggregateMultipleEventStatsByCondition(cat(3, set.intervalStopMaxByCondition), ...
                 cat(3, set.intervalStopMinByCondition), cat(3, set.intervalStopMeanByCondition), ...
                 nTrialsByConditionMat);
+            
+            as = as.initialize();
             
             function [maxNew, minNew, meanNew] = aggregateSingleEventStats(...
                     maxData, minData, meanData, nTrialsData)
@@ -351,437 +359,301 @@ classdef AlignSummary
             end
            
         end
-       
-       function ad = updateSummary(ad)
-            % look over the timeInfo struct and compute aggregate statistics about
-            % the timing of each event relative to .zero
-            %
-            % .summaryInfo(i) looks like
-            %     .name 
-            %     .median
-            %     .mean
-            %     .list
-            return;
-            
-%             events = ad.getEventList(); 
-% 
-%             zeroTimes = [ad.timeInfo.(ad.zeroEvent)];
-% 
-%             for iEv = 1:length(events)
-%                 event = events{iEv};
-% 
-%                 times = ad.timeInfo;
-% 
-%                 evi.fixed = true;
-%                 evi.relativeMedian = ad.startOffset - ad.zeroOffset;
-%                 evi.relativeList = repmat(ad.nTrials, 1, evi.relativeMedian); 
-%                 evi.relativeMin = evi.relativeMedian;
-%                 evi.relativeMax = evi.relativeMedian;
-% 
-%                 ad.startOffset - ad.zeroOffset;
-%                 labelInfo(counter).name = ad.startLabel;
-%                 labelInfo(counter).time = ad.startOffset - ad.zeroOffset;
-%                 labelInfo(counter).align = 'left';
-%                 labelInfo(counter).info = ad.startInfo;
-%                 labelInfo(counter).markData = ad.startMarkData;
-%                 labelInfo(counter).fixed = true;
-%                 counter = counter + 1;
-%                 drewStartLabel = true;
-%             end
-        end
     end
 
-    methods % Labeling and axis drawing
-        % struct with fields .time and and .name with where to label the time axis appropriately
-        % pass along timeInfo so that the medians of non-fixed events can be labeled as well 
-        function [labelInfo] = getLabelInfo(ad, varargin)
-            % build a list of label names / times to mark on the time axis 
-            % when using this alignment. Essentially, all events which are fixed relative
-            % to zero (i.e. reference off the same event) will be included as labels
-            % also, if 'tMin' and 'tMax' are specified, they will be drawn as well provided that 
-            % the start and stop events aren't fixed relative to zero 
+    methods(Access=protected) % Builds internal properties at construction time
+        function as = initialize(as)
+            assert(nargout == 1);
+            as = as.buildLabelInfo();
+            as = as.buildIntervalInfo();
+        end
+        
+        function as = buildLabelInfo(as, varargin)
+            % build a list of events to mark on the time axis or on data by
+            % aggregating across the start, stop, zero, and marks. 
             
-            timeInfo = ad.timeInfo;  %#ok<*PROP>
-            
+            assert(nargout == 1);
+           
             % optionally provide time window which filters which labels will be included
-            tMin = [];
-            tMax = [];
-            assignargs(varargin);
+            p = inputParser();
+            p.addParamValue('timeWindow', [], @isvector);
+            p.parse(varargin{:});
+            timeWindow = p.Results.timeWindow;
 
-            labelInfo = struct('name', {}, 'time', {}, 'align', {}, 'info', {}, ...
-                'markData', {}, 'fixed', {});
+            ad = as.alignDescriptor;
+            nConditions = as.conditionDescriptor.nConditions;
+
+            info = struct('name', {}, 'time', {}, 'min', {}, 'max', {}, 'appear', {}, 'fixed', {});
             counter = 1;
 
-            drewStartLabel = false;
-
-            % label the start event / min limit
-            if ad.isStartFixedTime 
-                if ~ad.isStartZero
-                    % fixed but not redundant with zero
-                    labelInfo(counter).name = ad.startLabel;
-                    labelInfo(counter).time = ad.startOffset - ad.zeroOffset;
-                    labelInfo(counter).align = 'left';
-                    labelInfo(counter).info = ad.startInfo;
-                    labelInfo(counter).markData = ad.startMarkData;
-                    labelInfo(counter).fixed = true;
-                    counter = counter + 1;
-                    drewStartLabel = true;
-                end
-            else
-                % label at minimum time
-                labelInfo(counter).name = ad.startLabel;
-                labelInfo(counter).time = min([timeInfo.start] - [timeInfo.zero]);
-                labelInfo(counter).align = 'left';
-                labelInfo(counter).info = ad.startInfo;
-                labelInfo(counter).markData = ad.startMarkData;
-                labelInfo(counter).fixed = true;
+            % include the zero event provided that it lies within the start/stop window
+            if ad.zeroMark
+                info(counter).name = ad.zeroLabel; 
+                info(counter).time = 0;
+                info(counter).min = 0;
+                info(counter).max = 0;
+                info(counter).timeByCondition = zeros(nConditions, 1);
+                info(counter).minByCondition = zeros(nConditions, 1);
+                info(counter).maxByCondition = zeros(nConditions, 1);
+                info(counter).appear = ad.zeroAppear;
+                info(counter).fixed = true;
+                
                 counter = counter + 1;
-                drewStartLabel = true;
             end
             
-            % label the zero event provided that it lies within the start/stop window
-            if ~ad.isZeroOutsideStartStop
-                labelInfo(counter).name = ad.zeroLabel; 
-                labelInfo(counter).time = 0;
-                if drewStartLabel
-                    labelInfo(counter).align = 'center';
-                else
-                    labelInfo(counter).align = 'left';
-                end
-                labelInfo(counter).info = ad.zeroInfo;
-                labelInfo(counter).markData = ad.zeroMarkData;
-                labelInfo(counter).fixed = true;
+            % label the start event
+            if ad.startMark
+                info(counter).name = ad.startLabel;
+                info(counter).time = ad.startMean;
+                info(counter).min = ad.startMin;
+                info(counter).max = ad.startMax;
+                info(counter).timeByCondition = ad.startMeanByCondition;
+                info(counter).minByCondition = ad.startMinByCondition;
+                info(counter).maxByCondition = ad.startMaxByCondition;
+                info(counter).appear = ad.startAppear;
+                info(counter).fixed = ad.isStartFixedTime;
+                
                 counter = counter + 1;
             end
 
-            % label the stop event / max limit
-            if ad.isStopFixedTime
-                if ~ad.isStopZero
-                    % fixed but not redundant with zero
-                    labelInfo(counter).name = ad.stopLabel; 
-                    labelInfo(counter).time = ad.stopOffset - ad.zeroOffset;
-                    labelInfo(counter).align = 'right';
-                    labelInfo(counter).info = ad.stopInfo;
-                    labelInfo(counter).markData = ad.stopMarkData;
-                    labelInfo(counter).fixed = true;
-                    counter = counter + 1;
-                end
-            else
-                labelInfo(counter).name = ad.stopLabel; 
-                labelInfo(counter).time = max([timeInfo.stop] - [timeInfo.zero]);
-                labelInfo(counter).align = 'right';
-                labelInfo(counter).info = ad.stopInfo;
-                labelInfo(counter).markData = ad.stopMarkData;
-                labelInfo(counter).fixed = true;
+            % label the stop event
+            if ad.stopMark
+                info(counter).name = ad.stopLabel;
+                info(counter).time = ad.stopMean;
+                info(counter).min = ad.stopMin;
+                info(counter).max = ad.stopMax;
+                info(counter).timeByCondition = ad.stopMeanByCondition;
+                info(counter).minByCondition = ad.stopMinByCondition;
+                info(counter).maxByCondition = ad.stopMaxByCondition;
+                info(counter).appear = ad.stopAppear;
+                info(counter).fixed = ad.isStopFixedTime;
+                
                 counter = counter + 1;
             end
 
             % label each of the event marks that are fixed with respect to the zero event
-            isMarkFixed = ad.isMarkFixedTime;
-            for iMark = 1:length(ad.markEvents)
-                if isMarkFixed(iMark)
-                    % mark time is identical for each trial
-                    labelInfo(counter).name = ad.markLabels{iMark};
-                    labelInfo(counter).time = ad.markOffsets(iMark) - ad.zeroOffset;
-                    labelInfo(counter).align = 'center';
-                    labelInfo(counter).info = ad.markInfo{iMark};
-                    labelInfo(counter).fixed = true;
-                    labelInfo(counter).markData = ad.markMarkData(iMark);
-                    counter = counter + 1;
-
-                elseif ~isempty(timeInfo)
-                    % compute the median time for this mark and put it down with <brackets>
-                    % for now, mark only the first event occurrence
-                    if iscell(timeInfo(1).mark)
-                        markTimes = arrayfun(@(ti) ti.mark{iMark}(1) - ti.zero, ...
-                            timeInfo([timeInfo.valid]), 'ErrorHandler', @(varargin) NaN);
-                    else
-                        markTimes = arrayfun(@(ti) ti.mark(iMark) - ti.zero, ...
-                            timeInfo([timeInfo.valid]));
-                    end
-                    
-                    medianMarkTime = nanmedian(markTimes);
-                    minMarkTime = nanmin(markTimes);
-                    maxMarkTime = nanmax(markTimes);
-
-                    if abs(minMarkTime - medianMarkTime) <= ad.markRelativeDeltaIgnore && ...
-                       abs(maxMarkTime - medianMarkTime) <= ad.markRelativeDeltaIgnore
-                       % range acceptable, don't use < > brackets
-                       fmat = '%s';
-                       labelInfo(counter).fixed = true;
-                    else
-                       % mark median with < > brackets to indicate there is
-                       % a range
-                        if ad.markPlotMedians
-                            fmat = '<%s>';
-                            labelInfo(counter).fixed = false;
-                        else
-                            % not plotting medians, move to next mark
-                            continue;
-                        end
-                    end
-                    
-                    labelInfo(counter).name = sprintf(fmat, ad.markLabels{iMark});
-                    labelInfo(counter).time = medianMarkTime;
-                    labelInfo(counter).align = 'center';
-                    labelInfo(counter).markData = ad.markMarkData(iMark);
-                    labelInfo(counter).info = ad.markInfo{iMark};
-                    counter = counter + 1;
-                end
-            end
-                 
-            if ~isempty(tMin)
-                % start not fixed, include one for the lower limit tMin
-                % first check whether there is an existing label (from a
-                % mark) at this point already...
-                if ~any(floor([labelInfo.time]) == floor(tMin))
-                    labelInfo(counter).name = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, tMin);
-                    labelInfo(counter).time = tMin;
-                    labelInfo(counter).align = 'left';
-                    labelInfo(counter).markData = false; % this is just convenience, don't mark on data
-                    labelInfo(counter).fixed = true;
-                    counter = counter + 1;
-                    drewStartLabel = true; %#ok<NASGU>
-                end
-            end
-                     
-            if ~isempty(tMax)
-                % stop not fixed, include one for the upper limit tMin
-                % first check whether there is an existing label (from a
-                % mark) at this point already...
-                if ~any(floor([labelInfo.time]) == floor(tMax))
-                    labelInfo(counter).name = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, tMax);
-                    labelInfo(counter).time = tMax;
-                    labelInfo(counter).align = 'right';
-                    labelInfo(counter).markData = false;
-                    labelInfo(counter).fixed = true;
-                    counter = counter + 1; %#ok<NASGU>
-                end
-            end
-
-            % generate default label info where missing
-            cmap = jet(length(labelInfo));
-            for i = 1:length(labelInfo)
-                default = struct('color', cmap(i, :), 'size', 10, 'marker', 'o');
-                if isempty(labelInfo(i).info)
-                    labelInfo(i).info = default;
-                else
-                    labelInfo(i).info = structMerge(default, labelInfo(i).info, 'warnOnOverwrite', false);
-                end
+            for iMark = 1:ad.nMarks
+                % mark time is identical for each trial
+                info(counter).name = ad.markLabels{iMark};
+                info(counter).time = ad.markMean(iMark);
+                info(counter).min = ad.markMin(iMark);
+                info(counter).max = ad.markMax(iMark);
+                info(counter).timeByCondition = ad.markMeanByCondition(iMark, :)';
+                info(counter).minByCondition = ad.markMinByCondition(iMark, :)';
+                info(counter).maxByCondition = ad.markMaxByCondition(iMark, :)';
+                info(counter).fixed = ad.isMarkFixedTime(iMark);
+                
+                counter = counter + 1;
             end
             
-            times = [labelInfo.time];
-            timeMask = true(size(times));
-            if ~isempty(tMin)
-                timeMask = timeMask & times >= tMin;
+            if ~isempty(timeWindow)
+                times = [info.time];
+                timeMask = times >= timeWindow(1) & times <= timeWindow(2);
+                info = info(timeMask);
             end
-            if ~isempty(tMax)
-                timeMask = timeMask & times <= tMax;
-            end
-            labelInfo = labelInfo(timeMask);
             
-            labelInfo = makecol(labelInfo);
+            as.labelInfo = makecol(info);
         end
         
-        function [info, valid] = getIntervalInfoByCondition(ad, ciOrig, varargin)
-            % using the conditions picked out by ConditionInfo ci and the event info found in data
-            % R, compute the start and stop times for each interval defined by this AlignDescriptor
-            % 
-            % info is a nConditions x 1 cell containing a struct with the data on each
-            % of the intervals for that condition
-            %
-            % currently uses first trial from each condition's intervals,
-            % but double checks that all trials have the same number of
-            % start/stops within each interval
+        function as = buildIntervalInfo(as, varargin)
+            assert(nargout == 1);
         
-            timeInfo = ad.timeInfo;
+            ad = as.alignDescriptor;
             
-            % TODO Implement condition matching
-            valid = [timeInfo.valid];
-            ci = ciOrig.markInvalid(~valid);
-            
-            nIntervals = size(ad.intervalEventsStart,1);
-            info = struct();
+            info = struct('name', {}, 'startTime', {}, 'startMin', {}, 'startMax', {}, 'appear', {}, 'fixed', {});
              
-            for iC = 1:ci.nConditions
-                rMask = ci.listByCondition{iC};
-                info(iC).interval = cell(nIntervals, 1);
+            for iInterval = 1:ad.nIntervals
+                info(iInterval).name = ad.markLabels{iInterval};
+                info(iInterval).startTime = ad.intervalStartMean(iInterval);
+                info(iInterval).startMin = ad.intervalStartMin(iInterval);
+                info(iInterval).startMax = ad.intervalStartMax(iInterval);
+                info(iInterval).stopTime = ad.intervalStopMean(iInterval);
+                info(iInterval).stopMin = ad.intervalStopMin(iInterval);
+                info(iInterval).stopMax = ad.intervalStopMax(iInterval);
+                info(iInterval).startTimeByCondition = ad.intervalStartMeanByCondition(iInterval);
+                info(iInterval).startMinByCondition = ad.intervalStartMinByCondition(iInterval);
+                info(iInterval).startMaxByCondition = ad.intervalStartMaxByCondition(iInterval);
+                info(iInterval).stopTimeByCondition = ad.intervalStopMeanByCondition(iInterval);
+                info(iInterval).stopMinByCondition = ad.intervalStopMinByCondition(iInterval);
+                info(iInterval).stopMaxByCondition = ad.intervalStopMaxByCondition(iInterval);
                 
-                for iInt = 1:nIntervals
-                    if isempty(rMask)
-                        % no trials, fill with nan
-                        info(iC).interval{iInt} = [NaN NaN];
-                    else
-                        % check that all trials within condition have the same number
-                        % of periods for this interval
-                        nPeriods = arrayfun(@(ti) size(ti.intervalStart{iInt}, 1), timeInfo(rMask));
-                        if length(unique(nPeriods)) > 1
-                            debug('WARNING: Trials within condition have differing number of periods for interval %d\n', iInt);
-                        end
+                info(iInterval).fixed = ad.isIntervalFixedTime(iInterval);
+            end
+            
+            as.intervalInfo = info;
+        end
+    end
 
-                        % grab the interval info from the first trial
-                        info(iC).intervalStart{iInt} = timeInfo(rMask(1)).intervalStart{iInt} - timeInfo(rMask(1)).zero;
-                        info(iC).intervalStop{iInt} = timeInfo(rMask(1)).intervalStop{iInt} - timeInfo(rMask(1)).zero;
-                        
+    methods
+        function drawOnTimeseries(as, data, tvec, varargin)
+        % annotate data time-series with markers according to the labels indicated
+        % by this AlignSummary
+        %
+        % data is T x D x N matrix
+        % tvec is T x 1
+        %
+        % where
+        % D is data dimensionality, 1 or 2 or 3
+        % T is number of time points
+        % N is the number of traces to be annotated
+            p = inputParser();
+            p.addParamValue('drawLegend', false, @islogical);
+            p.parse(varargin{:});
+            drawLegend = p.Results.drawLegend;
+            
+            T = size(data, 1);
+            D = size(data, 2);
+            % N = size(data, 3);
+            assert(isvector(tvec) && numel(tvec) == T, 'tvec must be vector with length == size(data, 2)');
+            assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
+
+            hold on
+
+            nLabels = numel(as.labelInfo);
+            hleg = nan(nLabels, 1);
+            legstr = cell(nLabels, 1);
+            
+            labelTimes = [ad.labelInfo.time];
+            
+            % nLabels x D x N
+            labelPositions = interp1(tvec, data, times, 'linear');
+            
+            for iLabel = 1:nLabels
+                info = ad.labelInfo(iLabel);
+                legstr{iLabel} = info.name;
+                plotArgs = info.appear.getPlotArgs();
+                
+                if D == 1
+                    hleg(iLabel) = plot(labelTimes(1), squeeze(labelPositions(iLabel, 1, :)), ...
+                        'k.', 'MarkerSize', 10, plotArgs{:});
+                elseif D == 2
+                    hleg(iLabel) = plot(squeeze(labelPositions(iLabel, 1, :)), squeeze(labelPositions(iLabel, 2, :)), ...
+                        'k.', 'MarkerSize', 10, plotArgs{:});
+                else
+                    hleg(iLabel) = plot3(squeeze(labelPositions(iLabel, 1, :)), ...
+                        squeeze(labelPositions(iLabel, 2, :)), ...
+                        squeeze(labelPositions(iLabel, 3, :)), ...
+                        'k.', 'MarkerSize', 10, plotArgs{:});
+                end
+            end
+                
+            if drawLegend
+                legend(hleg, legstr, 'Location', 'NorthEast');
+                legend boxoff;
+            end
+        end
+        
+        function drawOnTimeseriesByCondition(as, data, tvec, varargin)
+        % annotate data time-series with markers according to the labels indicated
+        % by this AlignSummary, on a per-condition basis
+        %
+        % data is T x D x C x N matrix
+        % tvec is T x 1
+        %
+        % where
+        % D is data dimensionality, 1 or 2 or 3
+        % T is number of time points
+        % C is number of conditions
+        % N is the number of traces to be annotated
+            p = inputParser();
+            p.addParamValue('drawLegend', false, @islogical);
+            p.parse(varargin{:});
+            drawLegend = p.Results.drawLegend;
+            
+            T = size(data, 1);
+            D = size(data, 2);
+            C = size(data, 3);
+            % N = size(data, 4);
+            assert(isvector(tvec) && numel(tvec) == T, 'tvec must be vector with length == size(data, 2)');
+            assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
+            assert(C == as.alignDescriptor.nConditions, 'size(data, 3) must match nConditions');
+
+            hold on
+
+            nLabels = numel(as.labelInfo);
+            hleg = nan(nLabels, 1);
+            legstr = cell(nLabels, 1);
+            
+            for iCondiiton = 1:pset.nConditions
+                labelTimes = arrayfun(@(info) info.timeByCondition(iCondition), ad.labelInfo);
+                
+                % nLabels x D x N
+                labelPositions = interp1(tvec, squeeze(data(:, :, iCondition, :)), times, 'linear');
+                
+                for iLabel = 1:nLabels
+                    info = ad.labelInfo(iLabel);
+                    legstr{iLabel} = info.name;
+                    plotArgs = info.appear.getPlotArgs();
+                    
+                    if D == 1
+                        hleg(iLabel) = plot(labelTimes(1), squeeze(labelPositions(iLabel, 1, :)), ...
+                            'k.', 'MarkerSize', 10, plotArgs{:});
+                    elseif D == 2
+                        hleg(iLabel) = plot(squeeze(labelPositions(iLabel, 1, :)), squeeze(labelPositions(iLabel, 2, :)), ...
+                            'k.', 'MarkerSize', 10, plotArgs{:});
+                    else
+                        hleg(iLabel) = plot3(squeeze(labelPositions(iLabel, 1, :)), ...
+                            squeeze(labelPositions(iLabel, 2, :)), ...
+                            squeeze(labelPositions(iLabel, 3, :)), ...
+                            'k.', 'MarkerSize', 10, plotArgs{:});
                     end
                 end
+            end
+                
+            if drawLegend
+                legend(hleg, legstr, 'Location', 'NorthEast');
+                legend boxoff;
             end
         end
         
         % used to annotate a time axis with the relevant start/stop/zero/marks
         % non-fixed marks as <markLabel> unless the range is less than a specified 
         % noise-threshold, in which case it is marked as though it were fixed
-        function drawTimeAxis(ad, varargin)
-            timeInfo = ad.timeInfo;
+%         function drawTimeAxis(ad, varargin)
+%             timeInfo = ad.timeInfo;
+% 
+%             % uses ad.labelInfo to call drawPrettyAxis
+%             tLims = [];
+%            % xLabel = ''; 
+%             axh = [];
+%             drawY = true; % also draw the y axis while we're here? otherwise they'll be nothing there
+%             setXLim = false;
+%             assignargs(varargin);
+% 
+%             if isempty(axh)
+%                 axh = gca;
+%             end
+%             if isempty(tLims)
+%                 if setXLim
+%                     tLims = ad.getTimeAxisLims(timeInfo); %#ok<UNRCH>
+%                 else
+%                     tLims = xlim(axh);
+%                 end
+%             end
+%             tMin = tLims(1);
+%             tMax = tLims(2);
+%               
+%             labelInfo = ad.getLabelInfo(timeInfo, 'tMin', tMin, 'tMax', tMax);
+%             tickPos = [labelInfo.time];
+%             tickLabels = {labelInfo.name};
+%             tickAlignments = {labelInfo.align};
+%                      
+%             if setXLim
+%                 xlim([min(tickPos), max(tickPos)]);
+%             end
+%             
+%             if drawY
+%                 makePrettyAxis('yOnly', true); 
+%             else
+%                 axis(axh, 'off');
+%                 box(axh, 'off');
+%             end
+%             
+%             if all(~isnan(tLims))
+%                 drawAxis(tickPos, 'tickLabels', tickLabels, 'tickAlignments', tickAlignments, 'axh', axh); 
+%             end
+%         end
 
-            % uses ad.labelInfo to call drawPrettyAxis
-            tLims = [];
-           % xLabel = ''; 
-            axh = [];
-            drawY = true; % also draw the y axis while we're here? otherwise they'll be nothing there
-            setXLim = false;
-            assignargs(varargin);
-
-            if isempty(axh)
-                axh = gca;
-            end
-            if isempty(tLims)
-                if setXLim
-                    tLims = ad.getTimeAxisLims(timeInfo); %#ok<UNRCH>
-                else
-                    tLims = xlim(axh);
-                end
-            end
-            tMin = tLims(1);
-            tMax = tLims(2);
-              
-            labelInfo = ad.getLabelInfo(timeInfo, 'tMin', tMin, 'tMax', tMax);
-            tickPos = [labelInfo.time];
-            tickLabels = {labelInfo.name};
-            tickAlignments = {labelInfo.align};
-                     
-            if setXLim
-                xlim([min(tickPos), max(tickPos)]);
-            end
-            
-            if drawY
-                makePrettyAxis('yOnly', true); 
-            else
-                axis(axh, 'off');
-                box(axh, 'off');
-            end
-            
-            if all(~isnan(tLims))
-                drawAxis(tickPos, 'tickLabels', tickLabels, 'tickAlignments', tickAlignments, 'axh', axh); 
-            end
-        end
-
-        % annotate data time-series with markers according to the labels indicated
-        % by this align descriptor
-        %
-        % N is the number of traces to be annotated
-        % T is number of time points
-        % D is data dimensionality e.g. 1 or 2 or 3)
-        %
-        % the sizes of timeInfo and data may be one of the following:
-        %   one-trial per data trace:
-        %     timeInfo is N x 1 struct vec
-        %     timeData is N x T matrix or N x 1 cell of T_i vectors
-        %     data is N x T x D matrix or N x 1 cell of T_i x D matrices
-        %
-        %   many-trials per data trace:
-        %     timeInfo is N x 1 cell array of ? x 1 struct vecs 
-        %     timeData is N x T matrix or N x 1 cell of T_i vectors
-        %     data is N x T x D matrix or N x 1 cell of T_i x D matrices 
-        %     for this, the median will be computed for each data trace in timeInfo{:} and plotted accordingly
-        %     on each of the N groups of timeInfos on data(m, :, :)
-        %
-        function drawOnData(ad, timeData, data, varargin)
-            p = inputParser();
-            p.addParamValue('drawLegend', false, @islogical);
-            p.parse(varargin{:});
-            
-            timeInfo = ad.timeInfo;
-
-            hold on
-
-            N = length(timeInfo);
-            assert(isvector(timeInfo) && (isstruct(timeInfo) || iscell(timeInfo)), ...
-                'timeInfo must be struct vector or cell vector');
-            assert(iscell(data) || N == size(data, 1), 'Length of timeInfo must match size(data, 1)');
-            assert(~iscell(data) || (isvector(data) && N == length(data)), 'Data length must match timeInfo');
-            assert(iscell(timeData) || N == size(timeData, 1), 'Length of timeInfo must match size(timeData, 1)');
-            assert(~iscell(timeData) || (isvector(timeData) && N == length(timeData)), 'TimeData length must match timeInfo');
-            assert(iscell(timeData) == iscell(data), 'TimeData and Data must both be cells or both matrices');
-
-            hleg = nan(size(timeInfo));
-            legstr = cell(size(timeInfo));
-            for i = 1:length(timeInfo)
-                if iscell(timeInfo)
-                    % each time info is for a single data
-                    ti = timeInfo{i};
-                else
-                    ti = timeInfo(i);
-                end
-                labelInfo = ad.getLabelInfo(ti);
-                
-                if iscell(data)
-                    tvec = timeData{i};
-                    dmat = data{i};
-                else
-                    tvec = squeeze(timeData(i, :));
-                    dmat = squeeze(data(i, :, :));
-                end
-                
-                if ~isempty(dmat)
-                    drawOnSingle(ti, tvec, dmat, labelInfo);
-                end
-            end
-            
-            if p.Results.drawLegend
-                idx = 1;
-                for iLabel = 1:length(labelInfo)
-                    info = labelInfo(iLabel).info;
-                    if ~labelInfo(iLabel).markData
-                        continue;
-                    end
-                    hleg(idx) = plot(NaN, NaN, info.marker, 'MarkerFaceColor', info.color, ...
-                        'MarkerEdgeColor', info.color, 'MarkerSize', info.size);
-                    legstr{idx} = labelInfo(iLabel).name;
-                    idx = idx + 1;
-                end
-                
-                legend(hleg, legstr, 'Location', 'NorthEast');
-                legend boxoff;
-            end
-            
-            function drawOnSingle(timeInfo, timeVec, dmat, labelInfo)
-                % timeInfo is a struct array or single struct
-                % dmat is T x D matrix
-                nDim = size(dmat, 2);
-
-                for iLabel = 1:length(labelInfo)
-                    if ~labelInfo(iLabel).markData
-                        continue;
-                    end
-                    info = labelInfo(iLabel).info;
-                    ind = find(floor(labelInfo(iLabel).time) == floor(timeVec), 1);
-                    if isempty(ind), continue, end
-                    dvec = dmat(ind, :);
-                    extraArgs = {info.marker, 'MarkerFaceColor', info.color, ...
-                            'MarkerEdgeColor', info.color, 'MarkerSize', info.size};
-                    if nDim == 1
-                        plot(timeVec(ind), dvec(1), extraArgs{:});
-                    elseif nDim == 2
-                        plot(dvec(1), dvec(2), extraArgs{:});
-                    elseif nDim == 3
-                        plot3(dvec(1), dvec(2), dvec(3), extraArgs{:});
-                    end
-                end
-                labelInfo = struct('name', {}, 'time', {}, 'align', {}, 'info', {}, ...
-                    'markOndmat', {}, 'fixed', {});
-            end
-        end
     end
 
 end

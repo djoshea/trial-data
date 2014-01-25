@@ -6,6 +6,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         
         alignSummaryData
         basisAlignSummaryLookup
+        alignSummaryAggregated
         
         dataByTrial
         tMinForDataByTrial
@@ -44,6 +45,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         end
         
         function flushTrialAveragedData(odc)
+            odc.alignSummaryAggregated = {};
             odc.alignSummaryData = {};
             odc.basisAlignSummaryLookup = [];
             
@@ -54,6 +56,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.tMinForDataMean = [];
             odc.tMaxForDataMean = [];
             odc.nTimeDataMean = [];
+            odc.tvecDataMean = [];
 
             odc.flushRandomizedTrialAveragedData();
         end

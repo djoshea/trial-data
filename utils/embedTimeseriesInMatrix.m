@@ -35,11 +35,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p = inputParser();
     p.addRequired('dataCell', @(x) iscell(x) && isvector(x));
     p.addRequired('timeCell', @(x) iscell(x) && isvector(x));
-    p.addParameter('timeDelta', 1, @isscalar);
-    p.addParameter('timeReference', 0, @isscalar);
-    p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
-    p.addParameter('interpolate', true, @(x) islogical(x) && isscalar(x));
-    p.addParameter('interpolateMethod', 'linear', @ischar);
+    p.addParamValue('timeDelta', 1, @isscalar);
+    p.addParamValue('timeReference', 0, @isscalar);
+    p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
+    p.addParamValue('interpolate', true, @(x) islogical(x) && isscalar(x));
+    p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.parse(dataCell, timeCell, varargin{:});
 
     timeDelta = p.Results.timeDelta;

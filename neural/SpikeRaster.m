@@ -117,7 +117,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
                 def.conditionInfo = ConditionInfo.fromConditionDescriptor(def.conditionDescriptor, R);
             end
             
-            obj.conditionInfo = def.conditionInfo.freezeAppearances();
+            obj.conditionInfo = def.conditionInfo;
             
             if ~isempty(def.name)
                 obj.name = def.name;
@@ -160,25 +160,25 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             obj.spikes(emptyMask) = {[]};
             
             % update the validity mask in the time info in order for draw time axis to work correctly
-            ciValid = makecol(obj.conditionInfo.valid);
-            if ~any(ciValid)
-                warning('No valid trials found via ConditionInfo');
-            end
-            tiValid = makecol([obj.alignInfo.valid]);
-            if ~any(tiValid)
-                warning('No valid trials found via AlignDescriptor');
-            end
-            valid = ciValid & tiValid;
-            if ~any(valid)
-                warning('No valid trials found via ConditionInfo and AlignDescriptor');
-            end
-            
-            obj.valid = valid;
+%             ciValid = makecol(obj.conditionInfo.valid);
+%             if ~any(ciValid)
+%                 warning('No valid trials found via ConditionInfo');
+%             end
+%             tiValid = makecol([obj.alignInfo.valid]);
+%             if ~any(tiValid)
+%                 warning('No valid trials found via AlignDescriptor');
+%             end
+%             valid = ciValid & tiValid;
+%             if ~any(valid)
+%                 warning('No valid trials found via ConditionInfo and AlignDescriptor');
+%             end
+%             
+%             obj.valid = valid;
             
             % mark as invalid trials which do not meet the alignment descriptor's inclusion criteria
             % this ensures they will not be included when we call conditionInfo.getGroups()
-            obj.alignInfo = obj.alignInfo.markInvalid(~valid);
-            obj.conditionInfo = obj.conditionInfo.markInvalid(~obj.valid);
+            %obj.alignInfo = obj.alignInfo.markInvalid(~valid);
+            %obj.conditionInfo = obj.conditionInfo.markInvalid(~obj.valid);
         end
     end
     
@@ -1112,7 +1112,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             
             ti = obj.alignInfo.timeInfo(p.Results.trialIdx);
             
-            obj.alignInfo.drawTimeAxis(ti, 'setXLim', true);
+           % obj.alignInfo.drawTimeAxis(ti, 'setXLim', true);
         end
 
         function hLine = drawSpikesForCondition(obj, iCond, varargin)
@@ -1170,7 +1170,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             drawConditionNames = true;
             drawTimeAxis = true;
             drawTitle = true;
-            drawIntervals = true;
+            drawIntervals = false;
             intervalStartGap = 0.25; % as percent multiplier of total trial count
             intervalHeight = 1.0; % as percent multiplier of total trial count
             drawTimeScaleBar = false;
@@ -1194,7 +1194,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
                 infoByCond = obj.alignInfo.getIntervalInfoByCondition(obj.conditionInfo);
             end
             
-            tLims = obj.alignInfo.getTimeAxisLims();
+            %tLims = obj.alignInfo.getTimeAxisLims();
 
             % work from top to bottom, figure out starting position
             yStartByCondition = nan(obj.nConditions,1);
@@ -1217,7 +1217,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
             for iCond = 1:obj.nConditions;
                 if obj.nTrialsByCondition(iCond) > 0
                     obj.drawSpikesForCondition(iCond, 'yOffset', yStartByCondition(iCond), ...
-                        'axh', axh, 'rowHeight', rowHeight, 'tLims', tLims);
+                        'axh', axh, 'rowHeight', rowHeight);
                     hold on
                     if drawIntervals
                         % place above the first row of spikes
@@ -1244,7 +1244,7 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
                 title(obj.name);
             end
             
-            xlim(tLims);
+            %xlim(tLims);
             ylim([yEnd yStart]);
             
             if drawTimeScaleBar
@@ -1278,11 +1278,11 @@ classdef SpikeRaster < handle & matlab.mixin.Copyable
                     else
                         condName = '';
                     end
-                    drawAxis([yStartByCondition(iCond) mean([yStartByCondition(iCond) yEndByCondition(iCond)]) yEndByCondition(iCond)], ...
-                        'axisOrientation', 'v', ...
-                        'tickLabels', {'', condName, ''}, ...
-                        'color', obj.conditionAppearance(iCond).color, ...
-                        'labelColor', obj.conditionAppearance(iCond).color);
+%                     drawAxis([yStartByCondition(iCond) mean([yStartByCondition(iCond) yEndByCondition(iCond)]) yEndByCondition(iCond)], ...
+%                         'axisOrientation', 'v', ...
+%                         'tickLabels', {'', condName, ''}, ...
+%                         'color', obj.conditionAppearance(iCond).color, ...
+%                         'labelColor', obj.conditionAppearance(iCond).color);
                 end
             end
         end

@@ -95,6 +95,24 @@ classdef PopulationTrajectorySetBuilder
             pset = pset.initialize();
         end
         
+        function pset = fromMultipleTrialData(tdCell, channelNames)
+            pset = PopulationTrajectorySet();
+            %pset.datasetName = td.datasetName;
+            
+            nSources = numel(tdCell);
+            for i = 1:nSources
+                if ~isa(tdCell{i}, 'TrialDataConditionAlign')
+                    tdCell{i} = TrialDataConditionAlign(tdCell{i});
+                end
+            end
+            
+            pset.dataSources = makecol(tdCell);
+            pset.basisDataSourceIdx = makecol(1:nSources);
+            pset.basisDataSourceChannelNames = makecol(channelNames);
+            
+            pset = pset.initialize();
+        end
+        
         function pset = fromAnalogChannelsInTrialData(td)
             chNames = td.listAnalogChannels();
             
