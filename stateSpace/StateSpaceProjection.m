@@ -135,11 +135,7 @@ classdef StateSpaceProjection
 
             % aggregate AlignSummary data. Each projected basis samples trials from all original
             % trials, so we aggregate all AlignSummary instances into one
-            alignSummarySet = cell(1, pset.nAlign);
-            for iAlign = 1:pset.nAlign
-                alignSummarySet{iAlign} = AlignSummary.buildByAggregation(pset.alignSummaryData(:, iAlign)); 
-            end
-            b.alignSummaryData = alignSummarySet;
+            b.alignSummaryData = pset.alignSummaryAggregated';
             b.basisAlignSummaryLookup = ones(pset.nBases, 1);
             
             psetProjected = b.buildManualWithTrialAveragedData();

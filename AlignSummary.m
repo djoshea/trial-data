@@ -498,9 +498,10 @@ classdef AlignSummary
                 info(counter).time = as.markMean(iMark);
                 info(counter).min = as.markMin(iMark);
                 info(counter).max = as.markMax(iMark);
-                info(counter).timeByCondition = as.markMeanByCondition(iMark, :)';
-                info(counter).minByCondition = as.markMinByCondition(iMark, :)';
-                info(counter).maxByCondition = as.markMaxByCondition(iMark, :)';
+                info(counter).timeByCondition = as.markMeanByCondition{iMark};
+                info(counter).minByCondition = as.markMinByCondition{iMark};
+                info(counter).maxByCondition = as.markMaxByCondition{iMark};
+                info(counter).appear = ad.markAppear{iMark};
                 info(counter).fixed = ad.isMarkFixedTime(iMark);
                 
                 counter = counter + 1;
@@ -530,12 +531,12 @@ classdef AlignSummary
                 info(iInterval).stopTime = as.intervalStopMean(iInterval);
                 info(iInterval).stopMin = as.intervalStopMin(iInterval);
                 info(iInterval).stopMax = as.intervalStopMax(iInterval);
-                info(iInterval).startTimeByCondition = as.intervalStartMeanByCondition(iInterval);
-                info(iInterval).startMinByCondition = as.intervalStartMinByCondition(iInterval);
-                info(iInterval).startMaxByCondition = as.intervalStartMaxByCondition(iInterval);
-                info(iInterval).stopTimeByCondition = as.intervalStopMeanByCondition(iInterval);
-                info(iInterval).stopMinByCondition = as.intervalStopMinByCondition(iInterval);
-                info(iInterval).stopMaxByCondition = as.intervalStopMaxByCondition(iInterval);
+                info(iInterval).startTimeByCondition = as.intervalStartMeanByCondition{iInterval};
+                info(iInterval).startMinByCondition = as.intervalStartMinByCondition{iInterval};
+                info(iInterval).startMaxByCondition = as.intervalStartMaxByCondition{iInterval};
+                info(iInterval).stopTimeByCondition = as.intervalStopMeanByCondition{iInterval};
+                info(iInterval).stopMinByCondition = as.intervalStopMinByCondition{iInterval};
+                info(iInterval).stopMaxByCondition = as.intervalStopMaxByCondition{iInterval};
                 
                 info(iInterval).fixed = ad.isIntervalFixedTime(iInterval);
             end
@@ -624,9 +625,10 @@ classdef AlignSummary
             D = size(data, 2);
             C = size(data, 3);
             % N = size(data, 4);
-            assert(isvector(tvec) && numel(tvec) == T, 'tvec must be vector with length == size(data, 2)');
+           
+            assert(isvector(tvec) && numel(tvec) == T, 'Time vector must be size(data, 1)');
             assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
-            assert(C == as.alignDescriptor.nConditions, 'size(data, 3) must match nConditions');
+            assert(C == as.nConditions, 'size(data, 3) must match nConditions');
 
             hold on
 
@@ -634,28 +636,32 @@ classdef AlignSummary
             hleg = nan(nLabels, 1);
             legstr = cell(nLabels, 1);
             
-            for iCondiiton = 1:pset.nConditions
-                labelTimes = arrayfun(@(info) info.timeByCondition(iCondition), ad.labelInfo);
+            for iCondition = 1:as.nConditions
+                labelTimes = arrayfun(@(info) info.timeByCondition(iCondition), as.labelInfo);
                 
-                % nLabels x D x N
+                % labelPositions will be nLabels x D x N
                 labelPositions = interp1(tvec, squeeze(data(:, :, iCondition, :)), labelTimes, 'linear');
                 
                 for iLabel = 1:nLabels
-                    info = ad.labelInfo(iLabel);
+                    info = as.labelInfo(iLabel);
                     legstr{iLabel} = info.name;
-                    plotArgs = info.appear.getPlotArgs();
+                    if ~isempty(info.appear)
+                        plotArgs = info.appear.getPlotArgs();
+                    else
+                        plotArgs = {};
+                    end
                     
                     if D == 1
                         hleg(iLabel) = plot(labelTimes(1), squeeze(labelPositions(iLabel, 1, :)), ...
-                            'k.', 'MarkerSize', 10, plotArgs{:});
+                            'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 20, plotArgs{:});
                     elseif D == 2
                         hleg(iLabel) = plot(squeeze(labelPositions(iLabel, 1, :)), squeeze(labelPositions(iLabel, 2, :)), ...
-                            'k.', 'MarkerSize', 10, plotArgs{:});
+                            'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 20, plotArgs{:});
                     else
                         hleg(iLabel) = plot3(squeeze(labelPositions(iLabel, 1, :)), ...
                             squeeze(labelPositions(iLabel, 2, :)), ...
                             squeeze(labelPositions(iLabel, 3, :)), ...
-                            'k.', 'MarkerSize', 10, plotArgs{:});
+                            'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 20, plotArgs{:});
                     end
                 end
             end

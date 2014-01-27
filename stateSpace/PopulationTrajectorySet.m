@@ -2132,7 +2132,7 @@ classdef PopulationTrajectorySet
             end
 
             for iAlign = 1:pset.nAlign
-                %tvec = pset.tvecDataMean{iAlign};
+                tvec = pset.tvecDataMean{iAlign};
                 data = pset.dataMean{iAlign};
 
                 for iCondition = 1:pset.nConditions
@@ -2155,12 +2155,12 @@ classdef PopulationTrajectorySet
             
                 % annotate data with marks / intervals
                 for iBasis = 1:pset.nBases
-                    %as = pset.alignSummaryData{pset.basisAlignSummaryLookup(iBasis), iAlign};
+                    as = pset.alignSummaryData{pset.basisAlignSummaryLookup(iBasis), iAlign};
                     
                     % data is nBases x C x T
                     % drawOnTimeseriesByConditions needs T x nBasesPlot x C
-                    %dataForDraw = permute(data(basisIdx, :, :), [3 1 2]);
-                    %as.drawOnTimeseriesByCondition(dataForDraw); 
+                    dataForDraw = permute(data(basisIdx, :, :), [3 1 2]);
+                    as.drawOnTimeseriesByCondition(dataForDraw, tvec); 
                 end 
             end
 

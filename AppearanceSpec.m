@@ -9,6 +9,14 @@ classdef AppearanceSpec
     end
    
     methods
+        function obj = AppearanceSpec(varargin)
+            % instantiate with property value pair args
+            nArgs = floor(numel(varargin) / 2);
+            for iA = 1:nArgs
+                obj.(varargin{2*iA-1}) = varargin{2*iA};
+            end
+        end
+        
         function args = getNonEmptyArgsByName(app, argNames)
             args = {};
             for i = 1:numel(argNames)

@@ -427,6 +427,9 @@ classdef AlignDescriptor
             
             if ~isempty(p.Results.as)
                 ad.startLabel = p.Results.as;
+            else
+                % use default again
+                ad.startLabel = '';
             end
 
             ad.startAppear = p.Results.appear;
@@ -458,6 +461,9 @@ classdef AlignDescriptor
 
             if ~isempty(p.Results.as)
                 ad.stopLabel = p.Results.as;
+            else
+                % use default again
+                ad.stopLabel = '';
             end
             ad.stopAppear = p.Results.appear;
             ad.stopDefault = true;
@@ -498,6 +504,9 @@ classdef AlignDescriptor
 
             if ~isempty(p.Results.as)
                 ad.zeroLabel = p.Results.as;
+            else
+                % use default again
+                ad.zeroLabel = '';
             end
             ad.zeroAppear = p.Results.appear;
             ad.zeroDefault = true;
@@ -803,6 +812,7 @@ classdef AlignDescriptor
                 ad.zeroEvent = ad.startEvent;
                 ad.zeroEventIndex = 1;
                 ad.zeroOffset = 0;
+                ad.zeroLabel = '';
             end
         end
     end
@@ -882,10 +892,9 @@ classdef AlignDescriptor
             % now that everything has been manually parsed in a piecemeal
             % fashion, call the functions to ensure everything else gets
             % set up correctly
-            ad = ad.start(ad.startEvent, 'index', ad.startEventIndex, 'offset', ad.startOffset, 'as', ad.startLabel');
-            ad = ad.stop(ad.stopEvent, 'index', ad.stopEventIndex, 'offset', ad.stopOffset, 'as', ad.stopLabel');
-            ad = ad.zero(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset, 'as', ad.zeroLabel');
-            
+            ad = ad.start(ad.startEvent, 'index', ad.startEventIndex, 'offset', ad.startOffset);
+            ad = ad.stop(ad.stopEvent, 'index', ad.stopEventIndex, 'offset', ad.stopOffset);
+            ad = ad.zero(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset);
 
             % parse the remainder strings one by one to get after, before, mark
             while ~isempty(remain)
