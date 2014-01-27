@@ -45,9 +45,9 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         end
         
         function flushTrialAveragedData(odc)
-            odc.alignSummaryAggregated = {};
             odc.alignSummaryData = {};
             odc.basisAlignSummaryLookup = [];
+            odc.alignSummaryAggregated = {};
             
             odc.dataMean = {};
             odc.dataSem = {};

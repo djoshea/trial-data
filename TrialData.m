@@ -360,6 +360,12 @@ classdef TrialData
         end
         
         function td = dropChannels(td, names)
+            td.warnIfNoArgOut(nargout);
+            
+            if isempty(names)
+                return;
+            end
+            
             if ischar(names)
                 names = {names};
             end
@@ -462,10 +468,25 @@ classdef TrialData
             mask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
-
+        
         % used mainly by AlignInfo to make sure it can access unaligned
         % event info
-        function eventStruct = getRawEventStruct(td)
+        function eventStruct = getRawEventFlatStruct(td, chList)
+            if nargin < 2
+                chList = td.listEventChannels();
+            end
+            
+            for iCh = 1:numel(chList)
+                ch = chList{iCh};
+                if td.channelDescriptorsByName.(ch).isScalarByField(1)
+                    eventStruct.(ch) = makecol([td.data.(ch)]);
+                else
+                    eventStruct.(ch) = makecol({td.data.(ch)});
+                end
+            end
+        end 
+            
+        function eventStruct = getRawEventStructArray(td)
             eventStruct = copyStructField(td.data, [], td.listEventChannels());
         end
                 

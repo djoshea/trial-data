@@ -1,12 +1,16 @@
 classdef TrialDataConditionAlignOnDemandCache < handle & matlab.mixin.Copyable
     
     properties
-        alignSummary
+        eventCounts
+        eventData
+        alignSummarySet
     end
     
     methods
         function flush(odc)
-            odc.alignSummary = [];
+            odc.alignSummarySet = [];
+            odc.eventCounts = [];
+            odc.eventData = [];
         end
     end
     

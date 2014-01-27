@@ -400,6 +400,12 @@ classdef AlignDescriptor
                 ad.truncateBeforeEvents; ad.truncateAfterEvents; ad.invalidateEvents; ...
                 ad.markEvents; ad.intervalEventsStart; ad.intervalEventsStop]);
         end
+        
+        function assertHasEvent(ad, eventName) %#ok<INUSD>
+            % this does nothing here, but is overriden in AlignInfo to
+            % prevent post-hoc modifications that refer to non-existent
+            % events
+        end
 
         function ad = start(ad, eventName, varargin)
             ad.warnIfNoArgOut(nargout);
@@ -413,6 +419,7 @@ classdef AlignDescriptor
             p.parse(varargin{:});
             offset = p.Results.offset;
 
+            ad.assertHasEvent(eventName);
             ad.startEvent = eventName;
             ad.startEventIndex = p.Results.index;
             ad.startOffset = offset;
@@ -443,6 +450,7 @@ classdef AlignDescriptor
             p.parse(varargin{:});
             offset = p.Results.offset;
 
+            ad.assertHasEvent(eventName);
             ad.stopEvent = eventName;
             ad.stopEventIndex = p.Results.index;
             ad.stopOffset = offset;
@@ -482,6 +490,7 @@ classdef AlignDescriptor
             p.parse(varargin{:});
             offset = p.Results.offset;
 
+            ad.assertHasEvent(eventName);
             ad.zeroEvent = eventName;
             ad.zeroEventIndex = p.Results.index;
             ad.zeroOffset = offset;
@@ -529,6 +538,9 @@ classdef AlignDescriptor
             as = p.Results.as;
             %conditionMatch = p.Results.conditionMatch;
 
+            ad.assertHasEvent(eventNameStart);
+            ad.assertHasEvent(eventNameStop);
+            
             idx = ad.findInterval(eventNameStart, p.Results.indexStart, p.Results.offsetStart, ...
                 eventNameStop, p.Results.indexStop, p.Results.offsetStop);
             if ~isempty(idx)
@@ -538,14 +550,12 @@ classdef AlignDescriptor
                 iInterval = size(ad.intervalEventsStart,1)+1;
             end
             
-            
             ad.intervalEventsStart{iInterval} = eventNameStart; 
             ad.intervalEventsStop{iInterval} = eventNameStop; 
             ad.intervalEventsIndexStart{iInterval} = p.Results.indexStart;
             ad.intervalEventsIndexStop{iInterval} = p.Results.indexStop;
             ad.intervalOffsetsStart(iInterval) = p.Results.offsetStart;
             ad.intervalOffsetsStop(iInterval) = p.Results.offsetStop;
-            %ad.intervalConditionMatch{iInterval} = conditionMatch;
             ad.intervalLabelsStored{iInterval} = as;
             ad.intervalAppear{iInterval} = p.Results.appear;
             
@@ -555,7 +565,6 @@ classdef AlignDescriptor
             ad.intervalEventsIndexStop = makecol(ad.intervalEventsIndexStop);
             ad.intervalOffsetsStart = makecol(ad.intervalOffsetsStart);
             ad.intervalOffsetsStop = makecol(ad.intervalOffsetsStop);
-            ad.intervalColors = makecol(ad.intervalColors);
             ad.intervalAppear = makecol(ad.intervalAppear);
             ad.intervalLabelsStored = makecol(ad.intervalLabelsStored);
 
@@ -592,6 +601,8 @@ classdef AlignDescriptor
             else
                 index = p.Results.index;
             end
+            
+            ad.assertHasEvent(eventName);
 
             % check for existing mark which matches
             idx = ad.findMark(eventName, index, offset);
@@ -634,6 +645,8 @@ classdef AlignDescriptor
                 index = p.Results.index;
             end
 
+            ad.assertHasEvent(eventName);
+            
             ad.warnIfNoArgOut(nargout);
             ad.truncateBeforeEvents{end+1} = eventName;
             ad.truncateBeforeEventsIndex{end+1} = index;
@@ -654,6 +667,8 @@ classdef AlignDescriptor
                 index = p.Results.index;
             end
 
+            ad.assertHasEvent(eventName);
+            
             ad.warnIfNoArgOut(nargout);
             ad.truncateAfterEvents{end+1} = eventName;
             ad.truncateAfterEventsIndex{end+1} = index;
@@ -672,6 +687,8 @@ classdef AlignDescriptor
             else
                 index = p.Results.index;
             end
+            
+            ad.assertHasEvent(eventName);
 
             ad.warnIfNoArgOut(nargout);
             ad.invalidateEvents{end+1} = eventName;
@@ -702,6 +719,7 @@ classdef AlignDescriptor
         % store an abbreviation for an event name
         function ad = abbrev(ad, eventName, abbrev)
             ad.warnIfNoArgOut(nargout);
+            ad.assertHasEvent(eventName);
             ad.eventAbbrevLookup.(eventName) = abbrev;
         end
 
@@ -709,7 +727,7 @@ classdef AlignDescriptor
         % time window
         function ad = windowAroundZero(ad, tStart, tStop, varargin)
             ad.warnIfNoArgOut(nargout);
-            ad = ad.start(ad.zeroEvent, tStart); 
+            ad = ad.start(ad.zeroEvent, tStart);
             ad = ad.stop(ad.zeroEvent, tStop);
         end
         
@@ -810,6 +828,7 @@ classdef AlignDescriptor
                     [ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, ad.zeroLabel] = ...
                         ad.parseEventOffsetString(startStopZero, 'zero', 'defaultIndex', 1);
                     ad.zeroDefault = false;
+                    ad.zeroMark = true;
                     
                     % '@Event' means TrialStart:TrialEnd @ Event (align whole trial to Event), whereas
                     % 'Event' means Event:Event @ Event (single sample at Event)

@@ -6,7 +6,11 @@ classdef TrialDataConditionAlign < TrialData
         conditionInfo
         
         % AlignInfo instance
-        alignInfo
+        alignInfoSet
+
+        % for functions that operate on one align info, this index is the one which is active
+        % use .useAlign(idx) to set
+        alignInfoActiveIdx
     end
     
     % On Demand Cache handle
@@ -16,7 +20,16 @@ classdef TrialDataConditionAlign < TrialData
     
     % properties which are stored in odc, see get/set below
     properties(Transient, Dependent, SetAccess=protected)
-        alignSummary
+        % scalar struct with fields .event
+        % each field containing an nTrials x nOccurrence table of event times
+        eventData
+
+        % scalar struct with fields .event
+        % each field containing the number of occurrences of each event 
+        eventCounts
+
+        % nAlign x 1 cell of AlignSummary instances
+        alignSummarySet
     end
 
     % Properties which read through to ConditionInfo
@@ -34,6 +47,10 @@ classdef TrialDataConditionAlign < TrialData
         axisValueListsAsStrings
         
         conditionAppearanceFn
+
+        nAlign
+
+        alignInfoActive
     end
 
     % Properties which read through to AlignInfo
@@ -58,31 +75,99 @@ classdef TrialDataConditionAlign < TrialData
             td.odc = TrialDataConditionAlignOnDemandCache();
         end
     end
+
+    % Simple dependent getters
+    methods
+        function v = get.nAlign(td)
+            v = numel(td.alignInfoSet);
+        end
+    end
     
     % Get / set accessors that write through to ODC
     methods
-        function v = get.alignSummary(td)
-            v = td.odc.alignSummary;            
+        function v = get.eventData(td)
+            v = td.odc.eventData;            
             if isempty(v)
-                td.buildAlignSummary();
-                v = td.odc.alignSummary;
+                td.buildEventData();
+                v = td.odc.eventData;
             end
         end
         
-        function td = set.alignSummary(td, v)
+        function td = set.eventData(td, v)
             td.odc = td.odc.copy();
-            td.odc.alignSummary = v;
+            td.odc.eventData = v;
+        end
+
+        function v = get.eventCounts(td)
+            v = td.odc.eventCounts;            
+            if isempty(v)
+                td.buildEventData();
+                v = td.odc.eventCounts;
+            end
+        end
+        
+        function td = set.eventCounts(td, v)
+            td.odc = td.odc.copy();
+            td.odc.eventCounts = v;
+        end
+
+        function v = get.alignSummarySet(td)
+            v = td.odc.alignSummarySet;            
+            if isempty(v)
+                td.buildAlignSummarySet();
+                v = td.odc.alignSummarySet;
+            end
+        end
+        
+        function td = set.alignSummarySet(td, v)
+            td.odc = td.odc.copy();
+            td.odc.alignSummarySet = v;
         end
     end
     
     % build* methods for properties stored in odc
     methods
-       function buildAlignSummary(td)
-            alignSummary = AlignSummary.buildFromConditionAlignInfo(td.conditionInfo, td.alignInfo);
+        function buildEventData(td)
+            % build a cached version of event times into a matrix for easy alignment
+            % sets .eventData and .eventCounts
             
+            evStruct = td.getRawEventFlatStruct();
+            evList = fieldnames(evStruct);
+            nEvents = numel(evList);
+            for iE = 1:nEvents
+                ev = evList{iE};
+                times = evStruct.(ev);
+                if iscell(times)
+                    % event may happen zero, one, or multiple times
+                    % convert to nTrials x nOccur matrix
+                    counts = cellfun(@numel, times); 
+                    maxCount = max(counts);
+                    timeMat = nan(td.nTrials, maxCount);
+                    for iT = 1:td.nTrials
+                        timeMat(iT, 1:counts(iT)) = times{iT};
+                    end
+                    eventCounts.(ev) = counts;
+                    eventData.(ev) = timeMat;
+                else
+                    eventCounts.(ev) = makecol(double(~isnan(times)));
+                    eventData.(ev) = makecol(times);
+                end
+            end
+
             c = td.odc;
-            c.alignSummary = alignSummary;
-       end
+            c.eventCounts = eventCounts;
+            c.eventData = eventData;
+        end
+
+        function buildAlignSummarySet(td)
+            alignSummarySet = cell(td.nAlign, 1);
+            for i = 1:td.nAlign
+                alignSummarySet{i} = AlignSummary.buildFromConditionAlignInfo(td.conditionInfo, td.alignInfoSet{i});
+            end
+
+            c = td.odc;
+            c.alignSummarySet = alignSummarySet;
+        end
     end
     
     % General utilites
@@ -91,8 +176,10 @@ classdef TrialDataConditionAlign < TrialData
         function disp(td)
             td.printDescriptionShort();
             
-            td.alignInfo.printOneLineDescription();
             td.conditionInfo.printOneLineDescription();
+            for iA = 1:td.nAlign
+                td.alignInfoSet{1}.printOneLineDescription();
+            end
             
             fprintf('\n');
             td.printChannelInfo();
@@ -102,22 +189,32 @@ classdef TrialDataConditionAlign < TrialData
         % synchronize valid between AlignInfo and ConditionINfo
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
-            cvalid = td.conditionInfo.computedValid;
-            avalid = td.alignInfo.computedValid;
+
             if isempty(td.manualValid)
                 td.manualValid = truevec(td.nTrials);
             end
 
-            valid = td.manualValid & cvalid & avalid;
+            valid = td.buildValid();
 
             td.conditionInfo = td.conditionInfo.setInvalid(~valid);
-            td.alignInfo = td.alignInfo.setInvalid(~valid);
+            for iA = 1:td.nAlign
+                td.alignInfoSet{iA} = td.alignInfoSet{iA}.setInvalid(~valid);
+            end
         end
         
         function valid = buildValid(td)
-            valid = td.conditionInfo.valid & td.alignInfo.valid;
+            % valid is the intersection of manualValid, conditionInfo valid,
+            % and all AlignInfo valid
+            cvalid = td.conditionInfo.computedValid;
+            avalid = truevec(td.nTrials);
+            for iA = 1:td.nAlign
+                avalid = avalid & td.alignInfoSet{iA}.computedValid;
+            end
+
             if ~isempty(td.manualValid)
-                valid = valid & td.manualValid;
+                valid = td.manualValid & cvalid & avalid;
+            else
+                valid = cvalid & avalid;
             end
         end
         
@@ -125,26 +222,31 @@ classdef TrialDataConditionAlign < TrialData
             names = wrapCell(names);
             
             % check whether any of the alignInfo events and error if so
-            alignEvents = td.alignInfo.getEventList();
-            mask = ismember(names, alignEvents);
-            if any(mask)
-                error('TrialData alignment depends on event %s', ...
-                    strjoin(alignEvents(mask)));
+            for iA = 1:td.nAlign
+                alignEvents = td.alignInfoSet{iA}.getEventList();
+                mask = ismember(names, alignEvents);
+                if any(mask)
+                    error('TrialData alignment depends on event %s', ...
+                        strjoin(alignEvents(mask)));
+                end
             end
             
-            % remove from condition info
+            % check whether any of the events are in condition info
             conditionParams = td.conditionInfo.attributeNames;
             mask = ismember(names, conditionParams);
             if any(mask)
-                warning('TrialData condition depends on params %s, removing from grouping axes', ...
+                error('TrialData conditioning depends on params %s', ...
                     strjoin(conditionParams(mask)));
-                td.conditionInfo = td.conditionInfo.removeAttribute(names(mask));
             end
             
             td = dropChannels@TrialData(td, names);
             
-            % in case we lost some event channels, update the alignInfo
-            td = td.applyAlignInfo();
+            % in case we lost some event channels, update the alignInfo, 
+            % which has all of the events upfront. No need to update
+            % conditionInfo, since it receives the param data as needed and
+            % we've already checked that it isn't using any of the dropped
+            % channels
+            td = td.applyAlignInfoSet();
         end
         
         function td = dropNonConditionAlignChannelsExcept(td, names)
@@ -188,7 +290,12 @@ classdef TrialDataConditionAlign < TrialData
         function td = addEvent(td, varargin)
             td.warnIfNoArgOut(nargout);
             td = addEvent@TrialData(td, varargin{:});
-            td = td.applyAlignInfo();
+            
+            % force .eventData and .eventCounts to be recomputed
+            td.eventData = [];
+            td.eventCounts = [];
+            td = td.applyAlignInfoSet();
+            
         end
         
         function td = addChannel(td, varargin)
@@ -231,8 +338,10 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = selectTrials@TrialData(td, mask);
             td.conditionInfo = td.conditionInfo.selectTrials(mask);
-            td.alignInfo = td.alignInfo.selectTrials(mask);
-            td.alignSummary = [];
+            for i = 1:td.nAlign
+                td.alignInfoSet{i} = td.alignInfoSet{i}.selectTrials(mask);
+            end
+            td.alignSummarySet = [];
         end
         
         function td = addAttribute(td, names)
@@ -257,9 +366,17 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
-        function td = ungroup(td)
+        function td = ungroup(td) 
+            % this only undoes the grouping axes, NOT the value list
+            % filtering. use reset condition info for that
             td.warnIfNoArgOut(nargout);
             td = td.groupBy();
+        end
+        
+        function td = resetConditionInfo(td)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = [];
+            td = td.initializeConditionInfo();
         end
         
         % will undo any filtering by attribute value lists and removing
@@ -311,7 +428,7 @@ classdef TrialDataConditionAlign < TrialData
         function td = postUpdateConditionInfo(td)
             td.warnIfNoArgOut(nargout);
             td = td.updateValid();
-            td.alignSummary = [];
+            td.alignSummarySet = [];
         end
         
         % filter trials that are valid based on ConditionInfo
@@ -442,37 +559,55 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function td = initializeAlignInfo(td)
             td.warnIfNoArgOut(nargout);
-            if isempty(td.alignInfo)
-                td.alignInfo = AlignInfo();
-                td = td.applyAlignInfo();
+            if isempty(td.alignInfoSet)
+                td.alignInfoSet = {AlignInfo()};
+                td = td.applyAlignInfoSet();
+            end
+            if isempty(td.alignInfoActiveIdx)
+                td.alignInfoActiveIdx = 1;
             end
         end
         
-        function td = applyAlignInfo(td)
+        function td = applyAlignInfoSet(td)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.applyToTrialData(td);
+            for i = 1:td.nAlign
+                td.alignInfoSet{i} = td.alignInfoSet{i}.applyToTrialData(td);
+            end
             td = td.postUpdateAlignInfo();
         end
         
         function td = postUpdateAlignInfo(td)
             td.warnIfNoArgOut(nargout);
             td = td.updateValid();
-            td.alignSummary = [];
+            % cause alignsummary to be recomputed
+            td.alignSummarySet = [];
         end
 
-        function td = align(td, ad)
+        function td = align(td, varargin)
             td.warnIfNoArgOut(nargout);
-            if ischar(ad)
-                ad = AlignInfo(ad);
-            else
-                assert(isa(ad, 'AlignDescriptor'));
-                if ~isa(ad, 'AlignInfo')
-                    ad = AlignInfo.fromAlignDescriptor(ad);
+
+            adSet = cell(numel(varargin), 1);
+            for i = 1:numel(varargin)
+                ad = varargin{i};
+
+                if iscell(ad)
+                    error('Please provide alignDescriptors as successive arguments');
+                end
+                if ischar(ad)
+                    adSet{i} = AlignInfo(ad);
+                else
+                    if isa(ad, 'AlignDescriptor')
+                        % convert to AlignInfo
+                        adSet{i} = AlignInfo.fromAlignDescriptor(ad);
+                    elseif isa(ad, 'AlignInfo')
+                        adSet{i} = ad; 
+                    end
                 end
             end
 
-            td.alignInfo = ad;
-            td = td.applyAlignInfo();
+            td.alignInfoSet = adSet;
+            td.alignInfoActiveIdx = 1;
+            td = td.applyAlignInfoSet();
         end
         
         function td = unalign(td)
@@ -482,14 +617,25 @@ classdef TrialDataConditionAlign < TrialData
         
         % the following methods pass-thru to alignInfo:
         
-        function td = pad(td, varargin)
+        function td = pad(td, window)
             % add a padding window to the AlignInfo
             % may change which trials are valid
             % usage: pad([pre post]) or pad(pre, post)
             % pre > 0 means add padding before the start (typical case)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.pad(varargin{:});
-            td = td.postUpdateAlignInfo();
+            
+            updated = false;
+            for iA = 1:td.nAlign
+                if td.alignInfoSet{iA}.padPre ~= window(1) || td.alignInfoSet{iA}.padPost ~= window(2)
+                    td.alignInfoSet{iA} = td.alignInfoSet{iA}.pad(window);
+                    updated = true;
+                end
+            end
+
+            if updated
+                % to synchronize any changes in alignment validity
+                td = td.postUpdateAlignInfo();
+            end
         end
         
         function td = padForSpikeFilter(td, sf)
@@ -500,106 +646,159 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = round(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.round(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.round(varargin{:});
         end
         
         function td = noRound(td)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.noRound();
+            td.alignInfoActive = td.alignInfoActive.noRound();
         end
         
         function td = start(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.start(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.start(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = stop(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.stop(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.stop(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = zero(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.zero(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.zero(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = mark(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.mark(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.mark(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = interval(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.interval(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.interval(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = truncateBefore(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.truncateBefore(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.truncateBefore(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = truncateAfter(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.truncateAfter(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.truncateAfter(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = invalidateOverlap(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.invalidateOverlap(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.invalidateOverlap(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = setOutsideOfTrialTruncate(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.setOutsideOfTrialTruncate(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.setOutsideOfTrialTruncate(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = setOutsideOfTrialInvalidate(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.setOutsideOfTrialInvalidate(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.setOutsideOfTrialInvalidate(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         function td = setOutsideOfTrialIgnore(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfo = td.alignInfo.setOutsideOfTrialIgnore(varargin{:});
+            td.alignInfoActive = td.alignInfoActive.setOutsideOfTrialIgnore(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
         % filter trials that are valid based on AlignInfo
         function td = filterValidTrialsAlignInfo(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.selectTrials(td.alignInfo.computedValid);
+            avalid = truevec(td.nTrials);
+            for iA = 1:td.nAlign
+                avalid = avalid & td.alignInfoSet{iA}.computedValid;
+            end
+            td = td.selectTrials(avalid);
         end
         
-        % get the time window for each trial
-        function durations = getValidDurations(td)
-            durations = td.alignInfo.getValidDurationByTrial();
-        end
-        
-        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrial(td)
-            [tMinByTrial, tMaxByTrial] = td.alignInfo.getStartStopRelativeToZeroByTrial();
-        end
     end
     
     % Aligned data access via AlignInfo
     methods
+        function ad = get.alignInfoActive(td)
+            ad = td.alignInfoSet{td.alignInfoActiveIdx};
+        end
+
+        function td = set.alignInfoActive(td, ad)
+            td.alignInfoSet{td.alignInfoActiveIdx} = ad;
+        end
+
+        function td = useAlign(td, idx)
+            assert(isscalar(idx) && isnumeric(idx) && idx >= 1 && idx <= td.nAlign);
+            td.alignInfoActiveIdx = idx;
+        end
+
+        function durations = getValidDurations(td)
+            durations = td.td.alignInfoActive.getValidDurationByTrial();
+            durations(~td.valid) = NaN;
+        end
+        
+        % get the time window for each trial
+        % nTrials x nAlign
+        function durations = getValidDurationsEachAlign(td)
+            durations = nan(td.nTrials, td.nAlign);
+            for iA = 1:pset.nAlign
+                durations(:, iA) = td.alignInfoSet{iA}.getValidDurationByTrial();
+            end
+
+            durations(~td.valid, :) = NaN;
+        end
+        
+        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrial(td)
+            [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
+
+            tMinByTrial(~td.valid) = NaN;
+            tMaxByTrial(~td.valid) = NaN;
+        end
+        
+        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrialEachAlign(td)
+            [tMinByTrial, tMaxByTrial] = deal(nan(td.nTrials, td.nAlign));
+
+            for iA = 1:pset.nAlign
+                [tMinByTrial(:, iA), tMaxByTrial(:, iA)] = ...
+                    td.alignInfoSet{iA}.getStartStopRelativeToZeroByTrial();
+            end
+
+            tMinByTrial(~td.valid, :) = NaN;
+            tMaxByTrial(~td.valid, :) = NaN;
+        end
+
         function offsets = getTimeOffsetsFromZeroEachTrial(td)
-            offsets = td.alignInfo.getZeroByTrial();
+            offsets = td.alignInfoActive.getZeroByTrial();
+            offsets(~td.valid) = NaN;
+        end
+
+        function offsets = getTimeOffsetsFromZeroEachTrialEachAlign(td)
+            offsets = nan(td.nTrials, td.nAlign);
+            for iA = 1:pset.nAlign
+                offsets(:, iA) = td.alignInfoSet{iA}.getZeroByTrial();
+            end
+            offsets(~td.valid, :) = NaN;
         end
         
         % return aligned analog channel
         function [data, time] = getAnalog(td, name)
             [data, time] = getAnalog@TrialData(td, name);
-            [data, time] = td.alignInfo.getAlignedTimeseries(data, time, false);
+            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false);
         end
         
         function [mat, tvec] = getAnalogAsMatrix(td, name, varargin)
@@ -615,7 +814,7 @@ classdef TrialDataConditionAlign < TrialData
             
             timeDelta = p.Results.timeDelta;
             if isempty(timeDelta)
-                timeDelta = td.alignInfo.minTimeDelta;
+                timeDelta = td.alignInfoActive.minTimeDelta;
                 if isempty(timeDelta)
                     timeDelta = td.getAnalogTimeDelta(name);
                     warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
@@ -632,20 +831,20 @@ classdef TrialDataConditionAlign < TrialData
         % return aligned event times
         function timesCell = getEvent(td, name)
             timesCell = getEvent@TrialData(td, name);
-            timesCell = td.alignInfo.getAlignedTimes(timesCell, false);
+            timesCell = td.alignInfoActive.getAlignedTimes(timesCell, false);
         end
 
         % return aligned unit spike times
         function [timesCell] = getSpikeTimes(td, unitName)
             timesCell = getSpikeTimes@TrialData(td, unitName);
-            timesCell = td.alignInfo.getAlignedTimes(timesCell, true);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, true);
         end
     end
 
     % Spike data
     methods
         function sr = buildSpikeRaster(td, unitName)
-            sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfo);
+            sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfoActive);
             sr.useWidestCommonValidTimeWindow = false;
         end
         
@@ -660,7 +859,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.pad([sf.preWindow sf.postWindow]);
             
             spikeCell = td.getSpikeTimes(unitName);
-            timeInfo = td.alignInfo.timeInfo;
+            timeInfo = td.alignInfoActive.timeInfo;
             
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
@@ -683,7 +882,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.pad([sf.preWindow sf.postWindow]);
             
             spikeCell = td.getSpikeTimes(unitName);
-            timeInfo = td.alignInfo.timeInfo;
+            timeInfo = td.alignInfoActive.timeInfo;
             
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)

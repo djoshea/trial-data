@@ -33,17 +33,17 @@ classdef AlignSummary
         stopMax
         stopMean
        
-        % nMark x 1 cell array
+        % nMark x 1 cell array with nOccurrences x 1 vectors
         markMax
         markMin
         markMean
         
-        % nInterval x 1 cell array 
+        % nInterval x 1 cell array with nOccurrences x 1 vectors
         intervalStartMax
         intervalStartMin
         intervalStartMean
         
-        % nInterval x 1 cell array 
+        % nInterval x 1 cell array of nOccurrences x 1 vectors
         intervalStopMax
         intervalStopMin
         intervalStopMean
@@ -71,19 +71,19 @@ classdef AlignSummary
         % nConditions x 1 vector of mean stop times by condition
         stopMeanByCondition
         
-        % nConditions x nMark cell array containing the
+        % nMarks x 1 cell with nConditions x nOccurrences matrices of
         % latest occurrence time(s) of that mark event (relative to the zero event)
         markMaxByCondition
         
-        % nConditions x nMark cell array containing the
+        % nMarks x 1 cell with nConditions x nOccurrences matrices of
         % earliest occurrence time(s) of that mark event (relative to the zero event)
         markMinByCondition
         
-        % nConditions x nMark cell array containing the
+        % nMarks x 1 cell with nConditions x nOccurrences matrices of
         % mean occurrence time(s) of that mark event (relative to the zero event)
         markMeanByCondition
         
-        % nConditions x nInterval cell array containing the
+        % nMarks x 1 cell with nIntervals x nOccurrences matrices of
         % latest occurrence time of the start of each occurrence of that interval 
         % (relative to the zero event)
         intervalStartMaxByCondition
@@ -143,6 +143,17 @@ classdef AlignSummary
             [as.stopMin, as.stopMax, as.stopMean] = ...
                 statsSingleEvent(stopData);
             
+            % group the data by condition into a flattened nConditions x 1
+            % array
+            as.nTrialsByCondition = cellfun(@numel, conditionInfo.listByCondition(:));
+            [startGrouped, stopGrouped] = conditionInfo.groupElementsFlattened(startData, stopData);
+ 
+            % compute summary statistics for each condition separately
+            [as.startMinByCondition, as.startMaxByCondition, as.startMeanByCondition] = ...
+                statsSingleEventByCondition(startGrouped);
+            [as.stopMinByCondition, as.stopMaxByCondition, as.stopMeanByCondition] = ...
+                statsSingleEventByCondition(stopGrouped);
+            
             % compute summary statistics for EACH occurrence of EACH
             % mark and interval event.
             [as.markMin, as.markMax, as.markMean] = ...
@@ -152,79 +163,70 @@ classdef AlignSummary
             [as.intervalStopMin, as.intervalStopMax, as.intervalStopMean] = ...
                 statsMultipleEvent(intervalStopData);
             
-            % group the data by condition into a flattened nConditions x 1
-            % array
-            as.nTrialsByCondition = cellfun(@numel, conditionInfo.listByCondition(:));
-            [startGrouped, stopGrouped, markGrouped, ...
-                intervalStartGrouped, intervalStopGrouped] = ...
-                conditionInfo.groupElementsFlattened(startData, stopData, markData, ...
-                intervalStartData, intervalStopData);
- 
-            % compute summary statistics for each condition separately
-            [as.startMinByCondition, as.startMaxByCondition, as.startMeanByCondition] = ...
-                statsSingleEventByCondition(startGrouped);
-            [as.stopMinByCondition, as.stopMaxByCondition, as.stopMeanByCondition] = ...
-                statsSingleEventByCondition(stopGrouped);
+            % compute summary statistics for EACH occurrence of EACH
+            % mark and interval event by condition
             [as.markMinByCondition, as.markMaxByCondition, as.markMeanByCondition] = ...
-                statsMultipleEventByCondition(markGrouped);
+                statsMultipleEventByCondition(markData, conditionInfo);
             [as.intervalStartMinByCondition, as.intervalStartMaxByCondition, as.intervalStartMeanByCondition] = ...
-                statsMultipleEventByCondition(intervalStartGrouped);
+                statsMultipleEventByCondition(intervalStartData, conditionInfo);
             [as.intervalStopMinByCondition, as.intervalStopMaxByCondition, as.intervalStopMeanByCondition] = ...
-                statsMultipleEventByCondition(intervalStopGrouped);
+                statsMultipleEventByCondition(intervalStopData, conditionInfo);
             
             as = as.initialize();
   
             function [mn, mx, avg] = statsSingleEvent(data)
-                mn = nanmin(data);
-                mx = nanmax(data);
-                avg = nanmean(data);
+                if isempty(data)
+                    [mn, mx, avg] = deal(nan(size(data, 2), 1));
+                else
+                    mn = nanmin(data, [], 1)';
+                    mx = nanmax(data, [], 1)';
+                    avg = nanmean(data, 1)';
+                end
             end
             
             % internal fn to compute the min and max and mean on a simple
             % cell of vectors (scalar events)
             function [mn, mx, avg] = statsSingleEventByCondition(dataCell)
-                mn = cellfun(@nanmin, dataCell);
-                mx = cellfun(@nanmax, dataCell);
-                avg = cellfun(@nanmean, dataCell);
-            end
-                  
-            % internal fn to compute the min, max, and mean of each event
-            % in a cell of cell of vectors (i.e. multiple occurrence
-            % events)
-            function [mn, mx, avg] = statsMultipleEventByCondition(dataCellByCondition)
-                [mn, mx, avg] = deal(cell(numel(dataCellByCondition), ...
-                    size(dataCellByCondition{1}, 2)));
+                % dataCell is nConditions x 1 cell with nTrials x
+                % nOccurrences matrices
+                % mn, mx, avg are nConditions x 1 cells with nOccurrence x 1
+                % vectors
                 
-                for iC = 1:numel(dataCellByCondition)
-                    [mn(iC, :), mx(iC, :), avg(iC, :)] = ...
-                        statsMultipleEvent(dataCellByCondition{iC});
-                end
+                [mn, mx, avg] = cellfun(@statsSingleEvent, dataCell);
             end
             
             function [mn, mx, avg] = statsMultipleEvent(dataCell)
-                % dataCell is a nTrials x nDistinctEvents cell, 
-                % which contains all event times for that
-                % distinct event across the trials, the number of which
-                % could potentially vary by trial. We comptue the min, max,
-                % mean times of the 1st, 2nd, 3rd, ..., nth occurrence of
-                % that event for all trials in the cell
+                % dataCell is a nDistinctEvents (e.g. nMarks, nIntervals) cell, 
+                % each of which is an nTrials x nOccurrences
+                % mn, mx, avg are nDistinctEvents cell,
+                % each of which is an nOccurrences vectors
                 
-                nOccurrences = cellfun(@numel, dataCell);
+                [mn, mx, avg] = cellfun(@statsSingleEvent, dataCell, 'UniformOutput', false);
+            end
+
+            function [mn, mx, avg] = statsMultipleEventByCondition(dataCell, ci)
+                % dataCell is a nDistinctEvents (e.g. nMarks, nIntervals) cell, 
+                % each of which is an nTrials x nOccurrences, to be grouped
+                % into conditions by ci
+                %
+                % mn, mx, avg are nDistinctEvents cell,
+                % each of which is an nConditions x nOccurrences matrix
+                nEvents = numel(dataCell);
+                nConditions = ci.nConditions;
+                [mn, mx, avg] = deal(cell(nEvents, 1));
                 
-                % nDistinctEvents number of events to compute stats for
-                maxOccurrencesByEvent = max(nOccurrences, [], 1);
+                if nEvents == 0
+                    return;
+                end
                 
-                [mn, mx, avg] = deal(cell(size(dataCell, 2), 1));
-                for iEv = 1:size(dataCell, 2)
-                    padToLength = @(vec) [makerow(vec), ...
-                        nan(1, maxOccurrencesByEvent(iEv)-numel(vec))];
-                    % occurMat is nTrials x maxOccurrencesByEvent(iEv)
-                    occurMat = cell2mat(cellfun(padToLength, dataCell(:, iEv), ...
-                        'UniformOutput', false));
-                    
-                    mn{iEv} = nanmin(occurMat, [], 1)';
-                    mx{iEv} = nanmax(occurMat, [], 1)';
-                    avg{iEv} = nanmean(occurMat, 1)';
+                for iE = 1:nEvents
+                    nOccurrences = size(dataCell{iE}, 2);
+                    dataGrouped = ci.groupElementsFlattened(dataCell{iE});
+                    [mn{iE}, mx{iE}, avg{iE}] = deal(nan(nConditions, nOccurrences));
+                    for iC = 1:nConditions
+                        [mn{iE}(iC, :), mx{iE}(iC, :), avg{iE}(iC, :)] = ...
+                            statsSingleEvent(dataGrouped{iC});
+                    end
                 end
             end
         end
@@ -248,6 +250,7 @@ classdef AlignSummary
             
             aggNTrials = makecol([set.nTrials]); % used in nested functions below
             
+            % add up trial counts
             as.nTrials = sum(aggNTrials);
             
             [as.startMin, as.startMax, as.startMean] = ...
@@ -255,7 +258,8 @@ classdef AlignSummary
             [as.stopMin, as.stopMax, as.stopMean] = ...
                 aggregateSingleEventStats([set.stopMin], [set.stopMax], [set.stopMean], aggNTrials);
             
-            % markMax is nMarks x 1, cat(2, set.markMax) is nMarks x nSummary
+            % markMax is nMarks x 1, cat(2, set.markMax) is nMarks x
+            % nSummary cell arrays. Contents are nOccurrences x 1 vectors
             [as.markMax, as.markMin, as.markMean] = aggregateMultipleEventStats(...
                 cat(2, set.markMax), cat(2, set.markMin), ...
                 cat(2, set.markMean), aggNTrials);
@@ -268,8 +272,12 @@ classdef AlignSummary
                 cat(2, set.intervalStopMax), cat(2, set.intervalStopMin), ...
                 cat(2, set.intervalStopMean), aggNTrials);
     
-            % nConditions x nSummary matrix of trial counts
+            % nConditions x nSummary matrix of trial counts for doing
+            % proper re-weighting
             nTrialsByConditionMat = cat(2, [set.nTrialsByCondition]);
+            
+            % add up trial counts
+            as.nTrialsByCondition = sum(nTrialsByConditionMat, 2);
             
             % args are nConditions x nSummary matrices
             [as.startMinByCondition, as.startMaxByCondition, as.startMeanByCondition] = ...
@@ -282,21 +290,22 @@ classdef AlignSummary
                 cat(2, set.stopMaxByCondition), cat(2, set.stopMeanByCondition), ...
                 nTrialsByConditionMat);
             
-            % args are nConditions x nDistinctEvents (e.g. nMarks,
-            % nIntervals) x nSummary
+            % args are nDistinctEvents (e.g. nMarks, nIntervals) x
+            % nSummary cells with nCondition x nOccurrence matrices inside
+            
             [as.markMaxByCondition, as.markMinByCondition, as.markMeanByCondition] = ...
-                aggregateMultipleEventStatsByCondition(cat(3, set.markMaxByCondition), ...
-                cat(3, set.markMinByCondition), cat(3, set.markMeanByCondition), ...
+                aggregateMultipleEventStatsByCondition(cat(2, set.markMaxByCondition), ...
+                cat(2, set.markMinByCondition), cat(2, set.markMeanByCondition), ...
                 nTrialsByConditionMat);
             
             [as.intervalStartMaxByCondition, as.intervalStartMinByCondition, as.intervalStartMeanByCondition] = ...
-                aggregateMultipleEventStatsByCondition(cat(3, set.intervalStartMaxByCondition), ...
-                cat(3, set.intervalStartMinByCondition), cat(3, set.intervalStartMeanByCondition), ...
+                aggregateMultipleEventStatsByCondition(cat(2, set.intervalStartMaxByCondition), ...
+                cat(2, set.intervalStartMinByCondition), cat(2, set.intervalStartMeanByCondition), ...
                 nTrialsByConditionMat);
             
             [as.intervalStopMaxByCondition, as.intervalStopMinByCondition, as.intervalStopMeanByCondition] = ...
-                aggregateMultipleEventStatsByCondition(cat(3, set.intervalStopMaxByCondition), ...
-                cat(3, set.intervalStopMinByCondition), cat(3, set.intervalStopMeanByCondition), ...
+                aggregateMultipleEventStatsByCondition(cat(2, set.intervalStopMaxByCondition), ...
+                cat(2, set.intervalStopMinByCondition), cat(2, set.intervalStopMeanByCondition), ...
                 nTrialsByConditionMat);
             
             as = as.initialize();
@@ -320,9 +329,15 @@ classdef AlignSummary
             
             function [maxNew, minNew, meanNew] = aggregateMultipleEventStats(...
                     maxData, minData, meanData, nTrialsData)
-                % *Data and nOccurrences are nDistinctEvents x nSummary
-                % cell matrices. nTrialsData is nSummary x 1 vector
+                % max/min/meanData are nDistinctEvents x nSummary cells of
+                % nOccurrences vectors.
+                %
+                % nTrialsData is nSummary x 1 vector
+                % 
+                % max/min/meanNew are nDistinctEvents cells of nOccurrences
+                % vectors
                 nDistinctEvents = size(maxData, 1);
+                nSummary = size(maxData, 2);
                 nOccurrences = cellfun(@numel, maxData);
                 maxOccurrencesByEvent = max(nOccurrences, [], 2);
                 
@@ -342,19 +357,64 @@ classdef AlignSummary
                     % cell elements are maxOccurrencesByEvent x 1 vectors
                     maxNew{iEv} = nanmax(maxMat, [], 2);
                     minNew{iEv} = nanmin(minMat, [], 2);
-                    meanNew{iEv} = nansum(bsxfun(@times, meanMat, makerow(nTrialsData))) / sum(nTrialsData);
+                    
+                    % note that we use nanmean to compute the weighted sum
+                    % because nansum returns 0 when all are NaN
+                    meanNew{iEv} = nanmean(bsxfun(@times, meanMat, makerow(nTrialsData)), 2) / ...
+                        sum(nTrialsData / nSummary);
                 end
             end
             
             function [maxNew, minNew, meanNew] = aggregateMultipleEventStatsByCondition(...
                     maxData, minData, meanData, nTrialsData)
-                % max/min/meanData are nConditions x nMarks x nSummary cell
-                % arrays. *New are nConditions x nMarks cell arrays
-                [maxNew, minNew, meanNew] = deal(cell(size(maxData, 1), size(maxData, 2)));
-                for iC = 1:size(maxData, 1)
-                    [maxNew(iC, :), minNew(iC, :), meanNew(iC, :)] = ...
-                        aggregateMultipleEventStats(squeeze(maxData(iC, :, :)), squeeze(minData(iC, :, :)), ...
-                            squeeze(meanData(iC, :, :)), nTrialsData(iC, :));
+                % max/min/meanData are nMarks x nSummary cells with 
+                % nConditions x nOccurrence matrices inside
+                %
+                % nTrials Data is nConditions x nSummary matrix
+                %
+                % max/min/meanNew are nMarks cell arrays with 
+                % nConditions x nOccurrence matrices inside
+                
+                nDistinctEvents = size(maxData, 1);
+                nSummary = size(maxData, 2);
+                
+                % nMarks x nSummary
+                nOccurrences = cellfun(@(x) size(x, 2), maxData);
+                % nMarks x 1
+                maxOccurrencesByEvent = max(nOccurrences, [], 2);
+                
+                % nConditions x 1 x nSummary
+                nTrialsReshaped = permute(nTrialsData, [1 3 2]);
+                nTrialsTotalByCondition = sum(nTrialsData, 2);
+                
+                [maxNew, minNew, meanNew] = deal(cell(nDistinctEvents, 1));
+                
+                for iEv = 1:nDistinctEvents
+                    padToWidth = @(mat) [mat, ...
+                        nan(size(mat, 1), maxOccurrencesByEvent(iEv)-size(mat, 2))];
+                    
+                    % output of cellfun is 1 x 1 x nSummary.
+                    %   contents are nConditions x maxOccurrences.
+                    % output of cell2mat is nConditions x maxOccurrences x nSummary
+                    maxMat = cell2mat(cellfun(padToWidth, shiftdim(maxData(iEv, :), -1), ...
+                        'UniformOutput', false));
+                    minMat = cell2mat(cellfun(padToWidth, shiftdim(minData(iEv, :), -1), ...
+                        'UniformOutput', false));
+                    meanMat = cell2mat(cellfun(padToWidth, shiftdim(meanData(iEv, :), -1), ...
+                        'UniformOutput', false));
+                    
+                    % maxNew{iEv} is nConditions x maxOccurrences
+                    maxNew{iEv} = nanmax(maxMat, [], 3);
+                    minNew{iEv} = nanmin(minMat, [], 3);
+                    
+                    % meanMat is nConditions x maxOccurrences x nSummary
+                    % output of nansum is nConditions x maxOccurrences
+                    % nTrialsTotalByCondition is nConditions x 1
+                    % 
+                    % note that we use nanmean to compute the weighted sum
+                    % because nansum returns 0 when all are NaN
+                    meanNew{iEv} = bsxfun(@rdivide, nanmean(bsxfun(@times, meanMat, nTrialsReshaped), 3), ...
+                        nTrialsTotalByCondition / nSummary);
                 end
             end
            
@@ -404,12 +464,12 @@ classdef AlignSummary
             % label the start event
             if ad.startMark
                 info(counter).name = ad.startLabel;
-                info(counter).time = ad.startMean;
-                info(counter).min = ad.startMin;
-                info(counter).max = ad.startMax;
-                info(counter).timeByCondition = ad.startMeanByCondition;
-                info(counter).minByCondition = ad.startMinByCondition;
-                info(counter).maxByCondition = ad.startMaxByCondition;
+                info(counter).time = as.startMean;
+                info(counter).min = as.startMin;
+                info(counter).max = as.startMax;
+                info(counter).timeByCondition = as.startMeanByCondition;
+                info(counter).minByCondition = as.startMinByCondition;
+                info(counter).maxByCondition = as.startMaxByCondition;
                 info(counter).appear = ad.startAppear;
                 info(counter).fixed = ad.isStartFixedTime;
                 
@@ -419,12 +479,12 @@ classdef AlignSummary
             % label the stop event
             if ad.stopMark
                 info(counter).name = ad.stopLabel;
-                info(counter).time = ad.stopMean;
-                info(counter).min = ad.stopMin;
-                info(counter).max = ad.stopMax;
-                info(counter).timeByCondition = ad.stopMeanByCondition;
-                info(counter).minByCondition = ad.stopMinByCondition;
-                info(counter).maxByCondition = ad.stopMaxByCondition;
+                info(counter).time = as.stopMean;
+                info(counter).min = as.stopMin;
+                info(counter).max = as.stopMax;
+                info(counter).timeByCondition = as.stopMeanByCondition;
+                info(counter).minByCondition = as.stopMinByCondition;
+                info(counter).maxByCondition = as.stopMaxByCondition;
                 info(counter).appear = ad.stopAppear;
                 info(counter).fixed = ad.isStopFixedTime;
                 
@@ -435,12 +495,12 @@ classdef AlignSummary
             for iMark = 1:ad.nMarks
                 % mark time is identical for each trial
                 info(counter).name = ad.markLabels{iMark};
-                info(counter).time = ad.markMean(iMark);
-                info(counter).min = ad.markMin(iMark);
-                info(counter).max = ad.markMax(iMark);
-                info(counter).timeByCondition = ad.markMeanByCondition(iMark, :)';
-                info(counter).minByCondition = ad.markMinByCondition(iMark, :)';
-                info(counter).maxByCondition = ad.markMaxByCondition(iMark, :)';
+                info(counter).time = as.markMean(iMark);
+                info(counter).min = as.markMin(iMark);
+                info(counter).max = as.markMax(iMark);
+                info(counter).timeByCondition = as.markMeanByCondition(iMark, :)';
+                info(counter).minByCondition = as.markMinByCondition(iMark, :)';
+                info(counter).maxByCondition = as.markMaxByCondition(iMark, :)';
                 info(counter).fixed = ad.isMarkFixedTime(iMark);
                 
                 counter = counter + 1;
@@ -464,18 +524,18 @@ classdef AlignSummary
              
             for iInterval = 1:ad.nIntervals
                 info(iInterval).name = ad.markLabels{iInterval};
-                info(iInterval).startTime = ad.intervalStartMean(iInterval);
-                info(iInterval).startMin = ad.intervalStartMin(iInterval);
-                info(iInterval).startMax = ad.intervalStartMax(iInterval);
-                info(iInterval).stopTime = ad.intervalStopMean(iInterval);
-                info(iInterval).stopMin = ad.intervalStopMin(iInterval);
-                info(iInterval).stopMax = ad.intervalStopMax(iInterval);
-                info(iInterval).startTimeByCondition = ad.intervalStartMeanByCondition(iInterval);
-                info(iInterval).startMinByCondition = ad.intervalStartMinByCondition(iInterval);
-                info(iInterval).startMaxByCondition = ad.intervalStartMaxByCondition(iInterval);
-                info(iInterval).stopTimeByCondition = ad.intervalStopMeanByCondition(iInterval);
-                info(iInterval).stopMinByCondition = ad.intervalStopMinByCondition(iInterval);
-                info(iInterval).stopMaxByCondition = ad.intervalStopMaxByCondition(iInterval);
+                info(iInterval).startTime = as.intervalStartMean(iInterval);
+                info(iInterval).startMin = as.intervalStartMin(iInterval);
+                info(iInterval).startMax = as.intervalStartMax(iInterval);
+                info(iInterval).stopTime = as.intervalStopMean(iInterval);
+                info(iInterval).stopMin = as.intervalStopMin(iInterval);
+                info(iInterval).stopMax = as.intervalStopMax(iInterval);
+                info(iInterval).startTimeByCondition = as.intervalStartMeanByCondition(iInterval);
+                info(iInterval).startMinByCondition = as.intervalStartMinByCondition(iInterval);
+                info(iInterval).startMaxByCondition = as.intervalStartMaxByCondition(iInterval);
+                info(iInterval).stopTimeByCondition = as.intervalStopMeanByCondition(iInterval);
+                info(iInterval).stopMinByCondition = as.intervalStopMinByCondition(iInterval);
+                info(iInterval).stopMaxByCondition = as.intervalStopMaxByCondition(iInterval);
                 
                 info(iInterval).fixed = ad.isIntervalFixedTime(iInterval);
             end
@@ -516,7 +576,7 @@ classdef AlignSummary
             labelTimes = [ad.labelInfo.time];
             
             % nLabels x D x N
-            labelPositions = interp1(tvec, data, times, 'linear');
+            labelPositions = interp1(tvec, data, labelTimes, 'linear');
             
             for iLabel = 1:nLabels
                 info = ad.labelInfo(iLabel);
@@ -578,7 +638,7 @@ classdef AlignSummary
                 labelTimes = arrayfun(@(info) info.timeByCondition(iCondition), ad.labelInfo);
                 
                 % nLabels x D x N
-                labelPositions = interp1(tvec, squeeze(data(:, :, iCondition, :)), times, 'linear');
+                labelPositions = interp1(tvec, squeeze(data(:, :, iCondition, :)), labelTimes, 'linear');
                 
                 for iLabel = 1:nLabels
                     info = ad.labelInfo(iLabel);

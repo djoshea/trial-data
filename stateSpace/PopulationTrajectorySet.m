@@ -247,6 +247,7 @@ classdef PopulationTrajectorySet
         basisNamesManual
         basisUnitsManual
         alignSummaryDataManual
+        alignSummaryAggregatedManual
         basisAlignSummaryLookupManual
         dataByTrialManual
         tMinForDataByTrialManual
@@ -325,7 +326,7 @@ classdef PopulationTrajectorySet
             
             if isempty(pset.alignDescriptorSet)
                 pset.alignDescriptorSet = {AlignDescriptor()};
-                pset = pset.applyFirstAlignDescriptor();
+                pset = pset.applyAlignDescriptorSet();
             end
             
             if isempty(pset.conditionDescriptor)
@@ -1001,20 +1002,26 @@ classdef PopulationTrajectorySet
             assert(all(cellfun(@(x) isequal(class(x), 'AlignDescriptor'), ...
                 adSet)), 'Must be AlignDescriptor instance');
             
+            % pre-pad all align descriptors based on spikeFilter for speed
+            sf = pset.spikeFilter;
+            for iA = 1:numel(adSet)
+                adSet{iA} = adSet{iA}.pad([sf.preWindow sf.postWindow]);
+            end
+            
             pset.alignDescriptorSet = adSet;
             
-            pset = pset.applyFirstAlignDescriptor();
+            pset = pset.applyAlignDescriptorSet();
         end
         
-        function pset = applyFirstAlignDescriptor(pset)
+        function pset = applyAlignDescriptorSet(pset)
             pset.warnIfNoArgOut(nargout);
             
             % align all data sources to the FIRST alignDescriptor
             % since we have to hold onto one anyway
-            prog = ProgressBar(pset.nDataSources, 'Aligning data sources to first alignDescriptor');
+            prog = ProgressBar(pset.nDataSources, 'Aligning data sources to each alignDescriptor');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
-                pset.dataSources{iSrc} = pset.dataSources{iSrc}.align(pset.alignDescriptorSet{1});
+                pset.dataSources{iSrc} = pset.dataSources{iSrc}.align(pset.alignDescriptorSet{:});
             end
             prog.finish();
             
@@ -1240,38 +1247,25 @@ classdef PopulationTrajectorySet
 %             basisAlignSummaryLookup = pset.basisDataSourceIdx;
 %             alignSummaryData = cell(pset.nDataSources, pset.nAlign);
             
-            for iAlign = 1:pset.nAlign
-                if iAlign == 1
-                    % all data sources already aligned to the first
-                    % alignDescriptor
-                    aligned = pset.dataSources;
-                else
-                    % apply this alignment to each data source but hold on
-                    % to the result separately (don't store it).
-                    % also extract the alignSummary from each source now
-                    aligned = cellvec(pset.nDataSources);
-                    
-                    ad = pset.alignDescriptorSet{iAlign};
-                    for iSrc = 1:pset.nDataSources
-                        aligned{iSrc} = pset.dataSources{iSrc}.align(ad);
-                    end
-                end
+            prog = ProgressBar(pset.nBases, 'Extracting data by basis');
+            for iBasis = 1:pset.nBases
+                prog.update(iBasis);
                 
-                prog = ProgressBar(pset.nBases, 'Extracting data by basis for align %d', iAlign);
-                for iBasis = 1:pset.nBases
-                    prog.update(iBasis);
-                    
-                    % request the specified aligned analog channel from the
-                    % specified data source.
-                    src = aligned{pset.basisDataSourceIdx(iBasis)};
-                    chName = pset.basisDataSourceChannelNames{iBasis};
-                    
-                    % unapply the condition descriptor so that we can grab
-                    % all trials in this call, even the ones that would be
-                    % marked invalid by this condition info. Manually
-                    % invalid trials will still not be considered.
-                    src = src.ungroup();
-                    
+                % request the specified aligned analog channel from the
+                % specified data source.
+                src = pset.dataSources{pset.basisDataSourceIdx(iBasis)};
+                chName = pset.basisDataSourceChannelNames{iBasis};
+                
+                % unapply the condition descriptor so that we can grab
+                % all trials in this call, even the ones that would be
+                % marked invalid by this condition info. Manually
+                % invalid trials will still not be considered.
+                src = src.resetConditionInfo();
+                
+                for iAlign = 1:pset.nAlign
+                    % mark this align as active
+                    src = src.useAlign(iAlign);
+
                     % currently will request either analog trials or
                     % filtered spike rates channels
                     if src.hasAnalogChannel(chName)
@@ -1295,7 +1289,7 @@ classdef PopulationTrajectorySet
                     % will also reflect trials which are invalid based on
                     % the current conditionInfo, which we don't want to
                     % consider here.
-                    alignValidByTrial{iBasis, iAlign} = src.alignInfo.computedValid;
+                    alignValidByTrial{iBasis, iAlign} = src.alignInfoActive.computedValid;
                     
                     % also store the precise time starts and stops for EACH
                     % trial that comprises that matrix. Essential that all
@@ -1588,25 +1582,29 @@ classdef PopulationTrajectorySet
             basisAlignSummaryLookup = pset.basisDataSourceIdx;
             alignSummaryData = cell(pset.nDataSources, pset.nAlign);
             
-            for iAlign = 1:pset.nAlign
-                ad = pset.alignDescriptorSet{iAlign};
-                prog = ProgressBar(pset.nDataSources, 'Computing alignment summary statistics for align %d', iAlign);
-                for iSrc = 1:pset.nDataSources
-                    prog.update(iSrc);
-                    if iAlign == 1
-                        % already aligned
-                        alignSummaryData{iSrc, iAlign} = pset.dataSources{iSrc}.alignSummary;
-                    else
-                        % need to realign the pset temporarily
-                        alignSummaryData{iSrc, iAlign} = pset.dataSources{iSrc}.align(ad).alignSummary;
-                    end
-                end
-                prog.finish();
+            % copy the align summary data from each data source, which may
+            % take time since it is typically computed on the fly
+            prog = ProgressBar(pset.nDataSources, 'Computing alignment summary statistics by data source');
+            for iSrc = 1:pset.nDataSources
+                prog.update(iSrc);
+                alignSummaryData(iSrc, :) = pset.dataSources{iSrc}.alignSummarySet;
             end
+            prog.finish();
+            
+            % and build the aggregated data across all bases too, for each
+            % alignment
+            alignSummaryAggregated = cell(pset.nAlign, 1);
+            prog = ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
+            for iAlign = 1:pset.nAlign
+                prog.update(iAlign);
+                alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(:, iAlign));
+            end 
+            prog.finish();
             
             c = pset.odc;
             c.basisAlignSummaryLookup = basisAlignSummaryLookup;
             c.alignSummaryData = alignSummaryData;
+            c.alignSummaryAggregated = alignSummaryAggregated;
         end
     end
     
@@ -2134,7 +2132,7 @@ classdef PopulationTrajectorySet
             end
 
             for iAlign = 1:pset.nAlign
-                tvec = pset.tvecDataMean{iAlign};
+                %tvec = pset.tvecDataMean{iAlign};
                 data = pset.dataMean{iAlign};
 
                 for iCondition = 1:pset.nConditions
@@ -2157,12 +2155,12 @@ classdef PopulationTrajectorySet
             
                 % annotate data with marks / intervals
                 for iBasis = 1:pset.nBases
-                    as = pset.alignSummaryData{pset.basisAlignSummaryLookup(iBasis), iAlign};
+                    %as = pset.alignSummaryData{pset.basisAlignSummaryLookup(iBasis), iAlign};
                     
                     % data is nBases x C x T
                     % drawOnTimeseriesByConditions needs T x nBasesPlot x C
-                    dataForDraw = permute(data(basisIdx, :, :), [3 1 2]);
-                    as.drawOnTimeseriesByCondition(dataForDraw); 
+                    %dataForDraw = permute(data(basisIdx, :, :), [3 1 2]);
+                    %as.drawOnTimeseriesByCondition(dataForDraw); 
                 end 
             end
 
@@ -2322,7 +2320,7 @@ classdef PopulationTrajectorySet
             nPair = length(cFromList);
 
             % C x A cell array of T x N data points
-            [tByNEachCA timeVecByAlign] = pset.buildTByNEachCA('timeValidAcrossConditions', true);
+            [tByNEachCA, timeVecByAlign] = pset.buildTByNEachCA('timeValidAcrossConditions', true);
             timeVecByFromAlign = makecol(timeVecByAlign(1, fromAlign));
 
             % loop over pieces of the cFrom trajectories from each alignment
@@ -2430,7 +2428,7 @@ classdef PopulationTrajectorySet
             end
         end
 
-        function [distByFromAlign timeVecByFromAlign cFromList cToList] = getDistanceAlongComparisonAxis(pset, compareAcross, varargin)
+        function [distByFromAlign, timeVecByFromAlign, cFromList, cToList] = getDistanceAlongComparisonAxis(pset, compareAcross, varargin)
             p = inputParser;
             % default is to compare
             % compare from condition 1 to condition 2 instead of 2 to 1 along the axis?
@@ -2443,7 +2441,7 @@ classdef PopulationTrajectorySet
             idxCompare = pset.conditionDescriptor.compareAlong(compareAcross);
             
             nCompare = length(idxCompare); 
-            [cFromList cToList] = deal(zeros(nCompare, 1));
+            [cFromList, cToList] = deal(zeros(nCompare, 1));
             for iCompare = 1:nCompare
                 idxThisComparison = idxCompare{iCompare};
                 assert(length(idxThisComparison) == 2, 'Comparison axis must span exactly two elements');
@@ -2454,7 +2452,7 @@ classdef PopulationTrajectorySet
                 cToList(iCompare) = idxThisComparison(2);
             end
 
-            [distByFromAlign timeVecByFromAlign] = ...
+            [distByFromAlign, timeVecByFromAlign] = ...
                 pset.getDistanceBetween(cFromList, cToList, p.Unmatched);
         end
     end

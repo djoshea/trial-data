@@ -96,9 +96,9 @@ classdef StateSpaceProjection
             b.tMaxForDataMean = pset.tMaxForDataMean;
 
             % sum across bases for projection (dataNTrials is nAlign x nBases x nConditions)
-            b.dataNTrials = repmat(sum(pset.dataNTrials, 2), 1, proj.nBasesProj, 1);
+            b.dataNTrials = repmat(sum(pset.dataNTrials, 2), [1, proj.nBasesProj, 1]);
             % all across bases for validity
-            b.dataValid = repmat(all(pset.dataValid, 2), 1, proj.nBasesProj, 1);
+            b.dataValid = repmat(all(pset.dataValid, 2), [1, proj.nBasesProj, 1]);
         
             % project dataMean, leave dataSem as NaN
             [b.dataMean, b.dataSem] = deal(cell(pset.nAlign, 1));
