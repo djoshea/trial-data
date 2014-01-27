@@ -63,9 +63,6 @@ classdef TrialDataConditionAlign < TrialData
         function td = TrialDataConditionAlign(varargin)
             td = td@TrialData(varargin{:});
             td.odc = TrialDataConditionAlignOnDemandCache();
-            td = td.initializeConditionInfo();
-            td = td.initializeAlignInfo();
-            td = td.updateValid();
         end
     end
     
@@ -73,6 +70,9 @@ classdef TrialDataConditionAlign < TrialData
         function td = loadobj(td)
             td = builtin('loadobj', td);
             td.odc = TrialDataConditionAlignOnDemandCache();
+            td = td.initializeConditionInfo();
+            td = td.initializeAlignInfo();
+            td = td.updateValid();
         end
     end
 
