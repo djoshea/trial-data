@@ -1,4 +1,4 @@
-classdef(ConstructOnLoad) AlignInfo < AlignDescriptor
+classdef AlignInfo < AlignDescriptor
 % AlignInfo is a subclass of AlignDescriptor that may be bound to a set of trials
 % where the events have actual timestamps by trial.
 

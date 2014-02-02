@@ -1,4 +1,4 @@
-classdef(ConstructOnLoad) ConditionDescriptor 
+classdef ConditionDescriptor 
 % ConditionDescriptor is a static representation of a A-dimensional combinatorial
 % list of attribute values
 
@@ -85,7 +85,7 @@ classdef(ConstructOnLoad) ConditionDescriptor
     
     % END OF STORED TO DISK PROPERTIES
     
-    properties(Hidden, Transient, Access=protected)
+    properties(Hidden, Access=protected)
         odc % handle to a ConditionDescriptorOnDemandCache
     end
     
@@ -139,11 +139,7 @@ classdef(ConstructOnLoad) ConditionDescriptor
     % Constructor, load, save methods
     methods
         function ci = ConditionDescriptor()
-            ci.odc = ci.buildOdc();
-        end
-        
-        function odc = buildOdc(varargin)
-            odc = ConditionDescriptorOnDemandCache();
+            ci.odc = ConditionDescriptorOnDemandCache();
         end
     end
 
@@ -1383,6 +1379,8 @@ classdef(ConstructOnLoad) ConditionDescriptor
                 end
             end
 
+            cdNew.odc = ConditionDescriptorOnDemandCache();
+            
             cdNew = cdNew.invalidateCache();
         end
         

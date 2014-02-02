@@ -14,7 +14,7 @@ classdef TrialDataConditionAlign < TrialData
     end
     
     % On Demand Cache handle
-    properties(Transient, Access=protected)
+    properties(Access=protected)
         odc % TrialDataConditionAlignOnDemandCache instance
     end
     
@@ -63,17 +63,20 @@ classdef TrialDataConditionAlign < TrialData
         function td = TrialDataConditionAlign(varargin)
             td = td@TrialData(varargin{:});
             td.odc = TrialDataConditionAlignOnDemandCache();
-        end
-    end
-    
-    methods(Static)
-        function td = loadobj(td)
-            td = builtin('loadobj', td);
-            td.odc = TrialDataConditionAlignOnDemandCache();
             td = td.initializeConditionInfo();
             td = td.initializeAlignInfo();
             td = td.updateValid();
         end
+    end
+    
+    methods(Static)
+%         function td = loadobj(td)
+%             td = builtin('loadobj', td);
+%             td.odc = TrialDataConditionAlignOnDemandCache();
+%             td = td.initializeConditionInfo();
+%             td = td.initializeAlignInfo();
+%             td = td.updateValid();
+%         end
     end
 
     % Simple dependent getters

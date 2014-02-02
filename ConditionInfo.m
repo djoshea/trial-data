@@ -5,7 +5,7 @@
 % case is already bound to a specific set of trial data.
 %
 % NOTE: shuffling and resampling along axes affects listByCondition, but not conditionSubs
-classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
+classdef ConditionInfo < ConditionDescriptor
 
     properties(Hidden)
         % function with signature:
@@ -82,11 +82,7 @@ classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
     methods % constructor, odc build
         function ci = ConditionInfo()
             ci = ci@ConditionDescriptor(); % calls buildOdc
-        end
-             
-        function odc = buildOdc(ci) %#ok<MANU>
-            % called by ConditionDescriptor's loader
-            odc = ConditionInfoOnDemandCache();
+            ci.odc = ConditionInfoOnDemandCache();
         end
     end
 
@@ -264,11 +260,12 @@ classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
             list = ci.generateSingleRandomizedListByCondition(ci.listByConditionRaw, ci.randomSeed);
         end
         
-        % When axis randomization is applied, generate a specific number of
-        % listByCondition cells (i.e. cell tenors containing lists of trial indexes)
-        % by using successive integer random seeds. This is useful when
-        % performing statistical tests using axisRandomization techniques.
         function listCell = generateMultipleRandomizedListByCondition(ci, varargin)
+            % When axis randomization is applied, generate a specific number of
+            % listByCondition cells (i.e. cell tenors containing lists of trial indexes)
+            % by using successive integer random seeds. This is useful when
+            % performing statistical tests using axisRandomization techniques.
+            % listCell is nConditions x nSamples
             p = inputParser();
             p.addOptional('n', 100, @isscalar);
             p.addParameter('initialSeed', ci.randomSeed, @(x) isscalar(x));
@@ -285,12 +282,13 @@ classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
             
             listOriginal = ci.listByConditionRaw;
             
-            listCell = cellvec(N);
+            listCell = cell(ci.nConditions, N);
             for i = 1:N
                 if showProgress
                     prog.update(i);
                 end
-                listCell{i} = ci.generateSingleRandomizedListByCondition(listOriginal, initialSeed+i-1);
+                listTensor = ci.generateSingleRandomizedListByCondition(listOriginal, initialSeed+i-1);
+                listCell(:, i) = listTensor(:);
             end
             if showProgress
                 prog.finish();
@@ -886,6 +884,8 @@ classdef(ConstructOnLoad) ConditionInfo < ConditionDescriptor
             
             % Have conditionDescriptor copy over the important details
             ci = ConditionDescriptor.fromConditionDescriptor(cd, ci);
+            
+            ci.odc = ConditionInfoOnDemandCache();
             
             % and then apply to the trialData
             if ~isempty(p.Results.trialData)

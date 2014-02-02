@@ -12,8 +12,10 @@ classdef ProjPCA < StateSpaceProjection
     end
 
     methods
+        
         function coeff = computeProjectionCoefficients(proj, pset, varargin)
-            CTAbyN = pset.buildCTAbyN();
+            CTAbyN = pset.buildCTAbyN('conditionIdx', proj.buildFromConditionIdx);
+            
             if exist('pca', 'file') == 2
                coeff = pca(CTAbyN, 'Rows', 'complete');
             else

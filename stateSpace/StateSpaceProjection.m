@@ -10,6 +10,7 @@ classdef StateSpaceProjection
         % if true, computes the dataErrorHigh/Low for the projected bases
         % using resampling methods and the interval size from the pset
         propagateDataError = false;
+        buildFromConditionIdx % if non-empty, build from selected conditions only
     end
 
     properties(SetAccess=protected)
@@ -61,6 +62,10 @@ classdef StateSpaceProjection
             p.addRequired('pset', @(x) isa(x, 'PopulationTrajectorySet'));
             p.parse(pset, varargin{:});
 
+            if isempty(proj.buildFromConditionIdx)
+                proj.buildFromConditionIdx = truevec(pset.nConditions);
+            end
+            
             % make any necessary transformations, particularly translation / normalization
             pset = proj.preparePsetForInference(pset);
 
@@ -72,12 +77,12 @@ classdef StateSpaceProjection
             
             % results will store statistics and useful quantities related to the
             % projection
-            stats = proj.computeProjectionStatistics(pset);
+            stats = proj.computeProjectionStatistics(pset, true);
 
             proj.initialized = true;
         end
 
-        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, varargin)
+        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset)
             assert(pset.nBases == proj.nBasesSource, ...
                 'Number of bases must match in order to project');
 
@@ -139,7 +144,12 @@ classdef StateSpaceProjection
             b.basisAlignSummaryLookup = ones(pset.nBases, 1);
             
             psetProjected = b.buildManualWithTrialAveragedData();
-            stats = proj.computeProjectionStatistics(pset);
+            stats = proj.computeProjectionStatistics(pset, false);
+        end
+        
+        function [psetProjected, proj, statsBuild, statsProject] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
+            [proj, statsBuild] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
+            [psetProjected, statsProject] = proj.projectPopulationTrajectorySet(pset);
         end
     end
 
@@ -159,7 +169,7 @@ classdef StateSpaceProjection
             names = repmat({''}, pset.nBases, 1);
         end
     
-        function pset = preparePsetForInference(proj, pset) %#ok<INUSL>
+        function pset = preparePsetForInference(proj, pset) 
             % apply any appropriate translations, normalizations, or other adjustments
             % to pset before inferring coefficients for projection. The .translationNormalization
             % found in pset after this function runs will be used to normalize all psets
@@ -169,15 +179,23 @@ classdef StateSpaceProjection
             % building the StateSpaceProjection. Subclasses may wish to override this method
             % to prevent mean-subtraction or add basis normalization, if necessary
 
-            pset = pset.meanSubtractBases();
+            pset = pset.meanSubtractBases('conditionIdx', proj.buildFromConditionIdx);
         end
         
-        function s = computeProjectionStatistics(proj, pset)
+        function s = computeProjectionStatistics(proj, pset, forBuild)
+            % for buildIndicates if we are computing statistics at the time
+            % of projection building, false indicates we are simply
+            % projecting a pset with already computed coefficients.
+            
             s = StateSpaceProjectionStatistics();
             s.nBasesSource = proj.nBasesSource;
             s.nBasesProj = proj.nBasesProj;
 
-            CTAbyN = pset.buildCTAbyN();
+            if forBuild
+                CTAbyN = pset.buildCTAbyN('conditionIdx', proj.buildFromConditionIdx);
+            else
+                CTAbyN = pset.buildCTAbyN();
+            end
 
             s.covSource = nancov(CTAbyN, 1); 
             s.corrSource= corrcoef(CTAbyN, 'rows', 'complete');

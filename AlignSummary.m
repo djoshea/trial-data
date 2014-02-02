@@ -618,8 +618,15 @@ classdef AlignSummary
         % N is the number of traces to be annotated
             p = inputParser();
             p.addParamValue('drawLegend', false, @islogical);
+            p.addParamValue('conditionIdx', truevec(as.conditionDescriptor.nConditions), @isvector);
             p.parse(varargin{:});
             drawLegend = p.Results.drawLegend;
+            
+            conditionIdx = p.Results.conditionIdx;
+            if islogical(conditionIdx)
+                conditionIdx = find(conditionIdx);
+            end
+            nConditions = numel(conditionIdx);
             
             T = size(data, 1);
             D = size(data, 2);
@@ -628,7 +635,7 @@ classdef AlignSummary
            
             assert(isvector(tvec) && numel(tvec) == T, 'Time vector must be size(data, 1)');
             assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
-            assert(C == as.nConditions, 'size(data, 3) must match nConditions');
+            assert(C == nConditions, 'size(data, 3) must match nConditions specified');
 
             hold on
 
@@ -636,11 +643,15 @@ classdef AlignSummary
             hleg = nan(nLabels, 1);
             legstr = cell(nLabels, 1);
             
-            for iCondition = 1:as.nConditions
-                labelTimes = arrayfun(@(info) info.timeByCondition(iCondition), as.labelInfo);
+            % nLabels x nConditions
+            labelTimes = cat(2, as.labelInfo.timeByCondition)';
+            
+            for iCondition = 1:nConditions
+                c = conditionIdx(iCondition);
+                labelTimesThisCondition = labelTimes(:, c);
                 
                 % labelPositions will be nLabels x D x N
-                labelPositions = interp1(tvec, squeeze(data(:, :, iCondition, :)), labelTimes, 'linear');
+                labelPositions = interp1(tvec, squeeze(data(:, :, iCondition, :)), labelTimesThisCondition, 'linear');
                 
                 for iLabel = 1:nLabels
                     info = as.labelInfo(iLabel);
