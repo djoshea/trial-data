@@ -1614,38 +1614,57 @@ classdef PopulationTrajectorySet
         end
         
         function buildDataRandomized(pset)
-            seed = pset.randomSeed;
-            nRandomSamples = pset.nRandomSamples;
-            nBases = pset.nBases;
-            
-            listByConditionCell = cell(pset.nBases, pset.nConditions, pset.nRandomSamples);
-            ciByBasis = cell(nBases, 1);
-            prog = ProgressBar(pset.nBases, 'Computing randomized condition info by basis');
-            for iBasis = 1:nBases
-                prog.update(iBasis);
-                
-                src = pset.dataSources{pset.basisDataSourceIdx(iBasis)};
-                ciByBasis{iBasis} = src.conditionInfo.resampleTrialsWithinConditions();
-            end
-            prog.finish();
-            
-            prog = ProgressBar(pset.nBases, 'Computing %d randomized condition lists by basis', nRandomSamples);
-            for iBasis = 1:pset.nBases
-                ci = ciByBasis{iBasis};
-                list = shiftdim(ci.generateMultipleRandomizedListByCondition(nRandomSamples, ...
-                    'initialSeed', seed + (iBasis-1)*nRandomSamples, 'showProgress', false), -1);
-                listByConditionCell(iBasis, :, :) = list;
-                prog.update(iBasis);
-            end
-            prog.finish();
-            
-            dataMeanRandomized = pset.recomputeDataMeanUsingMultipleListByCondition(listByConditionCell);
+            dataMeanRandomized = pset.computeDataMeanResampleTrialsWithinConditions(pset.nRandomSamples);
             
             c = pset.odc;
             c.dataMeanRandomized = dataMeanRandomized;
         end
         
-        function [dataMeanRandomized] = recomputeDataMeanUsingMultipleListByCondition(pset, listByConditionCell)
+        function dataMeanRandomized = computeDataMeanResampleTrialsWithinConditions(pset, nRandomSamples, varargin)
+            seed = pset.randomSeed;
+            if isempty(nRandomSamples)
+                nRandomSamples = pset.nRandomSamples;
+            end
+            nBases = pset.nBases;
+            
+            listByConditionCell = cell(pset.nBases, pset.nConditions, pset.nRandomSamples);
+            prog = ProgressBar(pset.nBases, 'Computing resampled condition info by basis');
+            for iBasis = 1:nBases
+                prog.update(iBasis);
+                src = pset.dataSources{pset.basisDataSourceIdx(iBasis)};
+                ci = src.conditionInfo.resampleTrialsWithinConditions(varargin{:});
+                list = shiftdim(ci.generateMultipleRandomizedListByCondition(nRandomSamples, ...
+                    'initialSeed', seed + (iBasis-1)*nRandomSamples, 'showProgress', false), -1);
+                listByConditionCell(iBasis, :, :) = list;
+            end
+            prog.finish();
+            
+            dataMeanRandomized = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+        end
+        
+        function dataMeanRandomized = computeDataMeanAxisResampleFromSpecified(pset, nRandomSamples, varargin)
+            seed = pset.randomSeed;
+            if isempty(nRandomSamples)
+                nRandomSamples = pset.nRandomSamples;
+            end
+            nBases = pset.nBases;
+            
+            listByConditionCell = cell(pset.nBases, pset.nConditions, pset.nRandomSamples);
+            prog = ProgressBar(pset.nBases, 'Computing resampled from specified condition info by basis');
+            for iBasis = 1:nBases
+                prog.update(iBasis);
+                src = pset.dataSources{pset.basisDataSourceIdx(iBasis)};
+                ci = src.conditionInfo.axisResampleFromSpecified(varargin{:});
+                list = shiftdim(ci.generateMultipleRandomizedListByCondition(nRandomSamples, ...
+                    'initialSeed', seed + (iBasis-1)*nRandomSamples, 'showProgress', false), -1);
+                listByConditionCell(iBasis, :, :) = list;
+            end
+            prog.finish();
+            
+            dataMeanRandomized = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+        end
+
+        function [dataMeanRandomized] = computeDataMeanUsingMultipleListByCondition(pset, listByConditionCell)
             % a utility function for recomputing dataMean using a different
             % conditionInfo.listByCondition than the one already present in
             % the data source. This is typically used when shuffling or resampling
