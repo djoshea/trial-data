@@ -261,6 +261,10 @@ classdef ConditionDescriptor
                 end
             end
         end
+
+        function counts = get.nValuesAlongAxes(ci)
+            counts = cellfun(@numel, ci.axisValueLists); 
+        end
         
         % determine whether each attribute acts to filter valid trials
         function tf = get.attributeActsAsFilter(ci)

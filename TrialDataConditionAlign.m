@@ -181,7 +181,7 @@ classdef TrialDataConditionAlign < TrialData
             
             td.conditionInfo.printOneLineDescription();
             for iA = 1:td.nAlign
-                td.alignInfoSet{1}.printOneLineDescription();
+                td.alignInfoSet{iA}.printOneLineDescription();
             end
             
             fprintf('\n');
