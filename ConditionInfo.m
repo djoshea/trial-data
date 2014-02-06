@@ -240,8 +240,9 @@ classdef ConditionInfo < ConditionDescriptor
                     case ci.AxisShuffled
                         replace = ci.axisRandomizeWithReplacement(iA);
                         list = TensorUtils.listShuffleAlongDimension(list, iA, replace); 
-                    case ci.AxisResampleFromSpecified
-                        list = TensorUtils.listResampleFromSpecifiedAlongDimension(list, ci.axisResampleFromList{iA}, iA);
+                    case ci.AxisResampledFromSpecified
+                        replace = true; % replace must be true since we will be sampling from a different condition with a different trial count
+                        list = TensorUtils.listResampleFromSpecifiedAlongDimension(list, ci.axisRandomizeResampleFromList{iA}, iA, replace);
                     otherwise
                         error('Unknown randomize mode for axis %d', iA);
                 end

@@ -772,7 +772,6 @@ classdef TrialData
             if isempty(cd)
                 cd = ParamChannelDescriptor.buildFromValues(name, values);
             end
-            cd.name = name;
 
             td = td.addChannel(cd, {values});
         end

@@ -344,6 +344,21 @@ classdef TrialDataConditionAlign < TrialData
             for i = 1:td.nAlign
                 td.alignInfoSet{i} = td.alignInfoSet{i}.selectTrials(mask);
             end
+            
+            % select from cached event data as well
+            if ~isempty(td.odc.eventData)
+                c = td.odc.copy();
+                
+                flds = fieldnames(c.eventData);
+                for iFld = 1:numel(flds)
+                    fld = flds{iFld};
+                    c.eventData.(fld) = c.eventData.(fld)(mask, :);
+                    c.eventCounts.(fld) = c.eventCounts.(fld)(mask, :);
+                end
+                
+                td.odc = c;
+            end
+                
             td.alignSummarySet = [];
         end
         
@@ -834,7 +849,7 @@ classdef TrialDataConditionAlign < TrialData
         % return aligned event times
         function timesCell = getEvent(td, name)
             timesCell = getEvent@TrialData(td, name);
-            timesCell = td.alignInfoActive.getAlignedTimes(timesCell, false);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, false);
         end
 
         % return aligned unit spike times

@@ -154,8 +154,10 @@ classdef ConditionDescriptor
             % here we precompute these things to save time, 
             % but each of these things also has a get method that will
             % recompute this for us
-            ci.odc  = ci.odc.copy();
-            ci.odc.flush();
+            if ~isempty(ci.odc)
+                ci.odc  = ci.odc.copy();
+                ci.odc.flush();
+            end
         end
 
         function ci = set.nameFn(ci, fn)
@@ -597,9 +599,9 @@ classdef ConditionDescriptor
                 resampleFromList = num2cell(resampleFromList);
             end
 
-            assert(numel(resampleFromList) == ci.nValues, 'Resample from list must match number of values along axis');
-            ci.axisRandomizeModes(idx) = ci.AxisResampleFromSpecified;
-            ci.axisResampleFromLists{idx} = resampleFromList;
+            assert(numel(resampleFromList) == nValues, 'Resample from list must match number of values along axis');
+            ci.axisRandomizeModes(idx) = ci.AxisResampledFromSpecified;
+            ci.axisRandomizeResampleFromList{idx} = resampleFromList;
             ci.axisRandomizeWithReplacement(idx) = replace;
 
             ci = ci.invalidateCache();
@@ -1142,6 +1144,8 @@ classdef ConditionDescriptor
                 else
                     valueListByAxes{iX} = makecol(ci.axisValueListsManual{iX});
                 end
+                
+                valueListByAxes{iX} = makecol(valueListByAxes{iX}(:));
             end
 
             function values = buildAutoValueListForAttributeSet(attributes)

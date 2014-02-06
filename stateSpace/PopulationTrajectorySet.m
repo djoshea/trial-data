@@ -1425,6 +1425,7 @@ classdef PopulationTrajectorySet
                     dataValid(iAlign, iBasis, :) = nTrialsByCondition > 0;
                 end
             end
+            prog.finish();
             
             c = pset.odc;
             c.dataNTrials = dataNTrials;
@@ -1480,8 +1481,8 @@ classdef PopulationTrajectorySet
                     
                     % for each basis, align, take the widest window we can that 
                     % is valid for ANY trial for this basis, align, by condition
-                    tMinValidByBasisAlignCondition(iBasis, iAlign, :) = cellfun(@nanmin, tMinByTrialGrouped(:));
-                    tMaxValidByBasisAlignCondition(iBasis, iAlign, :) = cellfun(@nanmax, tMaxByTrialGrouped(:));
+                    tMinValidByBasisAlignCondition(iBasis, iAlign, :) = cellfun(@nanminNanEmpty, tMinByTrialGrouped(:));
+                    tMaxValidByBasisAlignCondition(iBasis, iAlign, :) = cellfun(@nanmaxNanEmpty, tMaxByTrialGrouped(:));
                 end
 
                 prog.update(iBasis);
@@ -1491,13 +1492,13 @@ classdef PopulationTrajectorySet
             % for each align/condition, compute the widest window
             % that is valid for ALL bases (there's no point in taking a
             % window wider than that, for a given align/condition)
-            tMinValidByAlignCondition = squeeze(max(tMinValidByBasisAlignCondition, [], 1));
-            tMaxValidByAlignCondition = squeeze(min(tMaxValidByBasisAlignCondition, [], 1));
+            tMinValidByAlignCondition = squeeze(nanmax(tMinValidByBasisAlignCondition, [], 1));
+            tMaxValidByAlignCondition = squeeze(nanmin(tMaxValidByBasisAlignCondition, [], 1));
             
             % for each align, comput the widest window valid for ANY
             % condition
-            tMinForDataMean = makecol(min(tMinValidByAlignCondition, [], 2));
-            tMaxForDataMean = makecol(max(tMaxValidByAlignCondition, [], 2));
+            tMinForDataMean = makecol(nanmin(tMinValidByAlignCondition, [], 2));
+            tMaxForDataMean = makecol(nanmax(tMaxValidByAlignCondition, [], 2));
             
             % number of time points for each alignment
             nTimeByAlign = arrayfun(@(mn, mx) numel(mn:pset.timeDelta:mx), ...
@@ -1596,7 +1597,7 @@ classdef PopulationTrajectorySet
                 basesMissingTrials = any(pset.dataNTrials(iAlign, :, conditionMaskWithTrials) == 0, 3)';
                 
                 if any(basesMissingTrials)
-                    warning('% bases have no valid trials for at least one condition on alignment %d for which other bases have valid trials. Use filterBasesMissingTrialsOnNonEmptyConditions to remove these', ...
+                    warning('%d bases have no valid trials for at least one condition on alignment %d for which other bases have valid trials. Use filterBasesMissingTrialsOnNonEmptyConditions to remove these', ...
                         nnz(basesMissingTrials), iAlign);
                 end
             end
@@ -1614,20 +1615,16 @@ classdef PopulationTrajectorySet
         end
         
         function buildDataRandomized(pset)
-            dataMeanRandomized = pset.computeDataMeanResampleTrialsWithinConditions(pset.nRandomSamples);
+            dataMeanRandomized = pset.computeDataMeanResampleTrialsWithinConditions(pset.nRandomSamples, pset.randomSeed);
             
             c = pset.odc;
             c.dataMeanRandomized = dataMeanRandomized;
         end
         
-        function dataMeanRandomized = computeDataMeanResampleTrialsWithinConditions(pset, nRandomSamples, varargin)
-            seed = pset.randomSeed;
-            if isempty(nRandomSamples)
-                nRandomSamples = pset.nRandomSamples;
-            end
+        function [dataMeanRandomized, nextSeed] = computeDataMeanResampleTrialsWithinConditions(pset, nRandomSamples, seed, varargin)
             nBases = pset.nBases;
             
-            listByConditionCell = cell(pset.nBases, pset.nConditions, pset.nRandomSamples);
+            listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
             prog = ProgressBar(pset.nBases, 'Computing resampled condition info by basis');
             for iBasis = 1:nBases
                 prog.update(iBasis);
@@ -1640,16 +1637,13 @@ classdef PopulationTrajectorySet
             prog.finish();
             
             dataMeanRandomized = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+            nextSeed = seed + nBases*nRandomSamples;
         end
         
-        function dataMeanRandomized = computeDataMeanAxisResampleFromSpecified(pset, nRandomSamples, varargin)
-            seed = pset.randomSeed;
-            if isempty(nRandomSamples)
-                nRandomSamples = pset.nRandomSamples;
-            end
+        function [dataMeanRandomized, nextSeed] = computeDataMeanAxisResampleFromSpecified(pset, nRandomSamples, seed, varargin)            
             nBases = pset.nBases;
             
-            listByConditionCell = cell(pset.nBases, pset.nConditions, pset.nRandomSamples);
+            listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
             prog = ProgressBar(pset.nBases, 'Computing resampled from specified condition info by basis');
             for iBasis = 1:nBases
                 prog.update(iBasis);
@@ -1662,6 +1656,7 @@ classdef PopulationTrajectorySet
             prog.finish();
             
             dataMeanRandomized = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+            nextSeed = seed + nBases * nRandomSamples;
         end
 
         function [dataMeanRandomized] = computeDataMeanUsingMultipleListByCondition(pset, listByConditionCell)
@@ -1681,7 +1676,7 @@ classdef PopulationTrajectorySet
             nBases = pset.nBases;
             nConditions = pset.nConditions;
             nTimeDataMean = pset.nTimeDataMean;
-            nRandomSamples = pset.nRandomSamples;
+            nRandomSamples = size(listByConditionCell, 3);
             minTrialsForTrialAveraging = pset.minTrialsForTrialAveraging;
             minFractionTrialsForTrialAveraging = pset.minFractionTrialsForTrialAveraging;
             T = sum(pset.nTimeDataMean);
@@ -1754,8 +1749,14 @@ classdef PopulationTrajectorySet
             prog.finish();
 
             % segregate into different alignments again
-            dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
-                pset.nTimeDataMean, nRandomSamples));
+            if nRandomSamples == 1
+                % avoid warning about trailing singleton dimensions
+                dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
+                pset.nTimeDataMean));
+            else
+                dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
+                    pset.nTimeDataMean, nRandomSamples));
+            end
         end
         
         function buildDataRandomizedIntervals(pset)
