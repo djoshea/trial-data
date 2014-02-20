@@ -68,6 +68,10 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
     end
     
     methods(Static)
+        function cd = buildFromUnitName(name)
+            cd = SpikeChannelDescriptor(name);
+        end
+
         function cd = buildFromUnitStr(unitName)
             name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
             cd = SpikeChannelDescriptor(name);
