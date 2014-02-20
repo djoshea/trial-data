@@ -48,8 +48,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             nPre = sf.preWindow;
             nPost = sf.postWindow;
 
-            tMinByTrial = tWindowByTrial(:, 1);
-            tMaxByTrial = tWindowByTrial(:, 2);
+            tMinByTrial = floor(tWindowByTrial(:, 1));
+            tMaxByTrial = floor(tWindowByTrial(:, 2));
 
             % filter via valid convolution, which automatically removes the padding
             nTrials = length(spikeCell);

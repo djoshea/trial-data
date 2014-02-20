@@ -48,6 +48,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     interpolate = p.Results.interpolate;
     interpolateMethod = p.Results.interpolateMethod;
     
+    szData = cellfun(@numel, dataCell);
+    szTime = cellfun(@numel, timeCell);
+    
+    assert(all(szData == szTime), 'Sizes of dataCell and timeCell contents must match');
+    
     if fixDuplicateTimes
         [dataCell, timeCell] = cellfun(@fix, dataCell, timeCell, 'UniformOutput', false);
     end

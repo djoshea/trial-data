@@ -87,7 +87,7 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
             p.addParamValue('timeDelta', 1, @isscalar);
             p.parse(varargin{:});
             
-            [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
+            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
             
             % convert to matrix
             [rates, tvec] = embedTimeseriesInMatrix(rateCell, timeCell, ...

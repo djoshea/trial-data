@@ -644,6 +644,9 @@ classdef AlignSummary
             legstr = cell(nLabels, 1);
             
             % nLabels x nConditions
+            if isempty(as.labelInfo)
+                return;
+            end
             labelTimes = cat(2, as.labelInfo.timeByCondition)';
             
             for iCondition = 1:nConditions
