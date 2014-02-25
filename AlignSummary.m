@@ -431,6 +431,8 @@ classdef AlignSummary
         function as = buildLabelInfo(as, varargin)
             % build a list of events to mark on the time axis or on data by
             % aggregating across the start, stop, zero, and marks. 
+            % each mark will be expanded so that one label will be
+            % generated for each mark
             
             assert(nargout == 1);
            
@@ -493,18 +495,20 @@ classdef AlignSummary
 
             % label each of the event marks that are fixed with respect to the zero event
             for iMark = 1:ad.nMarks
-                % mark time is identical for each trial
-                info(counter).name = ad.markLabels{iMark};
-                info(counter).time = as.markMean(iMark);
-                info(counter).min = as.markMin(iMark);
-                info(counter).max = as.markMax(iMark);
-                info(counter).timeByCondition = as.markMeanByCondition{iMark};
-                info(counter).minByCondition = as.markMinByCondition{iMark};
-                info(counter).maxByCondition = as.markMaxByCondition{iMark};
-                info(counter).appear = ad.markAppear{iMark};
-                info(counter).fixed = ad.isMarkFixedTime(iMark);
+                % loop over each occurrence of the mark
+                for iOccur = 1:numel(as.markMean{iMark})
+                    info(counter).name = ad.markLabels{iMark};
+                    info(counter).time = as.markMean{iMark}(iOccur);
+                    info(counter).min = as.markMin{iMark}(iOccur);
+                    info(counter).max = as.markMax{iMark}(iOccur);
+                    info(counter).timeByCondition = as.markMeanByCondition{iMark}(:, iOccur);
+                    info(counter).minByCondition = as.markMinByCondition{iMark}(:, iOccur);
+                    info(counter).maxByCondition = as.markMaxByCondition{iMark}(:, iOccur);
+                    info(counter).appear = ad.markAppear{iMark};
+                    info(counter).fixed = ad.isMarkFixedTime(iMark);
                 
-                counter = counter + 1;
+                    counter = counter + 1;
+                end
             end
             
             if ~isempty(timeWindow)
@@ -522,30 +526,106 @@ classdef AlignSummary
             ad = as.alignDescriptor;
             
             info = struct('name', {}, 'startTime', {}, 'startMin', {}, 'startMax', {}, 'appear', {}, 'fixed', {});
-             
+            counter = 1;
             for iInterval = 1:ad.nIntervals
-                info(iInterval).name = ad.markLabels{iInterval};
-                info(iInterval).startTime = as.intervalStartMean(iInterval);
-                info(iInterval).startMin = as.intervalStartMin(iInterval);
-                info(iInterval).startMax = as.intervalStartMax(iInterval);
-                info(iInterval).stopTime = as.intervalStopMean(iInterval);
-                info(iInterval).stopMin = as.intervalStopMin(iInterval);
-                info(iInterval).stopMax = as.intervalStopMax(iInterval);
-                info(iInterval).startTimeByCondition = as.intervalStartMeanByCondition{iInterval};
-                info(iInterval).startMinByCondition = as.intervalStartMinByCondition{iInterval};
-                info(iInterval).startMaxByCondition = as.intervalStartMaxByCondition{iInterval};
-                info(iInterval).stopTimeByCondition = as.intervalStopMeanByCondition{iInterval};
-                info(iInterval).stopMinByCondition = as.intervalStopMinByCondition{iInterval};
-                info(iInterval).stopMaxByCondition = as.intervalStopMaxByCondition{iInterval};
-                
-                info(iInterval).fixed = ad.isIntervalFixedTime(iInterval);
+                for iOccur = 1:numel(as.intervalStartMean{iInterval})
+                    info(counter).name = ad.intervalLabels{iInterval};
+                    info(counter).startTime = as.intervalStartMean{iInterval}(iOccur);
+                    info(counter).startMin = as.intervalStartMin{iInterval}(iOccur);
+                    info(counter).startMax = as.intervalStartMax{iInterval}(iOccur);
+                    info(counter).stopTime = as.intervalStopMean{iInterval}(iOccur);
+                    info(counter).stopMin = as.intervalStopMin{iInterval}(iOccur);
+                    info(counter).stopMax = as.intervalStopMax{iInterval}(iOccur);
+                    info(counter).startTimeByCondition = as.intervalStartMeanByCondition{iInterval}(:, iOccur);
+                    info(counter).startMinByCondition = as.intervalStartMinByCondition{iInterval}(:, iOccur);
+                    info(counter).startMaxByCondition = as.intervalStartMaxByCondition{iInterval}(:, iOccur);
+                    info(counter).stopTimeByCondition = as.intervalStopMeanByCondition{iInterval}(:, iOccur);
+                    info(counter).stopMinByCondition = as.intervalStopMinByCondition{iInterval}(:, iOccur);
+                    info(counter).stopMaxByCondition = as.intervalStopMaxByCondition{iInterval}(:, iOccur);
+                    info(counter).appear = ad.intervalAppear{iInterval};
+                    info(counter).fixed = ad.isIntervalFixedTime(iInterval);
+                    counter = counter + 1;
+                end
             end
             
             as.intervalInfo = info;
         end
     end
-
+    
     methods
+        function setupTimeAutoAxis(as, varargin)
+            % add ticks and markers to the x-axis of a plot representing
+            % all marks and intervals for this align descriptor
+            p = inputParser();
+            p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
+            p.addParamValue('xOffsetZero', 0, @isscalar); % x position of t=0 on the axis
+            p.addParamValue('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
+            p.addParamValue('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
+            p.addParamValue('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
+            p.addParamValue('allowedRange', 0, @isscalar); % allowed size of min - max range before surrounding label with < >
+            p.parse(varargin{:});
+
+            style = p.Results.style;
+            xOffset = p.Results.xOffsetZero;
+            tMin = p.Results.tMin;
+            tMax = p.Results.tMax;
+            allowedRange = p.Results.allowedRange;
+            
+            au = AutoAxis(p.Results.axh);
+            
+            % filter labels, intervals that overlap tMin : tMax
+            labelInfo = as.labelInfo([as.labelInfo.time] >= tMin & [as.labelInfo.time] <= tMax); %#ok<*PROP>
+            intervalInfo = as.intervalInfo([as.intervalInfo.stopTime] >= tMin & [as.intervalInfo.startTime] <= tMax);
+            
+            switch style
+                case 'tickBridge'      
+                    
+                    ticks = [tMin, tMax, labelInfo.time]' + xOffset; 
+                    labels = cellvec(numel(as.labelInfo));
+                    
+                    % wrap labels with some range to their occurrences with < >
+                    for iLabel = 1:numel(labelInfo)
+                        if labelInfo(iLabel).max - labelInfo(iLabel).min <= allowedRange
+                            labels{iLabel} = labelInfo(iLabel).name;
+                        else
+                            labels{iLabel} = sprintf('<%s>', labelInfo(iLabel).name);
+                        end
+                    end
+                    tickLabels = cat(1,{sprintf('%g', tMin); sprintf('%g', tMax)}, labels);
+                    tickAlignment = cat(1, {'left'; 'right'}, repmat({'center'}, numel(labels), 1)); 
+                    
+                    au.addTickBridge('x', 'tick', ticks, 'tickLabel', tickLabels, 'tickAlignment', tickAlignment); 
+                    
+                case 'marker'
+                    for iInterval = 1:numel(intervalInfo)
+                        ii = intervalInfo(iInterval);
+                        
+                        % constrain to tMin:tMax
+                        if ii.startTime < tMin, ii.startTime = tMin; end
+                        if ii.startMin < tMin, ii.startMin = tMin; end
+                        if ii.stopTime > tMax, ii.stopTime = tMax; end
+                        if ii.stopTime > tMax, ii.stopMax = tMax; end
+                        
+                        au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
+                            'errorInterval', [ii.startMin, ii.stopMax] + xOffset, ...
+                            'color', ii.appear.Color);
+                    end
+                    
+                    for iLabel = 1:numel(labelInfo)
+                        li = labelInfo(iLabel);  
+                        
+                        % constrain to tMin:tMax
+                        if li.min < tMin, li.min = tMin; end
+                        if li.max > tMax, li.max = tMax; end
+                            
+                        au.addMarkerX(li.time + xOffset, li.name, ...
+                            'interval', [li.min, li.max] + xOffset, ...
+                            'markerColor', li.appear.MarkerFaceColor);
+                    end
+            end
+                        
+        end
+
         function drawOnTimeseries(as, data, tvec, varargin)
         % annotate data time-series with markers according to the labels indicated
         % by this AlignSummary

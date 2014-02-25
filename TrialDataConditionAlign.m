@@ -11,6 +11,10 @@ classdef TrialDataConditionAlign < TrialData
         % for functions that operate on one align info, this index is the one which is active
         % use .useAlign(idx) to set
         alignInfoActiveIdx
+        
+        % time units elapsing between successive alignments, used mainly
+        % for the purposes of plotting
+        interAlignGaps
     end
     
     % On Demand Cache handle
@@ -336,8 +340,18 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo = ConditionInfo.fromConditionDescriptor(cd, paramData);
             td = td.postUpdateConditionInfo();
         end
+        
+        function td = setConditionAppearanceFn(td, fn)
+            % Update the appearanceFn callback of conditionDescriptor
+            % without invalidating any of the other cached info
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo.appearanceFn = fn;
+        end
 
         function td = selectTrials(td, mask)
+            % Apply a logical mask or index selection to the list of trials
+            % within, appropriately notifying the condition descriptor and
+            % align descriptor within
             td.warnIfNoArgOut(nargout);
             td = selectTrials@TrialData(td, mask);
             td.conditionInfo = td.conditionInfo.selectTrials(mask);
@@ -397,9 +411,9 @@ classdef TrialDataConditionAlign < TrialData
             td = td.initializeConditionInfo();
         end
         
-        % will undo any filtering by attribute value lists and removing
-        % binning
         function td = setAllAttributeValueListsAuto(td)
+            % will undo any filtering by attribute value lists and restore
+            % auto-binning
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.setAllAttributeValueListsAuto();
             td = td.postUpdateConditionInfo();
@@ -633,6 +647,23 @@ classdef TrialDataConditionAlign < TrialData
             td = td.align('TrialStart:TrialEnd');
         end
         
+        function td = setInterAlignGap(td, gaps)
+            % set .interAlignGaps, which represent the time gaps between
+            % successive alignments, mainly when plotting
+            td.warnIfNoArgOut(nargout);
+            
+            if td.nAlign < 2
+                error('Inter alignment gap not valid when only one align present');
+            end
+            if isscalar(gaps)
+                gaps = repmat(gaps, td.nAlign - 1, 1);
+            else
+                assert(numel(gaps) == td.nAlign - 1, 'Gaps must be scalar or be length nAlign-1');
+            end
+            
+            td.interAlignGaps = gaps;
+        end
+        
         % the following methods pass-thru to alignInfo:
         
         function td = pad(td, window)
@@ -748,6 +779,35 @@ classdef TrialDataConditionAlign < TrialData
             td = td.selectTrials(avalid);
         end
         
+        function td = setStartAppearance(td, varargin)
+            % updates the AppearanceSpec for start
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.setStartAppearance(varargin{:});
+        end
+        
+        function td = setStopAppearance(td, varargin)
+            % updates the AppearanceSpec for stop
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.setStopAppearance(varargin{:});
+        end
+        
+        function td = setZeroAppearance(td, varargin)
+            % updates the AppearanceSpec for zero
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.setZeroAppearance(varargin{:});
+        end
+        
+        function td = setMarkAppearance(td, varargin)
+            % updates the AppearanceSpec for mark at index ind
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.setMarkAppearance(varargin{:});
+        end
+        
+        function td = setIntervalAppearance(td, varargin)
+            % updates the AppearanceSpec for interval at index ind
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.setIntervalAppearance(varargin{:});
+        end
     end
     
     % Aligned data access via AlignInfo

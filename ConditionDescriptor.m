@@ -159,6 +159,15 @@ classdef ConditionDescriptor
                 ci.odc.flush();
             end
         end
+        
+        function ci = invalidateAppearanceInfo(ci)
+            ci.warnIfNoArgOut(nargout);
+            
+            if ~isempty(ci.odc)
+                ci.odc  = ci.odc.copy();
+                ci.odc.flushAppearanceInfo();
+            end
+        end
 
         function ci = set.nameFn(ci, fn)
             ci.nameFn = fn;
@@ -167,7 +176,8 @@ classdef ConditionDescriptor
 
         function ci = set.appearanceFn(ci, fn)
             ci.appearanceFn = fn;
-            ci = ci.invalidateCache();
+            % only need to flush appearance info to save time
+            ci = ci.invalidateAppearanceInfo();
         end
         
         function printDescription(ci) 

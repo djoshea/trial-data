@@ -10,7 +10,7 @@ classdef AlignDescriptor
 
         % abbreviate event names to capital/lowercase initials automatically
         % override this by calling addEventAbbrev
-        autoAbbreviateLabels = true;
+        autoAbbreviateLabels = false;
         
         % use capitalized initials instead of lowercased initials
         autoAbbreviateMakeUpper = true;
@@ -756,6 +756,48 @@ classdef AlignDescriptor
             
     end
 
+    methods % post-hoc appearance specification
+        function ad = setStartAppearance(ad, spec)
+            % updates the AppearanceSpec for start
+            ad.warnIfNoArgOut(nargout);
+            assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
+            ad.startAppear = spec;
+        end
+        
+        function ad = setStopAppearance(ad, spec)
+            % updates the AppearanceSpec for stop
+            ad.warnIfNoArgOut(nargout);
+            assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
+            ad.stopAppear = spec;
+        end
+        
+        function ad = setZeroAppearance(ad, spec)
+            % updates the AppearanceSpec for zero
+            ad.warnIfNoArgOut(nargout);
+            assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
+            ad.zeroAppear = spec;
+        end
+        
+        function ad = setMarkAppearance(ad, ind, spec)
+            % updates the AppearanceSpec for mark at index ind
+            % use .findMark to find the index for a given mark's event,
+            ad.warnIfNoArgOut(nargout);
+            assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
+            assert(ind > 0 && ind < ad.nMarks, 'Index out of range');
+            ad.markAppear{ind} = spec;
+        end
+        
+        function ad = setIntervalAppearance(ad, ind, spec)
+            % updates the AppearanceSpec for interval at index ind
+            % use .findInterval to find the index for a given interval's
+            % events
+            ad.warnIfNoArgOut(nargout);
+            assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
+            assert(ind > 0 && ind < ad.nIntervals, 'Index out of range');
+            ad.intervalAppear{ind} = spec;
+        end
+    end
+    
     methods % Equivalence to other descriptors
         % determine if this align descriptor is functionally equivalent to another AlignDescriptor,
         % ignoring appearance-level details (e.g. marks, intervals, label info, abbreviations) 
@@ -1070,7 +1112,7 @@ classdef AlignDescriptor
 
             elseif ad.autoAbbreviateLabels 
                 % auto abbreviate:
-                % here we assume name is camelCased, we convert it to the capitalized
+                % here we assume name is WordCased or camelCased, we convert it to the capitalized
                 % initials of each word in the event name
                 isUpper = upper(name) == name;
                 isUpper(1) = true;
@@ -1081,6 +1123,12 @@ classdef AlignDescriptor
                 else
                     abbrev = lower(abbrev);
                 end
+            else
+                % here we assume the name is TitleCased, camelCased, or
+                % snake_cased and convert to Spaced Words
+                pattern = '([A-Z]*[a-z]+)';
+                words = regexp(name, pattern, 'match');
+                abbrev = strjoin(upperFirst(words), ' ');
             end
 
             % build a parenthetical index string if index ~= 1

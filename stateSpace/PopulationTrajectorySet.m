@@ -98,6 +98,10 @@ classdef PopulationTrajectorySet
     properties(SetAccess=?PopulationTrajectorySetBuilder)
         % nAlign x 1 cell of alignDescriptors
         alignDescriptorSet = {};
+        
+        % nAlign-1 x 1 vector of time gaps between successive alignments
+        % initially empty, indicating that no gap has been specified
+        interAlignGaps
 
         % ConditionDescriptor instance describing condition information 
         conditionDescriptor
@@ -115,6 +119,10 @@ classdef PopulationTrajectorySet
     % from which data is extracted, as well as track from where each basis
     % originates.
     properties(SetAccess=?PopulationTrajectorySetBuilder)
+        timeUnitName % string name of common time units
+        
+        timeUnitsPerSecond % scalar conversion factor
+        
         % boolean scalar
         % is trial averaged data computed from byTrial data (false) or
         % specified manually (true). This flag controls whether property
@@ -994,6 +1002,8 @@ classdef PopulationTrajectorySet
     % alignDescriptorSet, and translationNormalization applied to this pset
     methods 
         function pset = setConditionDescriptor(pset, cd)
+            % update the conditionDescriptor for all bases within
+            % and clear any generated condition average data
             pset.warnIfNoArgOut(nargout);
             assert(isequal(class(cd), 'ConditionDescriptor'), ...
                 'Must be ConditionDescriptor instance');
@@ -1006,20 +1016,17 @@ classdef PopulationTrajectorySet
         end
         
         function pset = applyConditionDescriptor(pset)
-            pset.warnIfNoArgOut(nargout);
-            
             % apply the condition descriptor to each trial data now and
             % store the resulting tdca
+            pset.warnIfNoArgOut(nargout);
+            
             prog = ProgressBar(pset.nDataSources, 'Grouping trials in data sources');
-            dataSources = pset.dataSources;
-            nDataSources = pset.nDataSources;
             conditionDescriptor = pset.conditionDescriptor;
-            for iSrc = 1:nDataSources
-                dataSources{iSrc} = dataSources{iSrc}.setConditionDescriptor(conditionDescriptor);
+            for iSrc = 1:pset.nDataSources
+                pset.dataSources{iSrc} = pset.dataSources{iSrc}.setConditionDescriptor(conditionDescriptor);
                 prog.update(iSrc);
             end
             prog.finish();
-            pset.dataSources = dataSources;
             
             % only trial averaging and align summary needs to be done again
             pset = pset.invalidateTrialAveragedData();
@@ -1066,6 +1073,173 @@ classdef PopulationTrajectorySet
             
             % changing alignments invalidates everything
             pset = pset.invalidateCache();
+        end
+    end
+    
+    methods % Update ConditionDescriptor and AlignDescriptor appearances without invalidating everything
+        function pset = setConditionAppearanceFn(pset, fn)
+            % update the conditionDescriptor appearanceFn 
+            % we apply this to all bases within because it is fast, but
+            % this is mostly for convenience for the user who grabs a trial
+            % data from within the pset. we don't use the appearances from
+            % within the trialData directly
+            pset.warnIfNoArgOut(nargout);
+            
+            % this is the essential part
+            pset.conditionDescriptor.appearanceFn = fn;
+            
+            % this is for convenience / avoiding confusion
+            prog = ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
+            for iSrc = 1:pset.nDataSources
+                pset.dataSources{iSrc} = pset.dataSources{iSrc}.setConditionAppearanceFn(fn);
+                prog.update(iSrc);
+            end  
+            prog.finish();
+        end
+        
+        function pset = setInterAlignGap(pset, gaps)
+            % set .interAlignGaps, which represent the time gaps between
+            % successive alignments, mainly when plotting
+            pset.warnIfNoArgOut(nargout);
+            
+            if pset.nAlign < 2
+                error('Inter alignment gap not valid when only one align present');
+            end
+            if isscalar(gaps)
+                gaps = repmat(gaps, pset.nAlign - 1, 1);
+            else
+                assert(numel(gaps) == pset.nAlign - 1, 'Gaps must be scalar or be length nAlign-1');
+            end
+            
+            pset.interAlignGaps = gaps;
+            
+            % this is for convenience / avoiding confusion
+            prog = ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
+            for iSrc = 1:pset.nDataSources
+                pset.dataSources{iSrc} = pset.dataSources{iSrc}.setInterAlignGap(gaps);
+                prog.update(iSrc);
+            end  
+            prog.finish();
+        end 
+        
+        function pset = setStartAppearanceForAlign(pset, alignInd, varargin)
+            % update this AppearanceSpec in alignDescriptorSet{ind}
+            % we apply this to all bases within because it is fast, but
+            % this is mostly for convenience for the user who grabs a trial
+            % data from within the pset. we don't use the appearances from
+            % within the trialData directly
+            pset.warnIfNoArgOut(nargout);
+            
+            % this is essential
+            pset.alignDescriptorSet{alignInd} = ...
+                pset.alignDescriptorSet{alignInd}.setStartAppearance(varargin{:});
+            
+            % this is for convenience
+            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            for iSrc = 1:pset.nDataSources
+                % update the align appearance but keep the active alignment 1
+                % to maintain consistency
+                prog.update(iSrc);
+                pset.dataSources{iSrc} = ...
+                    pset.dataSources{iSrc}.useAlign(alignInd).setStartAppearance(varargin{:}).useAlign(1);
+            end
+            prog.finish();
+        end
+        
+        function pset = setStopAppearanceForAlign(pset, alignInd, varargin)
+            % update this AppearanceSpec in alignDescriptorSet{ind}
+            % we apply this to all bases within because it is fast, but
+            % this is mostly for convenience for the user who grabs a trial
+            % data from within the pset. we don't use the appearances from
+            % within the trialData directly
+            pset.warnIfNoArgOut(nargout);
+            
+            % this is essential
+            pset.alignDescriptorSet{alignInd} = ...
+                pset.alignDescriptorSet{alignInd}.setStopAppearance(varargin{:});
+            
+            % this is for convenience
+            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            for iSrc = 1:pset.nDataSources
+                % update the align appearance but keep the active alignment 1
+                % to maintain consistency
+                prog.update(iSrc);
+                pset.dataSources{iSrc} = ...
+                    pset.dataSources{iSrc}.useAlign(alignInd).setStopAppearance(varargin{:}).useAlign(1);
+            end
+            prog.finish();
+        end
+        
+        function pset = setZeroAppearanceForAlign(pset, alignInd, varargin)
+            % update this AppearanceSpec in alignDescriptorSet{ind}
+            % we apply this to all bases within because it is fast, but
+            % this is mostly for convenience for the user who grabs a trial
+            % data from within the pset. we don't use the appearances from
+            % within the trialData directly
+            pset.warnIfNoArgOut(nargout);
+            
+            % this is essential
+            pset.alignDescriptorSet{alignInd} = ...
+                pset.alignDescriptorSet{alignInd}.setZeroAppearance(varargin{:});
+            
+            % this is for convenience
+            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            for iSrc = 1:pset.nDataSources
+                % update the align appearance but keep the active alignment 1
+                % to maintain consistency
+                prog.update(iSrc);
+                pset.dataSources{iSrc} = ...
+                    pset.dataSources{iSrc}.useAlign(alignInd).setZeroAppearance(varargin{:}).useAlign(1);
+            end
+            prog.finish();
+        end
+        
+        function pset = setMarkAppearanceForAlign(pset, alignInd, varargin)
+            % update this AppearanceSpec in alignDescriptorSet{ind}
+            % we apply this to all bases within because it is fast, but
+            % this is mostly for convenience for the user who grabs a trial
+            % data from within the pset. we don't use the appearances from
+            % within the trialData directly
+            pset.warnIfNoArgOut(nargout);
+            
+            % this is essential
+            pset.alignDescriptorSet{alignInd} = ...
+                pset.alignDescriptorSet{alignInd}.setMarkAppearance(varargin{:});
+            
+            % this is for convenience
+            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            for iSrc = 1:pset.nDataSources
+                % update the align appearance but keep the active alignment 1
+                % to maintain consistency
+                prog.update(iSrc);
+                pset.dataSources{iSrc} = ...
+                    pset.dataSources{iSrc}.useAlign(alignInd).setMarkAppearance(varargin{:}).useAlign(1);
+            end
+            prog.finish();
+        end
+        
+        function pset = setIntervalAppearanceForAlign(pset, alignInd, varargin)
+            % update this AppearanceSpec in alignDescriptorSet{ind}
+            % we apply this to all bases within because it is fast, but
+            % this is mostly for convenience for the user who grabs a trial
+            % data from within the pset. we don't use the appearances from
+            % within the trialData directly
+            pset.warnIfNoArgOut(nargout);
+            
+            % this is essential
+            pset.alignDescriptorSet{alignInd} = ...
+                pset.alignDescriptorSet{alignInd}.setIntervalAppearance(varargin{:});
+            
+            % this is for convenience
+            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            for iSrc = 1:pset.nDataSources
+                % update the align appearance but keep the active alignment 1
+                % to maintain consistency
+                prog.update(iSrc);
+                pset.dataSources{iSrc} = ...
+                    pset.dataSources{iSrc}.useAlign(alignInd).setIntervalAppearance(varargin{:}).useAlign(1);
+            end
+            prog.finish();
         end
     end
     
@@ -1766,7 +1940,7 @@ classdef PopulationTrajectorySet
             qLow = pset.dataIntervalQuantileLow;
             qHigh = pset.dataIntervalQuantileHigh;
             for iAlign = 1:pset.nAlign
-                dataIntervals = quantile(dataMeanRandomized{iAlign}, [qLow qHigh], 4);
+                dataIntervals = quantile(pset.dataMeanRandomized{iAlign}, [qLow qHigh], 4);
                 dataIntervalLow{iAlign} = dataIntervals(:, :, :, 1);
                 dataIntervalHigh{iAlign} = dataIntervals(:, :, :, 2);
             end
@@ -1788,7 +1962,7 @@ classdef PopulationTrajectorySet
             prog = ProgressBar(pset.nDataSources, 'Computing alignment summary statistics by data source');
             dataSources = pset.dataSources;
             for iSrc = 1:pset.nDataSources
-                prog.update(iSrc); %#ok<PFBNS>
+                prog.update(iSrc); 
                 alignSummaryData(iSrc, :) = dataSources{iSrc}.alignSummarySet;
             end
             prog.finish();
@@ -1804,7 +1978,7 @@ classdef PopulationTrajectorySet
             prog = ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
             alignSummaryData = pset.alignSummaryData;
             for iAlign = 1:pset.nAlign
-                prog.update(iAlign); %#ok<PFBNS>
+                prog.update(iAlign);
                 alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(:, iAlign));
             end 
             prog.finish();
@@ -2045,7 +2219,7 @@ classdef PopulationTrajectorySet
             varByBasis = nanvar(pset.buildCTAbyN(varargin{:}), 0, 1)';
         end
         
-        function stdByBasis = computeStdByBasis(pset)
+        function stdByBasis = computeStdByBasis(pset, varargin)
             stdByBasis = nanstd(pset.buildCTAbyN(varargin{:}), 0, 1)';
         end
   
@@ -2324,12 +2498,18 @@ classdef PopulationTrajectorySet
             % usually plot first basis at top, last basis at bottom
             p.addParamValue('reverse', false, @islogical);
             
+            % when no interAlignGap is specified, this is used to compute
+            % the interAlignGap
             p.addParamValue('alignGapFraction', 0.02, @isscalar);
             p.addParamValue('xOffset', 0, @isscalar);
             p.addParamValue('yOffset', 0, @isscalar);
             p.addParamValue('plotArgs', {}, @iscell)
+            
+            p.addParamValue('timeAxisStyle', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             p.parse(varargin{:});
 
+            clf;
+            
             basisIdx = p.Results.basisIdx;
             nBasesPlot = numel(basisIdx);
             conditionIdx = p.Results.conditionIdx;
@@ -2345,28 +2525,44 @@ classdef PopulationTrajectorySet
             
             timeWidthByAlign = pset.nTimeDataMean*pset.timeDelta;
             
-            % compute absolute x-gap between alignments
-            alignGap = alignGapFraction*sum(timeWidthByAlign) / (1 - alignGapFraction*pset.nAlign);
+            if isempty(pset.interAlignGaps)
+                % compute absolute x-gap between alignments
+                alignGaps = repmat(alignGapFraction*sum(timeWidthByAlign) / (1 - alignGapFraction*pset.nAlign), pset.nAlign-1, 1);
+            else
+                alignGaps = pset.interAlignGaps;
+            end 
+            
+            % keep track of start and stop of each align in time
+            tAlignZero = deal(nanvec(pset.nAlign));
+
+            % concatenate the data across alignments in order to compute
+            % normalization constants. data is N x CTA
+            data = pset.buildCTAbyN('basisIdx', basisIdx, ...
+                'conditionIdx', conditionIdx)';
+
+            if normalize
+                % each basis will be independently scaled to [0 1]
+                offsets = nanmin(data, [], 2); % N x 1
+                norms = nanmax(data, [], 2) - offsets;
+            else
+                % data will collectively be scaled to [0 1], but the same
+                % transformation will apply to all bases 
+                m = nanmin(data(:));
+                offsets = repmat(m, nBasesPlot, 1);
+                norms = repmat(nanmax(data(:)) - m, nBasesPlot, 1);
+            end
             
             for iAlign = 1:pset.nAlign
                 tvec = pset.tvecDataMean{iAlign};
+                tAlignZero(iAlign) = xOffset - min(tvec);
                 tvec = tvec - min(tvec) + xOffset;
                 
+                % N x C x T
                 data = pset.dataMean{iAlign}(basisIdx, conditionIdx, :);
-                
-                if normalize
-                    % all data will range from 0 to 1 by row
-                    mat = reshape(data, nBasesPlot, nConditionsPlot * numel(tvec));
-                    mat = bsxfun(@minus, mat, nanmin(mat, [], 2));
-                    mat = bsxfun(@rdivide, mat, nanmax(mat, [], 2));
-                    data = reshape(mat, nBasesPlot, nConditionsPlot, numel(tvec));
-                else
-                    % all data will range from 0 to 1, but keep the same
-                    % relative scaling
-                    data = data - nanmin(data(:));
-                    data = data / nanmax(data(:));
-                end
-                
+                data = bsxfun(@minus, data, offsets);
+                data = bsxfun(@rdivide, data, norms);
+           
+                % scale and separate data by basis vertically
                 data = data * scaling + yOffset;
                 data = bsxfun(@plus, data, (nBasesPlot:-1:1)');
                 
@@ -2381,10 +2577,53 @@ classdef PopulationTrajectorySet
                     hold on
                 end
                 
-                xOffset = xOffset + timeWidthByAlign(iAlign) + alignGap;
+                if iAlign == pset.nAlign
+                    gap = 0;
+                else
+                    gap = alignGaps(iAlign);
+                end
+                xOffset = xOffset + timeWidthByAlign(iAlign) + gap;
             end
             
             box off;
+            ylim([0.9, nBasesPlot+1.1]);
+            xlim([0 xOffset]);
+
+            % setup auto axis
+            au = AutoAxis();
+            yloc = yOffset + (nBasesPlot:-1:1)' + 0.5;
+            ylabel = pset.basisNames(basisIdx);
+            au.addTicklessLabels('y', 'tick', yloc, 'tickLabel', ylabel);   
+            
+            switch p.Results.timeAxisStyle
+                case 'tickBridge'
+                    for iAlign = 1:pset.nAlign
+                        as = pset.alignSummaryAggregated{iAlign};
+                        tvec = pset.tvecDataMean{iAlign};
+                        offset = tAlignZero(iAlign);
+                        
+                        as.setupTimeAutoAxis('axh', gca, 'style', 'tickBridge', ...
+                            'tMin', min(tvec), 'tMax', max(tvec), 'xOffsetZero', offset);
+                    end
+                    
+                case 'marker'
+                    for iAlign = 1:pset.nAlign
+                        as = pset.alignSummaryAggregated{iAlign};
+                        tvec = pset.tvecDataMean{iAlign};
+                        offset = tAlignZero(iAlign);
+                        
+                        as.setupTimeAutoAxis('axh', gca, 'style', 'marker', ...
+                            'tMin', min(tvec), 'tMax', max(tvec), 'xOffsetZero', offset)
+                    end
+                    au.addAutoScaleBarX();
+
+            end
+            
+            % make large left side to accommodate labels
+            au.axisInset(1) = 4;
+            axis off;
+            au.update();
+            au.installCallbacks();
         end
 
         function plotStateSpace(pset, varargin)
@@ -2470,6 +2709,7 @@ classdef PopulationTrajectorySet
         % N is nBases
         
         function [NbyCbyTA, tvec, avec] = buildNbyCbyTA(pset, varargin)
+            % [NbyCbyTA, tvec, avec] = buildNbyCbyTA(pset, ...)
             p = inputParser();
             p.addParamValue('conditionIdx', truevec(pset.nConditions), @isvector);
             p.addParamValue('alignIdx', truevec(pset.nAlign), @isvector);
@@ -2497,12 +2737,9 @@ classdef PopulationTrajectorySet
             p.addParamValue('alignIdx', truevec(pset.nAlign), @isvector);
             p.addParamValue('basisIdx', truevec(pset.nBases), @isvector);
             p.parse(varargin{:});
-            alignIdx = makecol(p.Results.alignIdx);
-            nAlign = numel(alignIdx);
+            %alignIdx = makecol(p.Results.alignIdx);
             basisIdx = makecol(p.Results.basisIdx);
-            nBases = numel(basisIdx);
             conditionIdx = makecol(p.Results.conditionIdx);
-            nConditions = numel(conditionIdx);
 
             [NbyCbyTA, tvec, avec] = pset.buildNbyCbyTA(varargin{:});
             nvec = basisIdx;

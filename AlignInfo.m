@@ -885,7 +885,6 @@ classdef AlignInfo < AlignDescriptor
                     'markOndmat', {}, 'fixed', {});
             end
         end
-
     end
     
     methods(Static) % Default accessor methods

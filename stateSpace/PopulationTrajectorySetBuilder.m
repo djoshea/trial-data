@@ -8,6 +8,8 @@ classdef PopulationTrajectorySetBuilder
     % when building 
     properties
         %% fSettings
+        timeUnitName
+        timeUnitsPerSecond
         timeDelta 
         spikeFilter
         minTrialsForTrialAveraging
@@ -59,7 +61,7 @@ classdef PopulationTrajectorySetBuilder
     % Lists of fields within PopulationTrajectorySet to simplify the
     % copying and assert ~isempty checks below.
     properties(Constant)
-        fSettings = {'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
+        fSettings = {'timeUnitName', 'timeUnitsPerSecond', 'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
             'minFractionTrialsForTrialAveraging', 'includeOnlyTrialsValidAllAlignments', ...
             'nRandomSamples', 'randomSeed', 'dataIntervalQuantileLow', 'dataIntervalQuantileHigh'};
 
@@ -88,6 +90,8 @@ classdef PopulationTrajectorySetBuilder
             pset.datasetName = td.datasetName;
             
             tdca = TrialDataConditionAlign(td);
+            pset.timeUnitName = tdca.timeUnitName;
+            pset.timeUnitsPerSecond = tdca.timeUnitsPerSecond;
             pset.dataSources = {tdca};
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
@@ -106,6 +110,12 @@ classdef PopulationTrajectorySetBuilder
                 end
             end
             
+            % check that all tdCell have same timeUnitsPerSecond
+            assert(numel(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))) == 1, ...
+                'All data sources must have identical timeUnitsPerSecond');
+            
+            pset.timeUnitName = tdCell{1}.timeUnitName;
+            pset.timeUnitsPerSecond = tdCell{1}.timeUnitsPerSecond;
             pset.dataSources = makecol(tdCell);
             pset.basisDataSourceIdx = makecol(1:nSources);
             pset.basisDataSourceChannelNames = makecol(channelNames);
@@ -120,6 +130,8 @@ classdef PopulationTrajectorySetBuilder
             pset.datasetName = td.datasetName;
             
             tdca = TrialDataConditionAlign(td);
+            pset.timeUnitName = tdca.timeUnitName;
+            pset.timeUnitsPerSecond = tdca.timeUnitsPerSecond;
             pset.dataSources = {tdca};
             pset.basisDataSourceIdx = onesvec(numel(chNames));
             pset.basisDataSourceChannelNames = chNames;
