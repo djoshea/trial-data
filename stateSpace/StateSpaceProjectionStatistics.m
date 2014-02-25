@@ -69,7 +69,7 @@ classdef StateSpaceProjectionStatistics
                 basisIdx = find(basisIdx);
             end
             
-            proj.assertCommonValidTime();
+            %proj.assertCommonValidTime();
             cla;
 %             p = panel();
 %             p.pack(1,1);

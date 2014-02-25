@@ -574,9 +574,14 @@ classdef AlignSummary
             au = AutoAxis(p.Results.axh);
             
             % filter labels, intervals that overlap tMin : tMax
-            labelInfo = as.labelInfo([as.labelInfo.time] >= tMin & [as.labelInfo.time] <= tMax); %#ok<*PROP>
-            intervalInfo = as.intervalInfo([as.intervalInfo.stopTime] >= tMin & [as.intervalInfo.startTime] <= tMax);
-            
+            labelInfo = as.labelInfo; %#ok<*PROP>
+            if ~isempty(labelInfo)
+                labelInfo = labelInfo([labelInfo.time] >= tMin & [labelInfo.time] <= tMax); 
+            end
+            intervalInfo = as.intervalInfo;
+            if ~isempty(intervalInfo)
+                intervalInfo = intervalInfo([intervalInfo.stopTime] >= tMin & [intervalInfo.startTime] <= tMax);
+            end
             switch style
                 case 'tickBridge'      
                     

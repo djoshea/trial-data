@@ -9,14 +9,14 @@ classdef StateSpaceProjection
     properties
         % if true, computes the dataErrorHigh/Low for the projected bases
         % using resampling methods and the interval size from the pset
-        propagateDataError = false;
-        buildFromConditionIdx % if non-empty, build from selected conditions only
+        propagateDataError = false; 
     end
 
     properties(SetAccess=protected)
+        buildFromConditionIdx % if non-empty, build from selected conditions only
         initialized = false;
-        translationNormalization
-        coeff % N x K matrix of component weights; coeff(i,j) is component j from neuron i 
+        translationNormalization % stored translation / normalization stored when building and used when projecting
+        coeff % N x K matrix of component weights; coeff(i,j) is weight for component j from input basis i 
     end
 
     properties(Dependent)
@@ -41,6 +41,12 @@ classdef StateSpaceProjection
                 n = size(proj.coeff, 2);
             end
         end
+        
+        % we implement this as a method so that subclasses can disable this
+        % functionality if they don't support it
+        function setBuildFromConditionIdx(proj, idx)
+            proj.buildFromConditionIdx = idx;
+        end   
     end
     
     methods(Abstract)
