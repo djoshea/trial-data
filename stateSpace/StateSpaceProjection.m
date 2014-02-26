@@ -205,6 +205,10 @@ classdef StateSpaceProjection
             % projecting a pset with already computed coefficients.
             
             s = StateSpaceProjectionStatistics();
+            
+            % get the names and counts of source -> proj bases
+            s.basisNamesSource = pset.basisNames;
+            s.basisNamesProj = proj.getBasisNames(pset);
             s.nBasesSource = proj.nBasesSource;
             s.nBasesProj = proj.nBasesProj;
 
@@ -239,7 +243,8 @@ classdef StateSpaceProjection
                 s.covMarginalized{iCov} = covMarginalizedMap(mat2str(attrSets{iCov}));
             end
             
-            % compute the marginalized variance explained
+            % compute the marginalized variance explained, i.e. the amount
+            % of source variance marginalized according to dpca_cov, in each direction 
             s.latentMarginalized = nan(proj.nBasesProj, nCov);
             for iCov = 1:nCov
                 s.latentMarginalized(:, iCov) = ...

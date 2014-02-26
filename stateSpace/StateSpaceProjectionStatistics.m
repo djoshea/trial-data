@@ -1,6 +1,9 @@
 classdef StateSpaceProjectionStatistics
 
     properties
+        basisNamesSource
+        basisNamesProj
+        
         nBasesSource
         nBasesProj
         
@@ -12,11 +15,7 @@ classdef StateSpaceProjectionStatistics
 
         covMarginalized
         covMarginalizedNames
-        latentMarginalized
-        
-        basisMixtures % normalized version of above, nBases x nMarginalizations
-        basisMixtureNames
-        basisMixtureColors
+        latentMarginalized % variance in each basis explained by each type of variance in covMarginalizedNames
     end
 
     methods
@@ -63,26 +62,31 @@ classdef StateSpaceProjectionStatistics
             p = inputParser;
             p.addParamValue('basisIdx', [1:min([10 proj.nBasesProj])], @(x) isvector(x) && ...
                 all(inRange(x, [1 proj.nBasesSource])));
+            p.addParamValue('mixtureColors', [], @ismatrix);
             p.parse(varargin{:});
             basisIdx = p.Results.basisIdx;
             if islogical(basisIdx)
                 basisIdx = find(basisIdx);
             end
             
-            %proj.assertCommonValidTime();
-            cla;
-%             p = panel();
-%             p.pack(1,1);
-%             p(1,1).select();
+            clf;
             
-            cumBasisMix = cumsum(proj.basisMixtures(basisIdx,:), 2);
-            nCov = size(proj.basisMixtures, 2);
+            cumBasisMix = cumsum(proj.latentMarginalized(basisIdx,:), 2);
+            nCov = size(proj.latentMarginalized, 2);
             %nBases = proj.nBasesProj;
             nBases = length(basisIdx);
             rowHeight = 0.8;
             xMin = 0;
-            xMax = 1;
+            xMax = max(cumBasisMix(:));
             hPatch = nan(nCov, 1);
+            
+            if isempty(p.Results.mixtureColors)
+                cmap = distinguishable_colors(nCov);
+            else
+                cmap = p.Results.mixtureColors;                
+                assert(size(cmap, 1) == nCov && size(cmap, 2) == 3, 'mixtureColors must be nCov x 3 matrix');
+            end
+            
             for iIdxB = 1:nBases
                 iB = basisIdx(iIdxB);
                 for iCov = 1:nCov
@@ -95,26 +99,26 @@ classdef StateSpaceProjectionStatistics
                     end
                     patchY = [nBases-iB nBases-iB+rowHeight nBases-iB+rowHeight nBases-iB];
                     
-                    hPatch(iCov) = patch(patchX, patchY, proj.basisMixtureColors(iCov, :)); %, 'EdgeColor', 'none');
+                    hPatch(iCov) = patch(patchX, patchY, cmap(iCov, :), 'EdgeColor', 'none');
                     hold on
                 end
                 
-                h = text(-0.03, nBases-iB+rowHeight/2, proj.basisNames{iB}, ...
+                h = text(-0.03, nBases-iB+rowHeight/2, proj.basisNamesProj{iB}, ...
                     'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Right'); 
                 extent = get(h, 'Extent');
-                xMin = min(extent(1), xMin);
+                %xMin = min(extent(1), xMin);
                 
-                h = text(1.03, nBases-iB+rowHeight/2, sprintf('%.2f%%', proj.explained(iB)*100), ...
+                h = text(xMax+0.03, nBases-iB+rowHeight/2, sprintf('%.2f%%', proj.explained(iB)*100), ...
                     'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Left'); 
                 extent = get(h, 'Extent');
-                xMax = max(extent(1)+extent(3), xMax);
+                %xMax = max(extent(1)+extent(3), xMax);
             end
             
             xlim([xMin xMax]);
             ylim([0 nBases]);
             axis off;
             title('Basis Mixtures');
-            legend(hPatch, nCov, proj.basisMixtureNames, 'Location', 'NorthEastOutside');
+            legend(hPatch, nCov, proj.covMarginalizedNames, 'Location', 'NorthEastOutside');
             legend boxoff;
             
         end
