@@ -44,7 +44,8 @@ classdef StateSpaceProjection
         
         % we implement this as a method so that subclasses can disable this
         % functionality if they don't support it
-        function setBuildFromConditionIdx(proj, idx)
+        function proj = setBuildFromConditionIdx(proj, idx)
+            proj.warnIfNoArgOut(nargout);
             proj.buildFromConditionIdx = idx;
         end   
     end
@@ -171,6 +172,16 @@ classdef StateSpaceProjection
     end
 
     methods
+        function proj = filterBases(proj, idx)
+            % after building from a PopulationTrajectorySet, mask the bases
+            % within to reduce the total contribution
+            proj.warnIfNoArgOut(nargout);
+            assert(proj.initialized, 'Call filterBases after building / initializing');
+            
+            proj.translationNormalization = proj.translationNormalization.filterBases(idx);
+            proj.coeff = proj.coeff(idx, :);
+        end
+        
         function names = getBasisUnits(proj, pset)  %#ok<INUSL>
             names = repmat({''}, pset.nBases, 1);
         end

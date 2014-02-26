@@ -1,7 +1,7 @@
 classdef ProjDPCA < StateSpaceProjection
 
     properties
-        P = 10;
+        K % if empty, keep all components. Otherwise, keep only first K components.
     end
 
     methods
@@ -12,24 +12,10 @@ classdef ProjDPCA < StateSpaceProjection
         function setBuildFromConditionIdx(proj, varargin) %#ok<INUSD>
             error('Not supported');
         end
-        
-        function coeff = computeProjectionCoefficients(proj, pset, varargin)
-            CTAbyN = pset.buildCTAbyN('conditionIdx', proj.buildFromConditionIdx);
-            
-            if exist('pca', 'file') == 2
-               coeff = pca(CTAbyN, 'Rows', 'complete');
-            else
-                coeff = princomp(CTAbyN);
-            end
-            
-            if ~isempty(proj.K)
-                coeff = coeff(:, 1:proj.K);
-            end
-        end
 
-        function coeff = calculateProjectionCoefficients(proj, pset, varargin) 
+        function coeff = computeProjectionCoefficients(proj, pset, varargin) 
             NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
-            coeff = dpca_nanSafe(NbyTAbyAttr, proj.P, [], []);
+            coeff = dpca_nanSafe(NbyTAbyAttr, proj.K, [], []);
         end
 
         function names = getBasisNames(proj, pset) %#ok<INUSD>

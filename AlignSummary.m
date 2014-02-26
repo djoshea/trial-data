@@ -562,6 +562,7 @@ classdef AlignSummary
             p.addParamValue('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             p.addParamValue('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
             p.addParamValue('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
+            p.addParamValue('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
             p.addParamValue('allowedRange', 0, @isscalar); % allowed size of min - max range before surrounding label with < >
             p.parse(varargin{:});
 
@@ -570,6 +571,7 @@ classdef AlignSummary
             tMin = p.Results.tMin;
             tMax = p.Results.tMax;
             allowedRange = p.Results.allowedRange;
+            showRanges = p.Results.showRanges;
             
             au = AutoAxis(p.Results.axh);
             
@@ -609,10 +611,15 @@ classdef AlignSummary
                         if ii.startTime < tMin, ii.startTime = tMin; end
                         if ii.startMin < tMin, ii.startMin = tMin; end
                         if ii.stopTime > tMax, ii.stopTime = tMax; end
-                        if ii.stopTime > tMax, ii.stopMax = tMax; end
+                        if ii.stopMax > tMax, ii.stopMax = tMax; end
                         
+                        if showRanges
+                            errorInterval = [ii.startMin, ii.stopMax] + xOffset;
+                        else
+                            errorInterval = [];
+                        end
                         au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
-                            'errorInterval', [ii.startMin, ii.stopMax] + xOffset, ...
+                            'errorInterval', errorInterval, ...
                             'color', ii.appear.Color);
                     end
                     
@@ -623,8 +630,13 @@ classdef AlignSummary
                         if li.min < tMin, li.min = tMin; end
                         if li.max > tMax, li.max = tMax; end
                             
+                        if showRanges
+                            errorInterval = [li.min, li.max] + xOffset;
+                        else
+                            errorInterval = [];
+                        end
                         au.addMarkerX(li.time + xOffset, li.name, ...
-                            'interval', [li.min, li.max] + xOffset, ...
+                            'interval', errorInterval, ...
                             'markerColor', li.appear.MarkerFaceColor);
                     end
             end

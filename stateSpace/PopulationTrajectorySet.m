@@ -2074,9 +2074,10 @@ classdef PopulationTrajectorySet
             pset.odc = c;
         end
 
-        function pset = filterBasesMissingTrialsOnNonEmptyConditions(pset)  
+        function [pset, mask] = filterBasesMissingTrialsOnNonEmptyConditions(pset)  
             pset.warnIfNoArgOut(nargout);
-            pset = pset.filterBases(~pset.basesMissingTrialsForNonEmptyConditionAlignments);
+            mask = ~pset.basesMissingTrialsForNonEmptyConditionAlignments;
+            pset = pset.filterBases(mask);
         end
 
 %         function filterConditionsByAttribute(pset, attributeName, valueList)
@@ -2505,6 +2506,7 @@ classdef PopulationTrajectorySet
             p.addParamValue('yOffset', 0, @isscalar);
             p.addParamValue('plotArgs', {}, @iscell)
             
+            p.addParamValue('showRanges', true, @islogical);
             p.addParamValue('timeAxisStyle', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             p.parse(varargin{:});
 
@@ -2522,6 +2524,7 @@ classdef PopulationTrajectorySet
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
             plotArgs = p.Results.plotArgs;
+            showRanges = p.Results.showRanges;
             
             timeWidthByAlign = pset.nTimeDataMean*pset.timeDelta;
             
@@ -2603,7 +2606,8 @@ classdef PopulationTrajectorySet
                         offset = tAlignZero(iAlign);
                         
                         as.setupTimeAutoAxis('axh', gca, 'style', 'tickBridge', ...
-                            'tMin', min(tvec), 'tMax', max(tvec), 'xOffsetZero', offset);
+                            'tMin', min(tvec), 'tMax', max(tvec), 'xOffsetZero', offset, ...
+                            'showRanges', showRanges);
                     end
                     
                 case 'marker'
@@ -2613,8 +2617,10 @@ classdef PopulationTrajectorySet
                         offset = tAlignZero(iAlign);
                         
                         as.setupTimeAutoAxis('axh', gca, 'style', 'marker', ...
-                            'tMin', min(tvec), 'tMax', max(tvec), 'xOffsetZero', offset)
+                            'tMin', min(tvec), 'tMax', max(tvec), 'xOffsetZero', offset, ...
+                            'showRanges', showRanges)
                     end
+                    au.xUnits = pset.timeUnitName;
                     au.addAutoScaleBarX();
 
             end
