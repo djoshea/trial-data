@@ -15,7 +15,7 @@ classdef ProjDPCA < StateSpaceProjection
 
         function coeff = computeProjectionCoefficients(proj, pset, varargin) 
             NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
-            coeff = dpca_nanSafe(NbyTAbyAttr, proj.K, [], []);
+            coeff = dpca_nanSafe(NbyTAbyAttr, proj.K, 10000, 1e-7);
         end
 
         function names = getBasisNames(proj, pset) %#ok<INUSD>

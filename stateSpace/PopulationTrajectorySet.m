@@ -2554,9 +2554,11 @@ classdef PopulationTrajectorySet
             else
                 % data will collectively be scaled to [0 1], but the same
                 % transformation will apply to all bases 
-                m = nanmin(data(:));
-                offsets = repmat(m, nBasesPlot, 1);
-                norms = repmat(nanmax(data(:)) - m, nBasesPlot, 1);
+                offsets = nanmin(data, [], 2); % N x 1
+                
+                %offsets = repmat(m, nBasesPlot, 1);
+                ranges = nanmax(data, [], 2) - nanmin(data, [], 2);
+                norms = repmat(nanmax(ranges), nBasesPlot, 1);
             end
             
             for iAlign = 1:pset.nAlign

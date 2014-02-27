@@ -34,7 +34,11 @@ function W = dpca(Y,comps,maxstep,tolerance)
     covs = values(covs);
     
     % init loading matrix with PCA solution
-    [W,D] = eigs(C,comps);
+    if comps == size(C, 1)
+        [W,D] = eig(C);
+    else
+        [W,D] = eigs(C,comps);
+    end 
        
     % set parameters for line search
     t=1/4; a = 0.01/t;  % initial discount, step size & loop iterator
