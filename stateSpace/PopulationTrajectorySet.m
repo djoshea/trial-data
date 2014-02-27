@@ -1379,8 +1379,12 @@ classdef PopulationTrajectorySet
         end
         
         function pset = normalizeBasesByStd(pset, varargin)
+            p = inputParser();
+            p.addParamValue('denominatorOffset', 0, @isscalar); % x = x / (std(x) + offset)
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
             pset.warnIfNoArgOut(nargout);
-            pset = pset.normalize(pset.computeStdByBasis(varargin{:}), 'normalizationDescription', 'std-normalized');
+            pset = pset.normalize(pset.computeStdByBasis(p.Unmatched) + p.Results.denominatorOffset, 'normalizationDescription', 'std-normalized');
         end
         
         function pset = zscoreByBasis(pset, varargin)
