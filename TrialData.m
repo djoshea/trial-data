@@ -7,13 +7,14 @@ classdef TrialData
 % will be done via copy-on-write, so that changes will not propagate to another
 % TrialData instance.
     
-    % Properties stored on disk
+    % Metadata
     properties
         datasetName = ''; % string describing entire collection of trials dataset
 
-        datasetMeta % arbitrary
+        datasetMeta % arbitrary, user determined 
     end
     
+    % Internal data storage
     properties(SetAccess=protected)
         data = struct();  % standardized format nTrials x 1 struct with all trial data  
         
@@ -30,6 +31,7 @@ classdef TrialData
         channelDescriptorsByName % struct with ChannelDescriptor for each channel, by name
     end
 
+    % Convenience dependent properties
     properties(Dependent) 
         valid
         nTrials
@@ -143,7 +145,10 @@ classdef TrialData
             td.manualValid = truevec(td.nTrials);
             td.initialized = true;
         end
+    end
 
+    % General utilities
+    methods
         function printDescriptionShort(td)
             tcprintf('inline', '{yellow}%s: {none}%d trials (%d valid) with %d channels\n', ...
                 class(td), td.nTrials, td.nTrialsValid, td.nChannels);
@@ -255,7 +260,7 @@ classdef TrialData
         end
     end
 
-    methods % Data access methods
+    methods % Channel metadata access and manipulation
         function tf = hasChannel(td, name)
             tf = ismember(name, td.channelNames);
         end
@@ -271,6 +276,15 @@ classdef TrialData
         
         function type = getChannelType(td, name)
             type = td.getChannelDescriptor(name).getType();
+        end
+        
+        function units = getChannelUnitsPrimary(td, name)
+            % return a string describing the units of a given channel
+            if td.hasSpikeChannelOrUnit(name)
+                units = 'spikes / sec';
+            else
+                units = td.getChannelDescriptor(name).unitsPrimary;
+            end
         end
         
         function names = listChannels(td)
@@ -290,8 +304,8 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
-        % get the time window for each trial
         function durations = getValidDurations(td)
+            % get the time window for each trial
             starts = td.getEventFirst('TrialStart');
             ends = td.getEventLast('TrialEnd');
             durations = ends - starts;
@@ -395,6 +409,75 @@ classdef TrialData
     end
     
     methods % Analog channel methods
+        function td = addAnalog(td, name, values, times, units)
+            td.warnIfNoArgOut(nargout);
+            
+            if ischar(times)
+                if td.hasChannel(times)
+                    % treat times as analog channel name
+                    % share that existing channel's time field 
+                    cd = td.channelDescriptorsByName.(times);
+                    assert(isa(cd, 'AnalogChannelDescriptor'), ...
+                        'Channel %s is not an analog channel', times);
+                    timeField = cd.timeField;
+                    times = {td.data.(timeField)};
+                    
+                elseif isfield(td.data, times)
+                    % use directly specified time field in .data
+                    timeField = times;
+                    times = {td.data.(timeField)};
+                    
+                else
+                    error('%s is not a channel or data field name', times);
+                end
+            elseif iscell(times) || isnumeric(times)
+                % pass specified times along directly as cell
+                % and generate unique time field name
+                timeField = genvarname(sprintf('%s_time', name), fieldnames(td.data));
+                
+            else
+                error('Times must be channel/field name or cell array');
+            end
+                
+            % build a channel descriptor for the data
+            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units);
+            
+            % check the values and convert to nTrials cellvec
+            if ismatrix(values) && isnumeric(values)
+                % values must be nTrials x nTimes
+                assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
+                values = mat2cell(values', size(values, 2), onesvec(td.nTrials))';
+            elseif iscell(values)
+                assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
+            else
+                error('Values must be numeric matrix or cell array');
+            end
+                
+            if iscell(times)
+                assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
+            elseif ismatrix(times)
+                if isvector(times)
+                    times = repmat(makerow(times), td.nTrials, 1);
+                end
+                assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
+                times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
+            
+            else
+                error('Times must be numeric matrix or cell array');
+            end
+            
+            % check each trial's time vector against its value vector
+            sizeMatch = cellfun(@(time, vals) numel(time) == numel(vals), times, values);
+            assert(all(sizeMatch), 'Sizes of times vs. values vectors do not match on %d trials', nnz(sizeMatch));
+            
+            % add the zero offset to the time vector for each trial
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+            
+            % AnalogChannelDescriptor declares data fields as data, times
+            td = td.addChannel(cd, {values, times});
+        end
+
         function tf = hasAnalogChannel(td, name) 
             if td.hasChannel(name)
                 tf = isa(td.getChannelDescriptor(name), 'AnalogChannelDescriptor');
@@ -455,6 +538,48 @@ classdef TrialData
     end
     
     methods % Event channel methods
+        function td = addEvent(td, name, times, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser;
+            p.addRequired('name', @ischar);
+            p.addRequired('times', @isvector);
+            %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            p.parse(name, times, varargin{:});
+            %cd = p.Results.channelDescriptor;
+            
+            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
+            assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
+            times = makecol(times);
+                
+            if iscell(times)
+                % multiple occurrence event
+                cd = EventChannelDescriptor.buildMultipleEvent(name, td.timeUnitName);
+                
+                % check contents
+                assert(all(cellfun(@(x) isvector(x) && isnumeric(x), times)), ...
+                    'Cell elements must be numeric vector of event occurrence times');
+            elseif isnumeric(times)
+                % single occurrence event
+                cd = EventChannelDescriptor.buildSingleEvent(name, td.timeUnitName);
+            else
+                error('Times must be numeric vector or cell vector of numeric vectors');
+            end
+         
+            % for TDCA, assume events come in aligned to the current 'zero' time
+            % we add the zero offset to the times so that they are stored
+            % as absolute time points
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            
+            if iscell(times)
+                times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+            else
+                times = times + offsets;
+            end
+            
+            td = td.addChannel(cd, {times});
+        end
+        
         function tf = hasEventChannel(td, name) 
             if td.hasChannel(name)
                 tf = isa(td.getChannelDescriptor(name), 'EventChannelDescriptor');
@@ -556,6 +681,28 @@ classdef TrialData
     end
     
     methods % Param channel methods
+        function td = addParam(td, name, values, varargin)
+            td.warnIfNoArgOut(nargout);
+
+            p = inputParser;
+            p.addRequired('name', @ischar);
+            p.addRequired('values', @isvector);
+            p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            p.parse(name, values, varargin{:});
+            name = p.Results.name;
+            values = p.Results.values;
+            cd = p.Results.channelDescriptor;
+
+            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
+            assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
+
+            if isempty(cd)
+                cd = ParamChannelDescriptor.buildFromValues(name, values);
+            end
+
+            td = td.addChannel(cd, {values});
+        end
+        
         function tf = hasParamChannel(td, name) 
             if td.hasChannel(name)
                 tf = isa(td.getChannelDescriptor(name), 'ParamChannelDescriptor');
@@ -597,6 +744,10 @@ classdef TrialData
             cd = td.channelDescriptorsByName.(name);
             values = td.getParamRaw(name);
             values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
+        end
+        
+        function values = getParamUnique(td, name)
+            values = unique(removenan(td.getParam(name)));
         end
 
         function paramStruct = getRawChannelDataAsStruct(td, names)
@@ -686,17 +837,17 @@ classdef TrialData
         end
     end
 
-    methods % Add data methods
+    methods % Generic add data methods
         function td = updatePostDataChange(td)
             td.warnIfNoArgOut(nargout);
         end
         
-        % when adding new data to the trial, all times are stored relative
-        % to the current time zero. This will be overridden in 
-        % TrialDataConditionAlign. This will be added automatically
-        % to all new channel time data to match the offsets produced when
-        % getting data
         function offsets = getTimeOffsetsFromZeroEachTrial(td)
+            % when adding new data to the trial, all times are stored relative
+            % to the current time zero. This will be overridden in 
+            % TrialDataConditionAlign. This will be added automatically
+            % to all new channel time data to match the offsets produced when
+            % getting data
             offsets = zerosvec(td.nTrials);
         end
         
@@ -753,150 +904,9 @@ classdef TrialData
             td.channelDescriptorsByName.(cd.name) = cd;
             td = td.updatePostDataChange();
         end
-        
-        function td = addParam(td, name, values, varargin)
-            td.warnIfNoArgOut(nargout);
-
-            p = inputParser;
-            p.addRequired('name', @ischar);
-            p.addRequired('values', @isvector);
-            p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
-            p.parse(name, values, varargin{:});
-            name = p.Results.name;
-            values = p.Results.values;
-            cd = p.Results.channelDescriptor;
-
-            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
-            assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
-
-            if isempty(cd)
-                cd = ParamChannelDescriptor.buildFromValues(name, values);
-            end
-
-            td = td.addChannel(cd, {values});
-        end
-        
-        function td = addEvent(td, name, times, varargin)
-            td.warnIfNoArgOut(nargout);
-            
-            p = inputParser;
-            p.addRequired('name', @ischar);
-            p.addRequired('times', @isvector);
-            %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
-            p.parse(name, times, varargin{:});
-            %cd = p.Results.channelDescriptor;
-            
-            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
-            assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
-            times = makecol(times);
-                
-            if iscell(times)
-                % multiple occurrence event
-                cd = EventChannelDescriptor.buildMultipleEvent(name, td.timeUnitName);
-                
-                % check contents
-                assert(all(cellfun(@(x) isvector(x) && isnumeric(x), times)), ...
-                    'Cell elements must be numeric vector of event occurrence times');
-            elseif isnumeric(times)
-                % single occurrence event
-                cd = EventChannelDescriptor.buildSingleEvent(name, td.timeUnitName);
-            else
-                error('Times must be numeric vector or cell vector of numeric vectors');
-            end
-         
-            % for TDCA, assume events come in aligned to the current 'zero' time
-            % we add the zero offset to the times so that they are stored
-            % as absolute time points
-            offsets = td.getTimeOffsetsFromZeroEachTrial();
-            
-            if iscell(times)
-                times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
-            else
-                times = times + offsets;
-            end
-            
-            td = td.addChannel(cd, {times});
-        end
-        
-        function td = addAnalog(td, name, values, times, units)
-            td.warnIfNoArgOut(nargout);
-            
-            if ischar(times)
-                if td.hasChannel(times)
-                    % treat times as analog channel name
-                    % share that existing channel's time field 
-                    cd = td.channelDescriptorsByName.(times);
-                    assert(isa(cd, 'AnalogChannelDescriptor'), ...
-                        'Channel %s is not an analog channel', times);
-                    timeField = cd.timeField;
-                    times = {td.data.(timeField)};
-                    
-                elseif isfield(td.data, times)
-                    % use directly specified time field in .data
-                    timeField = times;
-                    times = {td.data.(timeField)};
-                    
-                else
-                    error('%s is not a channel or data field name', times);
-                end
-            elseif iscell(times) || isnumeric(times)
-                % pass specified times along directly as cell
-                % and generate unique time field name
-                timeField = genvarname(sprintf('%s_time', name), fieldnames(td.data));
-                
-            else
-                error('Times must be channel/field name or cell array');
-            end
-                
-            % build a channel descriptor for the data
-            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units);
-            
-            % check the values and convert to nTrials cellvec
-            if ismatrix(values) && isnumeric(values)
-                % values must be nTrials x nTimes
-                assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
-                values = mat2cell(values', size(values, 2), onesvec(td.nTrials))';
-            elseif iscell(values)
-                assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
-            else
-                error('Values must be numeric matrix or cell array');
-            end
-                
-            if iscell(times)
-                assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
-            elseif ismatrix(times)
-                if isvector(times)
-                    times = repmat(makerow(times), td.nTrials, 1);
-                end
-                assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
-                times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
-            
-            else
-                error('Times must be numeric matrix or cell array');
-            end
-            
-            % check each trial's time vector against its value vector
-            sizeMatch = cellfun(@(time, vals) numel(time) == numel(vals), times, values);
-            assert(all(sizeMatch), 'Sizes of times vs. values vectors do not match on %d trials', nnz(sizeMatch));
-            
-            % add the zero offset to the time vector for each trial
-            offsets = td.getTimeOffsetsFromZeroEachTrial();
-            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
-            
-            % AnalogChannelDescriptor declares data fields as data, times
-            td = td.addChannel(cd, {values, times});
-        end
     end 
 
     methods % Plotting functions
-        function units = getChannelUnitsPrimary(td, name)
-            if td.hasSpikeChannelOrUnit(name)
-                units = 'spikes / sec';
-            else
-                units = td.getChannelDescriptor(name).unitsPrimary;
-            end
-        end
-        
         function str = getAxisLabelForChannel(td, name)
             str = td.channelDescriptorsByName.(name).getAxisLabelPrimary();
         end
@@ -950,6 +960,5 @@ classdef TrialData
             ylabel(td.getAxisLabelForChannel(name));
         end
     end
-
 end
 

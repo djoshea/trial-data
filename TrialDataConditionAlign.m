@@ -73,16 +73,6 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
-    methods(Static)
-%         function td = loadobj(td)
-%             td = builtin('loadobj', td);
-%             td.odc = TrialDataConditionAlignOnDemandCache();
-%             td = td.initializeConditionInfo();
-%             td = td.initializeAlignInfo();
-%             td = td.updateValid();
-%         end
-    end
-
     % Simple dependent getters
     methods
         function v = get.nAlign(td)
@@ -90,7 +80,7 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
-    % Get / set accessors that write through to ODC
+    % get / set accessors that read / write through to ODC
     methods
         function v = get.eventData(td)
             v = td.odc.eventData;            
@@ -224,6 +214,28 @@ classdef TrialDataConditionAlign < TrialData
                 valid = cvalid & avalid;
             end
         end
+
+        function td = addChannel(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = addChannel@TrialData(td, varargin{:});
+            
+            % Don't do this anymore, we no longer auto-add attributes to
+            % conditionInfo until they are needed
+            
+%             % detect whether any new condition info compatible params
+%             % have been added
+%             namesOld = td.listConditionInfoCompatibleParamChannels();
+%             td = addChannel@TrialData(td, varargin{:});
+%             names = td.listConditionInfoCompatibleParamChannels();
+%             
+%             % if so, add them to the condition info with valueLists
+%             % specified
+%             newAttr = setdiff(names, namesOld);
+%             for iA = 1:numel(newAttr)
+%                 td.conditionInfo = td.conditionInfo.addAttribute(newAttr{iA}, ...
+%                     'values', td.getParam(newAttr{iA}));
+%             end
+        end
         
         function td = dropChannels(td, names)
             names = wrapCell(names);
@@ -255,7 +267,7 @@ classdef TrialDataConditionAlign < TrialData
             % channels
             td = td.applyAlignInfoSet();
         end
-        
+
         function td = dropNonConditionAlignChannelsExcept(td, names)
             % drop all channels except specified and param/events that could be 
             % used for condition grouping and alignment
@@ -267,7 +279,6 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.dropChannelsExcept([td.listEventChannels(); td.listParamChannels(); makecol(names)]);
         end
-            
     end
 
     % ConditionInfo control
@@ -293,39 +304,26 @@ classdef TrialDataConditionAlign < TrialData
                 td.conditionInfo = ConditionInfo.fromStruct(paramStruct);
             end
         end
-        
-        function td = addEvent(td, varargin)
-            td.warnIfNoArgOut(nargout);
-            td = addEvent@TrialData(td, varargin{:});
-            
-            % force .eventData and .eventCounts to be recomputed
-            td.eventData = [];
-            td.eventCounts = [];
-            td = td.applyAlignInfoSet();
-            
+
+        % given a cellvec or nmeric vector, group its elements
+        function varargout = groupElements(td, varargin)
+            varargout = cell(nargout, 1);
+            for i = 1:numel(varargin)
+                data = varargin{i};
+                assert(size(data,1) == td.nTrials, ...
+                    'Data must have size nTrials along 1st dimension');
+                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition, ...
+                    'UniformOutput', false);
+            end
         end
         
-        function td = addChannel(td, varargin)
-            td.warnIfNoArgOut(nargout);
-            td = addChannel@TrialData(td, varargin{:});
-            
-            % Don't do this anymore, we no longer auto-add attributes to
-            % conditionInfo until they are needed
-            
-%             % detect whether any new condition info compatible params
-%             % have been added
-%             namesOld = td.listConditionInfoCompatibleParamChannels();
-%             td = addChannel@TrialData(td, varargin{:});
-%             names = td.listConditionInfoCompatibleParamChannels();
-%             
-%             % if so, add them to the condition info with valueLists
-%             % specified
-%             newAttr = setdiff(names, namesOld);
-%             for iA = 1:numel(newAttr)
-%                 td.conditionInfo = td.conditionInfo.addAttribute(newAttr{iA}, ...
-%                     'values', td.getParam(newAttr{iA}));
-%             end
+        % given data with dimension 1 with size nTrials, group by condition
+        % and map out{i} = fn(group{i})
+        function out = mapByGroup(td, fn, varargin)
+            dataByGroup = td.groupElements(varargin{:});
+            out = cellfun(fn, dataByGroup, 'UniformOutput', false);
         end
+
         
         function td = setConditionDescriptor(td, cd)
             td.warnIfNoArgOut(nargout);
@@ -544,46 +542,6 @@ classdef TrialDataConditionAlign < TrialData
         
         function minTimeDelta = get.minTimeDelta(td)
             minTimeDelta = td.alignDescriptor.minTimeDelta;
-        end
-    end
-
-    % Data access by group via ConditionInfo
-    methods
-        % given a cellvec or nmeric vector, group its elements
-        function varargout = groupElements(td, varargin)
-            varargout = cell(nargout, 1);
-            for i = 1:numel(varargin)
-                data = varargin{i};
-                assert(size(data,1) == td.nTrials, ...
-                    'Data must have size nTrials along 1st dimension');
-                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition, ...
-                    'UniformOutput', false);
-            end
-        end
-        
-        % given data with dimension 1 with size nTrials, group by condition
-        % and map out{i} = fn(group{i})
-        function out = mapByGroup(td, fn, varargin)
-            dataByGroup = td.groupElements(varargin{:});
-            out = cellfun(fn, dataByGroup, 'UniformOutput', false);
-        end
-
-        function [dCell, tCell] = getAnalogGrouped(td, name)
-            [dataCell, timeCell] = td.getAnalog(name);
-            [dCell, tCell] = td.groupElements(dataCell, timeCell);
-        end
-        
-        function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
-            [dataVec, timeVec] = td.getAnalogSample(name);
-            [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
-        end
-
-        function dCell = getEventGrouped(td, name)
-            dCell = td.groupElements(td.getAnalog(name));
-        end
-
-        function dCell = getParamGrouped(td, name)
-            dCell = td.groupElements(td.getParam(name));
         end
     end
 
@@ -808,10 +766,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td.alignInfoActive = td.alignInfoActive.setIntervalAppearance(varargin{:});
         end
-    end
-    
-    % Aligned data access via AlignInfo
-    methods
+
         function ad = get.alignInfoActive(td)
             ad = td.alignInfoSet{td.alignInfoActiveIdx};
         end
@@ -830,9 +785,9 @@ classdef TrialDataConditionAlign < TrialData
             durations(~td.valid) = NaN;
         end
         
-        % get the time window for each trial
-        % nTrials x nAlign
         function durations = getValidDurationsEachAlign(td)
+            % get the time window for each trial
+            % nTrials x nAlign
             durations = nan(td.nTrials, td.nAlign);
             for iA = 1:pset.nAlign
                 durations(:, iA) = td.alignInfoSet{iA}.getValidDurationByTrial();
@@ -872,7 +827,10 @@ classdef TrialDataConditionAlign < TrialData
             end
             offsets(~td.valid, :) = NaN;
         end
-        
+    end
+
+    % Analog channel access
+    methods
         % return aligned analog channel
         function [data, time] = getAnalog(td, name)
             [data, time] = getAnalog@TrialData(td, name);
@@ -905,25 +863,55 @@ classdef TrialDataConditionAlign < TrialData
                 'timeDelta', timeDelta, 'timeReference', 0, ...
                 'interpolate', true);
         end 
+
+        function [dCell, tCell] = getAnalogGrouped(td, name)
+            [dataCell, timeCell] = td.getAnalog(name);
+            [dCell, tCell] = td.groupElements(dataCell, timeCell);
+        end
         
+        function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
+            [dataVec, timeVec] = td.getAnalogSample(name);
+            [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
+        end
+    end
+
+    % Event channel access
+    methods
         % return aligned event times
         function timesCell = getEvent(td, name)
             timesCell = getEvent@TrialData(td, name);
             timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, false);
         end
 
-        % return aligned unit spike times
-        function [timesCell] = getSpikeTimes(td, unitName)
-            timesCell = getSpikeTimes@TrialData(td, unitName);
-            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, true);
+        function dCell = getEventGrouped(td, name)
+            dCell = td.groupElements(td.getAnalog(name));
+        end
+
+        function td = addEvent(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = addEvent@TrialData(td, varargin{:});
+            
+            % force .eventData and .eventCounts to be recomputed
+            td.eventData = [];
+            td.eventCounts = [];
+            td = td.applyAlignInfoSet();
+            
+        end
+    end
+
+    % Param channel access
+    methods 
+        function dCell = getParamGrouped(td, name)
+            dCell = td.groupElements(td.getParam(name));
         end
     end
 
     % Spike data
     methods
-        function sr = buildSpikeRaster(td, unitName)
-            sr = SpikeRaster(td, unitName, 'conditionInfo', td.conditionInfo, 'alignInfo', td.alignInfoActive);
-            sr.useWidestCommonValidTimeWindow = false;
+        % return aligned unit spike times
+        function [timesCell] = getSpikeTimes(td, unitName)
+            timesCell = getSpikeTimes@TrialData(td, unitName);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, true);
         end
         
         function [rateCell, timeCell] = getSpikeRateFiltered(td, unitName, varargin)
@@ -1066,8 +1054,8 @@ classdef TrialDataConditionAlign < TrialData
                                'EdgeColor', app(iCond).color, ...
                                'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
                     else
-                        plot(axh, dataCell1{iTrial}, dataCell2{iTrial}, '-', 'Color', app(iCond).color, ...
-                            'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                        args = app(iCond).getPlotArgs();
+                        plot(axh, dataCell1{iTrial}, dataCell2{iTrial}, '-', args{:}, p.Results.plotOptions{:});
                     end
                     if iTrial == 1, hold(axh, 'on'); end
                 end
@@ -1112,5 +1100,4 @@ classdef TrialDataConditionAlign < TrialData
             zlabel(td.getAxisLabelForChannel(name3));
         end
     end
-
 end
