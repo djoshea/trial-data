@@ -1138,6 +1138,7 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupMeans(td, name, varargin) 
             % plot the mean and sem for an analog channel vs. time within
             % each condition
+            import TrialDataUtilities.Plotting.errorshade;
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
             p.KeepUnmatched;
