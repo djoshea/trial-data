@@ -385,7 +385,7 @@ classdef AlignInfo < AlignDescriptor
             end
             
             delta = ad.minTimeDelta;
-            roundFn = @(times, ref) round((times - ref) / delta) * delta + ref;
+            roundFn = @(times, ref) bsxfun(@plus, round(bsxfun(@minus, times, ref) / delta) * delta, ref);
             if isnumeric(times)
                 times = roundFn(times, ref);
             else

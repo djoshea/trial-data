@@ -686,11 +686,13 @@ classdef AlignDescriptor
             ad = ad.update();
         end
 
-        function ad = invalidateOverlap(ad, eventName, offset, varargin)
+        function ad = invalidateOverlap(ad, eventName, varargin)
             p = inputParser;
+            p.addOptional('offset', 0, @isscalar);
             p.addOptional('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
+            offset = p.Results.offset;
             if isempty(p.Results.index)
                 index = ':';
             else
@@ -1214,6 +1216,9 @@ classdef AlignDescriptor
             
             tcprintf('inline', '\toutside trial {bright blue}%s\n', ad.outsideOfTrialMode);
             tcprintf('inline', '\tminimum duration {bright blue}%d\n', ad.minDuration);
+            if ad.roundTimes
+                tcprintf('inline', '\tround times with min delta {bright blue}%g\n', ad.minTimeDelta);
+            end
 
             for i = 1:length(ad.markEvents);
                 tcprintf('inline', '\tmark {white}%s{none} as {bright blue}%s\n', ...

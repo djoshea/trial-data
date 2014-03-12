@@ -869,6 +869,22 @@ classdef TrialDataConditionAlign < TrialData
             [dCell, tCell] = td.groupElements(dataCell, timeCell);
         end
         
+        function [dCell, tvec] = getAnalogAsMatrixGrouped(td, name)
+            [mat, tvec] = td.getAnalogAsMatrix(name);
+            dCell = td.groupElements(mat);
+        end
+        
+        function [meanMat, semMat, tvec] = getAnalogGroupMeans(td, name)
+            [dCell, tvec] = td.getAnalogAsMatrixGrouped(name);
+            [meanMat, semMat] = deal(nan(td.nConditions, numel(tvec)));
+            for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    meanMat(iC, :) = nanmean(dCell{iC}, 1);
+                    semMat(iC, :) = nansem(dCell{iC}, 1);
+                end
+            end 
+        end
+        
         function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
             [dataVec, timeVec] = td.getAnalogSample(name);
             [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
@@ -1014,15 +1030,25 @@ classdef TrialDataConditionAlign < TrialData
                 for iTrial = 1:numel(dataCell)
                     if ~isempty(timeCell{iTrial}) && ~isempty(dataCell{iTrial})
                         if p.Results.patchline
-                           patchline(double(timeCell{iTrial}), dataCell{iTrial}, ...
+                           h = patchline(double(timeCell{iTrial}), dataCell{iTrial}, ...
                                'FaceColor', app(iCond).color, 'FaceAlpha', 0.3, ...
                                'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
                         else
-                            plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', 'Color', app(iCond).color, ...
-                                'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
+                            plotArgs = app(iCond).getPlotArgs();
+                            h = plot(axh, double(timeCell{iTrial}), dataCell{iTrial}, '-', ...
+                                plotArgs{:}, p.Results.plotOptions{:});
                         end
                     end
-                    if iTrial == 1, hold(axh, 'on'); end
+                    if iTrial == 1
+                        hold(axh, 'on'); 
+                        % update name for inclusion in legend
+                        set(h, 'DisplayName', td.conditionNames{iCond});
+                    else
+                        % turn off legend info
+                        ann = get(h, 'Annotation');
+                        leg = get(ann, 'LegendInformation');
+                        set(leg, 'IconDisplayStyle', 'off');
+                    end
                 end
             end
             box(axh, 'off');
@@ -1050,14 +1076,23 @@ classdef TrialDataConditionAlign < TrialData
                 dataCell2 = dataByGroup2{iCond};
                 for iTrial = 1:numel(dataCell1)
                     if p.Results.patchline
-                        patchline(dataCell1{iTrial}, dataCell2{iTrial}, ...
+                        h = patchline(dataCell1{iTrial}, dataCell2{iTrial}, ...
                                'EdgeColor', app(iCond).color, ...
                                'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
                     else
                         args = app(iCond).getPlotArgs();
-                        plot(axh, dataCell1{iTrial}, dataCell2{iTrial}, '-', args{:}, p.Results.plotOptions{:});
+                        h = plot(axh, dataCell1{iTrial}, dataCell2{iTrial}, '-', args{:}, p.Results.plotOptions{:});
                     end
-                    if iTrial == 1, hold(axh, 'on'); end
+                    if iTrial == 1
+                        hold(axh, 'on'); 
+                        % update for easy legend info
+                        set(h, 'DisplayName', td.conditionNames{iCond});
+                    else
+                        % turn off legend info
+                        ann = get(h, 'Annotation');
+                        leg = get(ann, 'LegendInformation');
+                        set(leg, 'IconDisplayStyle', 'off');
+                    end
                 end
             end
             box(axh, 'off');
@@ -1098,6 +1133,31 @@ classdef TrialDataConditionAlign < TrialData
             xlabel(td.getAxisLabelForChannel(name1));
             ylabel(td.getAxisLabelForChannel(name2));
             zlabel(td.getAxisLabelForChannel(name3));
+        end
+        
+        function plotAnalogGroupMeans(td, name, varargin) 
+            % plot the mean and sem for an analog channel vs. time within
+            % each condition
+            p = inputParser();
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.KeepUnmatched;
+            p.parse(varargin{:});
+
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+
+            [meanMat, semMat, tvec] = td.getAnalogGroupMeans(name);     
+            app = td.conditionAppearances;
+
+            for iCond = 1:td.nConditions
+                h = errorshade(tvec, meanMat(iCond, :), semMat(iCond, :), app(iCond).Color);
+                hold(axh, 'on');     
+                set(h, 'DisplayName', td.conditionNames{iCond});
+            end
+            box(axh, 'off');
+            axis(axh, 'tight');
+            
+            xlabel(td.getTimeAxisLabel());
+            ylabel(td.getAxisLabelForChannel(name));
         end
     end
 end
