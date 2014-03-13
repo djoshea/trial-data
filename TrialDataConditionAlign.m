@@ -1150,6 +1150,7 @@ classdef TrialDataConditionAlign < TrialData
             app = td.conditionAppearances;
 
             for iCond = 1:td.nConditions
+                if isempty(td.listByCondition{iCond}), continue; end
                 h = errorshade(tvec, meanMat(iCond, :), semMat(iCond, :), app(iCond).Color);
                 hold(axh, 'on');     
                 set(h, 'DisplayName', td.conditionNames{iCond});
