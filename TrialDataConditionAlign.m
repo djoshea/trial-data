@@ -51,10 +51,13 @@ classdef TrialDataConditionAlign < TrialData
         axisValueListsAsStrings
         
         conditionAppearanceFn
-
+    end
+    
+    % Simple dependent properties
+    properties(Dependent, SetAccess=protected)
         nAlign
 
-        alignInfoActive
+        alignInfoActive % index of the alignInfoSet currently "active"
     end
 
     % Properties which read through to AlignInfo
@@ -78,6 +81,8 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.nAlign(td)
             v = numel(td.alignInfoSet);
         end
+        
+        
     end
     
     % get / set accessors that read / write through to ODC
@@ -345,6 +350,17 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td.conditionInfo.appearanceFn = fn;
         end
+        
+        function td = colorByAttributes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.colorByAttributes(varargin{:});
+        end
+        
+        function td = colorByAxes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.colorByAxes(varargin{:});
+        end
+
 
         function td = selectTrials(td, mask)
             % Apply a logical mask or index selection to the list of trials
@@ -401,6 +417,39 @@ classdef TrialDataConditionAlign < TrialData
             % filtering. use reset condition info for that
             td.warnIfNoArgOut(nargout);
             td = td.groupBy();
+        end
+        
+        function td = reshapeAxes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.reshapeAxes(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = flattenAxes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.flattenAxes(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+       function td = selectConditions(td, varargin)
+            % select specific conditions by linear index or mask
+            % and return a single-axis condition descriptor with just those
+            % conditions selected
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.selectConditions(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = selectConditionsAlongAxis(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.selectConditionsAlongAxis(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = matchSelectConditionsAlongAxis(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.matchSelectConditionsAlongAxis(varargin{:});
+            td = td.postUpdateConditionInfo();
         end
         
         function td = resetConditionInfo(td)
@@ -569,7 +618,7 @@ classdef TrialDataConditionAlign < TrialData
         function td = postUpdateAlignInfo(td)
             td.warnIfNoArgOut(nargout);
             td = td.updateValid();
-            % cause alignsummary to be recomputed
+            % cause align summary to be recomputed
             td.alignSummarySet = [];
         end
 
@@ -598,6 +647,15 @@ classdef TrialDataConditionAlign < TrialData
             td.alignInfoSet = adSet;
             td.alignInfoActiveIdx = 1;
             td = td.applyAlignInfoSet();
+        end
+        
+        function td = addAlign(td, varargin)
+            % whereas align replaces the existing align descriptor set,
+            % this appends an align descriptor
+            td.warnIfNoArgOut(nargout);
+
+            adSet = cat(1, td.alignInfoSet, makecol(varargin));
+            td = td.align(adSet{:});
         end
         
         function td = unalign(td)
@@ -653,12 +711,16 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = round(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfoActive = td.alignInfoActive.round(varargin{:});
+            for iAlign = 1:td.nAlign
+                td.alignInfoSet{iAlign} = td.alignInfoSet{iAlign}.round(varargin{:});
+            end
         end
         
         function td = noRound(td)
             td.warnIfNoArgOut(nargout);
-            td.alignInfoActive = td.alignInfoActive.noRound();
+            for iAlign = 1:td.nAlign
+                td.alignInfoSet{iAlign} = td.alignInfoSet{iAlign}.noRound();
+            end
         end
         
         function td = start(td, varargin)
@@ -1012,6 +1074,49 @@ classdef TrialDataConditionAlign < TrialData
 
     % Plotting
     methods
+        function [offsets, lims] = getAlignPlottingTimeOffsets(td, tvecCell, varargin)
+            % when plotting multiple alignments of data simultaneously,
+            % timeseries are plotted side by side along an axis, separated
+            % by a gap given by .interAlignGap. This returns the list of
+            % time offsets where each alignment's zero event would be
+            % plotted. tvecCell is a nAlign x 1 cell of time vectors used
+            % in plotting which are used to determine the boundaries between 
+            % successive alignments. 
+            
+            p = inputParser();
+            p.addParamValue('alignIdx', 1:td.nAlign, @isvector);
+            p.parse(varargin{:});
+            
+            % select alignment indices
+            alignIdx = 1:td.nAlign;
+            alignIdx = alignIdx(p.Results.alignIdx);
+            nAlign = numel(alignIdx);
+            
+            offsets = nan(nAlign, 1);
+            offsets(1) = 0;
+            currentOffset = 0;
+            
+            mins = cellfun(@nanmin, tvecCell);
+            maxs = cellfun(@nanmax, tvecCell);
+            
+            % determine the inter alignment gaps
+            if isempty(td.interAlignGaps)
+                % no inter align gap specified, determine automatically
+                T = sum(maxs - mins);
+                gaps = repmat(0.02 * T, td.nAlign-1, 1);
+            else
+                gaps = td.interAlignGaps;
+            end
+            
+            for iAlign = 2:nAlign
+                currentOffset = currentOffset + nanmax(tvecCell{iAlign-1}) + ...
+                    gaps(iAlign-1) - nanmin(tvecCell{iAlign});
+                offsets(iAlign) = currentOffset;
+            end
+            
+            lims = [mins(1), maxs(end) + offsets(end)];
+        end
+        
         function plotAnalogGroupedEachTrial(td, name, varargin) 
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
@@ -1145,20 +1250,129 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
 
             axh = td.getRequestedPlotAxis(p.Unmatched);
-
-            [meanMat, semMat, tvec] = td.getAnalogGroupMeans(name);     
+            cla(axh);
             app = td.conditionAppearances;
 
-            for iCond = 1:td.nConditions
-                h = errorshade(tvec, meanMat(iCond, :), semMat(iCond, :), app(iCond).Color);
-                hold(axh, 'on');     
-                set(h, 'DisplayName', td.conditionNames{iCond});
+            % loop over alignments and gather time vectors
+            [meanMat, semMat, tvecCell] = deal(cell(td.nAlign, 1));
+            for iAlign = 1:td.nAlign
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}] = td.useAlign(iAlign).getAnalogGroupMeans(name);     
             end
-            box(axh, 'off');
-            axis(axh, 'tight');
             
-            xlabel(td.getTimeAxisLabel());
-            ylabel(td.getAxisLabelForChannel(name));
+            % determine the x-offsets at which to plot the data
+            tOffsets = td.getAlignPlottingTimeOffsets(tvecCell);
+            
+            for iAlign = 1:td.nAlign
+                for iCond = 1:td.nConditions
+                    h = errorshade(tvecCell{iAlign} + tOffsets(iAlign), ...
+                        meanMat{iAlign}(iCond, :), ...
+                        semMat{iAlign}(iCond, :), app(iCond).Color, 'axh', axh);
+                    hold(axh, 'on');
+                    if ~isnan(h)
+                        set(h, 'DisplayName', td.conditionNames{iCond});
+                    end
+                end
+                box(axh, 'off');
+                axis(axh, 'tight');
+                
+                % setup x axis 
+                td.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign));
+            end
+
+            % setup y axis
+            TrialDataUtilities.Plotting.setupAxisForChannel(td.channelDescriptorsByName.(name));
+        end
+        
+        function plotAnalogGroupMeansByConditionAxes(td, name, varargin) 
+            % plot the mean and sem for an analog channel vs. time within
+            % each condition according to the arrangment of td.conditions
+            % The first dimension will be plotted along each row, the
+            % second along the columns, and subsequent dimensions within
+            % the same axes on top of the others
+            import TrialDataUtilities.Plotting.hideInLegend;
+            import TrialDataUtilities.Plotting.showInLegend;
+            [pan, args] = td.getRequestedPlotPanel(varargin{:});
+            
+            import TrialDataUtilities.Plotting.errorshade;
+            p = inputParser();
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.addParamValue('legend', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(args);
+
+            showLegend = p.Results.legend;
+            
+            % determine number of subplots needed
+            szPanel = td.conditionInfo.conditionsSize(1:2);
+            pan.pack(szPanel(1), szPanel(2));
+            pan.units = 'cm';
+            pan.margin = 0;
+            pan.de.margin = 0;
+            cInds = td.conditionInfo.conditionsAsLinearInds;
+            app = td.conditionAppearances;
+            
+            % loop over alignments and gather time vectors
+            [meanMat, semMat, tvecCell] = deal(cell(td.nAlign, 1));
+            for iAlign = 1:td.nAlign
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}] = td.useAlign(iAlign).getAnalogGroupMeans(name);     
+            end
+            
+            % get global time limits
+            % and determine the x-offsets at which to plot the data
+            [tOffsets, xlims] = td.getAlignPlottingTimeOffsets(tvecCell);
+            
+            for row = 1:szPanel(1)
+                for col = 1:szPanel(2)
+                    axh = pan(row, col).select();
+                    au = AutoAxis();
+                    au.axisInset = [2 0.4 0.4 0.4];
+                    
+                    cIndsThisPanel = squeeze(cInds(row, col, :));
+                    
+                    % track legend handles so that legend auto appears nicely
+                    legHandleByCond = nan(numel(cIndsThisPanel), 1);
+                    
+                    for iCond = 1:numel(cIndsThisPanel)
+                        c = cIndsThisPanel(iCond);
+                        for iAlign = 1:td.nAlign
+                            h = errorshade(tvecCell{iAlign} + tOffsets(iAlign), ...
+                                meanMat{iAlign}(c, :), ...
+                                semMat{iAlign}(c, :), app(c).Color, 'axh', axh);
+                            hold(axh, 'on');
+    
+                            % handle legend entries
+                            if ~isnan(h)
+                                hideInLegend(h);
+                                set(h, 'DisplayName', td.conditionNames{c});
+                                legHandleByCond(iCond) = h;
+                            end
+                        end
+                      
+                    end
+                    
+                    tdTheseCond = td.selectConditions(cIndsThisPanel);
+                    for iAlign = 1:td.nAlign
+                        tdTheseCond.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign), 'style', 'marker');
+                    end   
+                    au.axisInset(2) = 2;
+                    
+                    showInLegend(removenan(legHandleByCond));
+                    box(axh, 'off');
+                    axis(axh, 'tight');
+                    set(axh, 'XLim', xlims);
+                    axis(axh, 'off');
+                    
+                    % setup y axis
+                    if col == 1 || true
+                        TrialDataUtilities.Plotting.setupAxisForChannel(td.channelDescriptorsByName.(name));
+                    end
+                    
+                    if showLegend
+                        legend(axh, 'show');
+                        legend(axh, 'boxoff');
+                    end
+                end
+            end
         end
     end
 end

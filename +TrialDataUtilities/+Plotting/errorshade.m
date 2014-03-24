@@ -8,12 +8,14 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
     p = inputParser();
     p.addParamValue('lineArgs', {}, @iscell);
     p.addParamValue('shadeArgs', {}, @iscell);
+    p.addParamValue('axh', gca, @ishandle);
     p.parse(varargin{:});
 
+    axh = p.Results.axh;
+    
     y1 = ym - ye;
     y2 = ym + ye;
     
-        
     if all(isnan(y1) | isnan(y2))
         hl = NaN;
         hs = NaN;
@@ -49,7 +51,7 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
         regionStart = offset;
         mask = regionStart:regionEnd;
         
-        [hs] = shadeSimple(x(mask), y1(mask), y2(mask), 'FaceColor', shadeColor, ...
+        [hs] = shadeSimple(axh, x(mask), y1(mask), y2(mask), 'FaceColor', shadeColor, ...
             p.Results.shadeArgs{:});
        
         offset = regionEnd + 1;
@@ -60,7 +62,7 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
     
 end
 
-function [ha] = shadeSimple(x, y1, y2, varargin)
+function [ha] = shadeSimple(axh, x, y1, y2, varargin)
 
 p = inputParser();
 p.addParamValue('FaceColor', [0.8 0.8 1], @(x) true);
@@ -69,7 +71,7 @@ p.KeepUnmatched = true;
 p.parse(varargin{:});
 
 ha = fill([x, fliplr(x)], [y1, fliplr(y2)], p.Results.FaceColor, ...
-    'EdgeColor', p.Results.EdgeColor, ...
+    'EdgeColor', p.Results.EdgeColor, 'Parent', axh, ...
     p.Unmatched);
 
 % hide shading from legend

@@ -32,7 +32,51 @@ classdef AppearanceSpec
            args = app.getNonEmptyArgsByName({'Color', 'LineWidth', 'Marker', ...
                'MarkerSize', 'MarkerFaceColor', 'MarkerEdgeColor'});
        end
+       
+       function c = get.Color(app)
+           if isempty(app.Color)
+               c = [0 0 0];
+           else
+               c = AppearanceSpec.convertColor(app.Color);
+           end
+       end
+       
+       function c = getMarkerFaceColor(app)
+           if isempty(app.MarkerFaceColor)
+               c = AppearanceSpec.convertColor(app.Color);
+           else
+               c = AppearanceSpec.convertColor(app.MarkerFaceColor);
+           end
+       end
+               
     end
        
-       
+    methods(Static)
+        function cvec = convertColor(c)
+            if ~ischar(c)
+                cvec = c;
+            else
+                switch c
+                    case 'b'
+                        cvec = [0 0 1];
+                    case 'g'
+                        cvec = [0 1 0];
+                    case 'r'
+                        cvec = [1 0 0];
+                    case 'c'
+                        cvec = [0 1 1];
+                    case 'm'
+                        cvec = [1 0 1];
+                    case 'y'
+                        cvec = [1 1 0];
+                    case 'k'
+                        cvec = [0 0 0];
+                    case 'w'
+                        cvec = [1 1 1];
+                    otherwise
+                        error('Unknown color string');
+                end
+            end
+        end
+    end
 end

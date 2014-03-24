@@ -83,7 +83,7 @@ classdef AlignSummary
         % mean occurrence time(s) of that mark event (relative to the zero event)
         markMeanByCondition
         
-        % nMarks x 1 cell with nIntervals x nOccurrences matrices of
+        % nIntervals x 1 cell with nConditions x nOccurrences matrices of
         % latest occurrence time of the start of each occurrence of that interval 
         % (relative to the zero event)
         intervalStartMaxByCondition
@@ -247,7 +247,6 @@ classdef AlignSummary
             
             % TODO could check that all alignDescriptors and
             % conditionDescriptors are equivalent here, but would be slow
-            
             aggNTrials = makecol([set.nTrials]); % used in nested functions below
             
             % add up trial counts
@@ -292,7 +291,6 @@ classdef AlignSummary
             
             % args are nDistinctEvents (e.g. nMarks, nIntervals) x
             % nSummary cells with nCondition x nOccurrence matrices inside
-            
             [as.markMaxByCondition, as.markMinByCondition, as.markMeanByCondition] = ...
                 aggregateMultipleEventStatsByCondition(cat(2, set.markMaxByCondition), ...
                 cat(2, set.markMinByCondition), cat(2, set.markMeanByCondition), ...
@@ -419,6 +417,108 @@ classdef AlignSummary
             end
            
         end
+        
+%         function as = buildForSelectedConditions(aso, cmask)
+%             % build a new AlignSummary object by including only selected
+%             % conditions
+%             error('Not fully implemented');
+%             
+%             as = AlignSummary();
+%             as.alignDescriptor = aso.alignDescriptor;
+%             as.conditionDescriptor = aso.conditionDescriptor;
+%             
+%             % mask all of the byConditions directly by cmask
+%             as.nTrialsByCondition = aso.nTrialsByCondition(cmask);
+%             as.startMinByCondition =  aso.startMinByCondition(cmask);
+%             as.startMaxByCondition =  aso.startMaxByCondition(cmask);
+%             as.startMeanByCondition = as.startMeanByCondition(cmask);
+%             as.stopMinByCondition = as.stopMinByCondition(cmask);
+%             as.stopMaxByCondition = as.stopMaxByCondition(cmask);
+%             as.stopMeanByCondition = as.stopMeanByCondition(cmask);
+% 
+%             applyCmaskFn = @(in) cellfun(@(e) e(cmask, :);
+%             as.markMaxByCondition = as.markMaxByCondition(cmask);
+%             as.markMinByCondition = as.markMinByCondition(cmask);
+%             as.markMeanByCondition = as.markMeanByCondition(cmask);
+%             as.intervalStartMaxByCondition = as.intervalStartMaxByCondition(cmask);
+%             as.intervalStartMinByCondition = as.intervalStartMinByCondition(cmask);
+%             as.intervalStartMeanByCondition = as.intervalStartMeanByCondition(cmask);
+%             as.intervalStopMaxByCondition = as.intervalStopMaxByCondition(cmask);
+%             as.intervalStopMinByCondition = as.intervalStopMinByCondition(cmask);
+%             as.intervalStopMeanByCondition = as.intervalStopMeanByCondition(cmask);
+% 
+%             % aggregate the selected conditions into the primary statistics
+%             aggNTrials = as.nTrialsByCondition; % used in nested functions below
+%             as.nTrials = sum(as.nTrialsByCondition);
+%             
+%             [as.startMin, as.startMax, as.startMean] = ...
+%                 aggregateSingleEventStats(as.startMinByCondition, as.startMaxByCondition, as.startMeanByCondition, aggNTrials);
+%             [as.stopMin, as.stopMax, as.stopMean] = ...
+%                 aggregateSingleEventStats(as.stopMinByCondition, as.stopMaxByCondition, as.stopMeanByCondition, aggNTrials);
+%             
+%             % aggregate
+%             % markMaxByCondition is nMarks x 1 of nConditions x nOccurrences,
+%             % cat(1, as.markMaxByCondition{:})' is nOccurrences x nConditions
+%             % nSummary cell arrays. Contents are nOccurrences x 1 vectors
+%             [as.markMax, as.markMin, as.markMean] = aggregateMultipleEventStats(...
+%                 cat(2, set.markMax), cat(2, set.markMin), ...
+%                 cat(2, set.markMean), aggNTrials);
+%             
+%             [as.intervalStartMax, as.intervalStartMin, as.intervalStartMean] = aggregateMultipleEventStats(...
+%                 cat(2, set.intervalStartMax), cat(2, set.intervalStartMin), ...
+%                 cat(2, set.intervalStartMean), aggNTrials);
+%             
+%             [as.intervalStopMax, as.intervalStopMin, as.intervalStopMean] = aggregateMultipleEventStats(...
+%                 cat(2, set.intervalStopMax), cat(2, set.intervalStopMin), ...
+%                 cat(2, set.intervalStopMean), aggNTrials);
+%     
+%             as = as.initialize();
+%             
+%             function [maxNew, minNew, meanNew] = aggregateSingleEventStats(...
+%                     maxData, minData, meanData, nTrialsData)
+%                 minNew = nanmin(minData);
+%                 maxNew = nanmax(maxData);
+%                 meanNew = nansum(makecol(meanData) .* makecol(nTrialsData)) / sum(nTrialsData);
+%             end
+%             
+%             function [maxNew, minNew, meanNew] = aggregateMultipleEventStats(...
+%                     maxData, minData, meanData, nTrialsData)
+%                 % max/min/meanData are nDistinctEvents x nSummary cells of
+%                 % nOccurrences vectors.
+%                 %
+%                 % nTrialsData is nSummary x 1 vector
+%                 % 
+%                 % max/min/meanNew are nDistinctEvents cells of nOccurrences
+%                 % vectors
+%                 nDistinctEvents = size(maxData, 1);
+%                 nSummary = size(maxData, 2);
+%                 nOccurrences = cellfun(@numel, maxData);
+%                 maxOccurrencesByEvent = max(nOccurrences, [], 2);
+%                 
+%                 [maxNew, minNew, meanNew] = deal(cell(nDistinctEvents, 1));
+%                 
+%                 for iEv = 1:nDistinctEvents
+%                     padToLength = @(vec) [makecol(vec); ...
+%                         nan(maxOccurrencesByEvent(iEv)-numel(vec), 1)];
+%                     % *Mat is maxOccurrencesByEvent x nSummary
+%                     maxMat = cell2mat(cellfun(padToLength, maxData(iEv, :), ...
+%                         'UniformOutput', false));
+%                     minMat = cell2mat(cellfun(padToLength, minData(iEv, :), ...
+%                         'UniformOutput', false));
+%                     meanMat = cell2mat(cellfun(padToLength, meanData(iEv, :), ...
+%                         'UniformOutput', false));
+%                     
+%                     % cell elements are maxOccurrencesByEvent x 1 vectors
+%                     maxNew{iEv} = nanmax(maxMat, [], 2);
+%                     minNew{iEv} = nanmin(minMat, [], 2);
+%                     
+%                     % note that we use nanmean to compute the weighted sum
+%                     % because nansum returns 0 when all are NaN
+%                     meanNew{iEv} = nanmean(bsxfun(@times, meanMat, makerow(nTrialsData)), 2) / ...
+%                         sum(nTrialsData / nSummary);
+%                 end
+%             end
+%         end
     end
 
     methods(Access=protected) % Builds internal properties at construction time
@@ -553,12 +653,12 @@ classdef AlignSummary
     end
     
     methods
-        function setupTimeAutoAxis(as, varargin)
+        function au = setupTimeAutoAxis(as, varargin)
             % add ticks and markers to the x-axis of a plot representing
             % all marks and intervals for this align descriptor
             p = inputParser();
             p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
-            p.addParamValue('xOffsetZero', 0, @isscalar); % x position of t=0 on the axis
+            p.addParamValue('tOffsetZero', 0, @isscalar); % x position of t=0 on the axis
             p.addParamValue('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             p.addParamValue('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
             p.addParamValue('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
@@ -567,7 +667,7 @@ classdef AlignSummary
             p.parse(varargin{:});
 
             style = p.Results.style;
-            xOffset = p.Results.xOffsetZero;
+            xOffset = p.Results.tOffsetZero;
             tMin = p.Results.tMin;
             tMax = p.Results.tMax;
             allowedRange = p.Results.allowedRange;
@@ -588,7 +688,7 @@ classdef AlignSummary
                 case 'tickBridge'      
                     
                     ticks = [tMin, tMax, labelInfo.time]' + xOffset; 
-                    labels = cellvec(numel(as.labelInfo));
+                    labels = cellvec(numel(labelInfo));
                     
                     % wrap labels with some range to their occurrences with < >
                     for iLabel = 1:numel(labelInfo)
@@ -620,7 +720,7 @@ classdef AlignSummary
                         end
                         au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
                             'errorInterval', errorInterval, ...
-                            'color', ii.appear.Color);
+                            'color', ii.appear.getMarkerFaceColor());
                     end
                     
                     for iLabel = 1:numel(labelInfo)
@@ -637,10 +737,12 @@ classdef AlignSummary
                         end
                         au.addMarkerX(li.time + xOffset, li.name, ...
                             'interval', errorInterval, ...
-                            'markerColor', li.appear.MarkerFaceColor);
+                            'markerColor', li.appear.getMarkerFaceColor());
                     end
             end
-                        
+            axis off;
+            au.update();
+            au.installCallbacks();      
         end
 
         function drawOnTimeseries(as, data, tvec, varargin)

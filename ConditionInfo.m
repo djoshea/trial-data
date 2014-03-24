@@ -841,7 +841,9 @@ classdef ConditionInfo < ConditionDescriptor
         function ci = fixAxisValueList(ci, axisSpec)
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
-            ci = ci.setAxisValueList(idx, ci.axisValueLists{idx});
+            for i = 1:numel(idx)
+                ci = ci.setAxisValueList(idx(i), ci.axisValueLists{idx(i)});
+            end
         end
         
         function ci = fixAllAxisValueLists(ci)

@@ -415,7 +415,7 @@ classdef AlignDescriptor
             p.addParamValue('index', 1, @(x) ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
             p.addParamValue('mark', false, @islogical);
-            p.addParamValue('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.parse(varargin{:});
             offset = p.Results.offset;
 
@@ -449,7 +449,7 @@ classdef AlignDescriptor
             p.addParamValue('index', 1, @(x) ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
             p.addParamValue('mark', false, @islogical);
-            p.addParamValue('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.parse(varargin{:});
             offset = p.Results.offset;
 
@@ -492,7 +492,7 @@ classdef AlignDescriptor
             p.addParamValue('index', 1, @(x) ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
             p.addParamValue('mark', true, @islogical);
-            p.addParamValue('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.parse(varargin{:});
             offset = p.Results.offset;
 
@@ -541,7 +541,7 @@ classdef AlignDescriptor
             p.addParamValue('indexStart', ':', @(x) ischar(x) || isscalar(x));
             p.addParamValue('indexStop', ':', @(x) ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
-            p.addParamValue('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             %p.addParamValue('conditionMatch', struct(), @(x) isstruct(x) && isscalar(x));
             p.parse(varargin{:});
             as = p.Results.as;
@@ -601,7 +601,7 @@ classdef AlignDescriptor
             p.addOptional('offset', 0, @isscalar);
             p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
-            p.addParamValue('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.parse(varargin{:});
             offset = p.Results.offset;
             

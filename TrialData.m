@@ -736,7 +736,7 @@ classdef TrialData
             values = {td.data.(cd.dataFields{1})}';
             % if this channel is marked as a scalar, convert to a numeric array
             if ~cd.collectAsCellByField(1)
-                values = cell2mat(values);
+                values = cellfun(@double, values);
             end
         end
         % Basic access methods, very fast
@@ -747,7 +747,11 @@ classdef TrialData
         end
         
         function values = getParamUnique(td, name)
-            values = unique(removenan(td.getParam(name)));
+            vals = td.getParam(name);
+            if ~iscell(vals)
+                vals =removenan(vals);
+            end
+            values = unique(vals);
         end
 
         function paramStruct = getRawChannelDataAsStruct(td, names)
@@ -892,7 +896,7 @@ classdef TrialData
                     % channels (besides this one) and throw an error if we are
                     if isfield(td.data, dataFields{iF})
                         otherChannels = setdiff(td.getChannelsReferencingFields(dataFields{iF}), cd.name);
-                        if any(otherChannels)
+                        if ~isempty(otherChannels)
                             error('Refusing to overwrite data field %s referenced by other channels %s', ...
                                 strjoin(otherChannels, ', '));
                         end
@@ -916,11 +920,11 @@ classdef TrialData
         end
 
         % general utility to send plots to the correct axis
-        function axh = getRequestedPlotAxis(td, varargin) %#ok<INUSL>
+        function [axh, unmatched] = getRequestedPlotAxis(td, varargin) %#ok<INUSL>
             p = inputParser();
             p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
             p.addParamValue('cla', false, @islogical); 
-            p.KeepUnmatched;
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
 
             % default to gca
@@ -934,8 +938,35 @@ classdef TrialData
             if p.Results.cla
                 cla(axh);
             end
+            
+            unmatched = p.Unmatched;
         end
 
+        function [pan, unmatched] = getRequestedPlotPanel(td, varargin) %#ok<INUSL>
+            p = inputParser();
+            p.addParamValue('figh', [], @(x) isempty(x) || ishandle(x));
+            p.addParamValue('panel', [], @(x) isempty(x) || ishandle(x));
+            p.addParamValue('clf', true, @islogical); 
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            % default to gcf
+            if isempty(p.Results.figh)
+                figh = gcf;
+            else
+                figh = p.Results.figh;
+            end
+           
+            % optionally clear figure
+            if p.Results.clf
+                clf(figh);
+            end
+            
+            pan = OuterPanel(figh);
+            
+            unmatched = p.Unmatched;
+        end
+        
         function plotAnalogEachTrial(td, name, varargin) 
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));

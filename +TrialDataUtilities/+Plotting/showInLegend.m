@@ -4,8 +4,10 @@ function showInLegend(h, names)
 % use legend(axh, 'show') to activate default legend
 % names is either char (for scalar h), or cellstr
 
-    if ~iscell(names)
+    if nargin >= 2 && ~isempty(names) && ~iscell(names)
         names = {names};
+    else
+        names = [];
     end
 
     for i = 1:numel(h)
@@ -13,7 +15,9 @@ function showInLegend(h, names)
         leg = get(ann, 'LegendInformation');
         set(leg, 'IconDisplayStyle', 'on');
         
-        set(h(i), 'DisplayName', names{i});
+        if ~isempty(names)
+            set(h(i), 'DisplayName', names{i});
+        end
     end
 
 end

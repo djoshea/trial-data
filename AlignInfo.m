@@ -32,6 +32,8 @@ classdef AlignInfo < AlignDescriptor
         % start, stop, zero events, as well as intervals and marks 
         timeInfo
         
+        timeInfoValid
+        
         % valid is a dependent property formed by merging computedValid
         % with manualInvalid
         computedValid
@@ -39,17 +41,29 @@ classdef AlignInfo < AlignDescriptor
         % nTrials x nMarks cell array of mark times
         markData
         
+        % nTrials x nMarks cell array of mark times; NaN for invalid trials
+        markDataValid
+        
         % nTrials x nMarks array of mark occurrence counts
         markCounts
+        
+        % nTrials x nMarks array of mark occurrence counts; NaN for invalid trials
+        markCountsValid
         
         % nIntervals cell array of nTrials x nMaxOccurrences interval start times
         intervalStartData
         
+        intervalStartDataValid
+        
         % nIntervals cell array of nTrials x nMaxOccurrences interval stop times
         intervalStopData
         
+        intervalStopDataValid
+        
         % nTrials x nIntervals array of interval occurrence counts
         intervalCounts
+        
+        intervalCountsValid
     end
     
     properties(Dependent)
@@ -69,6 +83,19 @@ classdef AlignInfo < AlignDescriptor
         function ad = set.timeInfo(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.timeInfo = v;
+        end
+        
+        function v = get.timeInfoValid(ad)
+            v = ad.odc.timeInfoValid;            
+            if isempty(v)
+                ad.buildTimeInfoValid();
+                v = ad.odc.timeInfoValid;
+            end
+        end
+        
+        function ad = set.timeInfoValid(ad, v)
+            ad.odc = ad.odc.copy();
+            ad.odc.timeInfoValid = v;
         end
         
         function v = get.computedValid(ad)
@@ -110,6 +137,32 @@ classdef AlignInfo < AlignDescriptor
             ad.odc.markCounts = v;
         end
 
+        function v = get.markDataValid(ad)
+            v = ad.odc.markDataValid;            
+            if isempty(v)
+                ad.buildMarkDataValid();
+                v = ad.odc.markDataValid;
+            end
+        end
+        
+        function ad = set.markDataValid(ad, v)
+            ad.odc = ad.odc.copy();
+            ad.odc.markDataValid = v;
+        end
+        
+        function v = get.markCountsValid(ad)
+            v = ad.odc.markCountsValid;            
+            if isempty(v)
+                ad.buildMarkDataValid();
+                v = ad.odc.markCountsValid;
+            end
+        end
+        
+        function ad = set.markCountsValid(ad, v)
+            ad.odc = ad.odc.copy();
+            ad.odc.markCountsValid = v;
+        end
+        
         function v = get.intervalStartData(ad)
             v = ad.odc.intervalStartData;            
             if isempty(v)
@@ -147,6 +200,45 @@ classdef AlignInfo < AlignDescriptor
         function ad = set.intervalCounts(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.intervalCounts = v;
+        end
+        
+        function v = get.intervalStartDataValid(ad)
+            v = ad.odc.intervalStartDataValid;            
+            if isempty(v)
+                ad.buildIntervalDataValid();
+                v = ad.odc.intervalStartDataValid;
+            end
+        end
+        
+        function ad = set.intervalStartDataValid(ad, v)
+            ad.odc = ad.odc.copy();
+            ad.odc.intervalStartDataValid = v;
+        end
+        
+        function v = get.intervalStopDataValid(ad)
+            v = ad.odc.intervalStopDataValid;            
+            if isempty(v)
+                ad.buildIntervalDataValid();
+                v = ad.odc.intervalStopDataValid;
+            end
+        end
+        
+        function ad = set.intervalStopDataValid(ad, v)
+            ad.odc = ad.odc.copy();
+            ad.odc.intervalStopDataValid = v;
+        end
+
+        function v = get.intervalCountsValid(ad)
+            v = ad.odc.intervalCountsValid;            
+            if isempty(v)
+                ad.buildIntervalDataValid();
+                v = ad.odc.intervalCountsValid;
+            end
+        end
+        
+        function ad = set.intervalCountsValid(ad, v)
+            ad.odc = ad.odc.copy();
+            ad.odc.intervalCountsValid = v;
         end
     end
     
@@ -211,6 +303,12 @@ classdef AlignInfo < AlignDescriptor
             ad.odc.flush();
         end
         
+        function ad = updateManualInvalid(ad)
+            ad.warnIfNoArgOut(nargout);
+            ad.odc = ad.odc.copy();
+            ad.odc.flushManualValid();
+        end
+        
         function ad = updateMark(ad)
             ad.warnIfNoArgOut(nargout);
             
@@ -263,7 +361,7 @@ classdef AlignInfo < AlignDescriptor
             
             if strcmp(n, 'end')
                 % TODO implement 'end-1' type index
-                inds = sub2ind(size(timesMat), 1:ad.nTrials, counts);
+                inds = sub2ind(size(timesMat), (1:ad.nTrials)', counts);
                 times = timesMat(inds);
             else
                 times = timesMat(:, n);
@@ -527,16 +625,38 @@ classdef AlignInfo < AlignDescriptor
             % IT IS CRITICAL THAT THIS ONLY CONSIDER computedValid, not
             % manual valid, otherwise changing the validity requires
             % timeInfo to be built again
+%             t.startPad(~valid) = NaN;
+%             t.stopPad(~valid) = NaN;
+%             t.start(~valid) = NaN;
+%             t.stop(~valid) = NaN;
+%             t.zero(~valid) = NaN;
+            
+            % store in odc
+            c = ad.odc;
+            c.timeInfo = t;
+            c.timeInfoValid = [];
+            c.computedValid = valid;
+        end
+        
+        function buildTimeInfoValid(ad)
+            % generates timeInfo, but inserts NaNs in manual valid to avoid
+            % bugs down the line. timeInfo is rarely updated, timeInfoValid
+            
+            t = ad.timeInfo;
+            valid = ad.valid;
+            
+            [t.invalidCause{ad.manualInvalid}] = deal(sprintf('Marked invalid manually'));
+        
+            % clear out values for invalid trials to avoid hard to catch bugs
+            % Here we consider computedValid AND manualValid
             t.startPad(~valid) = NaN;
             t.stopPad(~valid) = NaN;
             t.start(~valid) = NaN;
             t.stop(~valid) = NaN;
             t.zero(~valid) = NaN;
             
-            % store in odc
             c = ad.odc;
-            c.timeInfo = t;
-            c.computedValid = valid;
+            c.timeInfoValid = t;
         end
         
         function buildMarkData(ad)
@@ -547,16 +667,29 @@ classdef AlignInfo < AlignDescriptor
             for i = 1:length(ad.markEvents)
                 [markData{i}, markCounts(:, i)] = ...
                     ad.getEventIndexedTimeMatrix(ad.markEvents{i}, ...
-                    ad.markEventsIndex{i}, ad.markOffsets(i), ad.getZeroByTrial());
+                    ad.markEventsIndex{i}, ad.markOffsets(i), ad.timeInfo.zero);
                 
-                markData{i}(~ad.computedValid, :) = NaN;
+                %markData{i}(~ad.computedValid, :) = NaN;
             end
 
-            markCounts(~ad.computedValid, :) = NaN;
+            %markCounts(~ad.computedValid, :) = NaN;
             
             c = ad.odc;
             c.markData = markData;
             c.markCounts = markCounts;
+        end
+        
+        function buildMarkDataValid(ad)
+            markDataValid = ad.markData;
+            markCountsValid = ad.markCounts;
+            for i = 1:length(ad.markEvents)
+                markDataValid{i}(~ad.valid, :) = NaN;
+            end
+            markCountsValid(~ad.computedValid, :) = NaN;
+
+            c = ad.odc;
+            c.markDataValid = markDataValid;
+            c.markCountsValid = markCountsValid;
         end
         
         function buildIntervalData(ad)
@@ -573,13 +706,13 @@ classdef AlignInfo < AlignDescriptor
             for iInt = 1:ad.nIntervals
                 [intervalStartData{iInt}, intervalStartCounts(:, iInt)] = ad.getEventIndexedTimeMatrix(...
                     ad.intervalEventsStart{iInt}, ad.intervalEventsIndexStart{iInt}, ...
-                    ad.intervalOffsetsStart(iInt), ad.getZeroByTrial());
+                    ad.intervalOffsetsStart(iInt), ad.timeInfo.zero);
                 [intervalStopData{iInt}, intervalStopCounts(:, iInt)] = ad.getEventIndexedTimeMatrix(...
                     ad.intervalEventsStop{iInt}, ad.intervalEventsIndexStop{iInt},  ...
-                    ad.intervalOffsetsStop(iInt), ad.getZeroByTrial());
+                    ad.intervalOffsetsStop(iInt), ad.timeInfo.zero);
                 
-                intervalStartData{iInt}(~ad.computedValid, :) = NaN;
-                intervalStopData{iInt}(~ad.computedValid, :) = NaN;
+                %intervalStartData{iInt}(~ad.computedValid, :) = NaN;
+                %intervalStopData{iInt}(~ad.computedValid, :) = NaN;
             end
             
             mismatch = intervalStartCounts ~= intervalStopCounts;
@@ -587,12 +720,29 @@ classdef AlignInfo < AlignDescriptor
                 warning('Encountered mismatched interval start / stop events');
             end
             intervalCounts = min(intervalStartCounts, intervalStopCounts);
-            intervalCounts(~ad.computedValid, :) = NaN;
+            %intervalCounts(~ad.computedValid, :) = NaN;
             
             c = ad.odc;
             c.intervalStartData = intervalStartData;
             c.intervalStopData = intervalStopData;
             c.intervalCounts = intervalCounts;
+        end
+        
+        function buildIntervalDataValid(ad)
+            intervalStartDataValid = ad.intervalStartData;
+            intervalStopDataValid = ad.intervalStopData;
+            intervalCountsValid = ad.intervalCounts;
+            
+            for iInt = 1:ad.nIntervals
+                intervalStartDataValid{iInt}(~ad.valid, :) = NaN;
+                intervalStopDataValid{iInt}(~ad.valid, :) = NaN;
+            end
+            intervalCountsValid(~ad.valid, :) = NaN;
+            
+            c = ad.odc;
+            c.intervalStartDataValid = intervalStartDataValid;
+            c.intervalStopDataValid = intervalStopDataValid;
+            c.intervalCountsValid = intervalCountsValid; 
         end
     end
 
@@ -611,30 +761,30 @@ classdef AlignInfo < AlignDescriptor
        
        function lengths = getValidDurationByTrial(ad) 
             ad.assertApplied();
-            ti = ad.timeInfo;
+            ti = ad.timeInfoValid;
             lengths = makecol([ti.stop] - [ti.start] + 1);
        end
         
        function [start, stop, zero] = getStartStopZeroByTrial(ad)
            ad.assertApplied();
            
-           start = makecol([ad.timeInfo.start]);
-           stop = makecol([ad.timeInfo.stop]);
-           zero = makecol([ad.timeInfo.zero]);
+           start = makecol([ad.timeInfoValid.start]);
+           stop = makecol([ad.timeInfoValid.stop]);
+           zero = makecol([ad.timeInfoValid.zero]);
        end
        
        function [startPad, stopPad, zero] = getStartStopZeroByTrialWithPadding(ad)
            ad.assertApplied();
 
-           startPad = makecol([ad.timeInfo.startPad]);
-           stopPad = makecol([ad.timeInfo.stopPad]);
-           zero = makecol([ad.timeInfo.zero]);
+           startPad = makecol([ad.timeInfoValid.startPad]);
+           stopPad = makecol([ad.timeInfoValid.stopPad]);
+           zero = makecol([ad.timeInfoValid.zero]);
        end
 
        % note that this should return NaNs for invalid trials
        function zero = getZeroByTrial(ad)
             ad.assertApplied();
-            zero = makecol([ad.timeInfo.zero]);
+            zero = makecol([ad.timeInfoValid.zero]);
        end
     end
     
@@ -642,11 +792,17 @@ classdef AlignInfo < AlignDescriptor
         function ad = markInvalid(ad, invalid)
             ad.warnIfNoArgOut(nargout);
             ad.manualInvalid(invalid) = false;
+            ad = ad.updateManualInvalid();
+            % IT IS PERFORMANCE-CRITICAL THAT WE ONLY UPDATE TIMEINFOVALID HERE, 
+            % do not call .update() here
         end
 
         function ad = setInvalid(ad, mask)
             ad.warnIfNoArgOut(nargout);
             ad.manualInvalid = mask;
+            ad = ad.updateManualInvalid();
+            % IT IS PERFORMANCE-CRITICAL THAT WE ONLY UPDATE TIMEINFOVALID HERE, 
+            % do not call .update() here
         end
         
         function valid = get.valid(ad)
@@ -671,6 +827,7 @@ classdef AlignInfo < AlignDescriptor
             for iF = 1:numel(flds)
                 fld = flds{iF};
                 ad.timeInfo.(fld) = ad.timeInfo.(fld)(mask);
+                ad.timeInfoValid.(fld) = ad.timeInfoValid.(fld)(mask);
             end
             
             for iM = 1:ad.nMarks
@@ -731,13 +888,13 @@ classdef AlignInfo < AlignDescriptor
             
             % filter the spikes within the window and recenter on zero
             if includePadding
-                start = ad.timeInfo.startPad;
-                stop = ad.timeInfo.stopPad;
+                start = ad.timeInfoValid.startPad;
+                stop = ad.timeInfoValid.stopPad;
             else
-                start = ad.timeInfo.start;
-                stop = ad.timeInfo.stop;
+                start = ad.timeInfoValid.start;
+                stop = ad.timeInfoValid.stop;
             end
-            zero = ad.timeInfo.zero;
+            zero = ad.timeInfoValid.zero;
             
             [alignedTimes, rawTimesMask] = deal(cell(ad.nTrials, 1));
             valid = ad.valid;
@@ -765,15 +922,15 @@ classdef AlignInfo < AlignDescriptor
        
         function [markData, markDataMask] = getAlignedMarkData(ad)
             [markData, markDataMask] = ...
-                cellfun(@ad.getAlignedTimesMatrix, ad.markData, 'UniformOutput', false);
+                cellfun(@ad.getAlignedTimesMatrix, ad.markDataValid, 'UniformOutput', false);
         end
         
         function [intervalStartData, intervalStopData, intervalStartMask, intervalStopMask] = ...
                 getAlignedIntervalData(ad)
             [intervalStartData, intervalStartMask] = ...
-                cellfun(@ad.getAlignedTimesMatrix, ad.intervalStartData, 'UniformOutput', false);
+                cellfun(@ad.getAlignedTimesMatrix, ad.intervalStartDataValid, 'UniformOutput', false);
             [intervalStopData, intervalStopMask] = ...
-                cellfun(@ad.getAlignedTimesMatrix, ad.intervalStopData, 'UniformOutput', false);
+                cellfun(@ad.getAlignedTimesMatrix, ad.intervalStopDataValid, 'UniformOutput', false);
         end
     end
     
