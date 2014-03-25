@@ -377,7 +377,8 @@ classdef ConditionDescriptor
 
             % create a grouping axis
             idx = ci.nAxes + 1; 
-            ci.axisAttributes{idx} = attr;
+            ci.axisAttributes{idx} = makecol(attr);
+            ci.axisAttributes = makecol(ci.axisAttributes);
             ci.axisValueListsManual{idx} = p.Results.valueList;
             ci.axisRandomizeModes(idx) = ci.AxisOriginal;
             ci.axisRandomizeWithReplacement(idx) = false;
@@ -391,7 +392,7 @@ classdef ConditionDescriptor
         function ci = maskAxes(ci, mask)
             ci.warnIfNoArgOut(nargout);
             
-            ci.axisAttributes = ci.axisAttributes(mask);
+            ci.axisAttributes = makecol(ci.axisAttributes(mask));
             ci.axisValueListsManual = ci.axisValueListsManual(mask);
             ci.axisRandomizeModes = ci.axisRandomizeModes(mask);
             ci.axisRandomizeWithReplacement = ci.axisRandomizeWithReplacement(mask);
@@ -455,7 +456,7 @@ classdef ConditionDescriptor
                 if all(maskInAxis)
                     removeAxisMask(iX) = true;
                 else
-                    ci.axisAttributes{iX} = ci.axisAttributes{iX}(~maskInAxis);
+                    ci.axisAttributes{iX} = makecol(ci.axisAttributes{iX}(~maskInAxis));
                     % clear out manual value list as it's likely invalid now
                     ci.axisValueListsManual{iX} = [];
                     % and reset the randomization
@@ -526,6 +527,9 @@ classdef ConditionDescriptor
             end
             if iscellstr(attr)
                 attr = {attr};
+            end
+            for iAttr = 1:numel(attr)
+                if ~iscell(attr{iAttr}), attr{iAttr} = {attr{iAttr}}; end
             end
             
             % attr is a cell of cellstr of attributes, and axisAttributes is a cell
@@ -831,14 +835,16 @@ classdef ConditionDescriptor
             ci.appearanceColorByAttributesCmap = [];
         end
         
-        function ci = colorByAttributes(ci, attributes, cmapFn)
+        function ci = colorByAttributes(ci, attributes, varargin)
+            p = inputParser();
+            p.addOptional('cmapFn', @TrialDataUtilities.Colormaps.linspecer, ...
+                @(x) ismatrix(x) || isa(x, 'function_handle'));
+            p.parse(varargin{:});
+            
             ci.warnIfNoArgOut(nargout);
             if ~iscell(attributes), attributes = {attributes}; end
             ci.appearanceColorByAttributesList = attributes;
-            if nargin < 3
-                cmapFn = @distinguishable_colors;
-            end
-            ci.appearanceColorByAttributesCmap = cmapFn;
+            ci.appearanceColorByAttributesCmap = p.Results.cmapFn;
             ci = ci.invalidateAppearanceInfo();
         end
         
