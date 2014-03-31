@@ -656,6 +656,9 @@ classdef TrialDataConditionAlign < TrialData
 
             adSet = cat(1, td.alignInfoSet, makecol(varargin));
             td = td.align(adSet{:});
+            
+            % and for convenience switch to make this new alignment active
+            td = td.useAlign(td.nAlign);
         end
         
         function td = unalign(td)
@@ -936,13 +939,19 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(mat);
         end
         
-        function [meanMat, semMat, tvec] = getAnalogGroupMeans(td, name)
+        function [meanMat, semMat, tvec, nTrialsMat] = getAnalogGroupMeans(td, name, varargin)
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
             [dCell, tvec] = td.getAnalogAsMatrixGrouped(name);
-            [meanMat, semMat] = deal(nan(td.nConditions, numel(tvec)));
+            [meanMat, semMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
-                    meanMat(iC, :) = nanmean(dCell{iC}, 1);
-                    semMat(iC, :) = nansem(dCell{iC}, 1);
+                    [meanMat(iC, :), semMat(iC, :), nTrialsMat(iC, :)] = ...
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
                 end
             end 
         end
@@ -1246,6 +1255,7 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Plotting.errorshade;
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.addParamValue('minTrials', 1, @isscalar);
             p.KeepUnmatched;
             p.parse(varargin{:});
 
@@ -1256,7 +1266,8 @@ classdef TrialDataConditionAlign < TrialData
             % loop over alignments and gather time vectors
             [meanMat, semMat, tvecCell] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
-                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}] = td.useAlign(iAlign).getAnalogGroupMeans(name);     
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}] = ...
+                    td.useAlign(iAlign).getAnalogGroupMeans(name, 'minTrials', p.Results.minTrials);     
             end
             
             % determine the x-offsets at which to plot the data
@@ -1346,6 +1357,8 @@ classdef TrialDataConditionAlign < TrialData
                                 set(h, 'DisplayName', td.conditionNames{c});
                                 legHandleByCond(iCond) = h;
                             end
+                            
+                            % handle draw on data for this condition
                         end
                       
                     end

@@ -718,9 +718,11 @@ classdef AlignSummary
                         else
                             errorInterval = [];
                         end
+                        cvec = ii.appear.getMarkerFaceColor();
+                        errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
-                            'errorInterval', errorInterval, ...
-                            'color', ii.appear.getMarkerFaceColor());
+                            'errorInterval', errorInterval, 'errorIntervalColor', errorColor, ...
+                            'color', cvec);
                     end
                     
                     for iLabel = 1:numel(labelInfo)
@@ -735,9 +737,11 @@ classdef AlignSummary
                         else
                             errorInterval = [];
                         end
+                        cvec = li.appear.getMarkerFaceColor();
+                        errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addMarkerX(li.time + xOffset, li.name, ...
                             'interval', errorInterval, ...
-                            'markerColor', li.appear.getMarkerFaceColor());
+                            'markerColor', cvec, 'intervalColor', errorColor);
                     end
             end
             axis off;

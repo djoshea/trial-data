@@ -78,5 +78,10 @@ classdef AppearanceSpec
                 end
             end
         end
+        
+        function cvec = desaturateColor(c, gamma)
+            c = AppearanceSpec.convertColor(c);
+            cvec = 1 - ((1-c) .* (1-gamma));
+        end
     end
 end
