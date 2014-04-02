@@ -823,13 +823,15 @@ classdef AlignInfo < AlignDescriptor
                 ad.eventCounts.(fld) = ad.eventCounts.(fld)(mask);
             end
             
-            flds = fieldnames(ad.timeInfo);
-            for iF = 1:numel(flds)
-                fld = flds{iF};
-                ad.timeInfo.(fld) = ad.timeInfo.(fld)(mask);
-                ad.timeInfoValid.(fld) = ad.timeInfoValid.(fld)(mask);
-            end
-            
+            ad.timeInfo = [];
+            ad.timeInfoValid = [];
+%             flds = fieldnames(ad.timeInfo);
+%             for iF = 1:numel(flds)
+%                 fld = flds{iF};
+%                 ad.timeInfo.(fld) = ad.timeInfo.(fld)(mask);
+%                 ad.timeInfoValid.(fld) = ad.timeInfoValid.(fld)(mask);
+%             end
+%             
             for iM = 1:ad.nMarks
                 ad.markData{iM} = ad.markData{iM}(mask, :);
                 ad.markCounts = ad.markCounts(mask, :);
