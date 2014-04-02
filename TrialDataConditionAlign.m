@@ -962,7 +962,7 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function dCell = getEventGrouped(td, name)
-            dCell = td.groupElements(td.getAnalog(name));
+            dCell = td.groupElements(td.getEvent(name));
         end
 
         function td = addEvent(td, varargin)
