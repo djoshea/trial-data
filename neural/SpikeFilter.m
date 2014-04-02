@@ -83,6 +83,7 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
             % trace in a nTrials x nTime matrix, where missing samples are left as NaN
             % before and after each trial. tvec is the time vector that
             % indicates time along the columns.
+            import TrialDataUtilities.Data.embedTimeseriesInMatrix;
             p = inputParser;
             p.addParamValue('timeDelta', 1, @isscalar);
             p.parse(varargin{:});

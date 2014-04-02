@@ -51,6 +51,13 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     szData = cellfun(@numel, dataCell);
     szTime = cellfun(@numel, timeCell);
     
+    % okay to have one empty and the other not, simply ignore
+    empty = szData == 0 | szTime == 0;
+    szData(empty) = 0;
+    szTime(empty) = 0;
+    dataCell(empty) = {[]};
+    timeCell(empty) = {[]};
+    
     assert(all(szData == szTime), 'Sizes of dataCell and timeCell contents must match');
     
     if fixDuplicateTimes
