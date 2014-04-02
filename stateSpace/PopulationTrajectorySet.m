@@ -2698,16 +2698,18 @@ classdef PopulationTrajectorySet
             end
 
             box off
+            axis tight
+
             xlabel(pset.basisNames{basisIdx(1)});
             ylabel(pset.basisNames{basisIdx(2)});
 
              if use3d
                 zlabel(pset.basisNames{basisIdx(3)});
                 view([-40 20]);
+                axis vis3d
+                axis off
+                tv = ThreeVector();
             end
-
-            axis tight
-            axis vis3d
         end
         
     end
