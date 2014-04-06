@@ -102,7 +102,9 @@ classdef MatUdpTrialDataInterfaceV4 < TrialDataInterface
 
                     cd.groupName = group.name;
 
-                    
+                    if strcmp(name, 'success')
+                        a = 1;
+                    end
                     if strcmp(group.type, 'analog')
                         timeCell = {tdi.R.(timeField)};
                         cd = cd.inferAttributesFromData(dataCell, timeCell);

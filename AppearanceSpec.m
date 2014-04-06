@@ -41,9 +41,17 @@ classdef AppearanceSpec
            end
        end
        
-       function c = getMarkerFaceColor(app)
+       function c = get.LineWidth(app)
+           if isempty(app.LineWidth)
+               c = 1;
+           else
+               c = app.LineWidth;
+           end
+       end
+       
+       function c = get.MarkerFaceColor(app)
            if isempty(app.MarkerFaceColor)
-               c = AppearanceSpec.convertColor(app.Color);
+               c = app.Color;
            else
                c = AppearanceSpec.convertColor(app.MarkerFaceColor);
            end

@@ -71,7 +71,7 @@ classdef AlignInfo < AlignDescriptor
         nTrials
     end
     
-    methods
+    methods % Property get/set stored in odc
         function v = get.timeInfo(ad)
             v = ad.odc.timeInfo;            
             if isempty(v)
@@ -870,6 +870,7 @@ classdef AlignInfo < AlignDescriptor
             rawTimesMask(~ad.valid, :) = false;
             alignedTimes(~ad.valid, :) = NaN;
         end
+        
         % use the alignment to shift the times in rawTimesCell to be zero relative
         % and filter by time window determined by getTimeInfo for each trial
         % if includePadding is true, will additional times found in the padWindow, see .setPadWindow
@@ -942,49 +943,28 @@ classdef AlignInfo < AlignDescriptor
         % T is number of time points
         % D is data dimensionality e.g. 1 or 2 or 3)
         %
-        % the sizes of timeInfo and data may be one of the following:
+        % the sizes of timeData and data may be one of the following:
         %   one-trial per data trace:
-        %     timeInfo is N x 1 struct vec
         %     timeData is N x T matrix or N x 1 cell of T_i vectors
         %     data is N x T x D matrix or N x 1 cell of T_i x D matrices
-        %
-        %   many-trials per data trace:
-        %     timeInfo is N x 1 cell array of ? x 1 struct vecs 
-        %     timeData is N x T matrix or N x 1 cell of T_i vectors
-        %     data is N x T x D matrix or N x 1 cell of T_i x D matrices 
-        %     for this, the median will be computed for each data trace in timeInfo{:} and plotted accordingly
-        %     on each of the N groups of timeInfos on data(m, :, :)
-        %
-        function drawOnData(as, timeData, data, varargin)
+        function drawOnData(ad, timeData, data, varargin)
             p = inputParser();
             p.addParamValue('drawLegend', false, @islogical);
             p.addParamValue('drawRange', false, @islogical);
+            p.addParamValue('axh', gca, @ishandle);
             p.parse(varargin{:});
+
+            axh = p.Results.axh;
+            hold(axh, 'on');
+
+            N = length(ad.nTrials);
+            assert(N == size(data, 1), 'size(data, 1) must match nTrials');
+            assert(N == size(timeData, 1), 'size(timeData, 1) must match nTrials');
+
+            % loop over events to mark
+            ad.start
             
-            
-
-            hold on
-
-            N = length(timeInfo);
-            assert(isvector(timeInfo) && (isstruct(timeInfo) || iscell(timeInfo)), ...
-                'timeInfo must be struct vector or cell vector');
-            assert(iscell(data) || N == size(data, 1), 'Length of timeInfo must match size(data, 1)');
-            assert(~iscell(data) || (isvector(data) && N == length(data)), 'Data length must match timeInfo');
-            assert(iscell(timeData) || N == size(timeData, 1), 'Length of timeInfo must match size(timeData, 1)');
-            assert(~iscell(timeData) || (isvector(timeData) && N == length(timeData)), 'TimeData length must match timeInfo');
-            assert(iscell(timeData) == iscell(data), 'TimeData and Data must both be cells or both matrices');
-
-            hleg = nan(size(timeInfo));
-            legstr = cell(size(timeInfo));
-            for i = 1:length(timeInfo)
-                if iscell(timeInfo)
-                    % each time info is for a single data
-                    ti = timeInfo{i};
-                else
-                    ti = timeInfo(i);
-                end
-                labelInfo = ad.getLabelInfo(ti);
-                
+            for iTrial = 1:ad.nTrials
                 if iscell(data)
                     tvec = timeData{i};
                     dmat = data{i};
@@ -998,22 +978,22 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
             
-            if p.Results.drawLegend
-                idx = 1;
-                for iLabel = 1:length(labelInfo)
-                    info = labelInfo(iLabel).info;
-                    if ~labelInfo(iLabel).markData
-                        continue;
-                    end
-                    hleg(idx) = plot(NaN, NaN, info.marker, 'MarkerFaceColor', info.color, ...
-                        'MarkerEdgeColor', info.color, 'MarkerSize', info.size);
-                    legstr{idx} = labelInfo(iLabel).name;
-                    idx = idx + 1;
-                end
-                
-                legend(hleg, legstr, 'Location', 'NorthEast');
-                legend boxoff;
-            end
+%             if p.Results.drawLegend
+%                 idx = 1;
+%                 for iLabel = 1:length(labelInfo)
+%                     info = labelInfo(iLabel).info;
+%                     if ~labelInfo(iLabel).markData
+%                         continue;
+%                     end
+%                     hleg(idx) = plot(NaN, NaN, info.marker, 'MarkerFaceColor', info.color, ...
+%                         'MarkerEdgeColor', info.color, 'MarkerSize', info.size);
+%                     legstr{idx} = labelInfo(iLabel).name;
+%                     idx = idx + 1;
+%                 end
+%                 
+%                 legend(hleg, legstr, 'Location', 'NorthEast');
+%                 legend boxoff;
+%             end
             
             function drawOnSingle(timeInfo, timeVec, dmat, labelInfo)
                 % timeInfo is a struct array or single struct
