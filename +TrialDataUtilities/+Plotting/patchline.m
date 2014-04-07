@@ -83,6 +83,7 @@ function p = patchline(xs,ys,varargin)
 % 
 % Revisions:
 % 6/26 Improved rice.png example, modified FEX image.
+% 4/1/14 @djoshea Adding FaceAlpha==0 for SVG export
 %
 % Copyright 2012 MathWorks, Inc.
 %
@@ -96,9 +97,9 @@ end
 
 % Facecolor = 'k' is (essentially) ignored here, but syntactically necessary
 if isempty(zs)
-    p = patch([xs(:);NaN],[ys(:);NaN],'k');
+    p = patch([xs(:);NaN],[ys(:);NaN],'k', 'FaceAlpha', 0);
 else
-    p = patch([xs(:);NaN],[ys(:);NaN],[zs(:);NaN],'k');
+    p = patch([xs(:);NaN],[ys(:);NaN],[zs(:);NaN],'k', 'FaceAlpha', 0);
 end
 
 % Apply PV pairs

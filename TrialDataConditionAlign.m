@@ -939,7 +939,7 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(mat);
         end
         
-        function [meanMat, semMat, tvec, nTrialsMat] = getAnalogGroupMeans(td, name, varargin)
+        function [meanMat, semMat, tvec, nTrialsMat, stdMat] = getAnalogGroupMeans(td, name, varargin)
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
@@ -947,10 +947,10 @@ classdef TrialDataConditionAlign < TrialData
             minTrials = p.Results.minTrials;
             
             [dCell, tvec] = td.getAnalogAsMatrixGrouped(name);
-            [meanMat, semMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec)));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
-                    [meanMat(iC, :), semMat(iC, :), nTrialsMat(iC, :)] = ...
+                    [meanMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
                         nanMeanSemMinCount(dCell{iC}, 1, minTrials);
                 end
             end 
@@ -1129,7 +1129,7 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupedEachTrial(td, name, varargin) 
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.addParamValue('patchline', false, @islogical); % use patchline to enable transparency
+            p.addParamValue('alpha', 1, @isscalar);
             p.KeepUnmatched;
             p.parse(varargin{:});
 
@@ -1143,9 +1143,9 @@ classdef TrialDataConditionAlign < TrialData
                 timeCell = timeByGroup{iCond};
                 for iTrial = 1:numel(dataCell)
                     if ~isempty(timeCell{iTrial}) && ~isempty(dataCell{iTrial})
-                        if p.Results.patchline
+                        if p.Results.alpha < 0.5
                            h = TrialDataUtilities.Plotting.patchline(double(timeCell{iTrial}), dataCell{iTrial}, ...
-                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', 0.3, ...
+                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
@@ -1168,14 +1168,17 @@ classdef TrialDataConditionAlign < TrialData
             box(axh, 'off');
             axis(axh, 'tight');
             
-            xlabel(td.getTimeAxisLabel());
-            ylabel(td.getAxisLabelForChannel(name));
+            % setup x axis 
+            td.alignSummarySet{td.alignInfoActiveIdx}.setupTimeAutoAxis();
+
+            % setup y axis
+            TrialDataUtilities.Plotting.setupAxisForChannel(td.channelDescriptorsByName.(name));
         end
         
         function plotAnalogGroupedEachTrial2D(td, name1, name2, varargin) 
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.addParamValue('patchline', false, @islogical); % use patchline to enable transparency
+            p.addParamValue('alpha', 1, @isscalar);
             p.KeepUnmatched;
             p.parse(varargin{:});
 
@@ -1189,9 +1192,9 @@ classdef TrialDataConditionAlign < TrialData
                 dataCell1 = dataByGroup1{iCond};
                 dataCell2 = dataByGroup2{iCond};
                 for iTrial = 1:numel(dataCell1)
-                    if p.Results.patchline
+                    if p.Results.alpha < 1
                         h = TrialDataUtilities.Plotting.patchline(dataCell1{iTrial}, dataCell2{iTrial}, ...
-                               'EdgeColor', app(iCond).Color, ...
+                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                     else
                         args = app(iCond).getPlotArgs();
@@ -1253,9 +1256,11 @@ classdef TrialDataConditionAlign < TrialData
             % plot the mean and sem for an analog channel vs. time within
             % each condition
             import TrialDataUtilities.Plotting.errorshade;
+            
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
             p.addParamValue('minTrials', 1, @isscalar);
+            p.addParamValue('alpha', 1, @isscalar);
             p.KeepUnmatched;
             p.parse(varargin{:});
 
@@ -1263,11 +1268,14 @@ classdef TrialDataConditionAlign < TrialData
             cla(axh);
             app = td.conditionAppearances;
 
-            % loop over alignments and gather time vectors
-            [meanMat, semMat, tvecCell] = deal(cell(td.nAlign, 1));
+            % loop over alignments and gather mean data
+            % and slice each in time to capture only the non-nan region
+            [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
-                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}] = ...
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getAnalogGroupMeans(name, 'minTrials', p.Results.minTrials);     
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
+                    TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign});
             end
             
             % determine the x-offsets at which to plot the data
@@ -1277,7 +1285,8 @@ classdef TrialDataConditionAlign < TrialData
                 for iCond = 1:td.nConditions
                     h = errorshade(tvecCell{iAlign} + tOffsets(iAlign), ...
                         meanMat{iAlign}(iCond, :), ...
-                        semMat{iAlign}(iCond, :), app(iCond).Color, 'axh', axh);
+                        semMat{iAlign}(iCond, :), app(iCond).Color, 'axh', axh, ...
+                        'alpha', p.Results.alpha);
                     hold(axh, 'on');
                     if ~isnan(h)
                         set(h, 'DisplayName', td.conditionNames{iCond});
@@ -1287,7 +1296,8 @@ classdef TrialDataConditionAlign < TrialData
                 axis(axh, 'tight');
                 
                 % setup x axis 
-                td.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign));
+                td.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign), ...
+                    'tMin', min(tvecCell{iAlign}), 'tMax', max(tvecCell{iAlign}));
             end
 
             % setup y axis
