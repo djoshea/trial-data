@@ -9,6 +9,7 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
     p.addParamValue('lineArgs', {}, @iscell);
     p.addParamValue('shadeArgs', {}, @iscell);
     p.addParamValue('axh', gca, @ishandle);
+    p.addParamValue('alpha', 1, @isscalar);
     p.parse(varargin{:});
 
     axh = p.Results.axh;
@@ -52,13 +53,21 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
         mask = regionStart:regionEnd;
         
         [hs] = shadeSimple(axh, x(mask), y1(mask), y2(mask), 'FaceColor', shadeColor, ...
-            p.Results.shadeArgs{:});
+            'alpha', p.Results.alpha, p.Results.shadeArgs{:});
        
         offset = regionEnd + 1;
     end
 
-    hold on
-    hl = plot(x, ym, 'Color', color, p.Results.lineArgs{:});
+    hold(axh, 'on');
+    if p.Results.alpha < 1
+        % use patchline for drawing translucent lines
+        hl = TrialDataUtilities.Plotting.patchline(x, ym, ...
+           'EdgeColor', color, 'EdgeAlpha', p.Results.alpha, ...
+           p.Results.lineArgs{:});
+    else
+        % use plot for opaque lines
+        hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
+    end
     
 end
 
@@ -67,11 +76,12 @@ function [ha] = shadeSimple(axh, x, y1, y2, varargin)
 p = inputParser();
 p.addParamValue('FaceColor', [0.8 0.8 1], @(x) true);
 p.addParamValue('EdgeColor', 'none', @(x) true);
+p.addParamValue('alpha', 1, @isscalar);
 p.KeepUnmatched = true;
 p.parse(varargin{:});
 
 ha = fill([x, fliplr(x)], [y1, fliplr(y2)], p.Results.FaceColor, ...
-    'EdgeColor', p.Results.EdgeColor, 'Parent', axh, ...
+    'EdgeColor', p.Results.EdgeColor, 'Parent', axh, 'FaceAlpha', p.Results.alpha, ...
     p.Unmatched);
 
 % hide shading from legend

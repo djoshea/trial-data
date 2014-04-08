@@ -274,6 +274,12 @@ classdef TrialData
             cd = td.channelDescriptorsByName.(name);
         end
         
+%         function cd = setChannelDescriptor(td, name, cd)
+%             td.assertHasChannel(name);
+%             assert(isa(cd, 'ChannelDescriptor'));
+%             td.channelDescriptorsByName.(name) = cd;
+%         end
+        
         function type = getChannelType(td, name)
             type = td.getChannelDescriptor(name).getType();
         end
@@ -981,6 +987,7 @@ classdef TrialData
             timeCell = timeCell(td.valid);
 
             for i = 1:td.nTrialsValid
+                if isempty(dataCell{i}), continue, end;
                 plot(axh, double(timeCell{i}), dataCell{i}, '-', 'Color', 0.5*ones(3,1), ...
                     p.Results.plotOptions{:});
                 if i == 1, hold(axh, 'on'); end

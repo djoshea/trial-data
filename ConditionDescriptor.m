@@ -863,6 +863,8 @@ classdef ConditionDescriptor
                 
                 % remove attributes not in use along an axis
                 list = setdiff(list, ci.attributeNames(isnan(ci.attributeAlongWhichAxis)));
+                
+                if isempty(list), return, end
                
                 % generate combinatorial list of attribute values
                 valueList = cell(numel(list), 1);

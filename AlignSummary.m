@@ -563,35 +563,35 @@ classdef AlignSummary
                 counter = counter + 1;
             end
             
-            % label the start event
-            if ad.startMark
-                info(counter).name = ad.startLabel;
-                info(counter).time = as.startMean;
-                info(counter).min = as.startMin;
-                info(counter).max = as.startMax;
-                info(counter).timeByCondition = as.startMeanByCondition;
-                info(counter).minByCondition = as.startMinByCondition;
-                info(counter).maxByCondition = as.startMaxByCondition;
-                info(counter).appear = ad.startAppear;
-                info(counter).fixed = ad.isStartFixedTime;
-                
-                counter = counter + 1;
-            end
+%             % label the start event
+%             if ad.startMark
+%                 info(counter).name = ad.startLabel;
+%                 info(counter).time = as.startMean;
+%                 info(counter).min = as.startMin;
+%                 info(counter).max = as.startMax;
+%                 info(counter).timeByCondition = as.startMeanByCondition;
+%                 info(counter).minByCondition = as.startMinByCondition;
+%                 info(counter).maxByCondition = as.startMaxByCondition;
+%                 info(counter).appear = ad.startAppear;
+%                 info(counter).fixed = ad.isStartFixedTime;
+%                 
+%                 counter = counter + 1;
+%             end
 
-            % label the stop event
-            if ad.stopMark
-                info(counter).name = ad.stopLabel;
-                info(counter).time = as.stopMean;
-                info(counter).min = as.stopMin;
-                info(counter).max = as.stopMax;
-                info(counter).timeByCondition = as.stopMeanByCondition;
-                info(counter).minByCondition = as.stopMinByCondition;
-                info(counter).maxByCondition = as.stopMaxByCondition;
-                info(counter).appear = ad.stopAppear;
-                info(counter).fixed = ad.isStopFixedTime;
-                
-                counter = counter + 1;
-            end
+%             % label the stop event
+%             if ad.stopMark
+%                 info(counter).name = ad.stopLabel;
+%                 info(counter).time = as.stopMean;
+%                 info(counter).min = as.stopMin;
+%                 info(counter).max = as.stopMax;
+%                 info(counter).timeByCondition = as.stopMeanByCondition;
+%                 info(counter).minByCondition = as.stopMinByCondition;
+%                 info(counter).maxByCondition = as.stopMaxByCondition;
+%                 info(counter).appear = ad.stopAppear;
+%                 info(counter).fixed = ad.isStopFixedTime;
+%                 
+%                 counter = counter + 1;
+%             end
 
             % label each of the event marks that are fixed with respect to the zero event
             for iMark = 1:ad.nMarks
@@ -687,6 +687,7 @@ classdef AlignSummary
             switch style
                 case 'tickBridge'      
                     
+                    % include tMin and tMax ticks
                     ticks = [tMin, tMax, labelInfo.time]' + xOffset; 
                     labels = cellvec(numel(labelInfo));
                     
@@ -700,6 +701,20 @@ classdef AlignSummary
                     end
                     tickLabels = cat(1,{sprintf('%g', tMin); sprintf('%g', tMax)}, labels);
                     tickAlignment = cat(1, {'left'; 'right'}, repmat({'center'}, numel(labels), 1)); 
+                    
+                    % remove tMin and/or tMax if redundant
+                    tickMask = true(size(ticks));
+                    if any(ticks(3:end) == tMin)
+                        tickMask(1) = false;
+                        tickAlignment(ticks==tMin) = {'left'};
+                    end
+                    if any(ticks(3:end) == tMax)
+                        tickMask(2) = false;
+                        tickAlignment(ticks==tMax) = {'right'};
+                    end
+                    ticks = ticks(tickMask);
+                    tickLabels = tickLabels(tickMask);
+                    tickAlignment = tickAlignment(tickMask);
                     
                     au.addTickBridge('x', 'tick', ticks, 'tickLabel', tickLabels, 'tickAlignment', tickAlignment); 
                     
