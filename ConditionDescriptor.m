@@ -384,7 +384,7 @@ classdef ConditionDescriptor
             ci.axisRandomizeWithReplacement(idx) = false;
             ci.axisRandomizeResampleFromList{idx} = [];
             
-            ci.axisValueListsOccupiedOnly(idx) = false;
+            ci.axisValueListsOccupiedOnly(idx) = true;
 
             ci = ci.invalidateCache();
         end
