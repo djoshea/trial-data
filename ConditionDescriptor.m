@@ -53,6 +53,9 @@ classdef ConditionDescriptor
         appearanceColorByAttributesList
         appearanceColorByAttributesCmap
         
+        appearanceColorByAxesList
+        appearanceColorByAxesCmap
+        
         % A x 1 : by attribute                       
         attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
@@ -480,6 +483,11 @@ classdef ConditionDescriptor
             ci = ci.invalidateCache();
         end
         
+        function valueList = getAxisValueList(ci, axisSpec)
+            idx = ci.axisLookupByAttributes(axisSpec);
+            valueList = makecol(ci.axisValueLists{idx});
+        end
+        
         function ci = setAxisValueListAutoAll(ci, axisSpec)
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
@@ -833,6 +841,8 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             ci.appearanceColorByAttributesList = [];
             ci.appearanceColorByAttributesCmap = [];
+            ci.appearanceColorByAxesList = [];
+            ci.appearanceColorByAxesCmap = [];
         end
         
         function ci = colorByAttributes(ci, attributes, varargin)
@@ -840,6 +850,8 @@ classdef ConditionDescriptor
             p.addOptional('cmapFn', @TrialDataUtilities.Colormaps.linspecer, ...
                 @(x) ismatrix(x) || isa(x, 'function_handle'));
             p.parse(varargin{:});
+            
+            ci = ci.clearAppearanceModifications();
             
             ci.warnIfNoArgOut(nargout);
             if ~iscell(attributes), attributes = {attributes}; end
@@ -849,21 +861,29 @@ classdef ConditionDescriptor
         end
         
         function ci = colorByAxes(ci, axesSpec, varargin)
+            p = inputParser();
+            p.addOptional('cmapFn', @TrialDataUtilities.Colormaps.linspecer, ...
+                @(x) ismatrix(x) || isa(x, 'function_handle'));
+            p.parse(varargin{:});
+            
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axesSpec);
-            allAttr = cat(1, ci.axisAttributes{idx});
             
-            ci = ci.colorByAttributes(allAttr, varargin{:});
+            ci = ci.clearAppearanceModifications();
+            % want list to be cell of cellstr
+            if ~iscell(axesSpec), axesSpec = {axesSpec}; end
+            if iscellstr(axesSpec), axesSpec = {axesSpec}; end
+            ci.appearanceColorByAxesList = axesSpec;
+            ci.appearanceColorByAxesCmap = p.Results.cmapFn; 
         end
         
         function appear = applyAppearanceModifications(ci, appear)
-            % do color by axis specification
             if ~isempty(ci.appearanceColorByAttributesList)
+                % Color by attributes
                 list = ci.appearanceColorByAttributesList;
                 
                 % remove attributes not in use along an axis
                 list = setdiff(list, ci.attributeNames(isnan(ci.attributeAlongWhichAxis)));
-                
                 if isempty(list), return, end
                
                 % generate combinatorial list of attribute values
@@ -894,7 +914,40 @@ classdef ConditionDescriptor
                         end
                     end
                 end
-            end
+                
+            elseif ~isempty(ci.appearanceColorByAxesList)
+                % color by axes
+                list = ci.appearanceColorByAxesList;
+                
+                allAttr = [list{:}];
+               
+                % generate combinatorial list of axis value values
+                valueList = cell(numel(list), 1);
+                for i = 1:numel(list)
+                    valueList{i} = ci.getAxisValueList(list{i});
+                end
+                combined = TensorUtils.buildCombinatorialStructTensor(valueList{:});
+                nVals = numel(combined);
+                
+                cmap = ci.appearanceColorByAxesCmap;
+                if isa(cmap, 'function_handle')
+                    cmap = cmap(nVals);
+                end
+                
+                % match appearances to attribute value sets
+                for c = 1:numel(appear)
+                    cond = ci.conditions(c);
+                    for v = 1:numel(combined)
+                        if isequal(rmfield(cond, setdiff(fieldnames(cond), allAttr)), combined(v))
+                            if iscell(cmap)
+                                appear(c).Color = cmap{v};
+                            else
+                                appear(c).Color = cmap(v, :);
+                            end
+                        end
+                    end
+                end
+            end    
         end
     end
     
