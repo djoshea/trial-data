@@ -5,8 +5,9 @@ end
 
 tdca = TrialDataConditionAlign(td);
 tdca = tdca.groupBy('target', 'delay', 'isStim');
-tdca = tdca.align('Move:MoveEnd').round(1);
-tdca = tdca.colorByAttributes('target');
+tdca = tdca.align('GoCue:MoveEnd').round(1);
+tdca = tdca.mark('Move', 'appear', AppearanceSpec('Color', 'r', 'Marker', 'o', 'MarkerSize', 5));
+tdca = tdca.colorByAttributes('delay');
 
 %%
 

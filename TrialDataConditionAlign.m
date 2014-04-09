@@ -1295,9 +1295,16 @@ classdef TrialDataConditionAlign < TrialData
                 box(axh, 'off');
                 axis(axh, 'tight');
                 
+                td.alignSummarySet{iAlign}.drawOnTimeseriesByCondition(tvecCell{iAlign}, ...
+                    permute(meanMat{iAlign}, [2 3 1 4]), ...  % data needs to be T x D x C x N, currently C x T
+                    'tOffsetZero', tOffsets(iAlign), ...
+                    'tMin', min(tvecCell{iAlign}), 'tMax', max(tvecCell{iAlign}));
+                
                 % setup x axis 
+                if false
                 td.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign), ...
                     'tMin', min(tvecCell{iAlign}), 'tMax', max(tvecCell{iAlign}));
+                end
             end
 
             % setup y axis

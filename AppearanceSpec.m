@@ -7,6 +7,15 @@ classdef AppearanceSpec
         MarkerFaceColor
         MarkerEdgeColor       
     end
+    
+    properties(Hidden)
+        mColor
+        mLineWidth
+        mMarker
+        mMarkerSize
+        mMarkerFaceColor
+        mMarkerEdgeColor
+    end
    
     methods
         function obj = AppearanceSpec(varargin)
@@ -31,6 +40,11 @@ classdef AppearanceSpec
        function args = getPlotArgs(app)
            args = app.getNonEmptyArgsByName({'Color', 'LineWidth', 'Marker', ...
                'MarkerSize', 'MarkerFaceColor', 'MarkerEdgeColor'});
+       end
+       
+       function args = getMarkerArgs(app)
+           args = app.getNonEmptyArgsByName({'Marker', 'MarkerSize', ...
+               'MarkerFaceColor', 'MarkerEdgeColor'});
        end
        
        function c = get.Color(app)

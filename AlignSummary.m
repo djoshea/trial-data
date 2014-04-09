@@ -18,8 +18,10 @@ classdef AlignSummary
         nConditions
         
         nMarks
+        nOccurrencesByMark
         
         nIntervals
+        nOccurrencesByInterval
     end
     
     properties(SetAccess=protected)
@@ -117,8 +119,18 @@ classdef AlignSummary
             n = numel(as.markMax);
         end
         
+        function nvec = get.nOccurrencesByMark(as)
+            % markMean is nMark x 1 cell array with nOccurrences x 1 vectors
+            nvec = cellfun(@numel, as.markMean);
+        end
+        
         function n = get.nIntervals(as)
             n = numel(as.intervalStartMax);
+        end
+        
+        function nvec = get.nOccurrencesByInterval(as)
+            % intervalStartMean is nMark x 1 cell array with nOccurrences x 1 vectors
+            nvec = cellfun(@numel, as.intervalStartMean);
         end
     end
     
@@ -127,6 +139,10 @@ classdef AlignSummary
         function as = buildFromConditionAlignInfo(conditionInfo, alignInfo)
             as = AlignSummary();
             as.alignDescriptor = AlignDescriptor.fromAlignDescriptor(alignInfo);
+            
+            % fix value lists to their current values before converting to
+            % condition descriptor
+            conditionInfo = conditionInfo.fixAllValueLists();
             as.conditionDescriptor = ConditionDescriptor.fromConditionDescriptor(conditionInfo);
             
             % request aligned, ungrouped data for start/stop/marks/intervals
@@ -822,23 +838,36 @@ classdef AlignSummary
             end
         end
         
-        function drawOnTimeseriesByCondition(as, data, tvec, varargin)
+        function drawOnTimeseriesByCondition(as, time, data, varargin)
         % annotate data time-series with markers according to the labels indicated
         % by this AlignSummary, on a per-condition basis
         %
-        % data is T x D x C x N matrix
-        % tvec is T x 1
+        % Inputs have one of the following formats:
+        %  all timeseries have same length:
+        %    data is T x D x C x N matrix
+        %    time is T x 1  vector
+        %
+        %  or timeseries have different lengths:
+        %    data is C x 1 cell of T x D x N matrices
+        %    time is C x 1 cell of T x 1 vectors
         %
         % where
-        % D is data dimensionality, 1 or 2 or 3
-        % T is number of time points
-        % C is number of conditions
-        % N is the number of traces to be annotated
+        %   D is data dimensionality, 1 or 2 or 3
+        %   T is number of time points
+        %   C is number of conditions (masked by conditionIdx)
+        %   N is the number of traces to be annotated (with the same time)
+        
             p = inputParser();
-            p.addParamValue('drawLegend', false, @islogical);
+            p.addParamValue('includeInLegend', false, @islogical);
+            p.addParamValue('tOffsetZero', 0, @isscalar);
             p.addParamValue('conditionIdx', truevec(as.conditionDescriptor.nConditions), @isvector);
+            p.addParamValue('axh', gca, @ishandle);
+            p.addParamValue('tMin', -Inf, @isscalar);
+            p.addParamValue('tMax', Inf, @isscalar);
             p.parse(varargin{:});
-            drawLegend = p.Results.drawLegend;
+            
+            tOffsetZero = p.Results.tOffsetZero;
+            axh = p.Results.axh;
             
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)
@@ -846,61 +875,81 @@ classdef AlignSummary
             end
             nConditions = numel(conditionIdx);
             
-            T = size(data, 1);
-            D = size(data, 2);
-            C = size(data, 3);
-            % N = size(data, 4);
-           
-            assert(isvector(tvec) && numel(tvec) == T, 'Time vector must be size(data, 1)');
-            assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
-            assert(C == nConditions, 'size(data, 3) must match nConditions specified');
+            if iscell(data)
+                assert(isvector(data) && iscell(time) && isvector(time), 'Cell inputs must be vectors');
+                C = numel(data);
+                D = size(data{1}, 2);
+            else
+                T = size(data, 1);
+                D = size(data, 2);
+                C = size(data, 3);
+                N = size(data, 4);
 
-            hold on
-
-            nLabels = numel(as.labelInfo);
-            hleg = nan(nLabels, 1);
-            legstr = cell(nLabels, 1);
+                assert(~iscell(time) && isvector(time) && numel(time) == T, 'Time vector must be size(data, 1)');
+                assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
+                assert(C == nConditions, 'size(data, 3) must match nConditions specified');
+            end
             
-            % nLabels x nConditions
-            if isempty(as.labelInfo)
+            hold(axh, 'on');
+
+            nMarks = as.nMarks;
+            if nMarks == 0
                 return;
             end
-            labelTimes = cat(2, as.labelInfo.timeByCondition)';
-            
-            for iCondition = 1:nConditions
-                c = conditionIdx(iCondition);
-                labelTimesThisCondition = labelTimes(:, c);
-                
-                % labelPositions will be nLabels x D x N
-                labelPositions = interp1(tvec, squeeze(data(:, :, iCondition, :)), labelTimesThisCondition, 'linear');
-                
-                for iLabel = 1:nLabels
-                    info = as.labelInfo(iLabel);
-                    legstr{iLabel} = info.name;
-                    if ~isempty(info.appear)
-                        plotArgs = info.appear.getPlotArgs();
+
+            % markMeanByCondition is nMarks x 1 cell with nConditions x 
+            % nOccurrences matrices.
+            % for each mark we want to find where to plot the mean/min/max
+            % location of each occurrence on the data via interpolation
+            % we assemble this in a nConditions x nOccurrences x 2or3 matrix
+            % of locations
+            nOccurByMark = as.nOccurrencesByMark;
+            for iMark = 1:nMarks
+                [markMeanLoc, markMinLoc, markMaxLoc] = ...
+                    deal(nan(max(2, D), nOccurByMark(iMark), nConditions));
+                for iC = 1:nConditions
+                    % get the mark times to plot
+                    c = conditionIdx(iC);
+                    tMarkMean = as.markMeanByCondition{iMark}(c, :)';
+                    tMarkMin = as.markMinByCondition{iMark}(c, :)';
+                    tMarkMax = as.markMaxByCondition{iMark}(c, :)';
+                    
+                    % filter by the time window specified
+                    maskInvalid = tMarkMean < p.Results.tMin | tMarkMean > p.Results.tMax;
+                    tMarkMean(maskInvalid) = NaN;
+                    tMarkMin(maskInvalid) = NaN;
+                    tMarkMax(maskInvalid) = NaN;
+                    
+                    % get the position along the timeseries via
+                    % interpolation
+                    % d will be T x D x N, t will be T x 1;
+                    if iscell(data)
+                        d = data{iC};
+                        t = time{iC};
                     else
-                        plotArgs = {};
+                        d = TensorUtils.squeezeDims(data(:, :, c, :), 3);
+                        t = time;
                     end
                     
-                    if D == 1
-                        hleg(iLabel) = plot(labelTimes(1), squeeze(labelPositions(iLabel, 1, :)), ...
-                            'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 20, plotArgs{:});
-                    elseif D == 2
-                        hleg(iLabel) = plot(squeeze(labelPositions(iLabel, 1, :)), squeeze(labelPositions(iLabel, 2, :)), ...
-                            'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 20, plotArgs{:});
-                    else
-                        hleg(iLabel) = plot3(squeeze(labelPositions(iLabel, 1, :)), ...
-                            squeeze(labelPositions(iLabel, 2, :)), ...
-                            squeeze(labelPositions(iLabel, 3, :)), ...
-                            'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 20, plotArgs{:});
-                    end
+                    % dMean/dMin/dMax will be max(2,D) x nOccur
+                    % since time will become d*(1, :) if D == 1
+                    [dMean, dMin, dMax] = AlignSummary.interpMarkLocation(t, d, ...
+                        tMarkMean, tMarkMin, tMarkMax);
+                    
+                    markMeanLoc(:, :, iC) = dMean;
+                    markMinLoc(:, :, iC) = dMin;
+                    markMaxLoc(:, :, iC) = dMax;
                 end
-            end
                 
-            if drawLegend
-                legend(hleg, legstr, 'Location', 'NorthEast');
-                legend boxoff;
+                if D == 1
+                    markMeanLoc(1, :) = markMeanLoc(1, :) + tOffsetZero;
+                    markMinLoc(1, :) = markMinLoc(1, :) + tOffsetZero;
+                    markMaxLoc(1, :) = markMaxLoc(1, :) + tOffsetZero;
+                end
+                
+                % plot mark and provide legend hint
+                h = AlignSummary.plotMark(markMeanLoc, as.alignDescriptor.markAppear{iMark});
+                TrialDataUtilities.Plotting.showInLegend(h, as.alignDescriptor.markLabels{iMark});
             end
         end
         
@@ -953,5 +1002,58 @@ classdef AlignSummary
 %         end
 
     end
-
+    
+    methods(Static, Access=protected)
+        function h = plotMark(dMark, app)
+            % dMark is D x ?
+            
+            % plot a single mark on the data
+            D = size(dMark, 1);
+            
+            flatten = @(x) x(:);
+            plotArgs = app.getMarkerArgs();
+            
+            if D == 1 || D == 2
+                h  = plot(flatten(dMark(1, :)), flatten(dMark(2, :)), ...
+                    'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', 'k', 'MarkerSize', 15, plotArgs{:});
+            elseif D == 3
+                h  = plot3(flatten(dMark(1, :)), flatten(dMark(2, :)), flatten(dMark(3, :)), ...
+                    'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', 'k', 'MarkerSize', 15, plotArgs{:});
+            else
+                error('Invalid Dimensionality of data');
+            end
+        end
+        
+        function [dMean, dMin, dMax] = interpMarkLocation(time, data, tMean, tMin, tMax)
+            % time is a time vector
+            % data is a T x D x N set of traces
+            % tMean, tMin, tMax must be vectors with length nOccurrences
+            % dMean/dMin/dMax will be nOccurrences x max(2,D) x N
+            % where tMean, tMin, tMax will be inserted in row 1 if D == 1
+            
+            D = size(data, 2);
+            N = size(data, 3);
+            nOccur = numel(tMean);
+            
+            % vals will be 3*nOccurrences x D x N            
+            vals = interp1(time, data, [tMean(:); tMin(:); tMax(:)], 'linear');
+            if D > 1
+                if N > 1
+                    valsSplit = mat2cell(vals, [nOccur nOccur nOccur], D, N);
+                else
+                    valsSplit = mat2cell(vals, [nOccur nOccur nOccur], D);
+                end
+            else
+                valsSplit = mat2cell(vals, [nOccur nOccur nOccur]);
+            end
+            [dMean, dMin, dMax] = deal(valsSplit{:});
+                
+            % insert time as dimension 1 if D == 1
+            if D == 1
+                dMean = cat(1, makerow(tMean), dMean);
+                dMax = cat(1, makerow(tMax), dMax);
+                dMin = cat(1, makerow(tMin), dMin);
+            end
+        end
+    end   
 end
