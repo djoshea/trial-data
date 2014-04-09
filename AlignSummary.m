@@ -14,6 +14,10 @@ classdef AlignSummary
         conditionDescriptor
     end
     
+    properties
+        timeUnitName = '';
+    end
+    
     properties(Dependent, SetAccess=protected)
         nConditions
         
@@ -690,6 +694,7 @@ classdef AlignSummary
             showRanges = p.Results.showRanges;
             
             au = AutoAxis(p.Results.axh);
+            au.xUnits = as.timeUnitName;
             
             % filter labels, intervals that overlap tMin : tMax
             labelInfo = as.labelInfo; %#ok<*PROP>
@@ -768,12 +773,14 @@ classdef AlignSummary
                         else
                             errorInterval = [];
                         end
-                        cvec = li.appear.getMarkerFaceColor();
+                        cvec = li.appear.MarkerFaceColor;
                         errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addMarkerX(li.time + xOffset, li.name, ...
                             'interval', errorInterval, ...
                             'markerColor', cvec, 'intervalColor', errorColor);
                     end
+                    
+                    au.addAutoScaleBarX();
             end
             axis off;
             au.update();

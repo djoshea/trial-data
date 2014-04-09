@@ -491,7 +491,7 @@ classdef AlignDescriptor
             p.addOptional('offset', 0, @isscalar);
             p.addParamValue('index', 1, @(x) ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
-            p.addParamValue('mark', true, @islogical);
+            %p.addParamValue('mark', true, @islogical);
             p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.parse(varargin{:});
             offset = p.Results.offset;
@@ -500,7 +500,7 @@ classdef AlignDescriptor
             ad.zeroEvent = eventName;
             ad.zeroEventIndex = p.Results.index;
             ad.zeroOffset = offset;
-            ad.zeroMark = p.Results.mark;
+            %ad.zeroMark = p.Results.mark;
 
             if ~isempty(p.Results.as)
                 ad.zeroLabel = p.Results.as;
@@ -882,7 +882,7 @@ classdef AlignDescriptor
                     [ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, ad.zeroLabel] = ...
                         ad.parseEventOffsetString(startStopZero, 'zero', 'defaultIndex', 1);
                     ad.zeroDefault = false;
-                    ad.zeroMark = true;
+                    %ad.zeroMark = true;
                     
                     % '@Event' means TrialStart:TrialEnd @ Event (align whole trial to Event), whereas
                     % 'Event' means Event:Event @ Event (single sample at Event)

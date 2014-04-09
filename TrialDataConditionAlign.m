@@ -57,7 +57,9 @@ classdef TrialDataConditionAlign < TrialData
     properties(Dependent, SetAccess=protected)
         nAlign
 
-        alignInfoActive % index of the alignInfoSet currently "active"
+        alignInfoActive % alignInfo currently active
+
+        alignSummaryActive % alignSummary currently active
     end
 
     % Properties which read through to AlignInfo
@@ -165,6 +167,7 @@ classdef TrialDataConditionAlign < TrialData
             alignSummarySet = cell(td.nAlign, 1);
             for i = 1:td.nAlign
                 alignSummarySet{i} = AlignSummary.buildFromConditionAlignInfo(td.conditionInfo, td.alignInfoSet{i});
+                alignSummarySet{i}.timeUnitName = td.timeUnitName;
             end
 
             c = td.odc;
@@ -497,11 +500,22 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.addAttribute(attrName);
             td.conditionInfo = td.conditionInfo.setAttributeValueList(attrName, valueList);
+            td = td.postUpdateConditionInfo();
         end
         
         function valueList = getAttributeValueList(td, attrName)
             td = td.addAttrbute(attrName);
             valueList = td.conditionInfo.getAttributeValueList(attrName);
+        end
+
+        function td = setAxisValueList(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setAxisValueList(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+
+        function valueList = getAxisValueList(td, varargin)
+            valueList = td.conditionInfo.getAxisValueList(varargin{:});
         end
         
         function td = postUpdateConditionInfo(td)
@@ -801,6 +815,11 @@ classdef TrialDataConditionAlign < TrialData
             end
             td = td.selectTrials(avalid);
         end
+
+        function td = abbrev(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.abbrev(varargin{:});
+        end
         
         function td = setStartAppearance(td, varargin)
             % updates the AppearanceSpec for start
@@ -838,6 +857,14 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = set.alignInfoActive(td, ad)
             td.alignInfoSet{td.alignInfoActiveIdx} = ad;
+        end
+
+        function ad = get.alignSummaryActive(td)
+            ad = td.alignSummarySet{td.alignInfoActiveIdx};
+        end
+
+        function td = set.alignSummaryActive(td, ad)
+            td.alignSummarySet{td.alignInfoActiveIdx} = ad;
         end
 
         function td = useAlign(td, idx)
@@ -1130,6 +1157,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
             p.addParamValue('alpha', 1, @isscalar);
+            p.addParamValue('timeAxisStyle', 'tickBridge', @ischar);
             p.KeepUnmatched;
             p.parse(varargin{:});
 
@@ -1143,7 +1171,7 @@ classdef TrialDataConditionAlign < TrialData
                 timeCell = timeByGroup{iCond};
                 for iTrial = 1:numel(dataCell)
                     if ~isempty(timeCell{iTrial}) && ~isempty(dataCell{iTrial})
-                        if p.Results.alpha < 0.5
+                        if p.Results.alpha < 1
                            h = TrialDataUtilities.Plotting.patchline(double(timeCell{iTrial}), dataCell{iTrial}, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
@@ -1169,7 +1197,7 @@ classdef TrialDataConditionAlign < TrialData
             axis(axh, 'tight');
             
             % setup x axis 
-            td.alignSummarySet{td.alignInfoActiveIdx}.setupTimeAutoAxis();
+            td.alignSummarySet{td.alignInfoActiveIdx}.setupTimeAutoAxis('style', p.Results.timeAxisStyle);
 
             % setup y axis
             TrialDataUtilities.Plotting.setupAxisForChannel(td.channelDescriptorsByName.(name));
@@ -1261,6 +1289,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
             p.addParamValue('minTrials', 1, @isscalar);
             p.addParamValue('alpha', 1, @isscalar);
+            p.addParamValue('timeAxisStyle', 'tickBridge', @ischar);
             p.KeepUnmatched;
             p.parse(varargin{:});
 
@@ -1301,10 +1330,9 @@ classdef TrialDataConditionAlign < TrialData
                     'tMin', min(tvecCell{iAlign}), 'tMax', max(tvecCell{iAlign}));
                 
                 % setup x axis 
-                if false
                 td.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign), ...
-                    'tMin', min(tvecCell{iAlign}), 'tMax', max(tvecCell{iAlign}));
-                end
+                    'tMin', min(tvecCell{iAlign}), 'tMax', max(tvecCell{iAlign}), ...
+                    'style', p.Results.timeAxisStyle);
             end
 
             % setup y axis
