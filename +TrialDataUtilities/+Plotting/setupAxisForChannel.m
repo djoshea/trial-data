@@ -1,23 +1,35 @@
 function setupAxisForChannel(channelDescriptor, varargin)
     p = inputParser();
     p.addParamValue('axh', gca, @ishandle);
-    p.addParamValue('xy', 'y', @(str) ismember(str, {'x', 'y'}));
+    p.addParamValue('which', 'y', @(str) ismember(str, {'x', 'y', 'z'}));
+    p.addParamValue('useAutoAxis', true, @islogical);
     p.parse(varargin{:});
     
-    xy = p.Results.xy;
+    which = p.Results.which;
     axh = p.Results.axh;
     
     label = channelDescriptor.getAxisLabelPrimary();
     
-    au = AutoAxis(axh);
-    if strcmp(xy, 'x')
-        xlabel(axh, label);
-        au.addAutoAxisX();
-    else
-        ylabel(axh, label);
-        au.addAutoAxisY();
+    if p.Results.useAutoAxis
+        au = AutoAxis(axh);
     end
-    
-    au.update();
-    au.installCallbacks();
+    switch which
+        case 'x'
+            xlabel(axh, label);
+            if p.Results.useAutoAxis
+                au.addAutoAxisX();
+            end
+        case 'y'
+            ylabel(axh, label);
+            if p.Results.useAutoAxis
+                au.addAutoAxisY();
+            end
+        case 'z'
+            zlabel(axh, label);
+    end
+
+    if p.Results.useAutoAxis
+        au.update();
+        au.installCallbacks();
+    end
 end

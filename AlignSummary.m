@@ -615,6 +615,7 @@ classdef AlignSummary
 
             % label each of the event marks that are fixed with respect to the zero event
             for iMark = 1:ad.nMarks
+                if ~ad.markShowOnAxis(iMark), continue; end
                 % loop over each occurrence of the mark
                 for iOccur = 1:numel(as.markMean{iMark})
                     info(counter).name = ad.markLabels{iMark};
@@ -677,6 +678,7 @@ classdef AlignSummary
             % add ticks and markers to the x-axis of a plot representing
             % all marks and intervals for this align descriptor
             p = inputParser();
+            p.addParamValue('which', 'x', @(x) ismember(x, {'x', 'y', 'z'}));
             p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
             p.addParamValue('tOffsetZero', 0, @isscalar); % x position of t=0 on the axis
             p.addParamValue('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
@@ -705,9 +707,9 @@ classdef AlignSummary
             if ~isempty(intervalInfo)
                 intervalInfo = intervalInfo([intervalInfo.stopTime] >= tMin & [intervalInfo.startTime] <= tMax);
             end
+            
             switch style
                 case 'tickBridge'      
-                    
                     % include tMin and tMax ticks
                     ticks = [tMin, tMax, labelInfo.time]' + xOffset; 
                     labels = cellvec(numel(labelInfo));
@@ -754,7 +756,7 @@ classdef AlignSummary
                         else
                             errorInterval = [];
                         end
-                        cvec = ii.appear.getMarkerFaceColor();
+                        cvec = ii.appear.MarkerFaceColor;
                         errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
                             'errorInterval', errorInterval, 'errorIntervalColor', errorColor, ...
@@ -871,6 +873,11 @@ classdef AlignSummary
             p.addParamValue('axh', gca, @ishandle);
             p.addParamValue('tMin', -Inf, @isscalar);
             p.addParamValue('tMax', Inf, @isscalar);
+            p.addParamValue('alpha', 1, @isscalar);
+            p.addParamValue('markAlpha', 1, @isscalar);
+            p.addParamValue('markSize', 8, @isscalar);
+%             p.addParamValue('markErrorAlpha', 1, @isscalar);
+            p.addParamValue('drawError', false, @islogical);
             p.parse(varargin{:});
             
             tOffsetZero = p.Results.tOffsetZero;
@@ -912,8 +919,9 @@ classdef AlignSummary
             % of locations
             nOccurByMark = as.nOccurrencesByMark;
             for iMark = 1:nMarks
-                [markMeanLoc, markMinLoc, markMaxLoc] = ...
-                    deal(nan(max(2, D), nOccurByMark(iMark), nConditions));
+                markMeanLoc = nan(nOccurByMark(iMark), max(2, D), nConditions);
+                markErrorLoc = cell(nOccurByMark(iMark), nConditions);
+                
                 for iC = 1:nConditions
                     % get the mark times to plot
                     c = conditionIdx(iC);
@@ -927,6 +935,11 @@ classdef AlignSummary
                     tMarkMin(maskInvalid) = NaN;
                     tMarkMax(maskInvalid) = NaN;
                     
+                    if all(isnan(tMarkMean))
+                        % none found for this condition
+                        continue;
+                    end
+                    
                     % get the position along the timeseries via
                     % interpolation
                     % d will be T x D x N, t will be T x 1;
@@ -938,25 +951,43 @@ classdef AlignSummary
                         t = time;
                     end
                     
-                    % dMean/dMin/dMax will be max(2,D) x nOccur
-                    % since time will become d*(1, :) if D == 1
-                    [dMean, dMin, dMax] = AlignSummary.interpMarkLocation(t, d, ...
-                        tMarkMean, tMarkMin, tMarkMax);
+                    % dMean/dMin/dMax will be nOccur x max(2,D) x 1
+                    % since time will become dMean(:, 1, :) if D == 1
+                    dMean = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(t, d, tMarkMean);
                     
+                    % permute to be D x nOccur
                     markMeanLoc(:, :, iC) = dMean;
-                    markMinLoc(:, :, iC) = dMin;
-                    markMaxLoc(:, :, iC) = dMax;
+                    
+                    % and slice the error interval location
+                    % tMarkMin is nOcccur x 1
+                    % dError will be nOccur cell with 
+                    dError = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(t, d, tMarkMin, tMarkMax);
+                    markErrorLoc(:, iC) = dError;
                 end
                 
+                % add the time offset if plotting against time
                 if D == 1
-                    markMeanLoc(1, :) = markMeanLoc(1, :) + tOffsetZero;
-                    markMinLoc(1, :) = markMinLoc(1, :) + tOffsetZero;
-                    markMaxLoc(1, :) = markMaxLoc(1, :) + tOffsetZero;
+                    markMeanLoc(:, 1) = markMeanLoc(:, 1) + tOffsetZero;
+                    for i = 1:numel(markErrorLoc)
+                        if isempty(markErrorLoc{i}), continue; end;
+                        markErrorLoc{i}(:, 1) = markErrorLoc{i}(:, 1) + tOffsetZero;
+                    end
                 end
+                
+                app = as.alignDescriptor.markAppear{iMark};
                 
                 % plot mark and provide legend hint
-                h = AlignSummary.plotMark(markMeanLoc, as.alignDescriptor.markAppear{iMark});
+                h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
+                    p.Results.markAlpha, p.Result.markSize);
                 TrialDataUtilities.Plotting.showInLegend(h, as.alignDescriptor.markLabels{iMark});
+                
+                % plot mark error interval and suppress from legend
+                if p.Results.drawError
+                    errorThickness = app.MarkerSize / 2;
+                    h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
+                        as.alignDescriptor.markAppear{iMark}, errorThickness, p.Results.markAlpha);
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
             end
         end
         
@@ -1010,57 +1041,5 @@ classdef AlignSummary
 
     end
     
-    methods(Static, Access=protected)
-        function h = plotMark(dMark, app)
-            % dMark is D x ?
-            
-            % plot a single mark on the data
-            D = size(dMark, 1);
-            
-            flatten = @(x) x(:);
-            plotArgs = app.getMarkerArgs();
-            
-            if D == 1 || D == 2
-                h  = plot(flatten(dMark(1, :)), flatten(dMark(2, :)), ...
-                    'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', 'k', 'MarkerSize', 15, plotArgs{:});
-            elseif D == 3
-                h  = plot3(flatten(dMark(1, :)), flatten(dMark(2, :)), flatten(dMark(3, :)), ...
-                    'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', 'k', 'MarkerSize', 15, plotArgs{:});
-            else
-                error('Invalid Dimensionality of data');
-            end
-        end
-        
-        function [dMean, dMin, dMax] = interpMarkLocation(time, data, tMean, tMin, tMax)
-            % time is a time vector
-            % data is a T x D x N set of traces
-            % tMean, tMin, tMax must be vectors with length nOccurrences
-            % dMean/dMin/dMax will be nOccurrences x max(2,D) x N
-            % where tMean, tMin, tMax will be inserted in row 1 if D == 1
-            
-            D = size(data, 2);
-            N = size(data, 3);
-            nOccur = numel(tMean);
-            
-            % vals will be 3*nOccurrences x D x N            
-            vals = interp1(time, data, [tMean(:); tMin(:); tMax(:)], 'linear');
-            if D > 1
-                if N > 1
-                    valsSplit = mat2cell(vals, [nOccur nOccur nOccur], D, N);
-                else
-                    valsSplit = mat2cell(vals, [nOccur nOccur nOccur], D);
-                end
-            else
-                valsSplit = mat2cell(vals, [nOccur nOccur nOccur]);
-            end
-            [dMean, dMin, dMax] = deal(valsSplit{:});
-                
-            % insert time as dimension 1 if D == 1
-            if D == 1
-                dMean = cat(1, makerow(tMean), dMean);
-                dMax = cat(1, makerow(tMax), dMax);
-                dMin = cat(1, makerow(tMin), dMin);
-            end
-        end
-    end   
+
 end

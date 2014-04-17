@@ -10,6 +10,9 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 % min(tMin):timeDelta:max(tMax).
 %
 % % Optional args: 
+%    tvec: if specified, will serve as the time vector to interpolate 
+%       data onto. if not specified, will be computed automatically.
+%
 %    timeDelta: scalar indicating the time delta between successive
 %       timestamps. default = 1.
 %
@@ -33,91 +36,70 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %       interpolation methods. default = 'linear'.
 
     p = inputParser();
-    p.addRequired('dataCell', @(x) iscell(x) && isvector(x));
-    p.addRequired('timeCell', @(x) iscell(x) && isvector(x));
-    p.addParamValue('timeDelta', 1, @isscalar);
-    p.addParamValue('timeReference', 0, @isscalar);
-    p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
-    p.addParamValue('interpolate', true, @(x) islogical(x) && isscalar(x));
+    p.addRequired('dataCell', @(x) iscell(x));
+    p.addRequired('timeCell', @(x) iscell(x));
+    p.addParamValue('tvec', [], @isvector);
     p.addParamValue('interpolateMethod', 'linear', @ischar);
+    p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
+    p.KeepUnmatched = true;
     p.parse(dataCell, timeCell, varargin{:});
-
-    timeDelta = p.Results.timeDelta;
-    timeReference = p.Results.timeReference;
-    fixDuplicateTimes = p.Results.fixDuplicateTimes;
-    interpolate = p.Results.interpolate;
-    interpolateMethod = p.Results.interpolateMethod;
     
+    % check sizes match
+    % okay to have one empty and the other not, simply ignore
     szData = cellfun(@numel, dataCell);
     szTime = cellfun(@numel, timeCell);
-    
-    % okay to have one empty and the other not, simply ignore
     empty = szData == 0 | szTime == 0;
     szData(empty) = 0;
     szTime(empty) = 0;
     dataCell(empty) = {[]};
     timeCell(empty) = {[]};
+    assert(all(szData(:) == szTime(:)), 'Sizes of dataCell and timeCell contents must match');
     
-    assert(all(szData == szTime), 'Sizes of dataCell and timeCell contents must match');
-    
-    if fixDuplicateTimes
+    % fix duplicate timestamps
+    if p.Results.fixDuplicateTimes
         [dataCell, timeCell] = cellfun(@fix, dataCell, timeCell, 'UniformOutput', false);
     end
-    
-    % compute the global min / max timestamps
-    [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
 
-    % expand the global min / max timestamps to align with timeReference
-    if interpolate
-        %ceilfix = @(x)ceil(abs(x)).*sign(x);
-        % these used to be round, changed to match start / stop in Trial
-        % Data
-        tMin = timeReference + floor((tMinRaw - timeReference) / timeDelta) * timeDelta;
-        tMax = timeReference + ceil((tMaxRaw - timeReference) / timeDelta) * timeDelta;
+    if isempty(p.Results.tvec)
+        % auto-compute appropriate time vector
+        [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, p.Unmatched);
     else
-        tMin = tMinRaw;
-        tMax = tMaxRaw;
+        tvec = p.Results.tvec;
+        % compute the global min / max timestamps or each trial
+        [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
+        
+        % then shift these to lie within tvec, without overwriting nans
+        tMin = max(min(tvec), tMinRaw);
+        tMin(isnan(tMinRaw)) = NaN;
+        
+        tMax = min(max(tvec), tMaxRaw);
+        tMax(isnan(tMaxRaw)) = NaN;
     end
     
-    if ~interpolate
-        tol = 1e-9;
-        if  (any(abs(tMin - tMinRaw) > tol) || any(abs(tMax - tMaxRaw) > tol))
-            error('Timestamps do not align with timeReference. Set ''interpolate'' to true');
-        end
-    end
+    tMinGlobal = nanmin(tvec);
+    timeDelta = inferTimeDelta(tvec);
     
-    % build the global time vector
-    tMinGlobal = nanmin(tMin);
-    tMaxGlobal = nanmax(tMax);
-    tvec = tMinGlobal:timeDelta:tMaxGlobal;
+    % build the data matrix by inserting the interpolated segment of each timeseries
+    % in the appropriate location in each row, keeping the non-spanned timepoints as NaN
     T = numel(tvec);
-    N = numel(dataCell);
-    
-    % build the data matrix by inserting each timeseries in the appropriate
-    % location in each row
-    mat = nan(N, T);
-    
+    N = size(dataCell, 1);
+    C = size(dataCell, 2);
+    mat = nan([N, T, C]);
 	indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
-    if interpolate
+    for c = 1:C
         for i = 1:N
-            if ~isnan(indStart(i)) && ~isnan(indStop(i))
-                if indStop(i) - indStart(i) > 1
-                    mat(i, indStart(i):indStop(i)) = interp1(timeCell{i}, dataCell{i}, ...
-                        tvec(indStart(i):indStop(i)), interpolateMethod, 'extrap');
-                else
-                    mat(i, indStart(i):indStop(i)) = dataCell{i}(indStart(i):indStop(i));
-                end
-            end
-        end
-    else
-        for i = 1:N
-            if ~isnan(indStart(i)) && ~isnan(indStop(i))
-                mat(i, indStart(i):indStop(i)) = dataCell{i};
+            if ~isnan(indStart(i,c)) && ~isnan(indStop(i,c))
+                mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}, dataCell{i, c}, ...
+                    tvec(indStart(i,c):indStop(i,c)), p.Results.interpolateMethod, 'extrap');
             end
         end
     end
-    end
+end
+
+function timeDelta = inferTimeDelta(tvec)
+     timeDelta = nanmedian(diff(tvec));
+end
 
 function [d, t] = fix(d, t)
     if isempty(t) || isempty(d)

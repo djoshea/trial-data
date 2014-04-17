@@ -50,9 +50,14 @@ classdef AlignInfo < AlignDescriptor
         % nTrials x nMarks array of mark occurrence counts; NaN for invalid trials
         markCountsValid
         
+        % nMarks vector of maximum number of occurrences for each mark
+        markMaxCounts
+        
         % nIntervals cell array of nTrials x nMaxOccurrences interval start times
         intervalStartData
         
+        % nIntervals cell array of nTrials x nMaxOccurrences interval start times
+        % NaN for invalid trials
         intervalStartDataValid
         
         % nIntervals cell array of nTrials x nMaxOccurrences interval stop times
@@ -63,7 +68,12 @@ classdef AlignInfo < AlignDescriptor
         % nTrials x nIntervals array of interval occurrence counts
         intervalCounts
         
+        % nTrials x nIntervals array of interval occurrence counts, NaN for
+        % invalid trials
         intervalCountsValid
+        
+        % nMarks vector of maximum number of occurrences for each mark
+        intervalMaxCounts
     end
     
     properties(Dependent)
@@ -757,7 +767,17 @@ classdef AlignInfo < AlignDescriptor
             else
                 nt = numel(ad.eventCounts.(ad.zeroEvent));
             end
-       end
+        end
+       
+        function n = get.markMaxCounts(ad)
+            % markCounts is nTrials x nMarks
+            n = max(ad.markCounts, [], 1)';
+        end
+        
+        function n = get.intervalMaxCounts(ad)
+            % intervalCounts is nTrials x nMarks
+            n = max(ad.intervalCounts, [], 1)';
+        end
        
        function lengths = getValidDurationByTrial(ad) 
             ad.assertApplied();
@@ -911,6 +931,7 @@ classdef AlignInfo < AlignDescriptor
         end
         
         function [alignedData, alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, includePadding, varargin)
+            % align timeseries where trials are along dimension 1
             [alignedTime, rawTimesMask] = ad.getAlignedTimesCell(timeCell, includePadding);
             alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
                 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
@@ -937,91 +958,165 @@ classdef AlignInfo < AlignDescriptor
         end
     end
     
-    methods % Drawing on data
-        % annotate data time-series with markers according to the labels indicated
-        % by this align descriptor
-        %
-        % N is the number of traces to be annotated
-        % T is number of time points
-        % D is data dimensionality e.g. 1 or 2 or 3)
-        %
-        % the sizes of timeData and data may be one of the following:
-        %   one-trial per data trace:
-        %     timeData is N x T matrix or N x 1 cell of T_i vectors
-        %     data is N x T x D matrix or N x 1 cell of T_i x D matrices
-        function drawOnData(ad, timeData, data, varargin)
+    methods % Drawing on data 
+        function drawOnTimeseriesByTrial(ad, timeData, data, varargin)
+            % annotate data time-series with markers according to the labels indicated
+            % by this align descriptor. Similar to AlignSummary's version
+            % except operates on individual trials
+            %
+            % N = nTrials is the number of traces to be annotated
+            % D is data dimensionality e.g. 1 or 2 or 3)
+            %
+            % the sizes of timeData and data may be one of the following:
+            %   one-trial per data trace:
+            %     timeData is T vector or N x 1 cell of T_i vectors
+            %     data is N x T x D matrix or N x 1 cell of T_i x D matrices
             p = inputParser();
-            p.addParamValue('drawLegend', false, @islogical);
-            p.addParamValue('drawRange', false, @islogical);
             p.addParamValue('axh', gca, @ishandle);
+            p.addParamValue('tOffsetZero', 0, @isscalar);
+            p.addParamValue('markAlpha', 1, @isscalar);
+            p.addParamValue('markSize', 5, @isscalar);
+            p.addParamValue('trialIdx', 1:ad.nTrials, @isnumeric);
+            p.addParamValue('showInLegend', true, @islogical);
             p.parse(varargin{:});
 
             axh = p.Results.axh;
+            tOffsetZero = p.Results.tOffsetZero;
+            trialIdx = p.Results.trialIdx;
             hold(axh, 'on');
 
-            N = length(ad.nTrials);
+            N = numel(trialIdx);
             assert(N == size(data, 1), 'size(data, 1) must match nTrials');
             assert(N == size(timeData, 1), 'size(timeData, 1) must match nTrials');
-
-            % loop over events to mark
-            ad.start
             
-            for iTrial = 1:ad.nTrials
-                if iscell(data)
-                    tvec = timeData{i};
-                    dmat = data{i};
-                else
-                    tvec = squeeze(timeData(i, :));
-                    dmat = squeeze(data(i, :, :));
+            % grab information about the mark times relative to the trial
+            nOccurByMark = ad.markMaxCounts;
+            markData = ad.getAlignedMarkData();
+            
+            if iscell(data)
+                 emptyMask = cellfun(@isempty, data);
+                if all(emptyMask), return; end
+                nonEmpty = find(~emptyMask, 1);
+                D = size(data{nonEmpty}, 2);
+            else
+                D = size(data, 3);
+            end
+            
+            for iMark = 1:ad.nMarks
+                % gather mark locations
+                % nOccur x D x N
+                markLoc = nan(nOccurByMark(iMark), max(2, D), N);
+                
+                for t = 1:N
+                    % get the mark times on this trial
+                    tMark = markData{iMark}(trialIdx(t));
+                    
+                    if iscell(timeData)
+                        tvec = timeData{t};
+                    else
+                        tvec = timeData;
+                    end
+                    if iscell(data)
+                        dmat = data{t};
+                    else
+                        % data is N x T x D matrix
+                        dmat = TensorUtils.squeezeDims(data(t, :, :), 1);
+                    end
+                    % tvec should T vector, dmat should be T x D
+                    
+                    % filter by the time window specified (for this trial)
+                    maskInvalid = tMark < min(tvec) | tMark > max(tvec);
+                    tMark(maskInvalid) = NaN;
+                    
+                    if all(isnan(tMark))
+                        % none found in this time window for this condition
+                        continue;
+                    end
+                    
+                    % dMean will be nOccurThisTrial x max(2,D)
+                    % since time will become dMean(:, 1, :) if D == 1
+                    dMark = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(tvec, dmat, tMark);
+                    
+                    markLoc(1:size(dMark, 1), :, t) = dMark;
                 end
                 
-                if ~isempty(dmat)
-                    drawOnSingle(ti, tvec, dmat, labelInfo);
+                % add the time offset to time column if plotting against time
+                if D == 1
+                    markLoc(:, 1) = markLoc(:, 1) + tOffsetZero;
+                end
+                
+                app = ad.markAppear{iMark};
+                
+                % plot mark and provide legend hint
+                h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
+                    p.Results.markAlpha, p.Results.markSize);
+
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showInLegend(h, ad.markLabels{iMark});
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
                 end
             end
             
-%             if p.Results.drawLegend
-%                 idx = 1;
-%                 for iLabel = 1:length(labelInfo)
-%                     info = labelInfo(iLabel).info;
-%                     if ~labelInfo(iLabel).markData
-%                         continue;
-%                     end
-%                     hleg(idx) = plot(NaN, NaN, info.marker, 'MarkerFaceColor', info.color, ...
-%                         'MarkerEdgeColor', info.color, 'MarkerSize', info.size);
-%                     legstr{idx} = labelInfo(iLabel).name;
-%                     idx = idx + 1;
-%                 end
-%                 
-%                 legend(hleg, legstr, 'Location', 'NorthEast');
-%                 legend boxoff;
-%             end
-            
-            function drawOnSingle(timeInfo, timeVec, dmat, labelInfo)
-                % timeInfo is a struct array or single struct
-                % dmat is T x D matrix
-                nDim = size(dmat, 2);
-
-                for iLabel = 1:length(labelInfo)
-                    if ~labelInfo(iLabel).markData
-                        continue;
+            % plot intervals
+            nOccurByInterval = ad.intervalMaxCounts;
+            [intStartData, intStopData] = ad.getAlignedIntervalData();
+            for iInterval = 1:ad.nIntervals
+                % gather mark locations
+                % nOccur x nTrials cell of T x D data in interval
+                intLoc = cell(nOccurByInterval(iInterval), ad.nTrials); 
+                
+                for iTrial = 1:N
+                    % filter by the time window specified (for this trial)
+                    tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
+                    tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
+                    
+                    % tvec should T vector, dmat should be T x D
+                    if iscell(timeData)
+                        tvec = timeData{iTrial};
+                    else
+                        tvec = timeData;
                     end
-                    info = labelInfo(iLabel).info;
-                    ind = find(floor(labelInfo(iLabel).time) == floor(timeVec), 1);
-                    if isempty(ind), continue, end
-                    dvec = dmat(ind, :);
-                    extraArgs = {info.marker, 'MarkerFaceColor', info.color, ...
-                            'MarkerEdgeColor', info.color, 'MarkerSize', info.size};
-                    if nDim == 1
-                        plot(timeVec(ind), dvec(1), extraArgs{:});
-                    elseif nDim == 2
-                        plot(dvec(1), dvec(2), extraArgs{:});
-                    elseif nDim == 3
-                        plot3(dvec(1), dvec(2), dvec(3), extraArgs{:});
+                    if iscell(data)
+                        dmat = data{iTrial};
+                    else
+                        % data is N x T x D matrix
+                        dmat = TensorUtils.squeezeDims(data(iTrial, :, :), 1);
+                    end
+                    
+                    % constrain the time window to the interval being
+                    % plotted as defined by tvec
+                    valid = ~isnan(tStart) & ~isnan(tStop);
+                    valid(tStart > max(tvec)) = false;
+                    valid(tStop < min(tvec)) = false;
+                    
+                    if ~any(valid), continue; end
+                    
+                    tStart(tStart < min(tvec)) = min(tvec);
+                    tStop(tStop > max(tvec)) = max(tvec);
+                    
+                     % and slice the interval location
+                    % tStart, tStop is nOccur x 1
+                    % dError will be nOccur cell with T x D values
+                    dError = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
+                    intLoc(:, iTrial) = dError;
+                end
+ 
+                 % add the time offset if plotting against time
+                if D == 1
+                    for i = 1:numel(intLoc)
+                        if isempty(intLoc{i}), continue; end;
+                        intLoc{i}(:, 1) = intLoc{i}(:, 1) + tOffsetZero;
                     end
                 end
-                labelInfo = struct('name', {}, 'time', {}, 'align', {}, 'info', {}, ...
-                    'markOndmat', {}, 'fixed', {});
+                
+                app = ad.intervalAppear{iInterval};
+                
+                intervalThickness = 5;
+                
+                h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
+                    app, intervalThickness, p.Results.markAlpha);
+                TrialDataUtilities.Plotting.hideInLegend(h);
             end
         end
     end

@@ -508,11 +508,20 @@ classdef TrialData
 
         function delta = getAnalogTimeDelta(td, name)
             % compute the median delta betwen successive samples of an
-            % analog channel
-            [~, time] = td.getAnalog(name);
+            % analog channel(s), returns the minimum timeDelta across all channels
             
-            % median of medians is faster and close enough
-            delta = nanmedian(cellfun(@(x) nanmedian(diff(x)), time));
+            if ischar(name)
+                name = {name};
+            end
+
+            delta = nanvec(numel(name));
+            for i = 1:numel(name)
+                [~, time] = td.getAnalog(name{i});
+                % median of medians is faster and close enough
+                delta(i) = nanmedian(cellfun(@(x) nanmedian(diff(x)), time));
+            end
+
+            delta = nanmin(delta);
         end
         
         function [data, time] = getAnalogRaw(td, name)

@@ -89,6 +89,8 @@ classdef AlignDescriptor
         markOffsets 
         markLabelsStored = {};
         markAppear
+        markShowOnData % whether to mark on data traces
+        markShowOnAxis % whether to mark on the axis
 
         % for marking time intervals on the time axis as colored rectangles
         intervalEventsStart = {}; % n x 1 cell array of start/stop events
@@ -103,6 +105,9 @@ classdef AlignDescriptor
         %intevalMultiTrialMode = 'first';
         intervalConditionMatch = {}; % n x 1 cell array of structs with .attrName = attrValue(s)
         intervalAppear % miscellaneous
+        
+        intervalShowOnData % whether to mark on data traces
+        intervalShowOnAxis % whether to mark on the axis
         
         % Timestamp rounding. If active,
         % timeseries and timestamps will be shifted such that the
@@ -542,6 +547,8 @@ classdef AlignDescriptor
             p.addParamValue('indexStop', ':', @(x) ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
             p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParamValue('showOnData', true, @islogical);
+            p.addParamValue('showOnAxis', true, @islogical);
             %p.addParamValue('conditionMatch', struct(), @(x) isstruct(x) && isscalar(x));
             p.parse(varargin{:});
             as = p.Results.as;
@@ -574,8 +581,13 @@ classdef AlignDescriptor
             ad.intervalEventsIndexStop = makecol(ad.intervalEventsIndexStop);
             ad.intervalOffsetsStart = makecol(ad.intervalOffsetsStart);
             ad.intervalOffsetsStop = makecol(ad.intervalOffsetsStop);
+            
             ad.intervalAppear = makecol(ad.intervalAppear);
             ad.intervalLabelsStored = makecol(ad.intervalLabelsStored);
+            ad.intervalShowOnData(iInterval) = p.Results.showOnData;
+            ad.intervalShowOnData = makecol(ad.intervalShowOnData);
+            ad.intervalShowOnAxis(iInterval) = p.Results.showOnAxis;
+            ad.intervalShowOnAxis = makecol(ad.intervalShowOnAxis);
 
             ad = ad.updateInterval();
         end
@@ -602,6 +614,8 @@ classdef AlignDescriptor
             p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
             p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParamValue('showOnData', true, @islogical);
+            p.addParamValue('showOnAxis', true, @islogical);
             p.parse(varargin{:});
             offset = p.Results.offset;
             
@@ -631,7 +645,11 @@ classdef AlignDescriptor
             ad.markOffsets = makecol(ad.markOffsets);
             ad.markAppear{iMark} = p.Results.appear;
             ad.markAppear = makecol(ad.markAppear);
-
+            ad.markShowOnData(iMark) = p.Results.showOnData;
+            ad.markShowOnData = makecol(ad.markShowOnData);
+            ad.markShowOnAxis(iMark) = p.Results.showOnAxis;
+            ad.markShowOnAxis = makecol(ad.markShowOnAxis);
+            
             if ~isempty(p.Results.as)
                 % store manual label
                 ad.markLabelsStored{iMark,1} = p.Results.as;
