@@ -49,7 +49,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         isScalarByField 
         
          % in memory data class of each field (or empty if unknown / mixed)
-        dataClassByField% cell array specifying data class to convert each 
+        dataClassByField % cell array specifying data class to convert each 
         
         % persistent storage data class of each field (or empty if unknown / mixed)
         storageDataClassByField
@@ -194,6 +194,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
 
         function data = convertDataToMemoryClass(cd, data)
+            % change the storage class type of the data to the in-memory
+            % class
             for iF = 1:cd.nFields
                 from = cd.storageDataClassByField{iF};
                 to = cd.dataClassByField{iF};

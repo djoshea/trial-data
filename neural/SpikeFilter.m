@@ -20,8 +20,15 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
         t = getPostWindow(sf)
 
         % spikeCell is nTrains x 1 cell array of time points
-        % tvec = timeMin:timeSpacing:timeMax is an evenly spaced time vector
-        rates = subclassFilterSpikeTrains(sf, spikeCell, tvec)
+        %
+        % tWindowPerTrial is nTrials x 2 matrix of tMin and tMax to grab
+        % per trial, excluding any padding which should be accommodated for
+        % when grabbing spikeCell
+        %
+        % multiplierToSpikesPerSec is the factor by which rates in the
+        % spikeCell time units should be multiplied to get sec (e.g. 1000
+        % for spikeCell in ms)
+        [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowPerTrial, multiplierToSpikesPerSec)
     end
     
     methods(Access=protected) % Subclasses may wish to override these 
@@ -64,29 +71,29 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
     end
 
     methods
-        function [rates, tvec] = filterSpikeTrains(sf, spikeCell, tWindow)
-            rates = sf.subclassFilterSpikeTrains(spikeCell, tWindow);
-            tvec = tWindow(1):tWindow(2);
+        function [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec)
+            % filters each trial individually, using a cell array to return
+            % filtered rates and timeCell 
+            tWindowMat = [makecol(tMinByTrial), makecol(tMaxByTrial)];
+            [rateCell, timeCell] = sf.subclassFilterSpikeTrains(spikeCell, tWindowMat, multiplierToSpikesPerSec);
         end
         
-        function [rates, tvec] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, tWindow)
-            % By default, window will be the maximum valid across all
-            % trials, but can be overriden
-            if nargin < 5 || isempty(tWindow)
-                tWindow(1) = nanmin(tMinByTrial);
-                tWindow(2) = nanmax(tMaxByTrial);
-            end
+        function [rates, tvec] = filterSpikeTrainsWindowByTrialAsMatrix(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
+            % filters each trial individually and then embeds each filtered
+            % trace in a nTrials x nTime matrix, where missing samples are left as NaN
+            % before and after each trial. tvec is the time vector that
+            % indicates time along the columns.
+            import TrialDataUtilities.Data.embedTimeseriesInMatrix;
+            p = inputParser;
+            p.addParamValue('timeDelta', 1, @isscalar);
+            p.parse(varargin{:});
             
-            [rates, tvec] = sf.filterSpikeTrains(spikeCell, tWindow);
-                
-            % go through and mark as NaN any time outside each trial's
-            % valid window, in case tMin / tMax are larger than that
-            for iTrial = 1:numel(tMinByTrial)
-                mask = falsevec(numel(tvec));
-                mask(tvec < tMinByTrial(iTrial)) = true;
-                mask(tvec > tMaxByTrial(iTrial)) = true;
-                rates(iTrial, mask) = NaN;
-            end
+            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
+            
+            % convert to matrix
+            [rates, tvec] = embedTimeseriesInMatrix(rateCell, timeCell, ...
+                'timeDelta', p.Results.timeDelta, 'interpolate', false, ...
+                'fixDuplicateTimes', false);
         end
     end
     

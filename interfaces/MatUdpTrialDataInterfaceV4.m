@@ -1,5 +1,5 @@
-classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
-
+classdef MatUdpTrialDataInterfaceV4 < TrialDataInterface
+% like V3, but uses millisecond timestamps as doubles
     properties(SetAccess=protected)
         R % original struct array over trials
         meta % meta data merged over all trials
@@ -19,7 +19,7 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
 
     methods
         % Constructor : bind to MatUdp R struct and parse channel info
-        function td = MatUdpTrialDataInterfaceV3(R, meta)
+        function td = MatUdpTrialDataInterfaceV4(R, meta)
             assert(isvector(R) && ~isempty(R) && isstruct(R), 'Trial data must be a struct vector');
             assert(isstruct(meta) && ~isempty(meta) && isvector(meta), 'Meta data must be a vector struct');
             td.R = makecol(R);
@@ -102,7 +102,9 @@ classdef MatUdpTrialDataInterfaceV3 < TrialDataInterface
 
                     cd.groupName = group.name;
 
-                    
+                    if strcmp(name, 'success')
+                        a = 1;
+                    end
                     if strcmp(group.type, 'analog')
                         timeCell = {tdi.R.(timeField)};
                         cd = cd.inferAttributesFromData(dataCell, timeCell);

@@ -12,4 +12,14 @@ ci = ci.binAttributeQuantiles('rt', 5);
 ci = ci.binAttributeUniform('delay', 5);
 
 ci = ci.groupByAll();
-ci
+
+
+%% try randomization
+
+nonShuffled = ci.listByCondition;
+
+ci = ci.newRandomSeed().axisShuffle('target');
+shuffled = ci.listByCondition;
+
+assert(~isequal(shuffled, nonShuffled));
+

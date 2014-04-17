@@ -8,8 +8,9 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
 
     properties(Transient)
         conditionIdx
-        conditionSubsIncludingManualInvalid
+        conditionSubsRaw
         conditionSubs 
+        listByConditionRaw
         listByCondition
     end
     
@@ -18,7 +19,8 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
             flush@ConditionDescriptorOnDemandCache(c);
             c.conditionIdx = [];
             c.conditionSubs = [];
-            c.conditionSubsIncludingManualInvalid = [];
+            c.conditionSubsRaw = [];
+            c.listByConditionRaw = [];
             c.listByCondition = [];
         end
     end
