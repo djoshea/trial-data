@@ -1032,6 +1032,9 @@ classdef AlignInfo < AlignDescriptor
                         % none found in this time window for this condition
                         continue;
                     end
+                    if isempty(dmat)
+                        continue;
+                    end
                     
                     % dMean will be nOccurThisTrial x max(2,D)
                     % since time will become dMean(:, 1, :) if D == 1
