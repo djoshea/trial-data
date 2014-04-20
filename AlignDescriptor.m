@@ -388,12 +388,12 @@ classdef AlignDescriptor
             % does nothing here, used primarily in AlignInfo
         end
         
-        function ad = updateMark(ad)
+        function ad = postUpdateMark(ad)
             ad.warnIfNoArgOut(nargout);
             % does nothing here, used primarily in AlignInfo
         end
         
-        function ad = updateInterval(ad)
+        function ad = postUpdateInterval(ad)
             ad.warnIfNoArgOut(nargout);
             % does nothing here, used primarily in AlignInfo
         end
@@ -537,7 +537,7 @@ classdef AlignDescriptor
             idx = find(match);
         end
 
-        function ad = interval(ad, eventNameStart, eventNameStop, varargin)
+        function ad = interval(ad, eventStart, eventStop, varargin)
             ad.warnIfNoArgOut(nargout);
 
             p = inputParser;
@@ -554,11 +554,19 @@ classdef AlignDescriptor
             as = p.Results.as;
             %conditionMatch = p.Results.conditionMatch;
 
+            % try inferring offsets, indexes from provided strings, then
+            % overwrite with provided params
+            [eventNameStart, indexStart, offsetStart] = ad.parseEventOffsetString(eventStart, 'interval start', 'defaultIndex', ':');
+            [eventNameStop, indexStop, offsetStop] = ad.parseEventOffsetString(eventStop, 'interval stop', 'defaultIndex', ':');
+            if ~ismember('offsetStart', p.UsingDefaults), offsetStart = p.Results.offsetStart; end
+            if ~ismember('offsetStop', p.UsingDefaults), offsetStop = p.Results.offsetStop; end
+            if ~ismember('indexStart', p.UsingDefaults), indexStart = p.Results.indexStart; end
+            if ~ismember('indexStop', p.UsingDefaults), indexStop = p.Results.indexStop; end
             ad.assertHasEvent(eventNameStart);
             ad.assertHasEvent(eventNameStop);
             
-            idx = ad.findInterval(eventNameStart, p.Results.indexStart, p.Results.offsetStart, ...
-                eventNameStop, p.Results.indexStop, p.Results.offsetStop);
+            idx = ad.findInterval(eventNameStart, indexStart, offsetStart, ...
+                eventNameStop, indexStop, offsetStop);
             if ~isempty(idx)
                 warning('Replacing existing matching interval');
                 iInterval = idx(1);
@@ -568,10 +576,10 @@ classdef AlignDescriptor
             
             ad.intervalEventsStart{iInterval} = eventNameStart; 
             ad.intervalEventsStop{iInterval} = eventNameStop; 
-            ad.intervalEventsIndexStart{iInterval} = p.Results.indexStart;
-            ad.intervalEventsIndexStop{iInterval} = p.Results.indexStop;
-            ad.intervalOffsetsStart(iInterval) = p.Results.offsetStart;
-            ad.intervalOffsetsStop(iInterval) = p.Results.offsetStop;
+            ad.intervalEventsIndexStart{iInterval} = indexStart;
+            ad.intervalEventsIndexStop{iInterval} = indexStop;
+            ad.intervalOffsetsStart(iInterval) = offsetStart;
+            ad.intervalOffsetsStop(iInterval) = offsetStop;
             ad.intervalLabelsStored{iInterval} = as;
             ad.intervalAppear{iInterval} = p.Results.appear;
             
@@ -589,7 +597,7 @@ classdef AlignDescriptor
             ad.intervalShowOnAxis(iInterval) = p.Results.showOnAxis;
             ad.intervalShowOnAxis = makecol(ad.intervalShowOnAxis);
 
-            ad = ad.updateInterval();
+            ad = ad.postUpdateInterval();
         end
         
         function idx = findMark(ad, eventName, index, offset)
@@ -657,7 +665,7 @@ classdef AlignDescriptor
                 ad.markLabelsStored{iMark,1} = '';
             end
 
-            ad = ad.updateMark();
+            ad = ad.postUpdateMark();
         end
 
         function ad = truncateBefore(ad, eventName, offset, varargin)
@@ -772,6 +780,32 @@ classdef AlignDescriptor
             ad.roundTimes = false;
             ad.minTimeDelta = [];
             ad = ad.update();
+        end
+
+        function clearMarksIntervals(ad)
+            % remove all marks and intervals
+            ad.warnIfNoArgOut(nargout);
+            ad.markEvents = {};
+            ad.markEventsIndex = [];
+            ad.markOffsets = [];
+            ad.markLabelsStored = {};
+            ad.markAppear
+            ad.markShowOnData = []; 
+            ad.markShowOnAxis = [];
+            ad.intervalEventsStart = {}; 
+            ad.intervalEventsStop = {}; 
+            ad.intervalEventsIndexStart = [];
+            ad.intervalEventsIndexStop  = [];
+            ad.intervalOffsetsStart  = [];
+            ad.intervalOffsetsStop  = [];
+            ad.intervalLabelsStored = {};
+            ad.intervalConditionMatch = {}; 
+            ad.intervalAppear  = [];
+            ad.intervalShowOnData = [];
+            ad.intervalShowOnAxis = [];
+
+            ad = ad.postUpdateMark();
+            ad = ad.postUpdateInterval();
         end
             
     end
@@ -1230,33 +1264,42 @@ classdef AlignDescriptor
         end
         
         function printDescription(ad)
-            ad.printOneLineDescription();
-            
-            tcprintf('inline', '\toutside trial {bright blue}%s\n', ad.outsideOfTrialMode);
-            tcprintf('inline', '\tminimum duration {bright blue}%d\n', ad.minDuration);
-            if ad.roundTimes
-                tcprintf('inline', '\tround times with min delta {bright blue}%g\n', ad.minTimeDelta);
+            if ~ad.nameDefault
+                tcprintf('inline', '{yellow}%s: {white}%s\n', class(ad), ad.name);
+            else
+                % name will just match desc, so don't print it twice
+                tcprintf('inline', '{yellow}%s:\n', class(ad));
             end
+            
+            tcprintf('inline', '  {bright blue}Start {purple}%s {darkGray}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
+            tcprintf('inline', '  {bright blue}Stop {purple}%s {darkGray}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
+            tcprintf('inline', '  {bright blue}Zero {purple}%s {darkGray}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
 
             for i = 1:length(ad.markEvents);
-                tcprintf('inline', '\tmark {white}%s{none} as {bright blue}%s\n', ...
+                tcprintf('inline', '  {bright blue}Mark {purple}%s {darkGray}as {white}%s\n', ...
                     ad.markUnabbreviatedLabels{i}, ad.markLabels{i}); 
             end
             for i = 1:size(ad.intervalEventsStart, 1)
-                tcprintf('inline', '\tinterval {white}%s{none} as {bright blue}%s\n', ...
+                tcprintf('inline', '  {bright blue}Interval {purple}%s{darkGray} as {white}%s\n', ...
                     ad.intervalUnabbreviatedLabels{i}, ...
                     ad.intervalLabels{i}); 
                 % TODO add condition match description
             end
             for i = 1:length(ad.truncateBeforeEvents);
-                tcprintf('inline', '\ttruncate before {white}%s{none}\n', ad.truncateBeforeUnabbreviatedLabels{i});
+                tcprintf('inline', '  {bright blue}Truncate before {purple}%s\n', ad.truncateBeforeUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.truncateAfterEvents);
-                tcprintf('inline', '\ttruncate after {white}%s%+.0f{none}\n', ad.truncateAfterUnabbreviatedLabels{i});
+                tcprintf('inline', '  {bright blue}Truncate after {purple}%s%+.0f\n', ad.truncateAfterUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.invalidateEvents);
-                tcprintf('inline', '\tinvalidate overlap {white}%s{none}\n', ad.invalidateUnabbreviatedLabels{i});
-            end       
+                tcprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});
+            end     
+                   
+            tcprintf('inline', '  {darkGray}outside trial mode {white}%s\n', ad.outsideOfTrialMode);
+            tcprintf('inline', '  {darkGray}minimum duration {white}%d\n', ad.minDuration);
+            if ad.roundTimes
+                tcprintf('inline', '  {darkGray}round times with min delta {white}%g\n', ad.minTimeDelta);
+            end
         end
 
         function disp(ad)

@@ -34,6 +34,7 @@ classdef TrialData
     % Convenience dependent properties
     properties(Dependent) 
         valid
+        invalidCause % cellstr of explanations
         nTrials
         nTrialsValid
         nChannels
@@ -158,10 +159,10 @@ classdef TrialData
         end
         
         function printChannelInfo(td)
-            tcprintf('inline', '{bright blue}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
-            tcprintf('inline', '{bright blue}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
-            tcprintf('inline', '{bright blue}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
-            tcprintf('inline', '{bright blue}Spike: {none}%s\n', strjoin(td.listSpikeUnits(), ', '));
+            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
+            tcprintf('inline', '{yellow}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{yellow}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{yellow}Spike: {none}%s\n', strjoin(td.listSpikeUnits(), ', '));
         end
 
         function disp(td)
@@ -191,6 +192,16 @@ classdef TrialData
             else
                 valid = makecol(td.manualValid);
             end
+        end
+        
+        function cause = get.invalidCause(td)
+            cause = td.buildInvalidCause();
+        end
+        
+        function cause = buildInvalidCause(td)
+            cause = cell(td.nTrials, 1);
+            cause(~td.valid) = {'marked invalid manually'};
+            cause(td.valid) = {''};
         end
         
         function nTrials = get.nTrials(td)

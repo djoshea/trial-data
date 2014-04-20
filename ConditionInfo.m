@@ -44,6 +44,10 @@ classdef ConditionInfo < ConditionDescriptor
         
         % T x A matrix of which condition each trial belongs to as a row vector of subscript indices
         conditionSubsRaw
+        
+        % nTrials x 1 cellstr of reasons why a trial is not valid for this condition descriptor, without
+        % worrying about manual invalid
+        invalidCause
 
         % T x A matrix of which condition each trial belongs to as a row
         % vector of subscript indices, except invalid trials will have all
@@ -103,7 +107,7 @@ classdef ConditionInfo < ConditionDescriptor
         function v = get.conditionSubsRaw(ci)
             v = ci.odc.conditionSubsRaw;            
             if isempty(v)
-                ci.odc.conditionSubsRaw = ci.buildConditionSubsRaw();
+                [ci.odc.conditionSubsRaw, ci.odc.invalidCause] = ci.buildConditionSubsRaw();
                 v = ci.odc.conditionSubsRaw;
             end
         end
@@ -111,6 +115,19 @@ classdef ConditionInfo < ConditionDescriptor
         function ci = set.conditionSubsRaw(ci, v)
             ci.odc = ci.odc.copy();
             ci.odc.conditionSubsRaw = v;
+        end
+        
+        function v = get.invalidCause(ci)
+            v = ci.odc.invalidCause;            
+            if isempty(v)
+                [ci.odc.conditionSubsRaw, ci.odc.invalidCause] = ci.buildConditionSubsRaw();
+                v = ci.odc.invalidCause;
+            end
+        end
+        
+        function ci = set.invalidCause(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.invalidCause = v;
         end
         
         function v = get.conditionSubs(ci)
@@ -165,12 +182,25 @@ classdef ConditionInfo < ConditionDescriptor
         
         % compute which condition each trial falls into, without writing
         % NaNs for manualInvalid marked trials and without applying randomization along each axis
-        function subsMat = buildConditionSubsRaw(ci)
+        function [subsMat, reasonInvalid] = buildConditionSubsRaw(ci)
             % filter out any that don't have a valid attribute value
             % along the other non-axis attributes which act as a filter
-            % (i.e. have a manual value list as well)
+            % (i.e. have a manual value list as well). Reason invalid will
+            % be nTrials x 1 cellstr explaining why a given trial does not
+            % have a valid set of subs
+            
+            reasonInvalid = cell(ci.nTrials, 1);
+            reasonInvalid(:) = {''};
+            explained = false(ci.nTrials, 1);
+            
             valueList = ci.buildAttributeFilterValueListStruct();
-            matchesFilters = ci.getAttributeMatchesOverTrials(valueList);
+            attrFilter = fieldnames(valueList);
+            [matchesFilters, whichField] = ci.getAttributeMatchesOverTrials(valueList);
+            
+            for iF = 1:numel(attrFilter)
+                reasonInvalid(whichField == iF & ~explained) = {sprintf('invalid attribute value for %s', attrFilter{iF})};
+                explained = explained | whichField == iF;
+            end
             
             if ci.nAxes == 0
                 subsMat = onesvec(ci.nTrials);
@@ -184,6 +214,9 @@ classdef ConditionInfo < ConditionDescriptor
                     matchMatrix = ci.getAttributeMatchesOverTrials(ci.axisValueLists{iX});
                     [tf, match] = max(matchMatrix, [], 2);
                     subsMat(tf, iX) = match(tf);
+                    
+                    reasonInvalid(~tf & ~explained) = {sprintf('invalid attributes for axis %s', ci.axisNames{iX})};
+                    explained = explained | ~tf;
                 end
                 
                 % mark as NaN if it doesn't match for every attribute
@@ -445,12 +478,13 @@ classdef ConditionInfo < ConditionDescriptor
             end
         end
 
-        function mask = getAttributeMatchesOverTrials(ci, valueStruct)
+        function [mask, whichField] = getAttributeMatchesOverTrials(ci, valueStruct)
             % valueStruct is a struct where .attribute = [vals] or {vals} 
             % matches trials where attribute takes a value in vals
             % return a logical mask nTrials x 1 indicating these matches
             % if valueStruct is a length nValues struct vector, mask will
-            % be nTrials x nValues
+            % be nTrials x nValues. whichField will be nTrials x nValues
+            % indiciating which field invalidated a given trial (or NaN)
            
             if ci.nTrials == 0
                 mask = logical([]);
@@ -459,6 +493,7 @@ classdef ConditionInfo < ConditionDescriptor
             
             nValues = numel(valueStruct);
             mask = true(ci.nTrials, nValues);
+            whichField = nan(ci.nTrials, nValues);
             
             fields = fieldnames(valueStruct);
             attrIdx = ci.assertHasAttribute(fields);
@@ -486,16 +521,19 @@ classdef ConditionInfo < ConditionDescriptor
                                 end
                             end
                             
-                            mask(:, iV) = mask(:, iV) & ...
-                                ismember(attrVals, valsThis);
+                            matchesThis = ismember(attrVals, valsThis);
+                            mask(:, iV) = mask(:, iV) & matchesThis;
+                            
+                            whichField(isnan(whichField(:, iV)) & ~matchesThis) = iF;
                         end
                             
                     case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ...
                             ci.AttributeValueBinsAutoQuantiles}
                         % match against bins. valueStruct.attr is nBins x 2 bin edges
                         for iV = 1:nValues
-                            mask(:, iV) = mask(:, iV) & ...
-                                matchAgainstBins(attrVals, valueStruct(iV).(fields{iF}));
+                            matchesThis = matchAgainstBins(attrVals, valueStruct(iV).(fields{iF}));
+                            mask(:, iV) = mask(:, iV) & matchesThis;
+                            whichField(isnan(whichField(:, iV)) & ~matchesThis) = iF;
                         end
                 end
             end

@@ -12,6 +12,7 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
         conditionSubs 
         listByConditionRaw
         listByCondition
+        invalidCause
     end
     
     methods
@@ -22,6 +23,7 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
             c.conditionSubsRaw = [];
             c.listByConditionRaw = [];
             c.listByCondition = [];
+            c.invalidCause = {};
         end
     end
 end

@@ -181,9 +181,9 @@ classdef TrialDataConditionAlign < TrialData
         function disp(td)
             td.printDescriptionShort();
             
-            td.conditionInfo.printOneLineDescription();
+            td.conditionInfo.printDescription();
             for iA = 1:td.nAlign
-                td.alignInfoSet{iA}.printOneLineDescription();
+                td.alignInfoSet{iA}.printDescription();
             end
             
             fprintf('\n');
@@ -221,6 +221,27 @@ classdef TrialDataConditionAlign < TrialData
             else
                 valid = cvalid & avalid;
             end
+        end
+        
+        function cause = buildInvalidCause(td)
+            cause = cell(td.nTrials, 1);
+            explained = false(td.nTrials, 1);
+            
+            cause(~td.manualValid & ~explained) = {'marked invalid manually'};
+            
+            % invalid by condition info
+            cmask = ~td.conditionInfo.computedValid & ~explained;
+            cause(cmask) = cellfun(@(s) ['ConditionInfo: ' s], ...
+                td.conditionInfo.invalidCause(cmask), 'UniformOutput', false);
+            
+            % invalid by each align info
+            for iA = 1:td.nAlign
+                amask = ~td.alignInfoSet{iA}.computedValid & ~explained;
+                cause(amask) = cellfun(@(s) ['AlignInfo ', num2str(iA), ': ', s], ...
+                    td.alignInfoSet{iA}.invalidCause(amask), 'UniformOutput', false);
+            end
+            
+            cause(td.valid) = {''};
         end
 
         function td = addChannel(td, varargin)
@@ -1000,7 +1021,7 @@ classdef TrialDataConditionAlign < TrialData
                 'timeDelta', timeDelta, 'timeReference', 0, 'tvec', p.Results.tvec);
         end
 
-        function [tvec, dataByChannel] = getMultiAnalogAsMatrix(td, name, varargin)
+        function [data, tvec] = getMultiAnalogAsMatrix(td, name, varargin)
             p = inputParser;
             p.addParamValue('timeDelta', [], @isscalar);
             p.addParamValue('tvec', [], @isvector);
@@ -1036,10 +1057,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             % interpolate to common time vector
-            for c = 1:C
-            	dataByChannel{c} = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell(:, c), ...
-                    timeCell(:, c), 'tvec', tvec);
-            end
+            data = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, 'tvec', tvec);
         end
         
         function [dCell, tCell] = getAnalogGrouped(td, name)
@@ -1052,9 +1070,9 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(mat);
         end
         
-        function [tvec, dataCellByChannel] = getMultiAnalogAsMatrixGrouped(td, nameCell, varargin)
-            [tvec, dataByChannel] = td.getMultiAnalogAsMatrix(nameCell);
-            dataCellByChannel = cellfun(@td.groupElements, dataByChannel, 'UniformOutput', false);
+        function [dataCell, tvec] = getMultiAnalogAsMatrixGrouped(td, nameCell, varargin)
+            [data, tvec] = td.getMultiAnalogAsMatrix(nameCell);
+            dataCell = td.groupElements(data);
         end
         
         function [meanMat, semMat, tvec, nTrialsMat, stdMat] = getAnalogGroupMeans(td, name, varargin)
@@ -1281,24 +1299,22 @@ classdef TrialDataConditionAlign < TrialData
             % specifying parameter 'alignIdx'. If nAlign alignments are
             % specified, uses all of them.
             % 
+            % time is either:
+            %     common time vector
+            %     cell with size (nConditions or 1) x nAlign cell containing either
+            %       nTrials x 1 cell of time vectors or 
+            %       time vector for all trials in that condition / alignment. 
+ 
             % for D==1: 1-D data vs. time as matrix
-            %   time is nConditions x nAlign cell containing either nTrials x 1
-            %     cell of time vectors or time vector for all trials in
-            %     that condition / alignment. Can also be nAlign x 1 cell of
-            %     time vectors, or a single time vector if only one
-            %     alignment.
             %   data is nConditions x nAlign cell containing nTrials x 1
-            %     cell of data vectors, or is nTrials x T data matrix
+            %     cell of T x D matrices, or is nTrials x T x D data matrix
             % for D==2 or D==3: 2-D or 3-D data:
-            %   dataX,Y,Z are nConditions x nAlign cell containing nTrials x 1
-            %     cell of vectors or containing nTrials x T data matrices
+            %   data are nConditions x nAlign cell containing nTrials x 1
+            %     cell of T x D matrices or containing nTrials x T x D data matrices
             
             p = inputParser();
-            p.addParamValue('time', [], @iscell); % for D == 1
-            p.addParamValue('data', {}, @iscell);
-            p.addParamValue('dataX', {}, @iscell);
-            p.addParamValue('dataY', {}, @iscell);
-            p.addParamValue('dataZ', {}, @iscell);
+            p.addParamValue('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
+            p.addParamValue('data', {}, @iscell); % for D == 1,2,3
             
             p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
@@ -1365,53 +1381,44 @@ classdef TrialDataConditionAlign < TrialData
                 end
                   
              elseif D == 2 || D == 3
-                dataX = p.Results.dataX;
-                dataY = p.Results.dataY;
-                
-                if D == 2
-                    if isempty(dataX) || isempty(dataY)
-                        error('Must provide dataX, dataY for D==2');
-                    end
-                elseif D==3
-                    dataZ = p.Results.dataZ;
-                    if isempty(dataX) || isempty(dataY) || isempty(dataZ)
-                       error('Must provide dataX, dataY, dataZ for D==3');
-                    end
+                data = p.Results.data;
+                time = p.Results.time;
+                if isempty(data) || isempty(time)
+                    error('Must provide data, time for D==2, 3');
                 end
                     
-                nAlignUsed = size(dataX, 2);
+                nAlignUsed = size(data, 2);
                 
                 % check length of data cell
-                if size(dataX,1) == nConditionsUsed
+                if size(data,1) == nConditionsUsed
                     % okay as is
-                elseif size(dataX,1) == td.nConditions
+                elseif size(data,1) == td.nConditions
                     % needs to be masekd
-                    dataX = dataX(conditionIdx, :);
-                end
-                % check length of data cell
-                if size(dataY, 1) == nConditionsUsed
-                    % okay as is
-                elseif size(dataY, 1) == td.nConditions
-                    % needs to be masekd
-                    dataY = dataY(conditionIdx, :);
+                    data = data(conditionIdx, :);
                 end
                 
-                assert(size(dataY, 2) == nAlignUsed, 'size(dataY, 2) must match nAlign==size(dataX, 2)');
-
-                if D == 3
-                    dataZ = p.Results.dataZ;
-                    assert(~isempty(dataZ), 'No dataZ provided');
-                    
-                    % check length of data cell
-                    if size(dataZ, 1) == nConditionsUsed
+                % check length of time cell, should be nConditionsUsed x
+                % nAlign at the end
+                assert(nAlignUsed == 1 || iscell(time), 'Time must be vector if nAlign==size(data, 2) > 1');
+                
+                if iscell(time)
+                    if size(time, 1) == 1
+                        % clone across conditions
+                        time = repmat(time, nConditionsUsed, 1);
+                    elseif size(time, 1) == nConditionsUsed
                         % okay as is
-                    elseif size(dataZ, 1) == td.nConditions
+                    elseif size(time, 1) == td.nConditions
                         % needs to be masekd
-                        dataZ = dataZ(conditionIdx, :);
+                        time = time(conditionIdx, :);
                     end
                     
-                    assert(size(dataZ, 2) == nAlignUsed, 'size(dataZ, 2) must match nAlign==size(dataX, 2)');
-                end 
+                    assert(size(time, 2) == nAlignUsed, 'size(time, 2) must be nAlign');
+                else
+                    % convert to cell
+                    time = repmat({time}, nConditionsUsed, nAlignUsed);
+                end
+               
+                assert(size(data, 2) == nAlignUsed, 'size(dataY, 2) must match nAlign==size(dataX, 2)');  
             else
                 error('D must be 1,2,3');
             end
@@ -1454,37 +1461,25 @@ classdef TrialDataConditionAlign < TrialData
                             plotSimultaneously = true;
                         end
 
-                    elseif D == 2
-                        dataXC = dataX{iCond, iAlign};
-                        dataYC = dataY{iCond, iAlign};
+                    elseif D == 2 || D == 3
+                        dataC = data{iCond, iAlign};
 
-                        if iscell(dataXC)
-                            nTrialsC = numel(dataXC);
+                        if iscell(dataC)
+                            nTrialsC = numel(dataC);
                         else
-                            nTrialsC = size(dataXC, 1);
-                            plotSimultaneously = true;
-                        end
-
-                    elseif D == 3
-                        dataXC = dataX{iCond, iAlign};
-                        dataYC = dataY{iCond, iAlign};
-                        dataZC = dataZ{iCond, iAlign};
-
-                        if iscell(dataXC)
-                            nTrialsC = numel(dataXC);
-                        else
-                            nTrialsC = size(dataXC, 1);
+                            nTrialsC = size(dataC, 1);
                             plotSimultaneously = true;
                         end
                     end
 
                     if plotSimultaneously
                         % plot all trials from this condition simultaneously
+                        % timeC, dataC will be nTrials x T x D
                         hold(axh, 'on');
                         if D == 1 
                             tOffset = timeOffsetByAlign(iAlign);
                             if p.Results.alpha < 1
-                               hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(timeC + tOffset, dataC, ...
+                               hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(timeC' + tOffset, dataC', ...
                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                             else
@@ -1495,29 +1490,29 @@ classdef TrialDataConditionAlign < TrialData
 
                         elseif D == 2
                             if p.Results.alpha < 1
-                               hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataXC, dataYC, ...
+                               hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', ...
                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                             else
                                 plotArgs = app(iCond).getPlotArgs();
-                                hData{iCond, iAlign} = plot(axh, dataXC, dataYC, '-', ...
+                                hData{iCond, iAlign} = plot(axh, dataC(:, :, 1)', dataC(:, :, 2)', '-', ...
                                     plotArgs{:}, p.Results.plotOptions{:});
                             end
 
                         elseif D == 3
                             if p.Results.alpha < 1
-                               hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline3(dataXC, dataYC, dataZC, ... 
+                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline3(dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', ... 
                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                   'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+                                   'LineWidth', app(iCond).LineWidth, 'axh', axh, p.Results.plotOptions{:});
                             else
                                 plotArgs = app(iCond).getPlotArgs();
-                                hData{iCond, iAlign} = plot3(axh, dataXC, dataYC, dataZC, '-', ...
+                                hData{iCond, iAlign} = plot3(axh, dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', '-', ...
                                     plotArgs{:}, p.Results.plotOptions{:});
                             end
                         end
-                        
                     else
                         % plot each trial from this condition individually
+                        hData{iCond, iAlign} = nan(nTrialsC, 1);
                         for iTrial = 1:nTrialsC
                             if D == 1
                                 tvec = timeC{iTrial};
@@ -1534,45 +1529,45 @@ classdef TrialDataConditionAlign < TrialData
 
                                 if ~isempty(tvec) && ~isempty(dvec)
                                     if p.Results.alpha < 1
-                                       h = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec, ...
+                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec, ...
                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                                     else
                                         plotArgs = app(iCond).getPlotArgs();
-                                        h = plot(axh, xvec, yvec, '-', ...
+                                        hData{iCond, iAlign}(iTrial) = plot(axh, xvec, yvec, '-', ...
                                             plotArgs{:}, p.Results.plotOptions{:});
                                     end
                                 end
 
                             elseif D==2
-                                dxvec = dataXC{iTrial};
-                                dyvec = dataYC{iTrial};
+                                dxvec = dataC{iTrial}(:, 1);
+                                dyvec = dataC{iTrial}(:, 2);
 
                                 if ~isempty(dxvec) && ~isempty(dyvec)
                                     if p.Results.alpha < 1
-                                       h = TrialDataUtilities.Plotting.patchline(dxvec, dyvec, ...
+                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(dxvec, dyvec, ...
                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                                     else
                                         plotArgs = app(iCond).getPlotArgs();
-                                        h = plot(axh, dxvec, dyvec, '-', ...
+                                        hData{iCond, iAlign}(iTrial) = plot(axh, dxvec, dyvec, '-', ...
                                             plotArgs{:}, p.Results.plotOptions{:});
                                     end
                                 end
                                 
                             elseif D==3
-                                dxvec = dataXC{iTrial};
-                                dyvec = dataYC{iTrial};
-                                dzvec = dataZC{iTrial};
+                                dxvec = dataC{iTrial}(:, 1);
+                                dyvec = dataC{iTrial}(:, 2);
+                                dzvec = dataC{iTrial}(:, 3);
 
                                 if ~isempty(dxvec) && ~isempty(dyvec) && ~isempty(dzvec)
                                     if p.Results.alpha < 1
-                                       h = TrialDataUtilities.Plotting.patchline3(dxvec, dyvec, dzvec, ...
+                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline3(dxvec, dyvec, dzvec, ...
                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                                     else
                                         plotArgs = app(iCond).getPlotArgs();
-                                        h = plot3(axh, dxvec, dyvec, dzvec, '-', ...
+                                        hData{iCond, iAlign}(iTrial) = plot3(axh, dxvec, dyvec, dzvec, '-', ...
                                             plotArgs{:}, p.Results.plotOptions{:});
                                     end
                                 end
@@ -1580,46 +1575,36 @@ classdef TrialDataConditionAlign < TrialData
 
                             if iTrial == 1
                                 hold(axh, 'on'); 
-                                % update name for inclusion in legend
-                                set(h, 'DisplayName', td.conditionNames{iCond});
-                            else
-                                % turn off legend info
-                                ann = get(h, 'Annotation');
-                                leg = get(ann, 'LegendInformation');
-                                set(leg, 'IconDisplayStyle', 'off');
                             end
                         end
                     end
+                    
+                    % update name for inclusion in legend
+                    TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, td.conditionNames{iCond});
                 end
             end
             
             for iAlign = 1:nAlignUsed
                 for iCond = 1:nConditionsUsed
+                    timeC = time{iCond, iAlign};
+                    dataC = data{iCond, iAlign};
                     if(D == 1)
-                        timeC = time{iCond};
-                        dataC = data{iCond};
-
                         % draw marks and intervals on timeseries
-                        td.alignInfoActive.drawOnTimeseriesByTrial(timeC, dataC, ...
+                        td.alignInfoActive.drawOnDataByTrial('time', timeC, 'data', dataC, ...
                             'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
                             'showInLegend', iCond == 1, ...
                             'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize);
 
                     elseif D == 2
-                        dataXC = dataX{iCond};
-                        dataYC = dataY{iCond};
                         % draw marks and intervals on timeseries
-                        td.alignInfoActive.drawOnDataByTrial(dataXC, dataYC, ...
+                        td.alignInfoActive.drawOnDataByTrial('time', timeC, 'data', dataC, ...
                             'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
                             'showInLegend', iCond == 1, ...
                             'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize);
 
                     elseif D == 3
-                        dataXC = dataX{iCond};
-                        dataYC = dataY{iCond};
-                        dataZC = dataZ{iCond};
                         % draw marks and intervals on timeseries
-                        td.alignInfoActive.drawOnDataByTrial(dataX, dataYC, dataZC, ...
+                        td.alignInfoActive.drawOnDataByTrial('time', timeC, 'data', dataC, ...
                             'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
                             'showInLegend', iCond == 1, ...
                             'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize);
@@ -1629,13 +1614,13 @@ classdef TrialDataConditionAlign < TrialData
                 if D == 1
                     if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                         % x is data, y is time
-                        td.alignSummarySet{td.alignInfoActiveIdx}.setupTimeAutoAxis('which', 'y', 'style', p.Results.timeAxisStyle);
+                        td.alignSummarySet{iAlign}.setupTimeAutoAxis('which', 'y', 'style', p.Results.timeAxisStyle);
                         if ~isempty(p.Results.axisInfoX)
                             TrialDataUtilities.Plotting.setupAxisForChannel(td.channelDescriptorsByName.(name), 'which', 'x');
                         end
                     else
                         % y is data, x is time
-                        td.alignSummarySet{td.alignInfoActiveIdx}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle);
+                        td.alignSummarySet{iAlign}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle);
                         if ~isempty(p.Results.axisInfoY)
                             TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y');
                         end
@@ -1656,9 +1641,9 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function plotAnalogGroupedEachTrial2D(td, name1, name2, varargin) 
-            [~, dataByChannel] = td.getMultiAnalogAsMatrixGrouped({name1, name2});
+            [dataCell, tvec] = td.getMultiAnalogAsMatrixGrouped({name1, name2});
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
-                'dataX', dataByChannel{1}, 'dataY', dataByChannel{2}, ...
+                'time', tvec, 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
                 'axisInfoY', td.channelDescriptorsByName.(name2), varargin{:});
         end

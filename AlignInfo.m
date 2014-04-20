@@ -79,6 +79,7 @@ classdef AlignInfo < AlignDescriptor
     properties(Dependent)
         valid
         nTrials
+        invalidCause
     end
     
     methods % Property get/set stored in odc
@@ -319,7 +320,7 @@ classdef AlignInfo < AlignDescriptor
             ad.odc.flushManualValid();
         end
         
-        function ad = updateMark(ad)
+        function ad = postUpdateMark(ad)
             ad.warnIfNoArgOut(nargout);
             
             if ~ad.applied
@@ -331,7 +332,7 @@ classdef AlignInfo < AlignDescriptor
             ad.odc.flushMarkData();
         end
         
-        function ad = updateInterval(ad)
+        function ad = postUpdateInterval(ad)
             ad.warnIfNoArgOut(nargout);
             if ~ad.applied
                 % nothing to udpate if we haven't applied to trial data yet
@@ -546,6 +547,7 @@ classdef AlignInfo < AlignDescriptor
 
             valid = truevec(nTrials);
             t.invalidCause = cellvec(nTrials);
+            t.invalidCause(:) = {''};
 
             % get zero alignment event without rounding
             t.zero = ad.getEventNthTimeVector(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, []);
@@ -833,6 +835,14 @@ classdef AlignInfo < AlignDescriptor
             end
         end 
         
+        function cause = get.invalidCause(ad)
+            if isempty(ad.timeInfo)
+                cause = {};
+            else
+                cause = ad.timeInfo.invalidCause;
+            end
+        end
+        
         function ad = selectTrials(ad, mask)
             ad.warnIfNoArgOut(nargout);
             
@@ -959,7 +969,7 @@ classdef AlignInfo < AlignDescriptor
     end
     
     methods % Drawing on data 
-        function drawOnTimeseriesByTrial(ad, timeData, data, varargin)
+        function [hMarks, hIntervals] = drawOnDataByTrial(ad, varargin)
             % annotate data time-series with markers according to the labels indicated
             % by this align descriptor. Similar to AlignSummary's version
             % except operates on individual trials
@@ -972,6 +982,8 @@ classdef AlignInfo < AlignDescriptor
             %     timeData is T vector or N x 1 cell of T_i vectors
             %     data is N x T x D matrix or N x 1 cell of T_i x D matrices
             p = inputParser();
+            p.addParamValue('time', [], @(x) isnumeric(x) || iscell(x));
+            p.addParamValue('data', [], @(x) isnumeric(x) || iscell(x));
             p.addParamValue('axh', gca, @ishandle);
             p.addParamValue('tOffsetZero', 0, @isscalar);
             p.addParamValue('markAlpha', 1, @isscalar);
@@ -979,6 +991,9 @@ classdef AlignInfo < AlignDescriptor
             p.addParamValue('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParamValue('showInLegend', true, @islogical);
             p.parse(varargin{:});
+            
+            data = p.Results.data;
+            time = p.Results.time;
 
             axh = p.Results.axh;
             tOffsetZero = p.Results.tOffsetZero;
@@ -987,7 +1002,7 @@ classdef AlignInfo < AlignDescriptor
 
             N = numel(trialIdx);
             assert(N == size(data, 1), 'size(data, 1) must match nTrials');
-            assert(N == size(timeData, 1), 'size(timeData, 1) must match nTrials');
+            %assert(N == size(time, 1), 'size(timeData, 1) must match nTrials');
             
             % grab information about the mark times relative to the trial
             nOccurByMark = ad.markMaxCounts;
@@ -1002,6 +1017,7 @@ classdef AlignInfo < AlignDescriptor
                 D = size(data, 3);
             end
             
+            hMarks = cell(ad.nMarks, 1);
             for iMark = 1:ad.nMarks
                 % gather mark locations
                 % nOccur x D x N
@@ -1011,10 +1027,10 @@ classdef AlignInfo < AlignDescriptor
                     % get the mark times on this trial
                     tMark = markData{iMark}(trialIdx(t));
                     
-                    if iscell(timeData)
-                        tvec = timeData{t};
+                    if iscell(time)
+                        tvec = time{t};
                     else
-                        tvec = timeData;
+                        tvec = time;
                     end
                     if iscell(data)
                         dmat = data{t};
@@ -1051,23 +1067,25 @@ classdef AlignInfo < AlignDescriptor
                 app = ad.markAppear{iMark};
                 
                 % plot mark and provide legend hint
-                h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
+                hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
                     p.Results.markAlpha, p.Results.markSize);
 
                 if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showInLegend(h, ad.markLabels{iMark});
+                    TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
+                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
                 else
-                    TrialDataUtilities.Plotting.hideInLegend(h);
+                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
                 end
             end
             
             % plot intervals
+            hIntervals = cell(ad.nIntervals, 1);
             nOccurByInterval = ad.intervalMaxCounts;
             [intStartData, intStopData] = ad.getAlignedIntervalData();
             for iInterval = 1:ad.nIntervals
                 % gather mark locations
                 % nOccur x nTrials cell of T x D data in interval
-                intLoc = cell(nOccurByInterval(iInterval), ad.nTrials); 
+                intLoc = cell(nOccurByInterval(iInterval), N); 
                 
                 for iTrial = 1:N
                     % filter by the time window specified (for this trial)
@@ -1075,10 +1093,10 @@ classdef AlignInfo < AlignDescriptor
                     tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
                     
                     % tvec should T vector, dmat should be T x D
-                    if iscell(timeData)
-                        tvec = timeData{iTrial};
+                    if iscell(time)
+                        tvec = time{iTrial};
                     else
-                        tvec = timeData;
+                        tvec = time;
                     end
                     if iscell(data)
                         dmat = data{iTrial};
@@ -1101,8 +1119,8 @@ classdef AlignInfo < AlignDescriptor
                      % and slice the interval location
                     % tStart, tStop is nOccur x 1
                     % dError will be nOccur cell with T x D values
-                    dError = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
-                    intLoc(:, iTrial) = dError;
+                    dInterval = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
+                    intLoc(:, iTrial) = dInterval;
                 end
  
                  % add the time offset if plotting against time
@@ -1117,9 +1135,13 @@ classdef AlignInfo < AlignDescriptor
                 
                 intervalThickness = 5;
                 
-                h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
+                hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
                     app, intervalThickness, p.Results.markAlpha);
-                TrialDataUtilities.Plotting.hideInLegend(h);
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
+                end
             end
         end
     end

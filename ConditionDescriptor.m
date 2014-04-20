@@ -190,8 +190,16 @@ classdef ConditionDescriptor
         
         function printDescription(ci) 
             tcprintf('yellow', '%s:\n', class(ci));
-            tcprintf('inline', '\t{bright blue}Attributes: {white}%s\n', strjoin(ci.attributeDescriptions));
-            tcprintf('inline', '\t{bright blue}Axes: {white}%s\n', strjoin(ci.axisDescriptions, ', '));
+            tcprintf('inline', '  {bright blue}Attributes:\n');
+            attrDesc = ci.generateAttributeDescriptions(true);
+            for i = 1:ci.nAttributes
+                tcprintf('inline', '    %s: {white}%s\n', attrDesc{i}, strjoin(ci.attributeValueListsAsStrings{i}, ', '));
+            end
+            axisDesc = ci.generateAxisDescriptions(true);
+            tcprintf('inline', '  {bright blue}Axes:\n');
+            for i = 1:ci.nAxes
+                tcprintf('inline', '    %s: {white}%s\n', axisDesc{i}, strjoin(ci.axisValueListsAsStrings{i}, ', '));
+            end
             
             nRandom = nnz(ci.axisRandomizeModes ~= ci.AxisOriginal);
             if nRandom > 0
@@ -200,11 +208,11 @@ classdef ConditionDescriptor
                 else
                     s = 'axes';
                 end
-                tcprintf('inline', '\t{bright red}%d %s with randomization applied\n', nRandom, s);
+                tcprintf('inline', '  {bright red}%d %s with randomization applied\n', nRandom, s);
             end
             
             if ci.isResampledWithinConditions
-                tcprintf('inline', '\t{bright red}Trials resampled within conditions\n');
+                tcprintf('inline', '  {bright red}Trials resampled within conditions\n');
             end
         end
         
@@ -301,6 +309,13 @@ classdef ConditionDescriptor
         end
         
         function desc = get.axisDescriptions(ci)
+            desc = ci.generateAxisDescriptions();
+        end
+        
+        function desc = generateAxisDescriptions(ci, useColor)
+            if nargin < 2
+                useColor = false;
+            end
             desc = cellvec(ci.nAxes);
             
             vlStrCell = ci.axisValueListModesAsStrings;
@@ -316,8 +331,13 @@ classdef ConditionDescriptor
                 if ~isempty(randStr)
                     randStr = [' ' randStr]; %#ok<AGROW>
                 end
-                desc{iX} = sprintf('%s (%d%s%s)', ...
-                    strjoin(attr, ' x '), nv, vlStr, randStr);
+                if useColor
+                    desc{iX} = sprintf('{purple}%s {darkGray}(%d%s%s)', ...
+                        strjoin(attr, ' x '), nv, vlStr, randStr);
+                else
+                    desc{iX} = sprintf('%s (%d%s%s)', ...
+                        strjoin(attr, ' x '), nv, vlStr, randStr);
+                end
             end
         end
         
@@ -1042,6 +1062,13 @@ classdef ConditionDescriptor
         end
 
         function desc = get.attributeDescriptions(ci)
+            desc = ci.generateAttributeDescriptions();
+        end
+        
+        function desc = generateAttributeDescriptions(ci, useColor)
+            if nargin < 2
+                useColor = false;
+            end
             desc = cellvec(ci.nAttributes);
             isFilter = ci.attributeActsAsFilter;
             modes = ci.attributeValueModes;
@@ -1072,9 +1099,13 @@ classdef ConditionDescriptor
                 if ci.attributeNumeric(i)
                     numericStr = '#';
                 else
-                    numericStr = '';
+                    numericStr = '@';
                 end
-                desc{i} = sprintf('%s %s%s%s', name, numericStr, suffix, filterStr);
+                if ~useColor
+                    desc{i} = sprintf('%s %s%s%s', name, numericStr, suffix, filterStr);
+                else
+                    desc{i} = sprintf('{purple}%s {darkGray}%s%s%s', name, numericStr, suffix, filterStr);
+                end
             end
         end 
 
