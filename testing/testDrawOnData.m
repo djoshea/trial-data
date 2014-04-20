@@ -14,7 +14,7 @@ if ~exist('done', 'var') || ~done
     tdca = tdca.mark('TargetOnset', 'appear', eventAppear.targetOnset);
     tdca = tdca.mark('MoveEnd', 'appear', eventAppear.moveEnd, 'showOnAxis', false);
     tdca = tdca.mark('GoCue', 'appear', eventAppear.goCue, 'showOnAxis', false);
-    tdca = tdca.interval('Stim', 'StimEnd', 'appear', eventAppear.stim, 'showOnAxis', false);
+    tdca = tdca.interval('Stim', 'StimEnd', 'as', 'Stim', 'appear', eventAppear.stim, 'showOnAxis', false);
     tdca = tdca.interval('Move', 'Move+100', 'appear', AppearanceSpec('Color', 'm'), 'showOnAxis', false);
     tdca = tdca.colorByAttributes('target');
     
@@ -33,14 +33,18 @@ end
 % 
 % saveFigureSvg('testReachMeans.pdf');
 
-%%
+% %%
+% 
+% figure(1), clf, set(gcf, 'Color', 'w');
+% %tdca.plotAnalogGroupedEachTrial('handX');
+% tdca.plotAnalogGroupedEachTrial('handX', 'alpha', 0.5, 'timeAxisStyle', 'marker', ...
+%     'markAlpha', 0.5);
+% 
+% %%
+% figure(2), clf, set(gcf, 'Color', 'w');
+% tdca.plotAnalogGroupedEachTrial2D('handX', 'handY', 'alpha', 0.5, 'markAlpha', 0.5);
 
-figure(1), clf, set(gcf, 'Color', 'w');
-%tdca.plotAnalogGroupedEachTrial('handX');
-tdca.plotAnalogGroupedEachTrial('handX', 'alpha', 0.5, 'timeAxisStyle', 'marker', ...
-    'markAlpha', 0.5);
-
 %%
-figure(2), clf, set(gcf, 'Color', 'w');
-tdca.plotAnalogGroupedEachTrial2D('handX', 'handY');
+figure(3), clf, set(gcf, 'Color', 'w');
+tdca.plotAnalogGroupedEachTrial3D('handX', 'handY', 'handZ', 'alpha', 0.5, 'markAlpha', 0.5);
 

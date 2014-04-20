@@ -38,7 +38,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p = inputParser();
     p.addRequired('dataCell', @(x) iscell(x));
     p.addRequired('timeCell', @(x) iscell(x));
-    p.addParamValue('tvec', [], @isvector);
+    p.addParamValue('tvec', [], @(x) isempty(x) || isvector(x));
     p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
     p.KeepUnmatched = true;

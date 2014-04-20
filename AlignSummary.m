@@ -978,7 +978,7 @@ classdef AlignSummary
                 
                 % plot mark and provide legend hint
                 h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
-                    p.Results.markAlpha, p.Result.markSize);
+                    p.Results.markAlpha, p.Results.markSize);
                 TrialDataUtilities.Plotting.showInLegend(h, as.alignDescriptor.markLabels{iMark});
                 
                 % plot mark error interval and suppress from legend

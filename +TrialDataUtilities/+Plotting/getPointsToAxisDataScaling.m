@@ -4,7 +4,7 @@ function [xd, yd, zd] = getPointsToAxisDataScaling(axh, mode3d)
     if nargin < 1
         axh = gca;
     end
-    if nargin < 2 || mode3d
+    %if nargin < 2 || mode3d
         % 2-d mode
         %figh = getParentFigure(axh);
         axUnits = get(axh, 'Units');
@@ -30,12 +30,15 @@ function [xd, yd, zd] = getPointsToAxisDataScaling(axh, mode3d)
         
         xl = get(axh, 'XLim');
         yl = get(axh, 'YLim');
+        zl = get(axh, 'ZLim');
         awData = diff(xl);
         ahData = diff(yl);
+        azData = diff(zl);
         
         xd = awData / awPoints;
         yd = ahData / ahPoints;  
-    end
+        zd = azData / ((awPoints + ahPoints) / 2); % this is a hack
+    %end
 end
 
 function fig = getParentFigure(axh)

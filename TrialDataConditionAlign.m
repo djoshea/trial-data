@@ -1327,6 +1327,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('markAlpha', 1, @isscalar);
             p.addParamValue('markSize', 5, @isscalar);
             p.addParamValue('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParamValue('useThreeVector', true, @islogical);
+            p.addParamValue('useTranslucentMark3d', false, @islogical);
             p.KeepUnmatched;
             p.parse(varargin{:});
             
@@ -1443,6 +1445,7 @@ classdef TrialDataConditionAlign < TrialData
             % store handles as we go
             hData = cell(nConditionsUsed, nAlignUsed);
             
+            % plot data traces
             for iAlign = 1:nAlignUsed
                 % plot one condition at a time
                 for iCond = 1:nConditionsUsed
@@ -1501,9 +1504,9 @@ classdef TrialDataConditionAlign < TrialData
 
                         elseif D == 3
                             if p.Results.alpha < 1
-                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline3(dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', ... 
+                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', ... 
                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                   'LineWidth', app(iCond).LineWidth, 'axh', axh, p.Results.plotOptions{:});
+                                   'LineWidth', app(iCond).LineWidth, 'Parent', axh, p.Results.plotOptions{:});
                             else
                                 plotArgs = app(iCond).getPlotArgs();
                                 hData{iCond, iAlign} = plot3(axh, dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', '-', ...
@@ -1584,6 +1587,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
+            % plot marks and intervals on top of data
             for iAlign = 1:nAlignUsed
                 for iCond = 1:nConditionsUsed
                     timeC = time{iCond, iAlign};
@@ -1607,16 +1611,18 @@ classdef TrialDataConditionAlign < TrialData
                         td.alignInfoActive.drawOnDataByTrial('time', timeC, 'data', dataC, ...
                             'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
                             'showInLegend', iCond == 1, ...
-                            'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize);
+                            'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
+                            'useTranslucentMark3d', p.Results.useTranslucentMark3d);
                     end
                 end
 
+                % setup axes
                 if D == 1
                     if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                         % x is data, y is time
                         td.alignSummarySet{iAlign}.setupTimeAutoAxis('which', 'y', 'style', p.Results.timeAxisStyle);
                         if ~isempty(p.Results.axisInfoX)
-                            TrialDataUtilities.Plotting.setupAxisForChannel(td.channelDescriptorsByName.(name), 'which', 'x');
+                            TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x');
                         end
                     else
                         % y is data, x is time
@@ -1625,6 +1631,31 @@ classdef TrialDataConditionAlign < TrialData
                             TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y');
                         end
                     end
+                    
+                elseif D == 2
+                    if ~isempty(p.Results.axisInfoX)
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x');
+                    end
+                    if ~isempty(p.Results.axisInfoY)
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'x');
+                    end
+                    
+                elseif D == 3
+                    if ~isempty(p.Results.axisInfoX)
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x', 'useAutoAxis', false);
+                    end
+                    if ~isempty(p.Results.axisInfoY)
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y', 'useAutoAxis', false);
+                    end
+                    if ~isempty(p.Results.axisInfoZ)
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoZ, 'which', 'z', 'useAutoAxis', false);
+                    end
+                    
+                    if p.Results.useThreeVector
+                        ThreeVector(axh);
+                        axis(axh, 'off');
+                        axis(axh, 'vis3d');
+                    end                   
                 end
             end
 
@@ -1648,37 +1679,22 @@ classdef TrialDataConditionAlign < TrialData
                 'axisInfoY', td.channelDescriptorsByName.(name2), varargin{:});
         end
         
+        function plotAnalogGroupedEachTrial2DvsTime(td, name1, name2, varargin)
+            [dataCell, tvec] = td.getMultiAnalogAsMatrixGrouped({name1, name2});
+            td.plotProvidedAnalogDataGroupedEachTrial(2, ...
+                'time', tvec, 'data', dataCell(:), ...
+                'axisInfoZ', 'time', ...
+                'axisInfoX', td.channelDescriptorsByName.(name1), ...
+                'axisInfoY', td.channelDescriptorsByName.(name2), varargin{:});
+        end
+        
         function plotAnalogGroupedEachTrial3D(td, name1, name2, name3, varargin) 
-            p = inputParser();
-            p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.KeepUnmatched;
-            p.parse(varargin{:});
-
-            axh = td.getRequestedPlotAxis(p.Unmatched);
-
-            dataByGroup1 = td.getAnalogGrouped(name1);  
-            dataByGroup2 = td.getAnalogGrouped(name2);
-            dataByGroup3 = td.getAnalogGrouped(name3);
-            app = td.conditionAppearances;
-
-            for iCond = 1:td.nConditions
-                dataCell1 = dataByGroup1{iCond};
-                dataCell2 = dataByGroup2{iCond};
-                dataCell3 = dataByGroup3{iCond};
-                for iTrial = 1:numel(dataCell1)
-                    plot3(axh, dataCell1{iTrial}, dataCell2{iTrial}, dataCell3{iTrial}, ...
-                        '-', 'Color', app(iCond).color, ...
-                        'LineWidth', app(iCond).lineWidth, p.Results.plotOptions{:});
-                    if iTrial == 1, hold(axh, 'on'); end
-                end
-            end
-            box(axh, 'off');
-            axis(axh, 'tight');
-            axis(axh, 'vis3d');
-            
-            xlabel(td.getAxisLabelForChannel(name1));
-            ylabel(td.getAxisLabelForChannel(name2));
-            zlabel(td.getAxisLabelForChannel(name3));
+            [dataCell, tvec] = td.getMultiAnalogAsMatrixGrouped({name1, name2, name3});
+            td.plotProvidedAnalogDataGroupedEachTrial(3, ...
+                'time', tvec, 'data', dataCell(:), ...
+                'axisInfoX', td.channelDescriptorsByName.(name1), ...
+                'axisInfoY', td.channelDescriptorsByName.(name2), ...
+                'axisInfoZ', td.channelDescriptorsByName.(name3), varargin{:});
         end
         
         function plotAnalogGroupMeans(td, name, varargin) 

@@ -90,6 +90,11 @@ function p = patchline(xs,ys,varargin)
 % See also: patch, line, plot
 
 [zs,PVs] = parseInputs(varargin{:});
+p = inputParser;
+p.addParamValue('Parent', gca, @ishandle);
+p.KeepUnmatched = true;
+p.parse(PVs{:});
+
 if rem(numel(PVs),2) ~= 0
     % Odd number of inputs!
     error('patchline: Parameter-Values must be entered in valid pairs')
@@ -97,9 +102,9 @@ end
 
 % Facecolor = 'k' is (essentially) ignored here, but syntactically necessary
 if isempty(zs)
-    p = patch([xs(:);NaN],[ys(:);NaN],'k', 'FaceAlpha', 0);
+    p = patch([xs(:);NaN],[ys(:);NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent);
 else
-    p = patch([xs(:);NaN],[ys(:);NaN],[zs(:);NaN],'k', 'FaceAlpha', 0);
+    p = patch([xs(:);NaN],[ys(:);NaN],[zs(:);NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent);
 end
 
 % Apply PV pairs

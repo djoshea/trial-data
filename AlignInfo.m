@@ -987,9 +987,11 @@ classdef AlignInfo < AlignDescriptor
             p.addParamValue('axh', gca, @ishandle);
             p.addParamValue('tOffsetZero', 0, @isscalar);
             p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('markSize', 5, @isscalar);
+            p.addParamValue('markSize', 4, @isscalar);
+            p.addParamValue('intervalThickness', 3, @isscalar);
             p.addParamValue('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParamValue('showInLegend', true, @islogical);
+            p.addParamValue('useTranslucentMark3d', false, @islogical);
             p.parse(varargin{:});
             
             data = p.Results.data;
@@ -1068,7 +1070,7 @@ classdef AlignInfo < AlignDescriptor
                 
                 % plot mark and provide legend hint
                 hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
-                    p.Results.markAlpha, p.Results.markSize);
+                    p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
 
                 if p.Results.showInLegend
                     TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
@@ -1133,10 +1135,8 @@ classdef AlignInfo < AlignDescriptor
                 
                 app = ad.intervalAppear{iInterval};
                 
-                intervalThickness = 5;
-                
                 hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
-                    app, intervalThickness, p.Results.markAlpha);
+                    app, p.Results.intervalThickness, p.Results.markAlpha);
                 if p.Results.showInLegend
                     TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
                 else

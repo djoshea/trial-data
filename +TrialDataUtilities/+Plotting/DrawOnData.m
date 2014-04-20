@@ -1,9 +1,14 @@
 classdef DrawOnData
     methods(Static)
-        function h = plotMark(axh, dMark, app, alpha, markerSize)
+        function h = plotMark(axh, dMark, app, alpha, markerSize, varargin)
             % plot a set of mark points onto data
             % dMark is ? x D x ? where D is the dimensionality (2 or 3)
-            import TrialDataUtilities.Plotting.patchcircle
+            import TrialDataUtilities.Plotting.patchcircle;
+            import TrialDataUtilities.Plotting.patchsphere;
+            
+            p = inputParser;
+            p.addParamValue('useTranslucentMark3d', false, @islogical);
+            p.parse(varargin{:});
             
             % plot a single mark on the data
             D = size(dMark, 2);
@@ -22,9 +27,14 @@ classdef DrawOnData
                         'MarkerSize', markerSize, 'Parent', axh);
                 end
             elseif D == 3
-                h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
-                    'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', 'k', ...
-                    'Parent', axh, 'MarkerSize', 15, plotArgs{:});
+                if alpha < 1 && p.Results.useTranslucentMark3d
+                    h = patchsphere(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
+                        markerSize, 'FaceColor', app.Color, 'FaceAlpha', alpha);
+                else
+                    h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
+                        'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', 'k', ...
+                        'Parent', axh, 'MarkerSize', markerSize, plotArgs{:});
+                end
             else
                 error('Invalid Dimensionality of data');
             end
@@ -52,7 +62,7 @@ classdef DrawOnData
                     if alpha < 1
                        h(iOccur) = TrialDataUtilities.Plotting.patchline(x, y, ...
                            'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
-                           'LineWidth', thickness, 'z', 0.9);
+                           'LineWidth', thickness);
                     else
                         zvals = 0.9 * ones(size(x,1), 1);
                         h(iOccur) = plot3(axh, x, y, zvals, '-', ...
@@ -61,7 +71,24 @@ classdef DrawOnData
                 end
                 
             elseif D == 3
-                
+                % scale tube height in y dimension from points to data units
+                %[~, yd] = TrialDataUtilities.Plotting.getPointsToAxisDataScaling(axh);
+    
+                for iOccur = 1:numel(data)
+                    if isempty(data{iOccur}), continue; end
+                    x = data{iOccur}(:, 1);
+                    y = data{iOccur}(:, 2);
+                    z = data{iOccur}(:, 3);
+                  
+                    if alpha < 1
+                       h(iOccur) = TrialDataUtilities.Plotting.patchline(x, y, z, ...
+                           'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
+                           'LineWidth', thickness);
+                    else
+                        h(iOccur) = plot3(axh, x, y, z, '-', ...
+                            'Color', app.Color, 'LineWidth', thickness);
+                    end
+                end
             end
                 
         end
