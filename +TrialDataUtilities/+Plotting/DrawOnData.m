@@ -40,18 +40,30 @@ classdef DrawOnData
             
             nOccur = numel(data);
             h = nan(nOccur, 1);
-            if D == 1
+            if D == 1 || D == 2
                 % scale tube height in y dimension from points to data units
-                [~, yd] = TrialDataUtilities.Plotting.getPointsToAxisDataScaling(axh);
+                %[~, yd] = TrialDataUtilities.Plotting.getPointsToAxisDataScaling(axh);
     
                 for iOccur = 1:numel(data)
                     if isempty(data{iOccur}), continue; end
-                    t = data{iOccur}(:, 1);
-                    d = data{iOccur}(:, 2);
-                    h(iOccur) = errorshade(t, d, thickness/2 * yd, app.Color, 'axh', axh, ...
-                        'z', 0.05, 'alpha', alpha, 'showLine', false);
+                    x = data{iOccur}(:, 1);
+                    y = data{iOccur}(:, 2);
+                  
+                    if alpha < 1
+                       h(iOccur) = TrialDataUtilities.Plotting.patchline(x, y, ...
+                           'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
+                           'LineWidth', thickness, 'z', 0.9);
+                    else
+                        zvals = 0.9 * ones(size(x,1), 1);
+                        h(iOccur) = plot3(axh, x, y, zvals, '-', ...
+                            'Color', app.Color, 'LineWidth', thickness);
+                    end
                 end
+                
+            elseif D == 3
+                
             end
+                
         end
         
         function dMean = interpMarkLocation(time, data, tMean)
