@@ -70,12 +70,12 @@ classdef AlignDescriptor
 
         % move interval start forward in time to avoid these times
         truncateBeforeEvents = {};
-        truncateBeforeEventsIndex
+        truncateBeforeEventsIndex = {}
         truncateBeforeOffsets
 
         % move interval stop backward in time to avoid these times
         truncateAfterEvents = {};
-        truncateAfterEventsIndex
+        truncateAfterEventsIndex = {};
         truncateAfterOffsets 
 
         % invalidate any trial whose window includes these events
@@ -614,7 +614,7 @@ classdef AlignDescriptor
             idx = find(match);
         end
         
-        function ad = mark(ad, eventName, varargin)
+        function ad = mark(ad, eventStr, varargin)
             ad.warnIfNoArgOut(nargout);
 
             p = inputParser;
@@ -625,14 +625,12 @@ classdef AlignDescriptor
             p.addParamValue('showOnData', true, @islogical);
             p.addParamValue('showOnAxis', true, @islogical);
             p.parse(varargin{:});
-            offset = p.Results.offset;
             
-            if isempty(p.Results.index)
-                index = ':';
-            else
-                index = p.Results.index;
-            end
-            
+            [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
+                'mark', 'defaultIndex', ':');
+            if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
+            if ~ismember('index', p.UsingDefaults), index = p.Results.index; end
+
             ad.assertHasEvent(eventName);
 
             % check for existing mark which matches
@@ -668,17 +666,16 @@ classdef AlignDescriptor
             ad = ad.postUpdateMark();
         end
 
-        function ad = truncateBefore(ad, eventName, offset, varargin)
+        function ad = truncateBefore(ad, eventStr, varargin)
             p = inputParser;
-            p.addOptional('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParamValue('offset', 0, @isnumeric);
+            p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
-            if isempty(p.Results.index)
-                % choose most conservative default
-                index = 'end';
-            else
-                index = p.Results.index;
-            end
+            [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
+                'truncateBefore', 'defaultIndex', 'end');
+            if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
+            if ~ismember('index', p.UsingDefaults), index = p.Results.index; end
 
             ad.assertHasEvent(eventName);
             
@@ -690,40 +687,37 @@ classdef AlignDescriptor
             ad = ad.update();
         end
 
-        function ad = truncateAfter(ad, eventName, varargin)
+        function ad = truncateAfter(ad, eventStr, varargin)
             p = inputParser;
-            p.addOptional('offset', 0, @isscalar);
-            p.addOptional('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParamValue('offset', 0, @isscalar);
+            p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
-            if isempty(p.Results.index)
-                index = 1;
-            else
-                index = p.Results.index;
-            end
+            [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
+                'truncateAfter', 'defaultIndex', '1');
+            if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
+            if ~ismember('index', p.UsingDefaults), index = p.Results.index; end
 
             ad.assertHasEvent(eventName);
             
             ad.warnIfNoArgOut(nargout);
             ad.truncateAfterEvents{end+1} = eventName;
             ad.truncateAfterEventsIndex{end+1} = index;
-            ad.truncateAfterOffsets(end+1) = p.Results.offset;
+            ad.truncateAfterOffsets(end+1) = offset;
 
             ad = ad.update();
         end
 
-        function ad = invalidateOverlap(ad, eventName, varargin)
+        function ad = invalidateOverlap(ad, eventStr, varargin)
             p = inputParser;
-            p.addOptional('offset', 0, @isscalar);
-            p.addOptional('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParamValue('offset', 0, @isscalar);
+            p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
-            offset = p.Results.offset;
-            if isempty(p.Results.index)
-                index = ':';
-            else
-                index = p.Results.index;
-            end
+            [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
+                'truncateBefore', 'defaultIndex', ':');
+            if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
+            if ~ismember('index', p.UsingDefaults), index = p.Results.index; end
             
             ad.assertHasEvent(eventName);
 

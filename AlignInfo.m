@@ -1019,67 +1019,6 @@ classdef AlignInfo < AlignDescriptor
                 D = size(data, 3);
             end
             
-            hMarks = cell(ad.nMarks, 1);
-            for iMark = 1:ad.nMarks
-                % gather mark locations
-                % nOccur x D x N
-                markLoc = nan(nOccurByMark(iMark), max(2, D), N);
-                
-                for t = 1:N
-                    % get the mark times on this trial
-                    tMark = markData{iMark}(trialIdx(t));
-                    
-                    if iscell(time)
-                        tvec = time{t};
-                    else
-                        tvec = time;
-                    end
-                    if iscell(data)
-                        dmat = data{t};
-                    else
-                        % data is N x T x D matrix
-                        dmat = TensorUtils.squeezeDims(data(t, :, :), 1);
-                    end
-                    % tvec should T vector, dmat should be T x D
-                    
-                    % filter by the time window specified (for this trial)
-                    maskInvalid = tMark < min(tvec) | tMark > max(tvec);
-                    tMark(maskInvalid) = NaN;
-                    
-                    if all(isnan(tMark))
-                        % none found in this time window for this condition
-                        continue;
-                    end
-                    if isempty(dmat)
-                        continue;
-                    end
-                    
-                    % dMean will be nOccurThisTrial x max(2,D)
-                    % since time will become dMean(:, 1, :) if D == 1
-                    dMark = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(tvec, dmat, tMark);
-                    
-                    markLoc(1:size(dMark, 1), :, t) = dMark;
-                end
-                
-                % add the time offset to time column if plotting against time
-                if D == 1
-                    markLoc(:, 1) = markLoc(:, 1) + tOffsetZero;
-                end
-                
-                app = ad.markAppear{iMark};
-                
-                % plot mark and provide legend hint
-                hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
-                    p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
-
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
-                end
-            end
-            
             % plot intervals
             hIntervals = cell(ad.nIntervals, 1);
             nOccurByInterval = ad.intervalMaxCounts;
@@ -1129,7 +1068,7 @@ classdef AlignInfo < AlignDescriptor
                 if D == 1
                     for i = 1:numel(intLoc)
                         if isempty(intLoc{i}), continue; end;
-                        intLoc{i}(:, 1) = intLoc{i}(:, 1) + tOffsetZero;
+                        intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
                     end
                 end
                 
@@ -1141,6 +1080,68 @@ classdef AlignInfo < AlignDescriptor
                     TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
                 else
                     TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
+                end
+            end
+            
+            % plot marks
+            hMarks = cell(ad.nMarks, 1);
+            for iMark = 1:ad.nMarks
+                % gather mark locations
+                % nOccur x D x N
+                markLoc = nan(nOccurByMark(iMark), max(2, D), N);
+                
+                for t = 1:N
+                    % get the mark times on this trial
+                    tMark = markData{iMark}(trialIdx(t));
+                    
+                    if iscell(time)
+                        tvec = time{t};
+                    else
+                        tvec = time;
+                    end
+                    if iscell(data)
+                        dmat = data{t};
+                    else
+                        % data is N x T x D matrix
+                        dmat = TensorUtils.squeezeDims(data(t, :, :), 1);
+                    end
+                    % tvec should T vector, dmat should be T x D
+                    
+                    % filter by the time window specified (for this trial)
+                    maskInvalid = tMark < min(tvec) | tMark > max(tvec);
+                    tMark(maskInvalid) = NaN;
+                    
+                    if all(isnan(tMark))
+                        % none found in this time window for this condition
+                        continue;
+                    end
+                    if isempty(dmat)
+                        continue;
+                    end
+                    
+                    % dMean will be nOccurThisTrial x max(2,D)
+                    % since time will become dMean(:, 1, :) if D == 1
+                    dMark = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(tvec, dmat, tMark);
+                    
+                    markLoc(1:size(dMark, 1), :, t) = dMark;
+                end
+                
+                % add the time offset to time column if plotting against time
+                if D == 1
+                    markLoc(:, 1, :) = markLoc(:, 1, :) + tOffsetZero;
+                end
+                
+                app = ad.markAppear{iMark};
+                
+                % plot mark and provide legend hint
+                hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
+                    p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
+
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
+                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
                 end
             end
         end

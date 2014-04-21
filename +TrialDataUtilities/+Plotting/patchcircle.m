@@ -30,7 +30,7 @@ function h = patchcircle(xc, yc, diameter, varargin)
     else
         h = patch(X, Y, 'k', 'EdgeColor', 'none');
     end
-    uistack(h, 'top');
+    %uistack(h, 'top');
     
     flds = fieldnames(p.Unmatched);
     for iF = 1:numel(flds)

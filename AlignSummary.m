@@ -789,65 +789,65 @@ classdef AlignSummary
             au.installCallbacks();      
         end
 
-        function drawOnTimeseries(as, data, tvec, varargin)
-        % annotate data time-series with markers according to the labels indicated
-        % by this AlignSummary
-        %
-        % data is T x D x N matrix
-        % tvec is T x 1
-        %
-        % where
-        % D is data dimensionality, 1 or 2 or 3
-        % T is number of time points
-        % N is the number of traces to be annotated
-            p = inputParser();
-            p.addParamValue('drawLegend', false, @islogical);
-            p.parse(varargin{:});
-            drawLegend = p.Results.drawLegend;
-            
-            T = size(data, 1);
-            D = size(data, 2);
-            % N = size(data, 3);
-            assert(isvector(tvec) && numel(tvec) == T, 'tvec must be vector with length == size(data, 2)');
-            assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
-
-            hold on
-
-            nLabels = numel(as.labelInfo);
-            hleg = nan(nLabels, 1);
-            legstr = cell(nLabels, 1);
-            
-            labelTimes = [ad.labelInfo.time];
-            
-            % nLabels x D x N
-            labelPositions = interp1(tvec, data, labelTimes, 'linear');
-            
-            for iLabel = 1:nLabels
-                info = ad.labelInfo(iLabel);
-                legstr{iLabel} = info.name;
-                plotArgs = info.appear.getPlotArgs();
-                
-                if D == 1
-                    hleg(iLabel) = plot(labelTimes(1), squeeze(labelPositions(iLabel, 1, :)), ...
-                        'k.', 'MarkerSize', 10, plotArgs{:});
-                elseif D == 2
-                    hleg(iLabel) = plot(squeeze(labelPositions(iLabel, 1, :)), squeeze(labelPositions(iLabel, 2, :)), ...
-                        'k.', 'MarkerSize', 10, plotArgs{:});
-                else
-                    hleg(iLabel) = plot3(squeeze(labelPositions(iLabel, 1, :)), ...
-                        squeeze(labelPositions(iLabel, 2, :)), ...
-                        squeeze(labelPositions(iLabel, 3, :)), ...
-                        'k.', 'MarkerSize', 10, plotArgs{:});
-                end
-            end
-                
-            if drawLegend
-                legend(hleg, legstr, 'Location', 'NorthEast');
-                legend boxoff;
-            end
-        end
-        
-        function drawOnTimeseriesByCondition(as, time, data, varargin)
+%         function drawOnTimeseries(as, data, tvec, varargin)
+%         % annotate data time-series with markers according to the labels indicated
+%         % by this AlignSummary
+%         %
+%         % data is T x D x N matrix
+%         % tvec is T x 1
+%         %
+%         % where
+%         % D is data dimensionality, 1 or 2 or 3
+%         % T is number of time points
+%         % N is the number of traces to be annotated
+%             p = inputParser();
+%             p.addParamValue('drawLegend', false, @islogical);
+%             p.parse(varargin{:});
+%             drawLegend = p.Results.drawLegend;
+%             
+%             T = size(data, 1);
+%             D = size(data, 2);
+%             % N = size(data, 3);
+%             assert(isvector(tvec) && numel(tvec) == T, 'tvec must be vector with length == size(data, 2)');
+%             assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
+% 
+%             hold on
+% 
+%             nLabels = numel(as.labelInfo);
+%             hleg = nan(nLabels, 1);
+%             legstr = cell(nLabels, 1);
+%             
+%             labelTimes = [ad.labelInfo.time];
+%             
+%             % nLabels x D x N
+%             labelPositions = interp1(tvec, data, labelTimes, 'linear');
+%             
+%             for iLabel = 1:nLabels
+%                 info = ad.labelInfo(iLabel);
+%                 legstr{iLabel} = info.name;
+%                 plotArgs = info.appear.getPlotArgs();
+%                 
+%                 if D == 1
+%                     hleg(iLabel) = plot(labelTimes(1), squeeze(labelPositions(iLabel, 1, :)), ...
+%                         'k.', 'MarkerSize', 10, plotArgs{:});
+%                 elseif D == 2
+%                     hleg(iLabel) = plot(squeeze(labelPositions(iLabel, 1, :)), squeeze(labelPositions(iLabel, 2, :)), ...
+%                         'k.', 'MarkerSize', 10, plotArgs{:});
+%                 else
+%                     hleg(iLabel) = plot3(squeeze(labelPositions(iLabel, 1, :)), ...
+%                         squeeze(labelPositions(iLabel, 2, :)), ...
+%                         squeeze(labelPositions(iLabel, 3, :)), ...
+%                         'k.', 'MarkerSize', 10, plotArgs{:});
+%                 end
+%             end
+%                 
+%             if drawLegend
+%                 legend(hleg, legstr, 'Location', 'NorthEast');
+%                 legend boxoff;
+%             end
+%         end
+%         
+        function drawOnDataByCondition(as, time, data, varargin)
         % annotate data time-series with markers according to the labels indicated
         % by this AlignSummary, on a per-condition basis
         %
@@ -875,9 +875,10 @@ classdef AlignSummary
             p.addParamValue('tMax', Inf, @isscalar);
             p.addParamValue('alpha', 1, @isscalar);
             p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('markSize', 8, @isscalar);
+            p.addParamValue('markSize', 5, @isscalar);
+            p.addParamValue('showInLegend', true, @islogical);
 %             p.addParamValue('markErrorAlpha', 1, @isscalar);
-            p.addParamValue('drawError', false, @islogical);
+            p.addParamValue('markShowRanges', false, @islogical);
             p.parse(varargin{:});
             
             tOffsetZero = p.Results.tOffsetZero;
@@ -905,12 +906,93 @@ classdef AlignSummary
             end
             
             hold(axh, 'on');
-
-            nMarks = as.nMarks;
-            if nMarks == 0
-                return;
+            
+            % plot intervals
+            hIntervals = cell(as.nIntervals, 1);
+            nOccurByInterval = as.nOccurrencesByInterval;
+            for iInterval = 1:as.nIntervals
+                % gather mark locations
+                % nOccur x nConditions cell of T x D data in interval
+                [intLoc, intRangeLoc] = deal(cell(nOccurByInterval(iInterval), as.nConditions)); 
+                for iCond = 1:C
+                    idxCond = conditionIdx(iCond);
+                    % filter by the time window specified (for this condition)
+                    % tStart/tStop will be nOccur x 1
+                    tStart = as.intervalStartMeanByCondition{iInterval}(idxCond, :)';
+                    tStop = as.intervalStopMeanByCondition{iInterval}(idxCond, :)';;
+                    tRangeStart = as.intervalStartMinByCondition{iInterval}(idxCond, :)';
+                    tRangeStop = as.intervalStopMaxByCondition{iInterval}(idxCond, :)';;
+                    
+                    % tvec should T vector, dmat should be T x D 
+                    if iscell(time)
+                        tvec = time{iCond};
+                    else
+                        tvec = time;
+                    end
+                    if iscell(data)
+                        dmat = data{iCond};
+                    else
+                        % data is T x D x C matrix
+                        dmat = TensorUtils.squeezeDims(data(:, :, iCond, :), 3);
+                    end
+                    
+                    % constrain the time window to the interval being
+                    % plotted as defined by tvec
+                    valid = ~isnan(tStart) & ~isnan(tStop);
+                    valid(tStart > max(tvec)) = false;
+                    valid(tStop < min(tvec)) = false;
+                    
+                    if ~any(valid), continue; end
+                    
+                    tStart(tStart < min(tvec)) = min(tvec);
+                    tStop(tStop > max(tvec)) = max(tvec);
+                    tRangeStart(tRangeStart < min(tvec)) = min(tvec);
+                    tRangeStop(tRangeStop > max(tvec)) = max(tvec);
+                    
+                    % and slice the interval location
+                    % tStart, tStop is nOccur x 1
+                    % dInterval will be nOccur cell with T x D values
+                    dInterval = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
+                    intLoc(:, iCond) = dInterval;
+                    
+                    dIntervalRange = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tRangeStart, tRangeStop);
+                    intRangeLoc(:, iCond) = dIntervalRange;
+                end
+ 
+                 % add the time offset if plotting against time
+                if D == 1
+                    for i = 1:numel(intLoc)
+                        if isempty(intLoc{i}), continue; end;
+                        intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
+                        intRangeLoc{i}(:, 1, :) = intRangeLoc{i}(:, 1, :) + tOffsetZero;
+                    end
+                end
+                
+                app = as.alignDescriptor.intervalAppear{iInterval};
+                
+                % first plot range interval and suppress from legend
+                if p.Results.markShowRanges
+                    errorThickness = p.Results.markSize * 0.5;
+                    errorAppear = app;
+                    errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
+                    h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intRangeLoc, D, ...
+                        errorAppear, errorThickness, p.Results.markAlpha);
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+                
+                % then plot interval
+                hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
+                    app, p.Results.markSize, p.Results.markAlpha);
+                                
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, as.alignDescriptor.intervalLabels{iInterval});
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
+                end
             end
 
+            nMarks = as.nMarks;
+            
             % markMeanByCondition is nMarks x 1 cell with nConditions x 
             % nOccurrences matrices.
             % for each mark we want to find where to plot the mean/min/max
@@ -967,7 +1049,7 @@ classdef AlignSummary
                 
                 % add the time offset if plotting against time
                 if D == 1
-                    markMeanLoc(:, 1) = markMeanLoc(:, 1) + tOffsetZero;
+                    markMeanLoc(:, 1, :) = markMeanLoc(:, 1, :) + tOffsetZero;
                     for i = 1:numel(markErrorLoc)
                         if isempty(markErrorLoc{i}), continue; end;
                         markErrorLoc{i}(:, 1) = markErrorLoc{i}(:, 1) + tOffsetZero;
@@ -976,18 +1058,20 @@ classdef AlignSummary
                 
                 app = as.alignDescriptor.markAppear{iMark};
                 
+                % plot mark error interval and suppress from legend
+                if p.Results.markShowRanges
+                    errorThickness = p.Results.markSize * 0.25;
+                    errorAppear = app;
+                    errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
+                    h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
+                        errorAppear, errorThickness, p.Results.markAlpha);
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+                
                 % plot mark and provide legend hint
                 h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
                     p.Results.markAlpha, p.Results.markSize);
                 TrialDataUtilities.Plotting.showInLegend(h, as.alignDescriptor.markLabels{iMark});
-                
-                % plot mark error interval and suppress from legend
-                if p.Results.drawError
-                    errorThickness = app.MarkerSize / 2;
-                    h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
-                        as.alignDescriptor.markAppear{iMark}, errorThickness, p.Results.markAlpha);
-                    TrialDataUtilities.Plotting.hideInLegend(h);
-                end
             end
         end
         

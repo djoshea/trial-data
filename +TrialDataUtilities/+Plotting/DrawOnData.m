@@ -64,7 +64,7 @@ classdef DrawOnData
                            'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
                            'LineWidth', thickness);
                     else
-                        zvals = 0.9 * ones(size(x,1), 1);
+                        zvals = 0.09 * ones(size(x,1), 1);
                         h(iOccur) = plot3(axh, x, y, zvals, '-', ...
                             'Color', app.Color, 'LineWidth', thickness);
                     end

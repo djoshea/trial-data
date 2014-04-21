@@ -29,7 +29,7 @@ function setupAxisForChannel(channelDescriptor, varargin)
     end
 
     if p.Results.useAutoAxis
-        au.update();
-        au.installCallbacks();
+        %au.update();
+        %au.installCallbacks();
     end
 end
