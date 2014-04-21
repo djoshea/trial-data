@@ -2,7 +2,7 @@ function [varargout] = sliceValidNonNaNTimeRegion(varargin)
 % Given a set of either:
 %   1. cell arrays with the same length (N) containing vectors
 %        of the same lengths across each argument (T_i) 
-%   2. matrices with the same size along (N x T) or be vectors with length
+%   2. matrices with the same size along (N x T x D) or be vectors with length
 %      T consistent across arguments
 % Find the time points where at least one non-nan value is present across
 % all of the inputs, slice each input to that time region, and return those
@@ -76,7 +76,12 @@ else
         if isvec(iArg)
             keepmask = keepmask & makecol(~isnan(varargin{iArg}));
         else
-            keepmask = keepmask & any(~isnan(varargin{iArg}), 1)';
+            if ndims(varargin{iArg}) == 3
+                validPortion = all(~isnan(varargin{iArg}), 3);
+            else
+                validPortion = isnan(varargin{iArg});
+            end
+            keepmask = keepmask & any(validPortion, 1)';
         end
     end
     
@@ -89,7 +94,7 @@ else
             if isvec(iArg)
                 varargout{iArg} = varargin{iArg}(i1:i2);
             else
-                varargout{iArg} = varargin{iArg}(:, i1:i2);
+                varargout{iArg} = varargin{iArg}(:, i1:i2, :);
             end
         end
     else

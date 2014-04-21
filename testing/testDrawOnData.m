@@ -8,7 +8,9 @@ if ~exist('done', 'var') || ~done
 
     tdca = TrialDataConditionAlign(td);
     tdca = tdca.groupBy('target', 'delayNominal', 'isStim');
-    tdca = tdca.setAttributeValueList('discretizedStimTrialType', {'delay300', 'delay300optoRelTarg320'});
+    %tdca = tdca.setAttributeValueList('discretizedStimTrialType', {'delay300', 'delay300optoRelTarg320'});
+    tdca = tdca.setAttributeValueList('discretizedStimTrialType', {'delay300', 'delay300optoRelMove50'});
+    
     tdca = tdca.align('TargetOnset-100:GoCue+100 @ GoCue').round(1);
     tdca = tdca.truncateBefore('GoCue');
     tdca = tdca.mark('GoCue', 'appear', eventAppear.goCue, 'showOnAxis', true);
@@ -40,7 +42,14 @@ end
 figure(5), clf, set(gcf, 'Color', 'w');
 tdca.plotAnalogGroupMeans('handX', 'alpha', 0.5, 'markAlpha', 0.7);
 
+%%
+
+figure(6), clf; set(gcf, 'Color', 'w');
+tdca.plotAnalogGroupMeans3D('handX', 'handY', 'handZ', 'alpha', 0.5, 'markAlpha', 0.7);
+
 return;
+
+%%
 
 figure(1), clf, set(gcf, 'Color', 'w');
 %tdca.plotAnalogGroupedEachTrial('handX');

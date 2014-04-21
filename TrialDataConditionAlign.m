@@ -1100,11 +1100,14 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function [dataCell, tvec] = getMultiAnalogAsMatrixGrouped(td, nameCell, varargin)
+            % dataCell will be size(td.conditions)
+            % contents will be nTrials x T x nChannels
             [data, tvec] = td.getMultiAnalogAsMatrix(nameCell);
             dataCell = td.groupElements(data);
         end
         
         function [meanMat, semMat, tvec, nTrialsMat, stdMat] = getAnalogGroupMeans(td, name, varargin)
+            % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
@@ -1117,6 +1120,29 @@ classdef TrialDataConditionAlign < TrialData
                 if ~isempty(dCell{iC})
                     [meanMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
                         nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                end
+            end 
+        end
+        
+         function [meanMat, semMat, tvec, nTrialsMat, stdMat] = ...
+                 getMultiAnalogGroupMeans(td, nameCell, varargin)
+             % *Mat will be nConditions x T x nChannels tensors
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            assert(iscellstr(nameCell), 'Must be cellstr of channel names');
+            nChannels = numel(nameCell);
+            
+            % dCell is size(conditions) with nTrials x T x nChannels inside
+            [dCell, tvec] = td.getMultiAnalogAsMatrixGrouped(nameCell);
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nChannels));
+            for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    [meanMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), ...
+                        stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials);
                 end
             end 
         end
@@ -1747,6 +1773,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             
+            p.addParamValue('lineWidth', 3, @isscalar);
             p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParamValue('alignIdx', [], @isnumeric);
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
@@ -1785,11 +1812,11 @@ classdef TrialDataConditionAlign < TrialData
             plotErrorY = ~isempty(dataError);
                 
             if iscell(time)
-                assert(isvector(time) && isvector(data) && isvector(dataError), ...
+                assert(isvector(time) && isvector(data) && (isempty(dataError) || isvector(dataError)), ...
                     'Arguments must be nAlign x 1 cell or C x T x D matrices');
                 nAlignUsed = numel(time);
             else
-                assert(~iscell(time) && ~iscell(data) && ~iscell(dataError), ...
+                assert(~iscell(time) && ~iscell(data) && (isEmpty(dataError) || ~iscell(dataError)), ...
                     'Arguments must be nAlign x 1 cell or C x T x D matrices');
                 nAlignUsed = 1;
                 
@@ -1813,11 +1840,13 @@ classdef TrialDataConditionAlign < TrialData
                     % needs to be masekd
                     data{iA} = data{iA}(conditionIdx, :);
                 end
-                if size(dataError{iA}, 1) == nConditionsUsed
-                    % okay as is
-                elseif size(dataError{iA}, 1) == td.nConditions
-                    % needs to be masekd
-                    dataError{iA} = dataError{iA}(conditionIdx, :);
+                if ~isempty(dataError)
+                    if size(dataError{iA}, 1) == nConditionsUsed
+                        % okay as is
+                    elseif size(dataError{iA}, 1) == td.nConditions
+                        % needs to be masekd
+                        dataError{iA} = dataError{iA}(conditionIdx, :);
+                    end
                 end
             end
             
@@ -1833,12 +1862,16 @@ classdef TrialDataConditionAlign < TrialData
                 alignIdx = alignIdx(p.Results.alignIdx);
             end
             assert(numel(data) == nAlignUsed, 'Number of alignments must match numel(data)');
-            assert(numel(dataError) == nAlignUsed, 'Number of alignments must match numel(dataError)');
+            if ~isempty(dataError)
+                assert(numel(dataError) == nAlignUsed, 'Number of alignments must match numel(dataError)');
+            end
             assert(numel(alignIdx) == nAlignUsed, 'numel(time) must match numel(alignIdx)');
             
             % compute time offsets between successive alignments
             if D == 1
                 timeOffsetByAlign = td.getAlignPlottingTimeOffsets(time, 'alignIdx', alignIdx);
+            else
+                timeOffsetByAlign = zeros(nAlignUsed, 1);
             end
 
             % store handles as we go
@@ -1847,16 +1880,18 @@ classdef TrialDataConditionAlign < TrialData
             % plot data traces
             hold(axh, 'on');
             for iAlign = 1:nAlignUsed
-                tOffset = timeOffsetByAlign(iAlign);
                 for iCond = 1:td.nConditions
                     tvec = time{iAlign};
                     % these will be T X D
                     dmat = squeeze(data{iAlign}(iCond, :, :));
-                    errmat = squeeze(dataError{iAlign}(iCond, :, :));
+                    if ~isempty(dataError)
+                        errmat = squeeze(dataError{iAlign}(iCond, :, :));
+                    end
                     
                     if all(isnan(dmat(:))), continue; end
                     
                     if D == 1
+                         tOffset = timeOffsetByAlign(iAlign);
                         if plotErrorY
                             hData{iCond, iAlign} = errorshade(tvec + tOffset, dmat, ...                   
                                 errmat, app(iCond).Color, 'axh', axh, ...
@@ -1864,33 +1899,33 @@ classdef TrialDataConditionAlign < TrialData
                         elseif p.Results.alpha < 1
                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset, dmat, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, tvec, dmat, '-', ...
-                                plotArgs{:}, p.Results.plotOptions{:});
+                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:});
                         end
 
                     elseif D == 2
                         if p.Results.alpha < 1
                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1), dmat(:, 2), ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, dmat(:, 1), dmat(:, 2), '-', ...
-                                plotArgs{:}, p.Results.plotOptions{:});
+                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:});
                         end
 
                     elseif D == 3
                         if p.Results.alpha < 1
                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1), dmat(:, 2), dmat(:, 3), ... 
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', app(iCond).LineWidth, 'Parent', axh, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth,  'Parent', axh, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot3(axh, dmat(:, 1), dmat(:, 2), dmat(:, 3), '-', ...
-                                plotArgs{:}, p.Results.plotOptions{:});
+                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:});
                         end
                     end  
                     
@@ -1944,7 +1979,7 @@ classdef TrialDataConditionAlign < TrialData
                     TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x');
                 end
                 if ~isempty(p.Results.axisInfoY)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'x');
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y');
                 end
 
             elseif D == 3
@@ -1966,6 +2001,7 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             box(axh, 'off');
+            axis(axh, 'off');
             axis(axh, 'tight');
             
             au = AutoAxis(axh);
@@ -2006,6 +2042,61 @@ classdef TrialDataConditionAlign < TrialData
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
                 'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(name));
+        end
+        
+        function plotAnalogGroupMeans2D(td, name1, name2, varargin) 
+            % plot the mean and sem for an analog channel vs. time within
+            % each condition
+            
+            p = inputParser();
+            p.addParamValue('minTrials', 1, @isscalar);
+            p.addParamValue('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            % loop over alignments and gather mean data
+            % and slice each in time to capture only the non-nan region
+            [meanMat, semMat, tvecCell, nTrialsCell, stdMat] = deal(cell(td.nAlign, 1));
+            for iAlign = 1:td.nAlign
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                    td.useAlign(iAlign).getMultiAnalogGroupMeans({name1, name2}, 'minTrials', p.Results.minTrials);     
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                    TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
+                    semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign});
+            end
+            
+            td.plotProvidedAnalogDataGroupMeans(2, 'time', tvecCell, ...
+                'data', meanMat, p.Unmatched, ...
+                'axisInfoX', td.channelDescriptorsByName.(name1), ...
+                'axisInfoY', td.channelDescriptorsByName.(name2));
+        end
+        
+        function plotAnalogGroupMeans3D(td, name1, name2, name3, varargin) 
+            % plot the mean and sem for an analog channel vs. time within
+            % each condition
+            
+            p = inputParser();
+            p.addParamValue('minTrials', 1, @isscalar);
+            p.addParamValue('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            % loop over alignments and gather mean data
+            % and slice each in time to capture only the non-nan region
+            [meanMat, semMat, tvecCell, nTrialsCell, stdMat] = deal(cell(td.nAlign, 1));
+            for iAlign = 1:td.nAlign
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                    td.useAlign(iAlign).getMultiAnalogGroupMeans({name1, name2, name3}, 'minTrials', p.Results.minTrials);     
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                    TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
+                    semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign});
+            end
+            
+            td.plotProvidedAnalogDataGroupMeans(3, 'time', tvecCell, ...
+                'data', meanMat, p.Unmatched, ...
+                'axisInfoX', td.channelDescriptorsByName.(name1), ...
+                'axisInfoY', td.channelDescriptorsByName.(name2), ...
+                'axisInfoZ', td.channelDescriptorsByName.(name3));
         end
         
         function plotAnalogGroupMeansByConditionAxes(td, name, varargin) 
