@@ -877,6 +877,7 @@ classdef AlignSummary
             p.addParamValue('markAlpha', 1, @isscalar);
             p.addParamValue('markSize', 5, @isscalar);
             p.addParamValue('showInLegend', true, @islogical);
+            p.addParamValue('useTranslucentMark3d', true, @islogical);
 %             p.addParamValue('markErrorAlpha', 1, @isscalar);
             p.addParamValue('markShowRanges', false, @islogical);
             p.parse(varargin{:});
@@ -1029,7 +1030,7 @@ classdef AlignSummary
                         d = data{iC};
                         t = time{iC};
                     else
-                        d = TensorUtils.squeezeDims(data(:, :, c, :), 3);
+                        d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
                         t = time;
                     end
                     
@@ -1070,8 +1071,8 @@ classdef AlignSummary
                 
                 % plot mark and provide legend hint
                 h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
-                    p.Results.markAlpha, p.Results.markSize);
-                TrialDataUtilities.Plotting.showInLegend(h, as.alignDescriptor.markLabels{iMark});
+                    p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
+                TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
             end
         end
         

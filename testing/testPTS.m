@@ -17,7 +17,6 @@ pset = pset.setConditionDescriptor(cd);
 adPlan = AlignDescriptor('TargetOnset-100:GoCue+100');
 adMove = AlignDescriptor('Move-100:Move+500');
 
-
 pset = pset.setAlignDescriptorSet({adPlan, adMove});
 
 %% 

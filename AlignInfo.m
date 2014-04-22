@@ -375,6 +375,9 @@ classdef AlignInfo < AlignDescriptor
                 inds = sub2ind(size(timesMat), (1:ad.nTrials)', counts);
                 times = timesMat(inds);
             else
+                if ischar(n)
+                    n = str2double(n);
+                end
                 times = timesMat(:, n);
             end
            

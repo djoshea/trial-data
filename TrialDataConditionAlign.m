@@ -1276,7 +1276,7 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
 
-    % Plotting
+    % Plotting Analog each trial
     methods
         function [offsets, lims] = getAlignPlottingTimeOffsets(td, tvecCell, varargin)
             % when plotting multiple alignments of data simultaneously,
@@ -1747,7 +1747,10 @@ classdef TrialDataConditionAlign < TrialData
                 'axisInfoY', td.channelDescriptorsByName.(name2), ...
                 'axisInfoZ', td.channelDescriptorsByName.(name3), varargin{:});
         end
-        
+    end
+    
+    % Plotting Analog means by group
+    methods
         function plotProvidedAnalogDataGroupMeans(td, D, varargin)
             % common utility function for drawing analog data averaged by
             % condition, used by the plotAnalogGroupMeans functions below.

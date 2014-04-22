@@ -12,7 +12,6 @@ if ~exist('done', 'var') || ~done
     tdca = tdca.setAttributeValueList('discretizedStimTrialType', {'delay300', 'delay300optoRelMove50'});
     
     tdca = tdca.align('TargetOnset-100:GoCue+100 @ GoCue').round(1);
-    tdca = tdca.truncateBefore('GoCue');
     tdca = tdca.mark('GoCue', 'appear', eventAppear.goCue, 'showOnAxis', true);
     tdca = tdca.mark('TargetOnset', 'appear', eventAppear.targetOnset);
     tdca = tdca.interval('Stim', 'StimEnd', 'as', 'Stim', 'appear', eventAppear.stim, 'showOnAxis', true);

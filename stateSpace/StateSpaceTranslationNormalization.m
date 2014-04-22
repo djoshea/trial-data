@@ -74,7 +74,7 @@ classdef StateSpaceTranslationNormalization
             % normalization
             if isempty(obj.translationDescription)
                 if isempty(obj.normalizationDescription)
-                    desc = '';
+                    desc = 'none';
                 else
                     desc = obj.normalizationDescription;
                 end

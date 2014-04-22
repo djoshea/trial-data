@@ -14,7 +14,6 @@ classdef DrawOnData
             D = size(dMark, 2);
             
             flatten = @(x) x(:);
-            plotArgs = app.getMarkerArgs();
             
             if D == 1 || D == 2
                 if alpha < 1
@@ -23,7 +22,7 @@ classdef DrawOnData
                 else   
                     zvals = 0.1 * ones(size(flatten(dMark(:, 1, :))));
                     h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), zvals, ...
-                        'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.MarkerFaceColor, ...
+                        'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.Color, ...
                         'MarkerSize', markerSize, 'Parent', axh);
                 end
             elseif D == 3
@@ -32,8 +31,8 @@ classdef DrawOnData
                         markerSize, 'FaceColor', app.Color, 'FaceAlpha', alpha);
                 else
                     h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
-                        'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', 'k', ...
-                        'Parent', axh, 'MarkerSize', markerSize, plotArgs{:});
+                        'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
+                        'Parent', axh, 'MarkerSize', markerSize);
                 end
             else
                 error('Invalid Dimensionality of data');

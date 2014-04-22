@@ -1,22 +1,48 @@
 classdef AppearanceSpec
-    properties
+    properties(Dependent)
         Color
         LineWidth
-        Marker
-        MarkerSize
-        MarkerFaceColor
-        MarkerEdgeColor       
     end
     
     properties(Hidden)
         mColor
         mLineWidth
-        mMarker
-        mMarkerSize
-        mMarkerFaceColor
-        mMarkerEdgeColor
     end
-   
+    
+    methods
+        function v = get.Color(app)
+            if isempty(app.mColor)
+                v = app.defaultColor();
+            else
+                v = AppearanceSpec.convertColor(app.mColor);
+            end
+        end
+
+        function app = set.Color(app, v)
+            app.mColor = v;
+        end
+
+        function c = defaultColor(~)
+           c = [0 0 0];
+        end
+       
+        function v = get.LineWidth(app)
+            if isempty(app.mLineWidth)
+                v = app.defaultLineWidth();
+            else
+                v = app.mLineWidth;
+            end
+        end
+
+        function app = set.LineWidth(app, v)
+            app.mLineWidth = v;
+        end
+        
+        function c = defaultLineWidth(~)
+            c = 1;
+        end
+    end
+        
     methods
         function obj = AppearanceSpec(varargin)
             % instantiate with property value pair args
@@ -30,47 +56,18 @@ classdef AppearanceSpec
             args = {};
             for i = 1:numel(argNames)
                 argName = argNames{i};
+                mArgName = ['m' argName];
                 
-                if ~isempty(app.(argName))
-                    args = [args, {argName, app.(argName)}]; 
+                if ~isempty(app.(mArgName))
+                    args = [args, {argName, app.(mArgName)}];  %#ok<AGROW>
                 end
             end
         end
        
        function args = getPlotArgs(app)
-           args = app.getNonEmptyArgsByName({'Color', 'LineWidth', 'Marker', ...
-               'MarkerSize', 'MarkerFaceColor', 'MarkerEdgeColor'});
+           args = app.getNonEmptyArgsByName({'Color', 'LineWidth'});
        end
        
-       function args = getMarkerArgs(app)
-           args = app.getNonEmptyArgsByName({'Marker', 'MarkerSize', ...
-               'MarkerFaceColor', 'MarkerEdgeColor'});
-       end
-       
-       function c = get.Color(app)
-           if isempty(app.Color)
-               c = [0 0 0];
-           else
-               c = AppearanceSpec.convertColor(app.Color);
-           end
-       end
-       
-       function c = get.LineWidth(app)
-           if isempty(app.LineWidth)
-               c = 1;
-           else
-               c = app.LineWidth;
-           end
-       end
-       
-       function c = get.MarkerFaceColor(app)
-           if isempty(app.MarkerFaceColor)
-               c = app.Color;
-           else
-               c = AppearanceSpec.convertColor(app.MarkerFaceColor);
-           end
-       end
-               
     end
        
     methods(Static)

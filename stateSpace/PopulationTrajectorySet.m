@@ -470,7 +470,7 @@ classdef PopulationTrajectorySet
         function disp(pset)
             pset.printDescription();
             fprintf('\n');
-            builtin('disp', pset);
+            %builtin('disp', pset);
         end 
     end
     
@@ -998,8 +998,7 @@ classdef PopulationTrajectorySet
         end
     end
   
-    % methods which set and apply the conditionDescriptor,
-    % alignDescriptorSet, and translationNormalization applied to this pset
+    % methods which set and apply the conditionDescriptor
     methods 
         function pset = setConditionDescriptor(pset, cd)
             % update the conditionDescriptor for all bases within
@@ -1032,7 +1031,10 @@ classdef PopulationTrajectorySet
             pset = pset.invalidateTrialAveragedData();
             pset = pset.invalidateAlignSummaryData();
         end
-        
+    end
+    
+    % methods which directly update the align descriptor set of this pset
+    methods
         function pset = setAlignDescriptorSet(pset, adSet)
             pset.warnIfNoArgOut(nargout);
             
@@ -2644,8 +2646,18 @@ classdef PopulationTrajectorySet
             p.addParamValue('basisIdx', 1:min(pset.nBases, 3), @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nBases])));
             p.addParamValue('conditionIdx', truevec(pset.nConditions), @isvector);
-            p.addParamValue('plotArgs', {}, @iscell)
+            p.addParamValue('alignIdx', [], @isnumeric);
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.addParamValue('lineWidth', 2, @isscalar);
+            p.addParamValue('alpha', 1, @isscalar);
+            p.addParamValue('markAlpha', 1, @isscalar);
+            p.addParamValue('markSize', 10, @isscalar);
+            p.addParamValue('useThreeVector', true, @islogical);
+            p.addParamValue('useTranslucentMark3d', true, @islogical);
+            
             p.parse(varargin{:});
+            
+            clf;
             
             basisIdx = p.Results.basisIdx;
             conditionIdx = p.Results.conditionIdx;
@@ -2653,9 +2665,18 @@ classdef PopulationTrajectorySet
                 conditionIdx = find(conditionIdx);
             end
             
+            % figure out which alignments are used
+            if isempty(p.Results.alignIdx)
+                alignIdx = 1:pset.nAlign;
+            else
+                alignIdx = 1:pset.nAlign;
+                alignIdx = alignIdx(p.Results.alignIdx);
+            end
+            nAlignUsed = numel(alignIdx);
+            
             nConditions = numel(conditionIdx);
             nBasesPlot = numel(basisIdx);
-            plotArgs = p.Results.plotArgs;
+            plotArgs = p.Results.plotOptions;
 
             switch(nBasesPlot)
                 case 2
@@ -2666,9 +2687,10 @@ classdef PopulationTrajectorySet
                     error('Number of bases must be 2 or 3');
             end
 
-            for iAlign = 1:pset.nAlign
-                tvec = pset.tvecDataMean{iAlign};
-                data = pset.dataMean{iAlign};
+            for iAlign = 1:nAlignUsed
+                idxAlign = alignIdx(iAlign);
+                tvec = pset.tvecDataMean{idxAlign};
+                data = pset.dataMean{idxAlign};
 
                 for iCondition = 1:nConditions
                     c = conditionIdx(iCondition);
@@ -2677,24 +2699,42 @@ classdef PopulationTrajectorySet
                     
                     dataMat = squeeze(data(basisIdx, c, :));
                     
-                    if use3d
-                        plot3(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                            plotArgsC{:}, plotArgs{:});
+                    if p.Results.alpha < 1
+                        if use3d
+                            TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+                                'LineWidth', p.Results.lineWidth, ...
+                                'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
+                                 plotArgs{:});
+                        else
+                            dataMat = [dataVec1 dataVec2];
+                            TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
+                                'LineWidth', p.Results.lineWidth, ...
+                                'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
+                                plotArgs{:});
+                        end
                     else
-                        dataMat = [dataVec1 dataVec2];
-                        plot(dataMat(1, :), dataMat(2, :), ...
-                            plotArgsC{:}, plotArgs{:});
+                        if use3d
+                            plot3(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+                                'LineWidth', p.Results.lineWidth, plotArgsC{:}, plotArgs{:});
+                        else
+                            dataMat = [dataVec1 dataVec2];
+                            plot(dataMat(1, :), dataMat(2, :), ...
+                                'LineWidth', p.Results.lineWidth, ...
+                                plotArgsC{:}, plotArgs{:});
+                        end
                     end
 
                     hold on
                 end
             
-                as = pset.alignSummaryAggregated{iAlign};
-
-                % data is nBases x C x T
-                % drawOnTimeseriesByConditions needs T x nBasesPlot x C
+                % draw marks and intervals on the data traces
+                as = pset.alignSummaryAggregated{idxAlign};
+                % data is nBases x C x T; drawOnDataByConditions needs T x nBasesPlot x C
                 dataForDraw = permute(data(basisIdx, conditionIdx, :), [3 1 2]);
-                as.drawOnTimeseriesByCondition(dataForDraw, tvec, 'conditionIdx', conditionIdx); 
+                as.drawOnDataByCondition(tvec, dataForDraw, ...
+                    'conditionIdx', conditionIdx, 'markAlpha', p.Results.markAlpha, ...
+                    'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
+                    'markSize', p.Results.markSize); 
             end
 
             box off
@@ -2708,7 +2748,7 @@ classdef PopulationTrajectorySet
                 view([-40 20]);
                 axis vis3d
                 axis off
-                tv = ThreeVector();
+                tv = ThreeVector(gca);
             end
         end
         
