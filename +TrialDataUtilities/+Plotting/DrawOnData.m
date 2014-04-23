@@ -39,6 +39,41 @@ classdef DrawOnData
             end
         end
         
+        function h = plotMarkOnRaster(axh, timesMat, app, alpha, varargin)
+            % plot a set of mark points onto data displayed in a raster
+            % timeMat is nOccur x nTrials matrix
+            p = inputParser();
+            p.addParamValue('xOffset', 0, @isscalar);
+            p.addParamValue('yOffset', 0, @isscalar);
+            p.addParamValue('asTick', true, @islogical);
+            p.addParamValue('tickHeight', 1, @isscalar);
+            p.addParamValue('tickWidth', 2, @isscalar);
+            p.parse(varargin{:});
+
+            import TrialDataUtilities.Plotting.patchcircle;
+            
+            nOccur = size(timesMat, 1);
+            nTrials = size(timesMat, 2);
+            xOffset = p.Results.xOffset;
+            yOffset = p.Results.yOffset;
+            
+            if ~p.Results.asTick
+                Y = yOffset + repmat(0:-1:-(nTrials-1), nOccur, 1);
+                X = xOffset + timesMat;
+                X = X(:);
+                Y = Y(:);
+                h = patchcircle(X, Y, p.Results.tickHeight, 'z', 0.1, ...
+                    'FaceAlpha', alpha, ...
+                    'FaceColor', app.Color, 'axh', axh);
+            else
+                timesByTrial = mat2cell(timesMat, nOccur, ones(nTrials, 1))';
+                h = TrialDataUtilities.Plotting.drawTickRaster(timesByTrial, ...
+                    'axh', axh, 'color', app.Color, 'lineWidth', p.Results.tickWidth, ...
+                    'xOffset', xOffset, 'yOffset', yOffset, 'tickHeight', p.Results.tickHeight);
+            end
+            
+        end
+        
         function h = plotInterval(axh, data, D, app, thickness, alpha)
             % plot a single interval of data
             % data is max(D,2) x T where D is dimensionality, T is number of
@@ -90,6 +125,35 @@ classdef DrawOnData
                 end
             end
                 
+        end
+
+        function h = plotIntervalOnRaster(axh, intStart, intStop, app, alpha, varargin)
+            % plot intervals on a tick raster
+            % intStart/Stop are nOccur x nTrials
+            p = inputParser();
+            p.addParamValue('xOffset', 0, @isscalar);
+            p.addParamValue('yOffset', 0, @isscalar);
+            p.addParamValue('intervalHeight', 1, @isscalar);
+            p.parse(varargin{:});
+
+            xOffset = p.Results.xOffset;
+            yOffset = p.Results.yOffset;
+            
+            nOccur = size(intStart, 1);
+            nTrials = size(intStart, 2);
+            yStart = yOffset + repmat(0:-1:-(nTrials-1), nOccur, 1);
+            yStop = yStart - p.Results.intervalHeight;
+
+            xStart = xOffset + intStart;
+            xStop = xOffset + intStop;
+
+            color = app.Color;
+            if alpha < 1
+                color = AppearanceSpec.brightenColor(color, alpha);
+            end
+
+            h = TrialDataUtilities.Plotting.patchrectangle(xStart, yStart, xStop, yStop, ...
+               'FaceColor', color, 'z', -0.09, 'axh', axh);
         end
         
         function dMean = interpMarkLocation(time, data, tMean)

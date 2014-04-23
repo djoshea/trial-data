@@ -1155,10 +1155,129 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
         end
+        
+        function [hMarks, hIntervals] = drawOnRasterByTrial(ad, varargin)
+            % annotate per-trial raster plots with markers according to the labels indicated
+            % by this align descriptor. 
+            %
+            % timeCell is nTrials x 1 cell of time vectors
+            % it is assumed that each row is drawn below the last, such that timeCell{1} is drawn from 
+            % yOffsetTop to yOffsetTop + 1, with timeCell{2} drawn 1 below that
+            %
+            p = inputParser();
+            p.addParamValue('startByTrial', [], @(x) isnumeric(x) && isvector(x));
+            p.addParamValue('stopByTrial', [], @(x) isnumeric(x) && isvector(x));
+            p.addParamValue('axh', gca, @ishandle);
+            p.addParamValue('tOffsetZero', 0, @isscalar);
+            p.addParamValue('yOffsetTop', 0, @isscalar);
+            
+            p.addParamValue('markAsTicks', true, @islogical);
+            p.addParamValue('markAlpha', 1, @isscalar);
+            p.addParamValue('intervalAlpha', 0.5, @isscalar);
+            p.addParamValue('trialIdx', 1:ad.nTrials, @isnumeric);
+            p.addParamValue('showInLegend', true, @islogical);
+            p.parse(varargin{:});
+
+            axh = p.Results.axh;
+            tOffsetZero = p.Results.tOffsetZero;
+            yOffsetTop = p.Results.yOffsetTop;
+            trialIdx = p.Results.trialIdx;
+            startByTrial = p.Results.startByTrial;
+            stopByTrial = p.Results.stopByTrial;
+
+            hold(axh, 'on');
+
+            N = numel(trialIdx);
+            assert(N == size(startByTrial, 1), 'numel(startByTrial) must match nTrials');
+            assert(N == size(stopByTrial, 1), 'numel(startByTrial) must match nTrials');
+            
+            % plot intervals
+            hIntervals = cell(ad.nIntervals, 1);
+            nOccurByInterval = ad.intervalMaxCounts;
+            [intStartData, intStopData] = ad.getAlignedIntervalData();
+            for iInterval = 1:ad.nIntervals
+                % gather interval locations
+                % nOccur x nTrials set of start, stop by in interval
+                [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N)); 
+                
+                for iTrial = 1:N
+                    % filter by the time window specified (for this trial)
+                    tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
+                    tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
+                    
+                    % constrain the time window to the interval being
+                    % plotted as defined by tvec. not valid if it lies entirely outside
+                    % the interval for this trial defined by start/stopByTrial
+                    valid = ~isnan(tStart) & ~isnan(tStop);
+                    valid(tStart > stopByTrial(iTrial)) = false;
+                    valid(tStop < startByTrial(iTrial)) = false;
+                    
+                    if ~any(valid), continue; end
+                    
+                    tStart(tStart < startByTrial(iTrial)) = startByTrial(iTrial);
+                    tStop(tStop > stopByTrial(iTrial)) = stopByTrial(iTrial);
+                    
+                    intStart(:, iTrial) = tStart;
+                    intStop(:, iTrial) = tStop;
+                end
+ 
+                app = ad.intervalAppear{iInterval};
+                
+                hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
+                    app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
+
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
+                end
+            end
+            
+            % plot marks
+            % grab information about the mark times relative to the trial
+            nOccurByMark = ad.markMaxCounts;
+            markData = ad.getAlignedMarkData();
+            
+            hMarks = cell(ad.nMarks, 1);
+            for iMark = 1:ad.nMarks
+                % gather mark locations
+                % nOccur x N 
+                markLoc = nan(nOccurByMark(iMark), N);
+                
+                for t = 1:N
+                    % get the mark times on this trial
+                    tMark = markData{iMark}(trialIdx(t));
+                    
+                    % filter by the time window specified (for this trial)
+                    maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(iTrial);
+                    tMark(maskInvalid) = NaN;
+                    
+                    if all(isnan(tMark))
+                        % none found in this time window for this condition
+                        continue;
+                    end
+                    
+                    markLoc(:, t) = tMark;
+                end
+                
+                app = ad.markAppear{iMark};
+                
+                % plot mark and provide legend hint
+                hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
+                    p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
+
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
+                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
+                end
+            end
+        end
     end
     
     methods(Static) % Default accessor methods
-        function [eventData, eventCounts] = defaultGetEventTimesFn(td, eventNameList)
+        function [eventData, eventCounts] = defaultGetEventTimesFn(td, ~)
             % default function for accessing event times
             % Returns a cell array of size nTrials x nEvents
             % with each containing all events for event i, trial j

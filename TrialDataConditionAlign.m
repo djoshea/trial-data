@@ -1345,6 +1345,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('alignIdx', 1:td.nAlign, @isvector);
             p.addParamValue('colorSpikes', false, @islogical);
             p.addParamValue('timeAxisStyle', 'marker', @ischar);
+            p.addParamValue('intervalAlpha', 0.5, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1361,17 +1362,28 @@ classdef TrialDataConditionAlign < TrialData
             timesByAlign = cell(nAlignUsed, nConditionsUsed);
             
             % compute x offsets for each align
-            timePointsCell = cell(td.nAlign, 1);
-            for iAlign = 1:td.nAlign
+            timePointsCell = cell(nAlignUsed, 1);
+            [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed));
+            for iAlign = 1:nAlignUsed
                 idxAlign = alignIdx(iAlign);
+                
+                % get grouped spike times by alignment
                 thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName);
-                timesByAlign(iAlign, :) = thisC(conditionIdx);
+                timesByAlign(iAlign, :) = thisC(:);
                 
                 % figure out time validity window for this alignment
                 % TODO might want to update this for the selected
                 % conditions only
                 [start, stop] = td.alignInfoSet{iAlign}.getStartStopRelativeToZeroByTrial();
                 timePointsCell{iAlign} = [start; stop];
+                
+                % and store start/stop by trial in each align/condition
+                % cell
+                for iCond = 1:nConditionsUsed
+                    idxCond = conditionIdx(iCond);
+                    startData{iAlign, iCond} = start(td.listByCondition{idxCond});
+                    stopData{iAlign, iCond} = stop(td.listByCondition{idxCond});
+                end
             end
             tOffsetByAlign = td.getAlignPlottingTimeOffsets(timePointsCell);
             
@@ -1412,6 +1424,20 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
+            % draw marks and intervals on each raster
+            for iAlign = 1:nAlignUsed
+                idxAlign = alignIdx(iAlign);
+                for iCond = 1:nConditionsUsed
+                    if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
+                    td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}, ...
+                        'stopByTrial', stopData{iAlign, iCond}, ...
+                        'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
+                        'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
+                        'yOffsetTop', yOffsetByCondition(iCond), ...
+                        'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+                end
+            end
+            
             % setup y axis condition labels
             colors = cat(1, td.conditionAppearances(conditionIdx).Color);
             conditionNames = td.conditionInfo.generateConditionsAsStrings(sprintf('\n'));
@@ -1421,12 +1447,14 @@ classdef TrialDataConditionAlign < TrialData
             au.addLabeledSpan('y', 'span', yLimsByCondition, 'label', ...
                 conditionMultilineLabels, 'color', colors);
             
-            
+            % setup time axis markers
             for iAlign = 1:nAlignUsed
                 idxAlign = alignIdx(iAlign);
                 td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', ...
                     'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign));
             end
+            
+            title(sprintf('%s : Unit %s', td.datasetName, unitName));
             
             axis(axh, 'tight');
             au = AutoAxis(axh);

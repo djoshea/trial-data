@@ -102,5 +102,11 @@ classdef AppearanceSpec
             c = AppearanceSpec.convertColor(c);
             cvec = 1 - ((1-c) .* (1-gamma));
         end
+        
+        function cvec = brightenColor(c, alpha)
+            % brighten color by shifting fractionally towards white
+            c = AppearanceSpec.convertColor(c);
+            cvec = 1 - ((1-c) .* (alpha));
+        end
     end
 end
