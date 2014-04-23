@@ -162,7 +162,7 @@ classdef TrialData
             tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
             tcprintf('inline', '{yellow}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
             tcprintf('inline', '{yellow}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
-            tcprintf('inline', '{yellow}Spike: {none}%s\n', strjoin(td.listSpikeUnits(), ', '));
+            tcprintf('inline', '{yellow}Spike: {none}%s\n', strjoin(td.listSpikeChannels(), ', '));
         end
 
         function disp(td)
@@ -803,18 +803,6 @@ classdef TrialData
             end
         end
         
-        function tf = hasSpikeUnit(td, unitName)
-            name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
-            tf = td.hasSpikeChannel(name);
-        end
-        
-        function tf = hasSpikeChannelOrUnit(td, name)
-            tf = td.hasSpikeChannel(name);
-            if ~tf
-                tf = td.hasSpikeUnit(name);
-            end
-        end
-        
         function names = listSpikeChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
@@ -829,25 +817,12 @@ classdef TrialData
             td = td.dropChannels(setdiff(full, names));
         end
         
-        function td = selectSpikeUnits(td, names)
-            td.warnIfNoArgOut(nargout);
-            chNames = cellfun(@SpikeChannelDescriptor.convertUnitNameToChannelName, names, ...
-                'UniformOutput', false);  
-            td = td.selectSpikeChannels(chNames);
-        end
-        
-        function names = listSpikeUnits(td)
-            chNames = td.listSpikeChannels();
-            names = cellfun(@SpikeChannelDescriptor.convertChannelNameToUnitName, chNames, ...
-                'UniformOutput', false);
-        end
-        
         function timesCell = getRawSpikeTimes(td, unitName)
-            if td.hasSpikeChannel(unitName)
+%             if td.hasSpikeChannel(unitName)
                 name = unitName;
-            else
-                name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
-            end
+%             else
+%                 name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+%             end
             timesCell = {td.data.(name)}';
         end
 

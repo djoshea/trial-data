@@ -1315,6 +1315,22 @@ classdef ConditionDescriptor
 
             ci = ci.invalidateCache();
         end
+        
+        function values = generateConditionsAsStrings(ci, separator)
+            % publically callable version of above in case build methods
+            % end up having side effects
+            if nargin < 2
+                separator = ' ';
+            end
+            if ci.nAxes == 0
+                values = {structToString(ci.conditions)};
+            else
+                valueLists = ci.axisValueListsAsStrings; 
+                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
+                    valueLists, 'asCell', true);
+            end
+        end
+        
     end
 
     % get, set data stored inside odc
@@ -1496,12 +1512,15 @@ classdef ConditionDescriptor
             end
         end
         
-        function values = buildConditionsAsStrings(ci)
+        function values = buildConditionsAsStrings(ci, separator)
+            if nargin < 2
+                separator = ' ';
+            end
             if ci.nAxes == 0
                 values = {structToString(ci.conditions)};
             else
                 valueLists = ci.axisValueListsAsStrings; 
-                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, ' '),...
+                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
                     valueLists, 'asCell', true);
             end
         end

@@ -756,7 +756,7 @@ classdef AlignSummary
                         else
                             errorInterval = [];
                         end
-                        cvec = ii.appear.MarkerFaceColor;
+                        cvec = ii.appear.Color;
                         errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
                             'errorInterval', errorInterval, 'errorIntervalColor', errorColor, ...
@@ -775,7 +775,7 @@ classdef AlignSummary
                         else
                             errorInterval = [];
                         end
-                        cvec = li.appear.MarkerFaceColor;
+                        cvec = li.appear.Color;
                         errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addMarkerX(li.time + xOffset, li.name, ...
                             'interval', errorInterval, ...
@@ -899,7 +899,7 @@ classdef AlignSummary
                 T = size(data, 1);
                 D = size(data, 2);
                 C = size(data, 3);
-                N = size(data, 4);
+                %N = size(data, 4);
 
                 assert(~iscell(time) && isvector(time) && numel(time) == T, 'Time vector must be size(data, 1)');
                 assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');

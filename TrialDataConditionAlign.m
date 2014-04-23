@@ -1215,26 +1215,35 @@ classdef TrialDataConditionAlign < TrialData
            
         function [rates, tvec] = getSpikeRateFilteredAsMatrix(td, unitName, varargin)
             p = inputParser;
-            p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
-            p.addParamValue('timeDelta', 1, @isscalar);
+            p.addParamValue('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
+            if isempty(sf)
+                sf = SpikeFilter.getDefaultFilter();
+            end
             timeDelta = p.Results.timeDelta;
+            if isempty(timeDelta)
+                timeDelta = td.alignInfoActive.minTimeDelta;
+                if isempty(timeDelta)
+                    timeDelta = 1;
+                    warning('Using timeDelta=%d for spike rate timepoints. Specify ''timeDelta'' or call .round for consistent results');
+                end
+            end
             
             % Pad trial data alignment for spike filter
             td = td.pad([sf.preWindow sf.postWindow]);
             
             spikeCell = td.getSpikeTimes(unitName);
-            timeInfo = td.alignInfoActive.timeInfo;
+            [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
             
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
-            tMinByTrial = [timeInfo.start] - [timeInfo.zero];
-            tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
             [rates, tvec] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
                 tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond, ...
                 'timeDelta', timeDelta);
+            tvec = makecol(tvec);
         end
 
         function [rateCell, timeCell] = getSpikeRateFilteredGrouped(td, unitName, varargin)
@@ -1248,16 +1257,31 @@ classdef TrialDataConditionAlign < TrialData
             rateCell = td.groupElements(rates);
         end
         
-        function [psthMatrix, tvec, semMatrix] = getSpikeRateFilteredMeanByGroup(td, unitName, varargin)
-            [rateCell, tvec] = getSpikeRateFilteredAsMatrixGrouped(td, unitName, varargin{:});
-            % flatten the rateCell
-            rateCell = rateCell(:);
-            psthMatrix = cell2mat(cellfun(@(r) nanmean(r, 1), rateCell, 'UniformOutput', false));
-            semMatrix =  cell2mat(cellfun(@(r) nansem(r, 1),  rateCell, 'UniformOutput', false));
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
+                getSpikeRateFilteredMeanByGroup(td, unitName, varargin)
+            % *Mat will be nConditions x T matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParamValue('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            [rateCell, tvec] = td.getSpikeRateFilteredAsMatrixGrouped(unitName, ...
+                'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+            
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            for iC = 1:td.nConditions
+                if ~isempty(rateCell{iC})
+                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
+                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials);
+                end
+            end
         end
         
-        function [psthMatrix, tvec, semMatrix] = getPSTH(td, varargin)
-            [psthMatrix, tvec, semMatrix] = getSpikeRateFilteredMeanByGroup(td, unitName, varargin{:});
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = getPSTH(td, varargin)
+            [psthMat, tvec, semMat, stdMat, nTrialsMat] = getSpikeRateFilteredMeanByGroup(td, varargin{:});
         end
         
         function timesCellofCells = getSpikeTimesGrouped(td, unitName)
@@ -1273,6 +1297,141 @@ classdef TrialDataConditionAlign < TrialData
         function rateCell = getSpikeMeanRateGrouped(td, unitName)
             rates = td.getSpikeMeanRate(unitName);
             rateCell = td.groupElements(rates);
+        end
+    end
+    
+    % Plotting Spike data
+    methods
+        function plotPSTH(td, unitName, varargin)
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParamValue('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParamValue('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            % loop over alignments and gather mean data
+            % and slice each in time to capture only the non-nan region
+            [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
+            for iAlign = 1:td.nAlign
+                [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                    td.useAlign(iAlign).getSpikeRateFilteredMeanByGroup(unitName, 'minTrials', p.Results.minTrials, ...
+                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+            
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                    TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
+                    semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign});
+            end
+            
+            switch p.Results.errorType
+                case ''
+                    errorMat = [];
+                case 'sem'
+                    errorMat = semMat;
+                case 'std'
+                    errorMat = stdMat;
+            end
+            
+            td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
+                'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
+                'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(unitName));
+        end
+        
+        function plotRaster(td, unitName, varargin)
+            p = inputParser();
+            p.addParamValue('conditionIdx', 1:td.nConditions, @isvector);
+            p.addParamValue('alignIdx', 1:td.nAlign, @isvector);
+            p.addParamValue('colorSpikes', false, @islogical);
+            p.addParamValue('timeAxisStyle', 'marker', @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+            
+            conditionIdx = p.Results.conditionIdx;
+            if islogical(conditionIdx)
+                conditionIdx = find(conditionIdx);
+            end
+            nConditionsUsed = numel(conditionIdx);
+            alignIdx = p.Results.alignIdx;
+            nAlignUsed = numel(alignIdx);
+            
+            timesByAlign = cell(nAlignUsed, nConditionsUsed);
+            
+            % compute x offsets for each align
+            timePointsCell = cell(td.nAlign, 1);
+            for iAlign = 1:td.nAlign
+                idxAlign = alignIdx(iAlign);
+                thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName);
+                timesByAlign(iAlign, :) = thisC(conditionIdx);
+                
+                % figure out time validity window for this alignment
+                % TODO might want to update this for the selected
+                % conditions only
+                [start, stop] = td.alignInfoSet{iAlign}.getStartStopRelativeToZeroByTrial();
+                timePointsCell{iAlign} = [start; stop];
+            end
+            tOffsetByAlign = td.getAlignPlottingTimeOffsets(timePointsCell);
+            
+            % compute y offsets for each condition
+            trialCounts = cellfun(@numel, td.listByCondition(conditionIdx));
+            gap = 3;
+            yOffsetByCondition = zeros(nConditionsUsed, 1);
+            yLimsByCondition = nan(2, nConditionsUsed);
+            currentOffset = 0;
+            lastTrialCount = 0;
+            for iC = 1:nConditionsUsed
+                yOffsetByCondition(iC) = currentOffset;
+                yLimsByCondition(:, iC) = [currentOffset; currentOffset-trialCounts(iC)];
+                if trialCounts(iC) > 0
+                    currentOffset = currentOffset - trialCounts(iC) - gap;
+                    lastTrialCount = trialCounts(iC);
+                end
+            end
+            % shift to lie entirely above y = 0
+            delta = - min(yOffsetByCondition) + lastTrialCount;
+            yOffsetByCondition = yOffsetByCondition + delta;
+            yLimsByCondition = yLimsByCondition + delta;
+           
+            % draw tick rasters in a grid pattern
+            for iAlign = 1:nAlignUsed
+                for iC = 1:nConditionsUsed
+                    app = td.conditionAppearances(conditionIdx(iC));
+                    if p.Results.colorSpikes
+                        color = app.Color;
+                    else
+                        color = 'k';
+                    end
+                        
+                    TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC}, ...
+                        'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
+                        'color', color);
+                    hold(axh, 'on');
+                end
+            end
+            
+            % setup y axis condition labels
+            colors = cat(1, td.conditionAppearances(conditionIdx).Color);
+            conditionNames = td.conditionInfo.generateConditionsAsStrings(sprintf('\n'));
+            conditionMultilineLabels = cellfun(@(str) strsplit(str, '\n'), ...
+                conditionNames, 'UniformOutput', false);
+            au = AutoAxis(axh);
+            au.addLabeledSpan('y', 'span', yLimsByCondition, 'label', ...
+                conditionMultilineLabels, 'color', colors);
+            
+            
+            for iAlign = 1:nAlignUsed
+                idxAlign = alignIdx(iAlign);
+                td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', ...
+                    'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign));
+            end
+            
+            axis(axh, 'tight');
+            au = AutoAxis(axh);
+            axis(axh, 'off');
+            au.update();
         end
     end
 
@@ -1776,7 +1935,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             
-            p.addParamValue('lineWidth', 3, @isscalar);
+            p.addParamValue('lineWidth', 2, @isscalar);
             p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParamValue('alignIdx', [], @isnumeric);
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
@@ -1894,7 +2053,7 @@ classdef TrialDataConditionAlign < TrialData
                     if all(isnan(dmat(:))), continue; end
                     
                     if D == 1
-                         tOffset = timeOffsetByAlign(iAlign);
+                        tOffset = timeOffsetByAlign(iAlign);
                         if plotErrorY
                             hData{iCond, iAlign} = errorshade(tvec + tOffset, dmat, ...                   
                                 errmat, app(iCond).Color, 'axh', axh, ...
@@ -1905,8 +2064,9 @@ classdef TrialDataConditionAlign < TrialData
                                'LineWidth', p.Results.lineWidth, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
-                            hData{iCond, iAlign} = plot(axh, tvec, dmat, '-', ...
-                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:});
+                            hData{iCond, iAlign} = plot(axh, tvec + tOffset, dmat, '-', ...
+                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:}, ...
+                                'LineSmoothing', 'on');
                         end
 
                     elseif D == 2
@@ -1917,7 +2077,8 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, dmat(:, 1), dmat(:, 2), '-', ...
-                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:});
+                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', 'on', ...
+                                plotArgs{:}, p.Results.plotOptions{:});
                         end
 
                     elseif D == 3
@@ -1928,7 +2089,8 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot3(axh, dmat(:, 1), dmat(:, 2), dmat(:, 3), '-', ...
-                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:});
+                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', 'on', ...
+                                plotArgs{:}, p.Results.plotOptions{:});
                         end
                     end  
                     
@@ -1948,7 +2110,7 @@ classdef TrialDataConditionAlign < TrialData
                     'tOffsetZero', timeOffsetByAlign(iAlign), 'alpha', p.Results.alpha, ...
                     'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
                     'markShowRanges', p.Results.markShowRanges, ...
-                    'tMin', min(tvec), 'tMax', max(tvec));
+                    'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
             end
             
             % setup time axes for each alignment

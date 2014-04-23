@@ -956,6 +956,13 @@ classdef AlignInfo < AlignDescriptor
            startRel = start - zero;
            stopRel = stop - zero;
         end
+        
+         function [startRel, stopRel] = getStartStopRelativeToZeroByTrialWithPadding(ad)
+           ad.assertApplied();
+           [start, stop, zero] = ad.getStartStopZeroByTrialWithPadding();
+           startRel = start - zero;
+           stopRel = stop - zero;
+        end
        
         function [markData, markDataMask] = getAlignedMarkData(ad)
             [markData, markDataMask] = ...
