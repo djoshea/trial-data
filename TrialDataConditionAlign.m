@@ -1354,7 +1354,16 @@ classdef TrialDataConditionAlign < TrialData
             
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
-                'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(unitName));
+                'axisInfoX', 'time');
+            
+            title(sprintf('%s : Unit %s', td.datasetName, unitName));
+            axis(gca, 'tight');
+            axis(gca, 'off');
+            
+            ylabel('spikes/sec');
+            au = AutoAxis(gca);
+            au.addAutoAxisY();
+            au.update();
         end
         
         function plotRaster(td, unitName, varargin)
@@ -1460,11 +1469,15 @@ classdef TrialDataConditionAlign < TrialData
             % setup y axis condition labels
             colors = cat(1, td.conditionAppearances(conditionIdx).Color);
             conditionNames = td.conditionInfo.generateConditionsAsStrings(sprintf('\n'));
+            conditionNames = conditionNames(conditionIdx);
             conditionMultilineLabels = cellfun(@(str) strsplit(str, '\n'), ...
                 conditionNames, 'UniformOutput', false);
+            
+            % only include conditions with at least 1 trial
+            mask = trialCounts(conditionIdx) > 0;
             au = AutoAxis(axh);
-            au.addLabeledSpan('y', 'span', yLimsByCondition, 'label', ...
-                conditionMultilineLabels, 'color', colors);
+            au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
+                conditionMultilineLabels(mask), 'color', colors);
             
             % setup time axis markers
             for iAlign = 1:nAlignUsed

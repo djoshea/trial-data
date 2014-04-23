@@ -903,7 +903,7 @@ classdef AlignInfo < AlignDescriptor
             alignedTimes = bsxfun(@minus, rawTimesMatrix, zero);  
 
             rawTimesMask(~ad.valid, :) = false;
-            alignedTimes(~ad.valid, :) = NaN;
+            alignedTimes(~rawTimesMask) = NaN;
         end
         
         % use the alignment to shift the times in rawTimesCell to be zero relative
@@ -1196,6 +1196,7 @@ classdef AlignInfo < AlignDescriptor
             nOccurByInterval = ad.intervalMaxCounts;
             [intStartData, intStopData] = ad.getAlignedIntervalData();
             for iInterval = 1:ad.nIntervals
+                if ~ad.intervalShowOnData(iInterval), continue; end
                 % gather interval locations
                 % nOccur x nTrials set of start, stop by in interval
                 [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N)); 
@@ -1240,16 +1241,17 @@ classdef AlignInfo < AlignDescriptor
             
             hMarks = cell(ad.nMarks, 1);
             for iMark = 1:ad.nMarks
+                if ~ad.markShowOnData(iMark), continue; end
                 % gather mark locations
                 % nOccur x N 
                 markLoc = nan(nOccurByMark(iMark), N);
                 
                 for t = 1:N
                     % get the mark times on this trial
-                    tMark = markData{iMark}(trialIdx(t));
+                    tMark = markData{iMark}(trialIdx(t), :);
                     
                     % filter by the time window specified (for this trial)
-                    maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(iTrial);
+                    maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(t);
                     tMark(maskInvalid) = NaN;
                     
                     if all(isnan(tMark))

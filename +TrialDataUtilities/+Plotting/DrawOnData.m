@@ -197,7 +197,7 @@ classdef DrawOnData
                 
                 % slice will be Tslice x D
                 dCell{iOccur} = data(tMask, :);
-                if D == 1
+                if ~isempty(dCell{iOccur}) && D == 1
                     dCell{iOccur} = cat(2, makecol(time(tMask)), dCell{iOccur});
                 end
             end
