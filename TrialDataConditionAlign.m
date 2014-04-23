@@ -1374,7 +1374,7 @@ classdef TrialDataConditionAlign < TrialData
                 % figure out time validity window for this alignment
                 % TODO might want to update this for the selected
                 % conditions only
-                [start, stop] = td.alignInfoSet{iAlign}.getStartStopRelativeToZeroByTrial();
+                [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
                 timePointsCell{iAlign} = [start; stop];
                 
                 % and store start/stop by trial in each align/condition
@@ -1407,6 +1407,20 @@ classdef TrialDataConditionAlign < TrialData
             yOffsetByCondition = yOffsetByCondition + delta;
             yLimsByCondition = yLimsByCondition + delta;
            
+            % draw marks and intervals on each raster
+            for iAlign = 1:nAlignUsed
+                idxAlign = alignIdx(iAlign);
+                for iCond = 1:nConditionsUsed
+                    if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
+                    td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}, ...
+                        'stopByTrial', stopData{iAlign, iCond}, ...
+                        'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
+                        'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
+                        'yOffsetTop', yOffsetByCondition(iCond), ...
+                        'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+                end
+            end
+            
             % draw tick rasters in a grid pattern
             for iAlign = 1:nAlignUsed
                 for iC = 1:nConditionsUsed
@@ -1421,20 +1435,6 @@ classdef TrialDataConditionAlign < TrialData
                         'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
                         'color', color);
                     hold(axh, 'on');
-                end
-            end
-            
-            % draw marks and intervals on each raster
-            for iAlign = 1:nAlignUsed
-                idxAlign = alignIdx(iAlign);
-                for iCond = 1:nConditionsUsed
-                    if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
-                    td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}, ...
-                        'stopByTrial', stopData{iAlign, iCond}, ...
-                        'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
-                        'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
-                        'yOffsetTop', yOffsetByCondition(iCond), ...
-                        'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
                 end
             end
             
