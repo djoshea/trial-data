@@ -152,8 +152,10 @@ classdef DrawOnData
                 color = AppearanceSpec.brightenColor(color, alpha);
             end
 
+            %fprintf('Interval pre patchrect: %s', get(gcf, 'Renderer'));
             h = TrialDataUtilities.Plotting.patchrectangle(xStart, yStart, xStop, yStop, ...
                'FaceColor', color, 'z', -0.09, 'axh', axh);
+           %fprintf(', post patchrect: %s\n', get(gcf, 'Renderer'));
         end
         
         function dMean = interpMarkLocation(time, data, tMean)

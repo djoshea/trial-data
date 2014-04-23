@@ -649,6 +649,7 @@ classdef AlignSummary
             info = struct('name', {}, 'startTime', {}, 'startMin', {}, 'startMax', {}, 'appear', {}, 'fixed', {});
             counter = 1;
             for iInterval = 1:ad.nIntervals
+                if ~ad.intervalShowOnAxis(iInterval), continue; end
                 for iOccur = 1:numel(as.intervalStartMean{iInterval})
                     info(counter).name = ad.intervalLabels{iInterval};
                     info(counter).startTime = as.intervalStartMean{iInterval}(iOccur);

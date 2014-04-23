@@ -246,6 +246,7 @@ classdef ConditionInfo < ConditionDescriptor
         end
 
         function list = buildListByConditionRaw(ci)
+            % DO NOT PERFORM AXIS RANDOMIZATION OR SORTING HERE
             list = cell(ci.conditionsSize);
             for iC = 1:ci.nConditions
                 list{iC} = makecol(find(ci.conditionIdx == iC));
@@ -288,10 +289,15 @@ classdef ConditionInfo < ConditionDescriptor
             end
         end
 
-        % Perform axis randomization to listByConditionRaw
-        % successively along each randomized axis
+        
         function list = buildListByCondition(ci)
+            % Take .listByConditionRaw and perform axis randomization /
+            % resampling and then sort lists by attributes
+            % Perform axis randomization to listByConditionRaw
+            % successively along each randomized axis
             list = ci.generateSingleRandomizedListByCondition(ci.listByConditionRaw, ci.randomSeed);
+            
+            list = ci.sortListByConditionByAttributes(list);
         end
         
         function listCell = generateMultipleRandomizedListByCondition(ci, varargin)
@@ -326,6 +332,47 @@ classdef ConditionInfo < ConditionDescriptor
             end
             if showProgress
                 prog.finish();
+            end
+        end
+        
+        function listCell = sortListByConditionByAttributes(ci, listCell)
+            sortByList = ci.attributeSortByList;
+            if isempty(sortByList)
+                return;
+            end
+            
+            nSortAttr = numel(sortByList);
+            attr = cell(nSortAttr, 1);
+            rev = false(nSortAttr, 1);
+            for i = 1:nSortAttr
+                if strncmp(sortByList{i}, '-', 1)
+                    attr{i} = sortByList{i}(2:end);
+                    rev(i) = true;
+                else
+                    attr{i} = sortByList{i};
+                    rev(i) = false;
+                end
+            end
+  
+            % sort over attributes in reverse order so that first takes preference
+            for iA = nSortAttr:-1:1
+                attrValsFull = ci.getAttributeValues(attr{iA});
+                if rev(i)
+                    mode = 'descend';
+                else
+                    mode = 'ascend';
+                end
+                
+                for iC = 1:numel(listCell)
+                    attrVals = attrValsFull(listCell{iC});
+                    if iscellstr(attrVals)
+                        [~, idx] = sortStrings(attrVals, mode);
+                    elseif isnumeric(attrVals) && isvector(attrVals)
+                        [~, idx] = sort(makecol(attrVals), 1, mode);
+                    end
+                
+                    listCell{iC} = listCell{iC}(idx);
+                end
             end
         end
     end

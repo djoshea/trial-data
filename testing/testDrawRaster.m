@@ -7,8 +7,6 @@ if ~exist('done', 'var') || ~done
     eventAppear = getOptoReachEventAppearanceSpec();
 
     tdca = TrialDataConditionAlign(td);
-    tdca = tdca.setAttributeValueList('discretizedStimTrialType', {'delay300', 'delay300optoRelTarg320'});
-    tdca = tdca.groupBy('target', 'isStim');
     %tdca = tdca.setAttributeValueList('discretizedStimTrialType', {'delay300', 'delay300optoRelMove50'});
     
     tdca = tdca.align('TargetOnset-100:GoCue+100 @ GoCue').round(1);
@@ -23,7 +21,14 @@ if ~exist('done', 'var') || ~done
     %tdca = tdca.interval('Move', 'Move+100', 'appear', AppearanceSpec('Color', 'm'), 'showOnAxis', false);
     
     tdca = tdca.setConditionAppearanceFn(@appearFn_colorByTarget);
-%     
+    
+    moveDuration = tdca.useAlign(2).getEventFirst('MoveEnd');
+    tdca = tdca.addParam('moveDuration', moveDuration);
+    tdca = tdca.sortWithinConditionsBy('moveDuration');
+    
+    tdca = tdca.setAttributeValueList('discretizedStimTrialType', {'delay300', 'delay300optoRelTarg320'});
+    tdca = tdca.groupBy('target', 'isStim');
+    
     done = true;
 end
 

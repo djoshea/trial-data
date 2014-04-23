@@ -61,6 +61,8 @@ classdef ConditionDescriptor
         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
         
         axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
+    
+        attributeSortByList = {}; % cellstr of attribute names (or '-attribute') specifying how to sort trials within each condition list
     end
     
     properties(SetAccess=protected, Hidden)
@@ -211,9 +213,13 @@ classdef ConditionDescriptor
                 tcprintf('inline', '  {bright red}%d %s with randomization applied\n', nRandom, s);
             end
             
+            if ~isempty(ci.attributeSortByList)
+                tcprintf('inline', '  {dark gray}Sort trials by {purple}%s\n', strjoin(ci.attributeSortByList, ', '));
+            end
             if ci.isResampledWithinConditions
                 tcprintf('inline', '  {bright red}Trials resampled within conditions\n');
             end
+            
         end
         
         function printOneLineDescription(ci)           
@@ -1329,6 +1335,27 @@ classdef ConditionDescriptor
                 values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
                     valueLists, 'asCell', true);
             end
+        end
+        
+        function ci = sortWithinConditionsBy(ci, sortByList)
+            ci.warnIfNoArgOut(nargout);
+            if ischar(sortByList)
+                sortByList = {sortByList};
+            end
+            assert(iscellstr(sortByList), 'sortByList must be string or cellstr');
+            
+            % strip leading '-' to check has each attribute
+            attrNames = cell(numel(sortByList), 1);
+            for i = 1:numel(sortByList)
+                if strncmp(sortByList{i}, '-', 1)
+                    attrNames{i} = sortByList{i}(2:end);
+                else
+                    attrNames{i} = sortByList{i};
+                end
+            end
+            ci.assertHasAttribute(attrNames);
+            
+            ci.attributeSortByList = makecol(sortByList(:));
         end
         
     end

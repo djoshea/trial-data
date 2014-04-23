@@ -470,6 +470,24 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
+        function td = sortWithinConditionsBy(td, attrList, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            if ischar(attrList)
+                attrList = {attrList};
+            end
+            for i = 1:numel(attrList)
+                if strncmp(attrList{i}, '-', 1)
+                    td = td.addAttribute(attrList{i}(2:end));
+                else
+                    td = td.addAttribute(attrList{i});
+                end
+            end
+            
+            td.conditionInfo = td.conditionInfo.sortWithinConditionsBy(attrList, varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
        function td = selectConditions(td, varargin)
             % select specific conditions by linear index or mask
             % and return a single-axis condition descriptor with just those
@@ -1420,6 +1438,7 @@ classdef TrialDataConditionAlign < TrialData
                         'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
                 end
             end
+            set(gcf, 'Renderer', 'painters');
             
             % draw tick rasters in a grid pattern
             for iAlign = 1:nAlignUsed
