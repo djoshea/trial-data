@@ -1497,7 +1497,7 @@ classdef PopulationTrajectorySet
                         [dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}] = src.getAnalog(chName);
                         isSpikeChannel(iBasis) = false;
                         
-                    elseif src.hasSpikeChannelOrUnit(chName)
+                    elseif src.hasSpikeChannel(chName)
                         %src = src.padForSpikeFilter(spikeFilter); % should have been done in applyAlignInfoSet already
                         dataCell{iBasis, iAlign} = src.getSpikeTimes(chName);
                         timeInfoCell{iBasis, iAlign} = src.alignInfoActive.timeInfo;

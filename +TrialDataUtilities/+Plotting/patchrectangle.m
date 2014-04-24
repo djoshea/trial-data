@@ -7,10 +7,16 @@ function h = patchrectangle(x1, y1, x2, y2, varargin)
     p.parse(varargin{:});
     axh = p.Results.axh;
 
-    x1 = makerow(x1);
-    x2 = makerow(x2);
-    y1 = makerow(y1);
-    y2 = makerow(y2);
+    x1 = makerow(x1(:));
+    x2 = makerow(x2(:));
+    y1 = makerow(y1(:));
+    y2 = makerow(y2(:));
+    
+    mask = ~isnan(x1) & ~isnan(x2) & ~isnan(y1) & ~isnan(y2);
+    x1 = x1(mask);
+    x2 = x2(mask);
+    y1 = y1(mask);
+    y2 = y2(mask);
     
     X = [x1; x1; x2; x2];
     Y = [y1; y2; y2; y1];

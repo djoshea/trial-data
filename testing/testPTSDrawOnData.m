@@ -8,14 +8,14 @@ if ~exist('done', 'var') || ~done
 
     cd = ConditionDescriptor();
     cd = cd.addAttribute('target');
-    %cd = cd.addAttribute('delayNominal');
+    cd = cd.addAttribute('delayNominal');
     cd = cd.addAttribute('isStim');
-    cd = cd.groupBy('target', 'isStim');
-    cd = cd.addAttribute('discretizedStimTrialType', 'valueList', ...
-        {'delay300', 'delay300optoRelTarg320'});
+    cd = cd.groupBy('target', 'isStim', 'delayNominal');
+%     cd = cd.addAttribute('discretizedStimTrialType', 'valueList', ...
+%         {'delay300', 'delay300optoRelTarg320'});
     
     cd = cd.fixValueListsByApplyingToTrialData(pset.dataSources{1});
-    cd = cd.colorByAttributes('target');
+    cd = cd.colorByAttributes({'target', 'isStim'});
     
     ad = AlignDescriptor('TargetOnset-100:GoCue+100 @ GoCue');
     ad = ad.truncateAfter('GoCue+100');
@@ -24,8 +24,8 @@ if ~exist('done', 'var') || ~done
     ad = ad.mark('GoCue', 'appear', eventAppear.goCue);
     ad = ad.interval('Stim', 'StimEnd', 'as', 'Stim', 'appear', eventAppear.stim, ...
         'showOnAxis', true);
-    ad = ad.interval('TargetOnset', 'GoCue', 'as', 'Plan', 'appear', ...
-        AppearanceSpec('Color', [0.9 0.7 0.7]), 'showOnAxis', false);
+%     ad = ad.interval('TargetOnset', 'GoCue', 'as', 'Plan', 'appear', ...
+%         AppearanceSpec('Color', [0.9 0.7 0.7]), 'showOnAxis', false);
     
     adM = AlignDescriptor('Move-100:Move+500');
     ad = ad.round(1);

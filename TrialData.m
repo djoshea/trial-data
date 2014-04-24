@@ -297,7 +297,7 @@ classdef TrialData
         
         function units = getChannelUnitsPrimary(td, name)
             % return a string describing the units of a given channel
-            if td.hasSpikeChannelOrUnit(name)
+            if td.hasSpikeChannel(name)
                 units = 'spikes / sec';
             else
                 units = td.getChannelDescriptor(name).unitsPrimary;
