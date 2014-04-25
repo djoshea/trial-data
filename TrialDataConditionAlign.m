@@ -1590,6 +1590,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParamValue('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
             p.addParamValue('data', {}, @iscell); % for D == 1,2,3
+            p.addParamValue('yOffsetBetweenTrials', 0, @isscalar);
+            p.addParamValue('yOffsetBetweenConditions', [], @isscalar);
             
             p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
@@ -1608,6 +1610,7 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
+            cla(axh);
             
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)
@@ -1615,6 +1618,14 @@ classdef TrialDataConditionAlign < TrialData
             end
             nConditionsUsed = numel(conditionIdx);
             app = td.conditionAppearances(conditionIdx);
+            
+            % splay analog traces out vertically for D==1
+            yOffsetTrial = p.Results.yOffsetBetweenTrials;
+            if isempty(p.Results.yOffsetBetweenConditions)
+                yOffsetCondition = 5 * yOffsetTrial;
+            else
+                yOffsetCondition = p.Results.yOffsetBetweenConditions;
+            end
             
             % based on dimensionality, check sizes of provided 
             if D == 1
@@ -1724,8 +1735,12 @@ classdef TrialDataConditionAlign < TrialData
             % store handles as we go
             hData = cell(nConditionsUsed, nAlignUsed);
             
+            yOffsetsByCondition = cell(nConditionsUsed, 1);
+            
             % plot data traces
             for iAlign = 1:nAlignUsed
+                yOffsetCurrent = 0;
+                
                 % plot one condition at a time
                 for iCond = 1:nConditionsUsed
                     % determine whether we can plot all trials simultaneously
@@ -1742,6 +1757,10 @@ classdef TrialDataConditionAlign < TrialData
                             nTrialsC = size(dataC, 1);
                             plotSimultaneously = true;
                         end
+                        
+                        yOffsets = makecol(yOffsetCurrent + (0:(nTrialsC-1)) * yOffsetTrial);
+                        yOffsetCurrent = max(yOffsets) + yOffsetCondition;
+                        yOffsetsByCondition{iCond} = yOffsets;
 
                     elseif D == 2 || D == 3
                         dataC = data{iCond, iAlign};
@@ -1760,13 +1779,14 @@ classdef TrialDataConditionAlign < TrialData
                         hold(axh, 'on');
                         if D == 1 
                             tOffset = timeOffsetByAlign(iAlign);
+                            dataC = bsxfun(@plus, dataC, yOffsets);
                             if p.Results.alpha < 1
                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(timeC' + tOffset, dataC', ...
                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                             else
                                 plotArgs = app(iCond).getPlotArgs();
-                                hData{iCond, iAlign} = plot(axh, tvec, dmat, '-', ...
+                                hData{iCond, iAlign} = plot(axh, timeC', dataC', '-', ...
                                     plotArgs{:}, p.Results.plotOptions{:});
                             end
 
@@ -1799,8 +1819,10 @@ classdef TrialDataConditionAlign < TrialData
                             if D == 1
                                 tvec = timeC{iTrial};
                                 dvec = dataC{iTrial};
+                                    
                                 tOffset = timeOffsetByAlign(iAlign);
-
+                                yOffset = yOffsets(iTrial);
+                                
                                 if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                                     xvec = dvec;
                                     yvec = tvec;
@@ -1811,12 +1833,12 @@ classdef TrialDataConditionAlign < TrialData
 
                                 if ~isempty(tvec) && ~isempty(dvec)
                                     if p.Results.alpha < 1
-                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec, ...
+                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec + yOffset, ...
                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                                     else
                                         plotArgs = app(iCond).getPlotArgs();
-                                        hData{iCond, iAlign}(iTrial) = plot(axh, xvec + tOffset, yvec, '-', ...
+                                        hData{iCond, iAlign}(iTrial) = plot(axh, xvec + tOffset, yvec + yOffset, '-', ...
                                             plotArgs{:}, p.Results.plotOptions{:});
                                     end
                                 end
@@ -1874,6 +1896,16 @@ classdef TrialDataConditionAlign < TrialData
                     timeC = time{iCond, iAlign};
                     dataC = data{iCond, iAlign};
                     
+                    if D==1
+                        if iscell(dataC)
+                            for iTrial = 1:numel(dataC)
+                                dataC{iTrial} = dataC{iTrial} + yOffsetsByCondition{iCond}(iTrial);
+                            end
+                        else
+                            dataC = bsxfun(@plus, dataC, yOffsetsByCondition{iCond});
+                        end
+                    end
+                    
                     td.alignInfoSet{idxAlign}.drawOnDataByTrial('time', timeC, 'data', dataC, ...
                         'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
                         'showInLegend', iCond == 1, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
@@ -1896,7 +1928,13 @@ classdef TrialDataConditionAlign < TrialData
                 else
                     % y is data, x is time
                     if ~isempty(p.Results.axisInfoY)
-                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y');
+                        if yOffsetTrial ~= 0 || yOffsetCondition ~= 0
+                            scaleBar = true;
+                        else
+                            scaleBar = false;
+                        end
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                            'which', 'y', 'scaleBar', scaleBar);
                     end
                 end
 

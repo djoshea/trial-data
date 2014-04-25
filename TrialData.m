@@ -540,6 +540,14 @@ classdef TrialData
             
             data = {td.data.(cd.dataFields{1})}';
             time = {td.data.(cd.dataFields{2})}';
+            for i = 1:numel(data)
+                if numel(data{i}) == numel(time{i}) - 1
+                    time{i} = makecol(time{i}(1:end-1));
+                else
+                    time{i} = makecol(time{i});
+                end
+                data{i} = makecol(data{i});
+            end
         end
         
         % same as raw, except empty out invalid trials
@@ -983,6 +991,12 @@ classdef TrialData
 
             for i = 1:td.nTrialsValid
                 if isempty(dataCell{i}), continue, end;
+                
+                % allow for derivative channels to have one fewer time
+                % point
+                if numel(dataCell{i}) == numel(timeCell{i}) - 1
+                    timeCell{i} = timeCell{i}(1:end-1);
+                end
                 plot(axh, double(timeCell{i}), dataCell{i}, '-', 'Color', 0.5*ones(3,1), ...
                     p.Results.plotOptions{:});
                 if i == 1, hold(axh, 'on'); end

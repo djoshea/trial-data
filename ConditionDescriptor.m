@@ -195,12 +195,14 @@ classdef ConditionDescriptor
             tcprintf('inline', '  {bright blue}Attributes:\n');
             attrDesc = ci.generateAttributeDescriptions(true);
             for i = 1:ci.nAttributes
-                tcprintf('inline', '    %s: {white}%s\n', attrDesc{i}, strjoin(ci.attributeValueListsAsStrings{i}, ', '));
+                tcprintf('inline', '    %s: {white}%s\n', attrDesc{i}, ...
+                    tcprintfEscape(strjoin(ci.attributeValueListsAsStrings{i}, ', ')));
             end
             axisDesc = ci.generateAxisDescriptions(true);
             tcprintf('inline', '  {bright blue}Axes:\n');
             for i = 1:ci.nAxes
-                tcprintf('inline', '    %s: {white}%s\n', axisDesc{i}, strjoin(ci.axisValueListsAsStrings{i}, ', '));
+                tcprintf('inline', '    %s: {white}%s\n', axisDesc{i}, ...
+                    tcprintfEscape(strjoin(ci.axisValueListsAsStrings{i}, ', ')));
             end
             
             nRandom = nnz(ci.axisRandomizeModes ~= ci.AxisOriginal);
@@ -214,7 +216,7 @@ classdef ConditionDescriptor
             end
             
             if ~isempty(ci.attributeSortByList)
-                tcprintf('inline', '  {dark gray}Sort trials by {purple}%s\n', strjoin(ci.attributeSortByList, ', '));
+                tcprintf('inline', '  {bright blue}Sort: {purple}%s\n', strjoin(ci.attributeSortByList, ', '));
             end
             if ci.isResampledWithinConditions
                 tcprintf('inline', '  {bright red}Trials resampled within conditions\n');
@@ -1729,13 +1731,16 @@ classdef ConditionDescriptor
                         end
                                 
                     case {ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles}
-                        if ~iscell(valueList{i})
-                            bins = valueList{i};
+                        if ~iscellstr(valueList{i})
+                            if ~iscell(valueList{i})
+                                bins = valueList{i};
+                            else
+                                bins = cat(1, valueList{i}{:});
+                            end
                             valueList{i} = arrayfun(@(row) sprintf('%g-%g', bins(row, 1), bins(row, 2)), ...
                                 1:size(bins, 1), 'UniformOutput', false);
-                        else
-                            % already cellstr for auto bins, leave as is
                         end
+                        
                     case ci.AttributeValueListAuto
                         % auto list leave empty, must be determined when
                         % ConditionInfo applies it to data

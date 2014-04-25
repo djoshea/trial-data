@@ -946,8 +946,10 @@ classdef AlignInfo < AlignDescriptor
         function [alignedData, alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, includePadding, varargin)
             % align timeseries where trials are along dimension 1
             [alignedTime, rawTimesMask] = ad.getAlignedTimesCell(timeCell, includePadding);
-            alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
-                'UniformOutput', false, 'ErrorHandler', @(varargin) []);
+%             alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
+%                 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
+            alignedData = cellfun(@(data, mask) data(mask(1:size(data, 1)), :), dataCell, rawTimesMask, ...
+                'UniformOutput', false);
         end
         
         function [startRel, stopRel] = getStartStopRelativeToZeroByTrial(ad)
