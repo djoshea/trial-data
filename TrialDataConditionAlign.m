@@ -1124,7 +1124,7 @@ classdef TrialDataConditionAlign < TrialData
             dataCell = td.groupElements(data);
         end
         
-        function [meanMat, semMat, tvec, nTrialsMat, stdMat] = getAnalogGroupMeans(td, name, varargin)
+        function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogGroupMeans(td, name, varargin)
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
@@ -1246,7 +1246,7 @@ classdef TrialDataConditionAlign < TrialData
                 timeDelta = td.alignInfoActive.minTimeDelta;
                 if isempty(timeDelta)
                     timeDelta = 1;
-                    warning('Using timeDelta=%d for spike rate timepoints. Specify ''timeDelta'' or call .round for consistent results');
+                    warning('Using timeDelta=%d for spike rate timepoints. Specify ''timeDelta'' or call .round for consistent results', timeDelta);
                 end
             end
             
@@ -1334,13 +1334,13 @@ classdef TrialDataConditionAlign < TrialData
             % and slice each in time to capture only the non-nan region
             [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
-                [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getSpikeRateFilteredMeanByGroup(unitName, 'minTrials', p.Results.minTrials, ...
                     'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
             
-                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
-                    semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign});
+                    semMat{iAlign}, stdMat{iAlign});
             end
             
             switch p.Results.errorType
@@ -1377,6 +1377,7 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
+            cla(axh);
             
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)
@@ -2006,6 +2007,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('timeAxisStyle', 'marker', @ischar);
             p.addParamValue('useThreeVector', true, @islogical);
             p.addParamValue('useTranslucentMark3d', false, @islogical);
+            p.addParamValue('lineSmoothing', false, @islogical); % for alpha == 1 only
             p.KeepUnmatched;
             p.parse(varargin{:});
             
@@ -2015,7 +2017,12 @@ classdef TrialDataConditionAlign < TrialData
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
             cla(axh);
-            app = td.conditionAppearances;
+            
+            if p.Results.lineSmoothing
+                lineSmoothing = 'on';
+            else
+                lineSmoothing = 'off';
+            end
             
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)
@@ -2125,8 +2132,8 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, tvec + tOffset, dmat, '-', ...
-                                'LineWidth', p.Results.lineWidth, plotArgs{:}, p.Results.plotOptions{:}, ...
-                                'LineSmoothing', 'on');
+                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', lineSmoothing, ...
+                                plotArgs{:}, p.Results.plotOptions{:});
                         end
 
                     elseif D == 2
@@ -2137,7 +2144,7 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, dmat(:, 1), dmat(:, 2), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', 'on', ...
+                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
 
@@ -2149,7 +2156,7 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot3(axh, dmat(:, 1), dmat(:, 2), dmat(:, 3), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', 'on', ...
+                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
                     end  
@@ -2248,11 +2255,11 @@ classdef TrialDataConditionAlign < TrialData
             % and slice each in time to capture only the non-nan region
             [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
-                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getAnalogGroupMeans(name, 'minTrials', p.Results.minTrials);     
-                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
-                    semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign});
+                    semMat{iAlign}, stdMat{iAlign});
             end
             
             switch p.Results.errorType
@@ -2281,13 +2288,13 @@ classdef TrialDataConditionAlign < TrialData
 
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
-            [meanMat, semMat, tvecCell, nTrialsCell, stdMat] = deal(cell(td.nAlign, 1));
+            [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
-                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getMultiAnalogGroupMeans({name1, name2}, 'minTrials', p.Results.minTrials);     
-                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
-                    semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign});
+                    semMat{iAlign}, stdMat{iAlign});
             end
             
             td.plotProvidedAnalogDataGroupMeans(2, 'time', tvecCell, ...
@@ -2308,13 +2315,13 @@ classdef TrialDataConditionAlign < TrialData
 
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
-            [meanMat, semMat, tvecCell, nTrialsCell, stdMat] = deal(cell(td.nAlign, 1));
+            [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
-                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getMultiAnalogGroupMeans({name1, name2, name3}, 'minTrials', p.Results.minTrials);     
-                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign}] = ...
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
-                    semMat{iAlign}, nTrialsCell{iAlign}, stdMat{iAlign});
+                    semMat{iAlign}, stdMat{iAlign});
             end
             
             td.plotProvidedAnalogDataGroupMeans(3, 'time', tvecCell, ...

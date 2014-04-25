@@ -79,7 +79,7 @@ else
             if ndims(varargin{iArg}) == 3
                 validPortion = all(~isnan(varargin{iArg}), 3);
             else
-                validPortion = isnan(varargin{iArg});
+                validPortion = ~isnan(varargin{iArg});
             end
             keepmask = keepmask & any(validPortion, 1)';
         end
@@ -102,7 +102,7 @@ else
         warning('No valid window found across matrices');
         for iArg = 1:nArg
             if isvec(iArg)
-                varargout{iArg} = []
+                varargout{iArg} = [];
             else
                 varargout{iArg} = nan(nTrials, 0);
             end

@@ -8,17 +8,15 @@ if ~exist('done', 'var') || ~done
 
     cd = ConditionDescriptor();
     cd = cd.addAttribute('target');
-    cd = cd.addAttribute('delayNominal');
-    cd = cd.addAttribute('isStim');
-    cd = cd.groupBy('target', 'isStim', 'delayNominal');
+    cd = cd.addAttribute('discretizedStimTrialType');
+    cd = cd.groupBy('discretizedStimTrialType', 'target');
 %     cd = cd.addAttribute('discretizedStimTrialType', 'valueList', ...
 %         {'delay300', 'delay300optoRelTarg320'});
     
     cd = cd.fixValueListsByApplyingToTrialData(pset.dataSources{1});
-    cd = cd.colorByAttributes({'target', 'isStim'});
+    cd.appearanceFn = @appearFn_colorByTarget;
     
-    ad = AlignDescriptor('TargetOnset-100:GoCue+100 @ GoCue');
-    ad = ad.truncateAfter('GoCue+100');
+    ad = AlignDescriptor('TargetOnset-600:GoCue+340 @ GoCue');
     ad = ad.round(1);
     ad = ad.mark('TargetOnset', 'appear', eventAppear.targetOnset);
     ad = ad.mark('GoCue', 'appear', eventAppear.goCue);
@@ -52,10 +50,6 @@ end
 %%
 
 figure(1), clf, set(gca, 'Color', 'w');
-pca.plotStateSpace('markAlpha', 0.5, 'alpha', 0.6, ...
-    'conditionIdx', [1 5], 'alignIdx', [1 2]);
-
-%%
 pca.plotStateSpace('markAlpha', 0.5, 'alpha', 1);
 
 
