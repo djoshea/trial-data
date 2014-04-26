@@ -511,8 +511,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = resetConditionInfo(td)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = [];
-            td = td.initializeConditionInfo();
+            td = td.setConditionDescriptor(ConditionDescriptor());
         end
         
         function td = setAllAttributeValueListsAuto(td)

@@ -48,6 +48,12 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         isVectorByField
         isScalarByField 
         
+        % indicates whether a given field is shareable between multiple
+        % channels. If a field is marked as shareable, it will be copied
+        % when this channel's data is updated, so that the other channel's
+        % are not affected. See getIsShareableByField for implementation
+        isShareableByField
+        
          % in memory data class of each field (or empty if unknown / mixed)
         dataClassByField % cell array specifying data class to convert each 
         
@@ -132,6 +138,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             tf = cd.elementTypeByField == cd.BOOLEAN;
         end
         
+        function tf = get.isShareableByField(cd)
+            % defer to overrideable function
+            tf = cd.getIsShareableByField();
+        end
+        
         function u = get.unitsPrimary(cd)
             if isempty(cd.unitsByField)
                 u = '';
@@ -164,6 +175,15 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             else
                 str = sprintf('%s (%s)', cd.name, cd.unitsPrimary);
             end
+        end
+        
+        function cd = renameDataField(cd, iF, newName)
+            cd.dataFields{iF} = newName;
+        end
+        
+        function tf = getIsShareableByField(cd)
+            tf = true(cd.nFields, 1);
+            tf(1) = false;
         end
 
         % look at the data struct and check that the correct data fields

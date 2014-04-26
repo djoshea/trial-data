@@ -29,5 +29,5 @@ end
 %%
 
 figure(6), clf; set(gcf, 'Color', 'w');
-tdca.plotPSTH('unit101_0', 'alpha', 1, 'markAlpha', 0.7, 'minTrials', 5);
+tdca.plotPSTH('unit97_1', 'alpha', 1, 'markAlpha', 0.7, 'minTrials', 5);
 

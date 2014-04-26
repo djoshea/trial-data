@@ -336,19 +336,6 @@ classdef TrialData
             end
         end
         
-        function td = setChannelData(td, name, varargin)
-            td.warnIfNoArgOut(nargout);
-            fields = td.channelDescriptorsByName.(name).dataFields;
-            % for now just set first field
-            fld = fields{1};
-            vals = varargin{1};
-            if ~iscell(vals)
-                vals = num2cell(vals);
-            end
-            
-            [td.data.(fld)] = deal(vals{:});
-        end
-        
         % channels may reference common data fields in .data to prevent
         % data duplication. This function returns the list of channels
         % which reference a particular data field. fields is a cellstr
@@ -429,6 +416,8 @@ classdef TrialData
         function td = addAnalog(td, name, values, times, units)
             td.warnIfNoArgOut(nargout);
             
+            % times can either be a field/channel name, or it can be raw
+            % time values
             if ischar(times)
                 if td.hasChannel(times)
                     % treat times as analog channel name
@@ -447,17 +436,35 @@ classdef TrialData
                 else
                     error('%s is not a channel or data field name', times);
                 end
+                times = [];
+
             elseif iscell(times) || isnumeric(times)
                 % pass specified times along directly as cell
                 % and generate unique time field name
                 timeField = genvarname(sprintf('%s_time', name), fieldnames(td.data));
-                
             else
                 error('Times must be channel/field name or cell array');
             end
                 
             % build a channel descriptor for the data
             cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units);
+            
+            % AnalogChannelDescriptor declares data fields as data, times
+            td = td.addChannel(cd);
+            
+            td = td.setAnalog(name, values, 'times', times, ...
+                'clearForInvalid', false);
+        end
+        
+        function td = setAnalog(td, name, values, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(name);
+            
+            p = inputParser();
+            p.addOptional('times', [], @(x) iscell(x) ||  isnumeric(x));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            times = p.Results.times;
             
             % check the values and convert to nTrials cellvec
             if ismatrix(values) && isnumeric(values)
@@ -470,29 +477,35 @@ classdef TrialData
                 error('Values must be numeric matrix or cell array');
             end
                 
-            if iscell(times)
-                assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
-            elseif ismatrix(times)
-                if isvector(times)
-                    times = repmat(makerow(times), td.nTrials, 1);
+            if ~isempty(times)
+                if iscell(times)
+                    assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
+                elseif ismatrix(times)
+                    if isvector(times)
+                        times = repmat(makerow(times), td.nTrials, 1);
+                    end
+                    assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
+                    times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
+
+                else
+                    error('Times must be numeric matrix or cell array');
                 end
-                assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
-                times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
-            
+                
+                % add the zero offset to the time vector for each trial
+                % this is mostly for TDCA, so that alignments info is
+                % preserved
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+                times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+                
+                fieldMask = [true; true];
             else
-                error('Times must be numeric matrix or cell array');
+                % update values, but not times
+                fieldMask = [true; false];
+                times = [];
             end
-            
-            % check each trial's time vector against its value vector
-            sizeMatch = cellfun(@(time, vals) numel(time) == numel(vals), times, values);
-            assert(all(sizeMatch), 'Sizes of times vs. values vectors do not match on %d trials', nnz(sizeMatch));
-            
-            % add the zero offset to the time vector for each trial
-            offsets = td.getTimeOffsetsFromZeroEachTrial();
-            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
-            
-            % AnalogChannelDescriptor declares data fields as data, times
-            td = td.addChannel(cd, {values, times});
+
+            td = td.setChannelData(name, {values, times}, 'fieldMask', ...
+                fieldMask, p.Unmatched);
         end
 
         function tf = hasAnalogChannel(td, name) 
@@ -564,11 +577,6 @@ classdef TrialData
                 timeVec = cellfun(@(v) v(1), timeCell, 'ErrorHandler', @(varargin) NaN);
             end
         end 
-        
-        function td = setAnalog(td, name, vals)
-            td.warnIfNoArgOut(nargout);
-            td = td.setChannelData(name, vals);
-        end
     end
     
     methods % Event channel methods
@@ -708,9 +716,9 @@ classdef TrialData
             end
         end
         
-        function td = setEvent(td, name, vals)
+        function td = setEvent(td, name, vals, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.setChannelData(name, vals);
+            td = td.setChannelData(name, {vals}, varargin{:});
         end
     end
     
@@ -796,9 +804,18 @@ classdef TrialData
             paramStruct = copyStructField(td.data, [], td.listParamChannels());
         end
         
-        function td = setParam(td, name, vals)
+        function td = setParam(td, name, vals, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.setChannelData(name, vals);
+            cd = td.channelDescriptorsByName.(name);
+            % convert to strcell
+            if cd.isStringByField(1) && ischar(vals)
+                vals = {vals};
+            end
+            % clone scalar to size
+            if isscalar(vals)
+                vals = repmat(vals, td.nTrials, 1);
+            end  
+            td = td.setChannelData(name, {vals}, varargin{:});
         end
     end
 
@@ -864,10 +881,16 @@ classdef TrialData
             offsets = zerosvec(td.nTrials);
         end
         
-        function td = addChannel(td, cd, valueCell, varargin)
+        function td = addChannel(td, cd, varargin)
+            % adds a new channel described by ChannelDescriptor cd.
+            % valueCell must be nDataFields x 1 cell each with nTrials x 1
+            % cell within. Note that if any trials are marked invalid, this
+            % data will be cleared when adding the channel.
             p = inputParser();
+            p.addOptional('valueCell', {}, @(x) true);
             p.addParamValue('ignoreOverwriteChannel', false, @islogical);
             p.parse(varargin{:});
+            valueCell = p.Results.valueCell;
             
             td.warnIfNoArgOut(nargout);
             
@@ -876,6 +899,99 @@ classdef TrialData
             if ~p.Results.ignoreOverwriteChannel && td.hasChannel(cd.name)
                 warning('Overwriting existing channel %s', cd.name);
             end
+
+            td.channelDescriptorsByName.(cd.name) = cd;
+            
+            if isempty(valueCell)
+                td = td.clearChannelData(cd.name, 'clearShared', false);
+            else
+                if any(~td.valid)
+                    warning('Provided channel data will be cleared on invalid trials.');
+                end
+                td = td.setChannelValidTrialsOnly(cd, valueCell);
+            end
+        end
+        
+        function td = copyRenameSharedChannelFields(td, name, fieldMask)
+            % copy all fields which belong to this channel which are shared
+            % with another channel, rename those fields, and mark the
+            % updated fields inside that fields channelDescriptor
+           td.warnIfNoArgOut(nargout); 
+           
+           cd = td.channelDescriptorsByName.(name);
+           if nargin < 3
+               fieldMask = true(cd.nFields, 1);
+           end
+           isShareable = cd.isShareableByField; 
+           
+            dataFields = cd.dataFields;
+            for iF = 1:cd.nFields
+                if ~isShareable(iF) || ~fieldMask(iF), continue; end
+                
+                otherChannels = setdiff(td.getChannelsReferencingFields(dataFields{iF}), cd.name);
+                if isempty(otherChannels), continue; end
+                
+                % being used by other channels, rename and copy
+                newName = genvarname([dataFields{iF} '_' name 'Copy'], fieldnames(td.data));
+                td.data = copyStructField(td.data, td.data, dataFields{iF}, newName);
+                
+                cd = cd.renameDataField(iF, newName);
+            end
+            
+            td.channelDescriptorsByName.(name) = cd;
+        end
+        
+        function td = clearChannelData(td, name, varargin)
+            p = inputParser();
+            p.addParamValue('clearShared', false, @islogical);
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(name);
+            
+            if p.Results.clearShared
+                % avoid clearing data that other channels reference 
+                td = td.copyRenameSharedChannelFields(name);
+            end
+
+            % get the channel descriptor after performing any renames above
+            cd = td.channelDescriptorsByName.(name);
+            
+            % update the values of a given channel's data fields on 
+            dataFields = cd.dataFields;
+            nFields = numel(dataFields);
+            for iF = 1:nFields
+                if ~p.Results.clearShared && cd.isShareableByField(iF)
+                    continue;
+                end
+                val = cd.missingValueByField{iF};
+                for iT = 1:td.nTrials
+                    td.data(iT).(dataFields{iF}) = val;
+                end
+            end
+        end
+        
+        function td = setChannelData(td, name, valueCell, varargin)
+            p = inputParser();
+            p.addParamValue('fieldMask', [], @islogical);
+            p.addParamValue('clearForInvalid', false, @islogical);
+            p.addParamValue('updateValidOnly', false, @islogical);
+            p.parse(varargin{:});
+            
+            % update the values of a given channel's data fields on 
+            td.warnIfNoArgOut(nargout);
+            
+            cd = td.channelDescriptorsByName.(name);
+            fieldMask = p.Results.fieldMask;
+            if isempty(fieldMask)
+                fieldMask = true(cd.nFields, 1);
+            else
+                assert(numel(fieldMask) == cd.nFields);
+            end
+            
+            % avoid overwriting data shared by other channels
+            td = td.copyRenameSharedChannelFields(cd.name, fieldMask);
+            cd = td.channelDescriptorsByName.(name);
             
             dataFields = cd.dataFields;
             nFields = numel(dataFields);
@@ -887,9 +1003,15 @@ classdef TrialData
                 numel(nFields), numel(valueCell));
             
             for iF = 1:nFields
+                % only touch specified fields
+                if ~fieldMask(iF), continue; end
+                
                 % IMPORTANT: DO NOT ACCEPT DATA ON INVALID TRIALS
-                if any(~td.valid)
-                    warning('New data will be cleared on invalid trials. Recommended to call filterValidTrials() before manipulating data.');
+                updateMask = true(td.nTrials, 1);
+                if p.Results.updateValidOnly
+                    updateMask = td.valid;
+                elseif p.Results.clearForInvalid
+                    updateMask = true(td.nTrials, 1);
                     valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
                 end
                 
@@ -898,20 +1020,14 @@ classdef TrialData
                 if ischar(valueCell{iF})
                     if ~strcmp(valueCell{iF}, dataFields{iF})
                         % copy field values since the field names differ
-                        td.data = copyStructField(td.data, td.data, valueCell{iF}, dataFields{iF});
-                    end
-                else
-                    % check whether we're overwriting data used by other
-                    % channels (besides this one) and throw an error if we are
-                    if isfield(td.data, dataFields{iF})
-                        otherChannels = setdiff(td.getChannelsReferencingFields(dataFields{iF}), cd.name);
-                        if ~isempty(otherChannels)
-                            error('Refusing to overwrite data field %s referenced by other channels %s', ...
-                                strjoin(otherChannels, ', '));
+                        for iT = 1:td.nTrials
+                            if ~updateMask(iT), continue; end
+                            td.data(iT).(dataFields{iF}) = td.data(iT).(valueCell{iF});
                         end
                     end
+                else
+                    td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}, updateMask);
                 end
-                td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF});
             end 
 
             td.channelDescriptorsByName.(cd.name) = cd;
