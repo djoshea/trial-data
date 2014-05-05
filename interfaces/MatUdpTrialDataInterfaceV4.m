@@ -64,7 +64,7 @@ classdef MatUdpTrialDataInterfaceV4 < TrialDataInterface
             groups = tdi.meta(1).groups;
             groupNames = fieldnames(groups);
             nGroups = numel(groupNames);
-            fprintf('Inferring channel data characteristics...\n');
+            debug('Inferring channel data characteristics...\n');
             for iG = 1:nGroups
                 group = groups.(groupNames{iG});
 
@@ -102,7 +102,7 @@ classdef MatUdpTrialDataInterfaceV4 < TrialDataInterface
 
                     cd.groupName = group.name;
 
-                    if strcmp(name, 'success')
+                    if strcmp(name, 'rt')
                         a = 1;
                     end
                     if strcmp(group.type, 'analog')
@@ -143,6 +143,7 @@ classdef MatUdpTrialDataInterfaceV4 < TrialDataInterface
         %   timeStartWallclock : wallclock datenum indicating when this trial began
         %
         function channelData = getChannelData(tdi, channelDescriptors, varargin)
+            debug('Converting / repairing channel data...\n');
             channelData = tdi.R;
             
             % rename special channels
@@ -163,6 +164,7 @@ classdef MatUdpTrialDataInterfaceV4 < TrialDataInterface
                     continue;
                 end
                 channelData = mvfield(channelData, cd.meta.originalField, cd.name);
+                channelData = cd.repairData(channelData);
             end
         end
     end

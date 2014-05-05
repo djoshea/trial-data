@@ -30,6 +30,10 @@ classdef TrialData
         
         channelDescriptorsByName % struct with ChannelDescriptor for each channel, by name
     end
+    
+    properties(Access=protected, Hidden)
+        odc % TrialDataOnDemandCache instance
+    end
 
     % Convenience dependent properties
     properties(Dependent) 
@@ -44,6 +48,8 @@ classdef TrialData
     % Initializing and building
     methods
         function td = TrialData(varargin)
+            td.odc = TrialDataOnDemandCache();
+            
             if ~isempty(varargin)
                 if isa(varargin{1}, 'TrialData')
                     td = td.initializeFromTrialData(varargin{1});
@@ -175,8 +181,19 @@ classdef TrialData
     
     % Dependent property implementations
     methods % get. accessors for above properties which simply refer to tdi.?
-        function valid = get.valid(td)
-            valid = td.buildValid();
+        function v = get.valid(td)
+            if isempty(td.odc), v = td.buildValid(); return; end
+            v = td.odc.valid;            
+            if isempty(v)
+                td.odc.valid = td.buildValid();
+                v = td.odc.valid;
+            end
+        end
+        
+        function td = set.valid(td, v)
+            if isempty(td.odc), td.odc = TrialDataOnDemandCache(); end
+            td.odc = td.odc.copy();
+            td.odc.valid = v;
         end
         
         function valid = buildValid(td)
@@ -242,17 +259,32 @@ classdef TrialData
 
         function td = markInvalid(td, mask)
             td.warnIfNoArgOut(nargout);
-            td.valid(mask) = false;
+            td.manualValid(mask) = false;
+            td = td.updateValid();
+        end
+        
+        function td = setInvalid(td, mask)
+            td.manualValid = true(td.nTrials, 1);
+            td.manualValid(mask) = false;
+            td = td.updateValid();
+        end
+        
+        function td = setAllValid(td, mask)
+            td.manualValid = true(td.nTrials, 1);
+            td = td.updateValid();
+        end
+        
+        function td = updateValid(td)
+            td.warnIfNoArgOut(nargout);
+            td.valid = [];
         end
     end
 
     methods(Access=protected) % Utility methods
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~isa(obj, 'handle')
-                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect', ...
                     class(obj));
-                expr = sprintf('debug(''%s'')', message);
-                evalin('caller', expr); 
             end
         end
         
@@ -260,6 +292,9 @@ classdef TrialData
             if iscell(vals)
                 [vals{~td.valid}] = deal(value);
             else
+                if isempty(value)
+                    value = NaN;
+                end
                 vals(~td.valid) = value;
             end
         end
@@ -302,6 +337,11 @@ classdef TrialData
             else
                 units = td.getChannelDescriptor(name).unitsPrimary;
             end
+        end
+        
+        function td = setChannelUnitsPrimary(td, name, units)
+            td.warnIfNoArgOut(nargout);
+            td.channelDescriptorsByName.(name) = td.getChannelDescriptor(name).setPrimaryUnits(units);
         end
         
         function names = listChannels(td)
@@ -413,7 +453,16 @@ classdef TrialData
     end
     
     methods % Analog channel methods
-        function td = addAnalog(td, name, values, times, units)
+        function td = addAnalog(td, name, varargin)
+            p = inputParser();
+            p.addOptional('values', {}, @(x) iscell(x) || ismatrix(x));
+            p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x));
+            p.addParamValue('units', '', @ischar);
+            p.parse(varargin{:});
+            times = p.Results.times;
+            values = p.Results.values;
+            units = p.Results.units;
+
             td.warnIfNoArgOut(nargout);
             
             % times can either be a field/channel name, or it can be raw
@@ -452,8 +501,10 @@ classdef TrialData
             % AnalogChannelDescriptor declares data fields as data, times
             td = td.addChannel(cd);
             
-            td = td.setAnalog(name, values, 'times', times, ...
-                'clearForInvalid', false);
+            if ~isempty(values)
+                td = td.setAnalog(name, values, times, ...
+                    'clearForInvalid', false);
+            end
         end
         
         function td = setAnalog(td, name, values, varargin)
@@ -490,22 +541,19 @@ classdef TrialData
                 else
                     error('Times must be numeric matrix or cell array');
                 end
-                
-                % add the zero offset to the time vector for each trial
-                % this is mostly for TDCA, so that alignments info is
-                % preserved
-                offsets = td.getTimeOffsetsFromZeroEachTrial();
-                times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
-                
-                fieldMask = [true; true];
             else
-                % update values, but not times
-                fieldMask = [true; false];
-                times = [];
+                % pass along the current times since the data is coming in with the
+                % existing alignment
+                [~, times] = td.getAnalog(name);
             end
+            
+            % add the zero offset to the time vector for each trial
+            % this is mostly for TDCA, so that alignments info is
+            % preserved
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
 
-            td = td.setChannelData(name, {values, times}, 'fieldMask', ...
-                fieldMask, p.Unmatched);
+            td = td.setChannelData(name, {values, times}, p.Unmatched);
         end
 
         function tf = hasAnalogChannel(td, name) 
@@ -716,33 +764,92 @@ classdef TrialData
             end
         end
         
-        function td = setEvent(td, name, vals, varargin)
+        function td = setEvent(td, name, times, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.setChannelData(name, {vals}, varargin{:});
+            
+            % add the zero offset to the time vector for each trial
+            % this is mostly for TDCA, so that alignments info is
+            % preserved
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            if iscell(times)
+                times = cellfun(@plus, makecol(times), num2cell(offsets), 'UniformOutput', false);
+            else
+                times = makecol(times) + offsets;
+            end
+            td = td.setChannelData(name, {times}, varargin{:});
+            
         end
     end
     
     methods % Param channel methods
-        function td = addParam(td, name, values, varargin)
+        function td = addParam(td, name, varargin)
             td.warnIfNoArgOut(nargout);
 
             p = inputParser;
             p.addRequired('name', @ischar);
-            p.addRequired('values', @isvector);
+            p.addOptional('values', @isvector);
             p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
-            p.parse(name, values, varargin{:});
+            p.parse(name, varargin{:});
+            
             name = p.Results.name;
             values = p.Results.values;
             cd = p.Results.channelDescriptor;
 
-            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
-            assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
-
+%             if td.hasChannel(name)
+%                 warning('Overwriting existing param channel with name %s', name);
+%             end
+            if ~isempty(values)
+                assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
+            end
+            
             if isempty(cd)
                 cd = ParamChannelDescriptor.buildFromValues(name, values);
             end
 
             td = td.addChannel(cd, {values});
+        end
+        
+        function td = addScalarParam(td, name, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addOptional('values', {}, @isvector);
+            p.addParamValue('units', '', @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            cd = ParamChannelDescriptor.buildScalarParam(name, p.Results.units);
+            values = p.Results.values;
+            td = td.addParam(name, values, 'channelDescriptor', cd, ...
+                p.Unmatched);
+        end
+        
+        function td = addStringParam(td, name, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addOptional('values', {}, @isvector);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            cd = ParamChannelDescriptor.buildStringParam(name);
+            values = p.Results.values;
+            td = td.addParam(name, values, 'channelDescriptor', cd, ...
+                p.Unmatched);
+        end
+        
+        function td = addBooleanParam(td, name, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addOptional('values', {}, @isvector);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            cd = ParamChannelDescriptor.buildBooleanParam(name);
+            values = p.Results.values;
+            td = td.addParam(name, values, 'channelDescriptor', cd, ...
+                p.Unmatched);
         end
         
         function tf = hasParamChannel(td, name) 
@@ -774,11 +881,21 @@ classdef TrialData
         end
         
         function values = getParamRaw(td, name)
+            % grab the raw value for a parameter without considering
+            % validity. if name is an analog channel, grab the first sample
+            % of that channel
             cd = td.channelDescriptorsByName.(name);
-            values = {td.data.(cd.dataFields{1})}';
-            % if this channel is marked as a scalar, convert to a numeric array
-            if ~cd.collectAsCellByField(1)
-                values = cellfun(@double, values);
+            
+            if isa(cd, 'ParamChannelDescriptor')
+                values = {td.data.(cd.dataFields{1})}';
+                % if this channel is marked as a scalar, convert to a numeric array
+                if ~cd.collectAsCellByField(1)
+                    values = cellfun(@double, values);
+                end
+            elseif isa(cd, 'AnalogChannelDescriptor')
+                values = td.getAnalogSample(name);
+            else
+                error('Only valid for parameter or analog channels');
             end
         end
         % Basic access methods, very fast
@@ -896,19 +1013,27 @@ classdef TrialData
             
             % check for overwrite if requested
             assert(isa(cd, 'ChannelDescriptor'), 'Argument cd must be ChannelDescriptor');
-            if ~p.Results.ignoreOverwriteChannel && td.hasChannel(cd.name)
-                warning('Overwriting existing channel %s', cd.name);
-            end
+%             if ~p.Results.ignoreOverwriteChannel && td.hasChannel(cd.name)
+%                 warning('Overwriting existing channel %s', cd.name);
+%             end
 
             td.channelDescriptorsByName.(cd.name) = cd;
             
-            if isempty(valueCell)
-                td = td.clearChannelData(cd.name, 'clearShared', false);
-            else
-                if any(~td.valid)
-                    warning('Provided channel data will be cleared on invalid trials.');
+            % touch each of the value fields to make sure they exist
+            for iF = 1:cd.nFields
+                if ~isfield(td.data, cd.dataFields{iF});
+                    td.data(end).(cd.dataFields{iF}) = [];
                 end
-                td = td.setChannelValidTrialsOnly(cd, valueCell);
+            end     
+            
+            if isempty(valueCell)
+                td = td.clearChannelData(cd.name, 'fieldMask', ~cd.isShareableByField);
+            else
+                % clear on fields where no values provided and it's not shared, 
+                % set on fields where values are provided
+                nonEmptyMask = ~cellfun(@isempty, valueCell);
+                td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask && ~cd.isShareableByField);
+                td = td.setChannelData(cd.name, valueCell, 'fieldMask', nonEmptyMask);
             end
         end
         
@@ -919,7 +1044,7 @@ classdef TrialData
            td.warnIfNoArgOut(nargout); 
            
            cd = td.channelDescriptorsByName.(name);
-           if nargin < 3
+           if nargin < 3 || isempty(fieldMask)
                fieldMask = true(cd.nFields, 1);
            end
            isShareable = cd.isShareableByField; 
@@ -943,27 +1068,29 @@ classdef TrialData
         
         function td = clearChannelData(td, name, varargin)
             p = inputParser();
-            p.addParamValue('clearShared', false, @islogical);
+            p.addParamValue('fieldMask', [], @islogical);
             p.parse(varargin{:});
+            
+            cd = td.channelDescriptorsByName.(name);
+            fieldMask = p.Results.fieldMask;
+            if isempty(fieldMask)
+                fieldMask = true(cd.nFields, 1);
+            end
             
             td.warnIfNoArgOut(nargout);
             td.assertHasChannel(name);
             
-            if p.Results.clearShared
-                % avoid clearing data that other channels reference 
-                td = td.copyRenameSharedChannelFields(name);
-            end
+            % avoid clearing data that other channels reference 
+            td = td.copyRenameSharedChannelFields(name, p.Results.fieldMask);
 
-            % get the channel descriptor after performing any renames above
+            % get the channel descriptor again after performing any renames above
             cd = td.channelDescriptorsByName.(name);
             
             % update the values of a given channel's data fields on 
             dataFields = cd.dataFields;
             nFields = numel(dataFields);
             for iF = 1:nFields
-                if ~p.Results.clearShared && cd.isShareableByField(iF)
-                    continue;
-                end
+                if ~fieldMask(iF), continue; end
                 val = cd.missingValueByField{iF};
                 for iT = 1:td.nTrials
                     td.data(iT).(dataFields{iF}) = val;
@@ -972,11 +1099,21 @@ classdef TrialData
         end
         
         function td = setChannelData(td, name, valueCell, varargin)
+            % note that by default, updateValidOnly is true, meaning that
+            % the values on invalid trials will not be updated
             p = inputParser();
             p.addParamValue('fieldMask', [], @islogical);
             p.addParamValue('clearForInvalid', false, @islogical);
-            p.addParamValue('updateValidOnly', false, @islogical);
+            p.addParamValue('updateValidOnly', true, @islogical);
+            p.addParamValue('updateMask', [], @isvector);
             p.parse(varargin{:});
+            
+            updateMaskManual = p.Results.updateMask;
+            if isempty(updateMaskManual)
+                updateMaskManual = true(td.nTrials, 1);
+            end
+            assert(numel(updateMaskManual) == td.nTrials, ...
+                'Size of updateMask must match nTrials');
             
             % update the values of a given channel's data fields on 
             td.warnIfNoArgOut(nargout);
@@ -1007,27 +1144,14 @@ classdef TrialData
                 if ~fieldMask(iF), continue; end
                 
                 % IMPORTANT: DO NOT ACCEPT DATA ON INVALID TRIALS
-                updateMask = true(td.nTrials, 1);
+                updateMask = updateMaskManual;
                 if p.Results.updateValidOnly
-                    updateMask = td.valid;
+                    updateMask = updateMask & td.valid;
                 elseif p.Results.clearForInvalid
-                    updateMask = true(td.nTrials, 1);
                     valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
                 end
-                
-                % if valueCell{iF} is a string, copy that field's values
-                % (if necessary)
-                if ischar(valueCell{iF})
-                    if ~strcmp(valueCell{iF}, dataFields{iF})
-                        % copy field values since the field names differ
-                        for iT = 1:td.nTrials
-                            if ~updateMask(iT), continue; end
-                            td.data(iT).(dataFields{iF}) = td.data(iT).(valueCell{iF});
-                        end
-                    end
-                else
-                    td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}, updateMask);
-                end
+               
+                td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}, updateMask);
             end 
 
             td.channelDescriptorsByName.(cd.name) = cd;
@@ -1054,9 +1178,12 @@ classdef TrialData
 
             % default to gca
             if isempty(p.Results.axh)
-                axh = gca;
+                axh = newplot();
             else
                 axh = p.Results.axh;
+                if ~ishold(axh)
+                    cla(axh);
+                end
             end
 
             % optionally clear axis
@@ -1105,6 +1232,9 @@ classdef TrialData
             dataCell = dataCell(td.valid);
             timeCell = timeCell(td.valid);
 
+            cla(axh);
+            hold(axh, 'on');
+            
             for i = 1:td.nTrialsValid
                 if isempty(dataCell{i}), continue, end;
                 
@@ -1115,7 +1245,7 @@ classdef TrialData
                 end
                 plot(axh, double(timeCell{i}), dataCell{i}, '-', 'Color', 0.5*ones(3,1), ...
                     p.Results.plotOptions{:});
-                if i == 1, hold(axh, 'on'); end
+                
             end
             box(axh, 'off');
             

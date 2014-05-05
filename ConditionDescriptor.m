@@ -110,8 +110,9 @@ classdef ConditionDescriptor
         
         % these are X-dimensional objects where X is nAxes
         conditions % X-dimensional struct where values(...idx...).attribute is the value of that attribute on that condition
-        conditionsAsStrings % includes attribute values as strings rather than numeric 
         conditionsAxisAttributesOnly % includes only the attributes actively selected for
+        conditionsAsStrings % includes attribute values as strings rather than numeric 
+        conditionsAsStringsIncludingFilters
         
         appearances % A-dimensional struct of appearance values
         names % A-dimensional cellstr array with names of each condition 
@@ -121,7 +122,7 @@ classdef ConditionDescriptor
         attributeValueListsAsStrings % same as above, but everything is a string
         
         axisValueLists % G dimensional cell array of structs which select attribute values for that position along an axis
-        axisValueListsAsStrings
+        axisValueListsAsStrings % G dimensional cell array of cellstr which give names for the values along each axis
         axisValueListModes % G dimensional array of AxisValueList* constants below indicating how axis value lists are generated
     end
     
@@ -529,7 +530,7 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
             
-            ci.axisValueListsManual(idx) = deal([]);
+            [ci.axisValueListsManual{idx}]= deal({});
             ci.axisValueListsOccupiedOnly(idx) = true;
             
             ci = ci.invalidateCache();
@@ -1256,6 +1257,9 @@ classdef ConditionDescriptor
             if isempty(valueList)
                 ci.attributeValueListsManual{iAttr} = {};
             else
+                if ischar(valueList)
+                    valueList = {valueList};
+                end
                 ci.attributeValueListsManual{iAttr} = valueList;                
             end
             
@@ -1391,6 +1395,19 @@ classdef ConditionDescriptor
             ci.odc = ci.odc.copy();
             ci.odc.conditionsAsStrings = v;
         end
+%         
+%         function v = get.conditionsAsStringsWithFilters(ci)
+%             v = ci.odc.conditionsAsStringsWithFilters;
+%             if isempty(v)
+%                 ci.odc.conditionsAsStringsWithFilters = ci.buildConditionsAsStringsWithFilters();
+%                 v = ci.odc.conditionsAsStringsWithFilters;
+%             end
+%         end
+%         
+%         function ci = set.conditionsAsStringsWithFilters(ci, v)
+%             ci.odc = ci.odc.copy();
+%             ci.odc.conditionsAsStringsWithFilters = v;
+%         end
         
         function v = get.conditionsAxisAttributesOnly(ci)
             v = ci.odc.conditionsAxisAttributesOnly;
@@ -1754,6 +1771,18 @@ classdef ConditionDescriptor
             idx = ci.getAttributeIdx(name);
             valueList = makecol(ci.attributeValueLists{idx});
         end
+        
+        function mode = getAttributeValueListMode(ci, name)
+            idx = ci.getAttributeIdx(name);
+            mode = ci.attributeValueModes(idx);
+        end
+        
+        function tf = getIsAttributeBinned(ci, name)
+            mode = ci.getAttributeValueListMode(name);
+            tf = ismember(mode, [ci.AttributeValueBinsManual, ...
+                ci.AttributeValueBinsAutoUniform, ...
+                ci.AttributeValueBinsAutoQuantiles]);
+        end
 
         function valueIdx = getAttributeValueIdx(ci, attr, value)
             [tf, valueIdx] = ismember(value, ci.getAttributeValueLists(attr));
@@ -1773,7 +1802,7 @@ classdef ConditionDescriptor
 
             nConditions = ci.nConditions;
 
-            a(ci.conditionsSize()) = AppearanceSpec();
+            a = repmat(AppearanceSpec(), ci.conditionsSize);
 
             if nConditions == 1
                 cmap = [0.3 0.3 1];

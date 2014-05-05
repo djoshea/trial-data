@@ -42,8 +42,8 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 end
 
             else
-                scalar = all(cellfun(@isscalar, dataCell));
-                vector = all(cellfun(@isvector, dataCell));
+                scalar = all(cellfun(@(x) isempty(x) || isscalar(x), dataCell));
+                vector = all(cellfun(@(x) isempty(x) || isvector(x), dataCell));
                 numeric = all(cellfun(@isnumeric, dataCell));
                 cls = ChannelDescriptor.getCellElementClass(dataCell);
                 

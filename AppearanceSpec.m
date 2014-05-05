@@ -68,6 +68,10 @@ classdef AppearanceSpec
            args = app.getNonEmptyArgsByName({'Color', 'LineWidth'});
        end
        
+       function args = getMarkerPlotArgs(app)
+           args = {'MarkerFaceColor', app.Color, 'MarkerEdgeColor', 'none'};
+       end
+       
     end
        
     methods(Static)

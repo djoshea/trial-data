@@ -220,11 +220,11 @@ classdef ConditionInfo < ConditionDescriptor
                 end
                 
                 % mark as NaN if it doesn't match for every attribute
-                subsMat(any(subsMat == 0, 2), :) = NaN;
+                subsMat(any(subsMat == 0 | isnan(subsMat), 2), :) = NaN;
               
                 subsMat(~matchesFilters, :) = NaN;
             else
-                subsMat = [];
+                subsMat = nan(ci.nTrials, 1);
             end
         end
         
@@ -513,14 +513,33 @@ classdef ConditionInfo < ConditionDescriptor
                 return;
             end
             
+            % exclude trials which would be invalid because of attribute value list filters
+            validTrials = ~ci.manualInvalid;
+            valueList = ci.buildAttributeFilterValueListStruct();
+            matchesFilters = ci.getAttributeMatchesOverTrials(valueList);
+            validTrials(~matchesFilters) = false;
+            
+            % and exclude trials with invalid trials on the *manually*
+            % specified axes
+            for iX = 1:ci.nAxes
+                switch ci.axisValueListModes(iX)
+                    case ci.AxisValueListManual
+                        matchMatrix = ci.getAttributeMatchesOverTrials(ci.axisValueListsManual{iX});
+                        validTrials(~any(matchMatrix, 2)) = false;
+                end
+            end
+            
             for iX = 1:ci.nAxes
                 % build a cellstr of descriptions of the values along this axis
                switch ci.axisValueListModes(iX)
                    case ci.AxisValueListAutoOccupied
                        % need to filter by which values are actually
                        % occupied by at least one trial
-                       keep = any(ci.getAttributeMatchesOverTrials(valueListByAxes{iX}), 1);
-                       valueListByAxes{iX} = makecol(valueListByAxes{iX}(keep));
+                       maskTrialsByValues = ci.getAttributeMatchesOverTrials(valueListByAxes{iX});
+                       maskTrialsByValues(~matchesFilters, :) = false;
+                       keepValues = any(maskTrialsByValues, 1);
+                       
+                       valueListByAxes{iX} = makecol(valueListByAxes{iX}(keepValues));
                 end
             end
         end

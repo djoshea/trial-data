@@ -181,6 +181,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             cd.dataFields{iF} = newName;
         end
         
+        function cd = setPrimaryUnits(cd, unitName)
+            assert(ischar(unitName));
+            cd.unitsByField{1} = unitName;
+        end
+        
         function tf = getIsShareableByField(cd)
             tf = true(cd.nFields, 1);
             tf(1) = false;
@@ -201,14 +206,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         % do any replacement of missing values, etc.
         function data = repairData(cd, data)
-            % for now, only repair field 1
+            % replace empty values with appropriate missing value
             for iF = 1:cd.nFields
                 fld = cd.dataFields{iF};
                 missingValue = cd.missingValueByField{iF};
-                for iD = 1:numel(data)
-                    if isempty(data(iD).(fld)) || isequaln(data(iD).(fld), NaN)
-                        data(iD).(fld) = missingValue;
-                    end
+                if ~isempty(missingValue)
+                    values = {data.(fld)};
+                    replace = cellfun(@isempty, values);
+                    [data(replace).(fld)] = deal(missingValue);
                 end
             end
         end
@@ -239,9 +244,15 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     methods(Static) % Utility methods
         function cls = getCellElementClass(dataCell)
             if isempty(dataCell)
-                cls = '';
+                cls = 'double';
             else
-                cls = class(dataCell{1});
+                nonEmpty = cellfun(@isempty, dataCell);
+                if ~any(nonEmpty)
+                    cls = 'double';
+                else
+                    first = find(nonEmpty, 1);
+                    cls = class(dataCell{first});
+                end
             end
         end
     end

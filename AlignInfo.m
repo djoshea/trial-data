@@ -1040,6 +1040,8 @@ classdef AlignInfo < AlignDescriptor
             nOccurByInterval = ad.intervalMaxCounts;
             [intStartData, intStopData] = ad.getAlignedIntervalData();
             for iInterval = 1:ad.nIntervals
+                if ~ad.intervalShowOnData(iInterval), continue, end
+                
                 % gather mark locations
                 % nOccur x nTrials cell of T x D data in interval
                 intLoc = cell(nOccurByInterval(iInterval), N); 
@@ -1102,6 +1104,8 @@ classdef AlignInfo < AlignDescriptor
             % plot marks
             hMarks = cell(ad.nMarks, 1);
             for iMark = 1:ad.nMarks
+                if ~ad.markShowOnData(iMark), continue, end
+                
                 % gather mark locations
                 % nOccur x D x N
                 markLoc = nan(nOccurByMark(iMark), max(2, D), N);

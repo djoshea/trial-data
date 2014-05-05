@@ -90,8 +90,12 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     for c = 1:C
         for i = 1:N
             if ~isnan(indStart(i,c)) && ~isnan(indStop(i,c))
-                mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}, dataCell{i, c}, ...
-                    tvec(indStart(i,c):indStop(i,c)), p.Results.interpolateMethod, 'extrap');
+                if numel(indStart(i,c):indStop(i,c)) > 1
+                    mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}, dataCell{i, c}, ...
+                        tvec(indStart(i,c):indStop(i,c)), p.Results.interpolateMethod, 'extrap');
+                else
+                    mat(i, indStart(i,c), c) = dataCell{i, c};
+                end
             end
         end
     end

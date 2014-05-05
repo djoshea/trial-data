@@ -149,6 +149,8 @@ classdef AlignDescriptor
         isStartZero % is the start event always == 0
         isStopZero % is the stop event always == 0
         isMarkZero % is each mark event always == 0
+        
+        isStartStopEqual % is start event same as start event
 
         isZeroOutsideStartStop % is the zero event guaranteed to lie outside the start/stop window
         
@@ -201,6 +203,11 @@ classdef AlignDescriptor
         function tf = get.isMarkZero(ad)
             tf = strcmp(ad.zeroEvent, ad.markEvents) & isequal(ad.markEventsIndex, ad.stopEventIndex) & ...
                 ad.markOffsets == ad.zeroOffset;
+        end
+        
+        function tf = get.isStartStopEqual(ad)
+            tf = strcmp(ad.startEvent, ad.stopEvent) && isequal(ad.startEventIndex, ad.stopEventIndex) && ...
+                ad.startOffset == ad.stopOffset;
         end
 
         function tf = get.isZeroOutsideStartStop(ad)

@@ -8,7 +8,7 @@ tdca = TrialDataConditionAlign(td);
 %%
 
 [handX, time] = tdca.getAnalog('handX');
-tdca = tdca.addAnalog('handXCopy', handX, 'handX', 'mm');
+tdca = tdca.addAnalog('handXCopy', handX, 'handX', 'units', 'mm');
 
 % select only some trials via condiiton info
 tdca = tdca.setAttributeValueList('delayNominal', 300);
@@ -21,4 +21,4 @@ tdca = tdca.setParam('target', 'new', 'updateValidOnly', true);
 tdca = tdca.align('@TargetOnset');
 tdca = tdca.resetConditionInfo();
 tdca = tdca.groupBy('target').colorByAttributes('target');
-tdca.plotAnalogGroupedEachTrial('handXCopy');
+tdca.plotAnalogGroupMeans('handXCopy');

@@ -17,11 +17,6 @@ classdef TrialDataConditionAlign < TrialData
         interAlignGaps
     end
     
-    % On Demand Cache handle
-    properties(Access=protected)
-        odc % TrialDataConditionAlignOnDemandCache instance
-    end
-    
     % properties which are stored in odc, see get/set below
     properties(Transient, Dependent, SetAccess=protected)
         % scalar struct with fields .event
@@ -46,7 +41,9 @@ classdef TrialDataConditionAlign < TrialData
         conditionsAsStrings
         conditionNames
         conditionAppearances
+        conditionsSize
         
+        nAxes
         axisValueLists
         axisValueListsAsStrings
         
@@ -59,7 +56,7 @@ classdef TrialDataConditionAlign < TrialData
 
         alignInfoActive % alignInfo currently active
 
-        alignSummaryActive % alignSummary currently active
+        alignSummaryActive % alignSummary currently active 
     end
 
     % Properties which read through to AlignInfo
@@ -110,7 +107,7 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
-        function td = set.eventCounts(plottd, v)
+        function td = set.eventCounts(td, v)
             td.odc = td.odc.copy();
             td.odc.eventCounts = v;
         end
@@ -194,6 +191,7 @@ classdef TrialDataConditionAlign < TrialData
         % synchronize valid between AlignInfo and ConditionINfo
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
+            td = updateValid@TrialData(td);
 
             if isempty(td.manualValid)
                 td.manualValid = truevec(td.nTrials);
@@ -205,6 +203,9 @@ classdef TrialDataConditionAlign < TrialData
             for iA = 1:td.nAlign
                 td.alignInfoSet{iA} = td.alignInfoSet{iA}.setInvalid(~valid);
             end
+            
+            % cause align summary to be recomputed
+            td.alignSummarySet = [];
         end
         
         function valid = buildValid(td)
@@ -426,7 +427,7 @@ classdef TrialDataConditionAlign < TrialData
                 td.odc = c;
             end
                 
-            td.alignSummarySet = [];
+            td = td.updateValid();
         end
         
         function td = addAttribute(td, names)
@@ -448,6 +449,16 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             td.conditionInfo = td.conditionInfo.groupBy(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = addAxis(td, attrList, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            % add any needed attributes to condition info
+            td = td.addAttribute(attrList);
+            
+            td.conditionInfo = td.conditionInfo.addAxis(attrList, varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
@@ -524,6 +535,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = setAttributeValueListAuto(td, attr)
             td.warnIfNoArgOut(nargout);
+            td = td.addAttribute(attr);
             td.conditionInfo = td.conditionInfo.setAttributeValueListAuto(attr);
             td = td.postUpdateConditionInfo();
         end
@@ -574,7 +586,6 @@ classdef TrialDataConditionAlign < TrialData
         function td = postUpdateConditionInfo(td)
             td.warnIfNoArgOut(nargout);
             td = td.updateValid();
-            td.alignSummarySet = [];
         end
         
         % filter trials that are valid based on ConditionInfo
@@ -620,10 +631,18 @@ classdef TrialDataConditionAlign < TrialData
             n = td.conditionInfo.nConditions;
         end
         
+        function sz = get.conditionsSize(td)
+            sz = td.conditionInfo.conditionsSize;
+        end
+        
+        function n = get.nAxes(td)
+            n = td.conditionInfo.nAxes;
+        end
+        
         function v = get.axisValueLists(td)
             v = td.conditionInfo.axisValueLists;
         end
-        
+   td     
         function v = get.axisValueListsAsStrings(td)
             v = td.conditionInfo.axisValueListsAsStrings;
         end
@@ -685,8 +704,6 @@ classdef TrialDataConditionAlign < TrialData
         function td = postUpdateAlignInfo(td)
             td.warnIfNoArgOut(nargout);
             td = td.updateValid();
-            % cause align summary to be recomputed
-            td.alignSummarySet = [];
         end
 
         function td = align(td, varargin)
@@ -1162,7 +1179,16 @@ classdef TrialDataConditionAlign < TrialData
                         stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials);
                 end
             end 
-        end
+         end
+        
+         function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
+             % same as in TrialData, except issues warning if alignment has
+             % more than one sample
+             if ~td.alignInfoActive.isStartStopEqual
+                 warning('Getting analog sample when alignment is not for single timepoint');
+             end
+             [dataVec, timeVec] = getAnalogSample@TrialData(td, name, varargin{:});
+        end 
         
         function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
             [dataVec, timeVec] = td.getAnalogSample(name);
@@ -1197,7 +1223,221 @@ classdef TrialDataConditionAlign < TrialData
     % Param channel access
     methods 
         function dCell = getParamGrouped(td, name)
+            % get parameter values grouped by condition
+            % dCell will be size(conditions) cell tensor with value arrays
+            % within
             dCell = td.groupElements(td.getParam(name));
+        end
+        
+        function [meanMat, semMat, stdMat, nTrialsMat] = getParamGroupMeans(td, name, varargin)
+            % get averaged parameter value within each group
+            
+            % *Mat will be size(conditions) tensors
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            dCell = td.getParamGrouped(name);
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.conditionsSize));
+            for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    [meanMat(iC), semMat(iC), nTrialsMat(iC), stdMat(iC)] = ...
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                end
+            end 
+        end
+        
+        function prepareAxesForChannels(td, nameX, nameY, varargin)
+            p = inputParser();
+            p.addParamValue('axh', gca, @isscalar);
+            p.parse(varargin{:});
+            axh = p.Results.axh;
+            
+            cdX = td.channelDescriptorsByName.(nameX);
+            cdY = td.channelDescriptorsByName.(nameY);
+            TrialDataUtilities.Plotting.setupAxisForChannel(cdX, ...
+                'which', 'x', 'style', 'tickBridge', 'axh', axh);
+            TrialDataUtilities.Plotting.setupAxisForChannel(cdY, ...
+                'which', 'y', 'style', 'tickBridge', 'axh', axh);
+        end
+        
+        function plotParamScatter(td, nameX, nameY, varargin)
+            dataX = td.getParamGrouped(nameX);
+            dataY = td.getParamGrouped(nameY);
+            cdX = td.channelDescriptorsByName.(nameX);
+            cdY = td.channelDescriptorsByName.(nameY);
+            td.plotProvidedGroupedScatterData(dataX, dataY, ...
+                'axisInfoX', cdX, 'axisInfoY', cdY, varargin{:});
+        end
+            
+        function plotProvidedGroupedScatterData(td, varargin)
+            % common utility function for drawing data points grouped by
+            % condition
+            % 
+            % time is either:
+            %     vector, for nAlign == 1
+            %     nAlign x 1 cell of ime vectors for each align 
+            %
+            %  data, dataErrorY is either
+            %     nConditions x T x D matrix 
+            %     nAlign x 1 cell of nConditions x T x D matrices
+            %
+            p = inputParser();
+            p.addRequired('dataX', @(x) isnumeric(x) || iscell(x)); 
+            p.addRequired('dataY', @(x) isnumeric(x) || iscell(x)); 
+            %p.addOptional('dataZ', [], @(x) isnumeric(x) || iscell(x)); 
+            
+            p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            %p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            
+            p.addParamValue('scaleBars', false, @islogical);
+            p.addParamValue('axisStyleX', 'tickBridge', @ischar);
+            p.addParamValue('axisStyleY', 'tickBridge', @ischar);
+            
+            p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
+            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.addParamValue('alpha', 1, @isscalar);
+            p.addParamValue('useThreeVector', true, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+            hold(axh, 'on');
+            
+            if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
+                axisStyleX = 'scaleBar';
+                axisStyleY = 'scaleBar';
+            else
+                axisStyleX = p.Results.axisStyleX;
+                axisStyleY = p.Results.axisStyleY;
+            end
+            
+            conditionIdx = p.Results.conditionIdx;
+            if islogical(conditionIdx)
+                conditionIdx = find(conditionIdx);
+            end
+            nConditionsUsed = numel(conditionIdx);
+            app = td.conditionAppearances(conditionIdx);
+            
+            dataX = p.Results.dataX;
+            dataY = p.Results.dataY;
+            if isempty(dataX) || isempty(dataY)
+                error('Must provide dataX and dataY');
+            end
+            
+            h = nan(nConditionsUsed, 1);
+            for iC = 1:nConditionsUsed
+                idxC = conditionIdx(iC);
+                args = app(idxC).getMarkerPlotArgs();
+                h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', 5, ...
+                    args{:}, p.Results.plotOptions{:});
+                
+                TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNames{idxC});
+            end
+      
+            if ~isempty(p.Results.axisInfoX)
+                TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                    'which', 'x', 'style', axisStyleX);
+            end
+            if ~isempty(p.Results.axisInfoY)
+                TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                    'which', 'y', 'style', axisStyleY);
+            end
+            
+            hold(axh, 'off');
+            box(axh, 'off');
+            axis(axh, 'tight');
+            
+            AutoAxis.updateIfInstalled(axh);
+        end
+        
+        function plotParamVsParamMeanLinePlot(td, nameX, nameY, varargin)
+            % for each bin or grouping of nameX, plot the mean of paramY
+            % as a line plot with vertical error bars conveying either sem
+            % or std (according to 'errorType' parameter). One line plot
+            % for each group defined in td (before adding nameX to the
+            % list).
+            
+            p = inputParser();
+            p.addParamValue('errorType', 'sem', @ischar);
+            p.addParamValue('LineWidth', 1, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+            hold(axh, 'on');
+            
+            % cache before messing with axis shapes
+            conditionNames = td.conditionNames;
+            
+            % add as the last axis
+            td = td.addAxis(nameX);
+            
+            % put nameX as axis 1, combine other axes as axis 2
+            if td.nAxes > 1
+                td = td.reshapeAxes(td.nAxes, 1:(td.nAxes-1));
+            end
+
+            xValues = td.conditionInfo.getAttributeValueList(nameX);
+            if td.conditionInfo.getIsAttributeBinned(nameX)
+                % bins are in cell array of 1 x 2 vectors
+                xValues = mean(cat(1, xValues{:}), 2);
+            else
+                % leave as is
+                if numel(xValues) > 50
+                    warning('Grouping parameter %s has >50 unique values. You may wish to bin or group this value before plotting means against it', nameX);
+                end
+            end
+            
+            [meanY, semY, stdY] = td.getParamGroupMeans(nameY);
+            if strcmp(p.Results.errorType, 'sem')
+                errorY = semY;
+            elseif strcmp(p.Results.errorType, 'std')
+                errorY = stdY;
+            else
+                error('Unknown errorType %s', p.Results.errorType);
+            end
+            
+            app = td.conditionAppearances;
+            
+            nCondOther = td.conditionsSize(2);
+            h = nan(nCondOther, 1);
+            for iC = 1:nCondOther
+                h(iC) = TrialDataUtilities.Plotting.errorline(xValues, meanY(:, iC), errorY(:, iC), ...
+                    'Color', app(1, iC).Color, 'axh', axh, 'LineWidth', p.Results.LineWidth);
+                TrialDataUtilities.Plotting.showInLegend(h(iC), conditionNames{iC});
+            end
+
+            td.prepareAxesForChannels(nameX, nameY, 'axh', axh);
+            
+            AutoAxis.updateIfInstalled(axh);
+        end
+        
+        function plotParamVsParamCovariance(td, nameX, nameY, varargin)
+            p = inputParser();
+            p.addParamValue('LineWidth', 1, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            dataX = td.getParamGrouped(nameX);
+            dataY = td.getParamGrouped(nameY);
+            
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+            hold(axh, 'on');
+            
+            h = nan(td.nConditions, 1);
+            for iC = 1:td.nConditions
+                h(iC) = TrialDataUtilities.Plotting.plotCovarianceEllipse(dataX{iC}, dataY{iC}, ...
+                    'Color', td.conditionAppearances(iC).Color, 'axh', axh, 'LineWidth', p.Results.LineWidth);
+                TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNames{iC});
+            end
+
+            td.prepareAxesForChannels(nameX, nameY, 'axh', axh);
+            
+            AutoAxis.updateIfInstalled(axh);
         end
     end
 
@@ -1376,7 +1616,6 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
-            cla(axh);
             
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)
@@ -1596,6 +1835,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             
+            p.addParamValue('scaleBars', false, @islogical);
+            p.addParamValue('axisStyleX', 'tickBridge', @ischar);
+            p.addParamValue('axisStyleY', 'tickBridge', @ischar);
+            
             p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParamValue('alignIdx', [], @isnumeric);
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
@@ -1609,7 +1852,6 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
-            cla(axh);
             
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)
@@ -1617,6 +1859,14 @@ classdef TrialDataConditionAlign < TrialData
             end
             nConditionsUsed = numel(conditionIdx);
             app = td.conditionAppearances(conditionIdx);
+            
+            if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
+                axisStyleX = 'scaleBar';
+                axisStyleY = 'scaleBar';
+            else
+                axisStyleX = p.Results.axisStyleX;
+                axisStyleY = p.Results.axisStyleY;
+            end
             
             % splay analog traces out vertically for D==1
             yOffsetTrial = p.Results.yOffsetBetweenTrials;
@@ -1729,6 +1979,8 @@ classdef TrialDataConditionAlign < TrialData
                     timeByAlign{iA} = cat(1, time{:, iA});
                 end
                 timeOffsetByAlign = td.getAlignPlottingTimeOffsets(timeByAlign, 'alignIdx', alignIdx);
+            else
+                timeOffsetByAlign = zeros(nAlignUsed, 1);
             end
 
             % store handles as we go
@@ -1922,7 +2174,8 @@ classdef TrialDataConditionAlign < TrialData
                 if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                     % x is data, y is time
                     if ~isempty(p.Results.axisInfoX)
-                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x');
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                            'which', 'x', 'style', axisStyleX);
                     end
                 else
                     % y is data, x is time
@@ -1933,16 +2186,18 @@ classdef TrialDataConditionAlign < TrialData
                             scaleBar = false;
                         end
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                            'which', 'y', 'scaleBar', scaleBar);
+                            'which', 'y', 'style', axisStyleY);
                     end
                 end
 
             elseif D == 2
                 if ~isempty(p.Results.axisInfoX)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x');
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x', ...
+                        'style', axisStyleX);
                 end
                 if ~isempty(p.Results.axisInfoY)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'x');
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y', ...
+                        'style', axisStyleY);
                 end
 
             elseif D == 3
@@ -2033,6 +2288,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             
+            p.addParamValue('scaleBars', false, @islogical);
+            p.addParamValue('axisStyleX', 'tickBridge', @ischar);
+            p.addParamValue('axisStyleY', 'tickBridge', @ischar);
+            
             p.addParamValue('lineWidth', 2, @isscalar);
             p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParamValue('alignIdx', [], @isnumeric);
@@ -2053,12 +2312,19 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Plotting.errorshade;
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
-            cla(axh);
             
             if p.Results.lineSmoothing
                 lineSmoothing = 'on';
             else
                 lineSmoothing = 'off';
+            end
+            
+            if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
+                axisStyleX = 'scaleBar';
+                axisStyleY = 'scaleBar';
+            else
+                axisStyleX = p.Results.axisStyleX;
+                axisStyleY = p.Results.axisStyleY;
             end
             
             conditionIdx = p.Results.conditionIdx;
@@ -2234,32 +2500,39 @@ classdef TrialDataConditionAlign < TrialData
                 if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                     % x is data, y is time
                     if ~isempty(p.Results.axisInfoX)
-                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x');
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                            'which', 'x', 'style', axisStyleX);
                     end
                 else
                     % y is data, x is time
                     if ~isempty(p.Results.axisInfoY)
-                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y');
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                            'which', 'y', 'style', axisStyleY);
                     end
                 end
 
             elseif D == 2
                 if ~isempty(p.Results.axisInfoX)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x');
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                        'which', 'x', 'style', axisStyleX);
                 end
                 if ~isempty(p.Results.axisInfoY)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y');
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                        'which', 'y', 'style', axisStyleY);
                 end
 
             elseif D == 3
                 if ~isempty(p.Results.axisInfoX)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, 'which', 'x', 'useAutoAxis', false);
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                        'which', 'x', 'useAutoAxis', false);
                 end
                 if ~isempty(p.Results.axisInfoY)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, 'which', 'y', 'useAutoAxis', false);
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                        'which', 'y', 'useAutoAxis', false);
                 end
                 if ~isempty(p.Results.axisInfoZ)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoZ, 'which', 'z', 'useAutoAxis', false);
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoZ, ...
+                        'which', 'z', 'useAutoAxis', false);
                 end
 
                 if p.Results.useThreeVector
@@ -2310,7 +2583,7 @@ classdef TrialDataConditionAlign < TrialData
             
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
-                'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(name));
+                'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(name), p.Unmatched);
         end
         
         function plotAnalogGroupMeans2D(td, name1, name2, varargin) 
@@ -2333,11 +2606,10 @@ classdef TrialDataConditionAlign < TrialData
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
             end
-            
             td.plotProvidedAnalogDataGroupMeans(2, 'time', tvecCell, ...
                 'data', meanMat, p.Unmatched, ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
-                'axisInfoY', td.channelDescriptorsByName.(name2));
+                'axisInfoY', td.channelDescriptorsByName.(name2), p.Unmatched);
         end
         
         function plotAnalogGroupMeans3D(td, name1, name2, name3, varargin) 

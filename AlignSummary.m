@@ -569,7 +569,7 @@ classdef AlignSummary
             counter = 1;
 
             % include the zero event provided that it lies within the start/stop window
-            if ad.zeroMark
+            if isequal(ad.zeroMark, true) || (ad.nMarks == 0 && ad.nIntervals == 0)
                 info(counter).name = ad.zeroLabel; 
                 info(counter).time = 0;
                 info(counter).min = 0;
@@ -913,6 +913,7 @@ classdef AlignSummary
             hIntervals = cell(as.nIntervals, 1);
             nOccurByInterval = as.nOccurrencesByInterval;
             for iInterval = 1:as.nIntervals
+                if ~as.alignDescriptor.intervalShowOnData(iInterval), continue, end
                 % gather mark locations
                 % nOccur x nConditions cell of T x D data in interval
                 [intLoc, intRangeLoc] = deal(cell(nOccurByInterval(iInterval), as.nConditions)); 
@@ -1003,6 +1004,8 @@ classdef AlignSummary
             % of locations
             nOccurByMark = as.nOccurrencesByMark;
             for iMark = 1:nMarks
+                if ~as.alignDescriptor.markShowOnData(iMark), continue, end
+                
                 markMeanLoc = nan(nOccurByMark(iMark), max(2, D), nConditions);
                 markErrorLoc = cell(nOccurByMark(iMark), nConditions);
                 
