@@ -442,11 +442,13 @@ classdef ConditionInfo < ConditionDescriptor
                 if any(isnan(vals))
                     valueList(end+1) = NaN;
                 end
-            else
+            elseif iscellstr(vals)
                 % include empty values in the list if found
 %                 emptyMask = cellfun(@isempty, vals);
 %                 vals = vals(~emptyMask);
                 valueList = unique(vals);
+            else
+                valueList = uniqueCell(vals);
             end
         end             
         
@@ -779,12 +781,12 @@ classdef ConditionInfo < ConditionDescriptor
                     vals(nanMask) = {''};
                     
                     % check for cellstr
-                    if iscellstr(vals)
+                    %if iscellstr(vals)
                         ci.values(:, i) = vals;
                         ci.attributeNumeric(i) = false;
-                    else
-                        error('Attribute %s values were neither uniformly scalar nor strings', ci.attributeNames{i});
-                    end
+                    %else
+                    %   error('Attribute %s values were neither uniformly scalar nor strings', ci.attributeNames{i});
+                    %end
                 end
             end
         end

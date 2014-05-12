@@ -215,6 +215,13 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     replace = cellfun(@isempty, values);
                     [data(replace).(fld)] = deal(missingValue);
                 end
+                
+                if cd.elementTypeByField(iF) == cd.BOOLEAN
+                    % convert to logical
+                    for i = 1:numel(data)
+                        data(i).(fld) = logical(data(i).(fld));
+                    end
+                end
             end
         end
 
