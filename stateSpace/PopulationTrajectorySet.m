@@ -1004,8 +1004,12 @@ classdef PopulationTrajectorySet
             % update the conditionDescriptor for all bases within
             % and clear any generated condition average data
             pset.warnIfNoArgOut(nargout);
-            assert(isequal(class(cd), 'ConditionDescriptor'), ...
+            assert(ismember(class(cd), {'ConditionDescriptor', 'ConditionInfo'}), ...
                 'Must be ConditionDescriptor instance');
+            
+            if isa(cd, 'ConditionInfo')
+                cd = cd.fixAllValueLists().getConditionDescriptor();
+            end
             
             assert(cd.allAxisValueListsManual, 'ConditionDescriptor must have manual axis value lists. Use .setAxisValueList or .fixValueListsByApplyingToTrialData');
             
@@ -1041,8 +1045,14 @@ classdef PopulationTrajectorySet
             if ~iscell(adSet)
                 adSet = {adSet};
             end
-            assert(all(cellfun(@(x) isequal(class(x), 'AlignDescriptor'), ...
-                adSet)), 'Must be AlignDescriptor instance');
+            assert(all(cellfun(@(x) isequal(class(x), 'AlignDescriptor') || ischar(x), ...
+                adSet)), 'Must be AlignDescriptor instance or string');
+            
+            for i = 1:numel(adSet)
+                if ischar(adSet{i})
+                    adSet{i} = AlignDescriptor(adSet{i});
+                end
+            end
             
             % pre-pad all align descriptors based on spikeFilter for speed
             sf = pset.spikeFilter;
