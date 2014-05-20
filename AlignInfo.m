@@ -377,7 +377,10 @@ classdef AlignInfo < AlignDescriptor
             else
                 if ischar(n)
                     n = str2double(n);
+                elseif isempty(n)
+                    n = 1;
                 end
+                
                 times = timesMat(:, n);
             end
            
