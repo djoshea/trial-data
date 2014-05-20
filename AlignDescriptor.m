@@ -114,8 +114,8 @@ classdef AlignDescriptor
         % difference between each timestamp and zero is an exact integer multiple of
         % minTimeDelta. The alignment will be performed to maintain single
         % timestamp alignments (i.e. start == stop) as a single time point
-        roundTimes = false; % boolean indicating whether resampling is active
-        minTimeDelta % the minimum acceptable spacing between timestamps to which alignment will be enforced, relative to the zero event
+        roundTimes = true; % boolean indicating whether resampling is active
+        minTimeDelta = 1; % the minimum acceptable spacing between timestamps to which alignment will be enforced, relative to the zero event
     end
 
     properties(Constant, Hidden)
@@ -628,6 +628,7 @@ classdef AlignDescriptor
             p.addOptional('offset', 0, @isscalar);
             p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.addParamValue('as', '', @ischar);
+            p.addParamValue('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
             p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.addParamValue('showOnData', true, @islogical);
             p.addParamValue('showOnAxis', true, @islogical);
@@ -656,7 +657,12 @@ classdef AlignDescriptor
             ad.markEventsIndex = makecol(ad.markEventsIndex);
             ad.markOffsets(iMark) = offset;
             ad.markOffsets = makecol(ad.markOffsets);
-            ad.markAppear{iMark} = p.Results.appear;
+            
+            appear = p.Results.appear;
+            if ~isempty(p.Results.color)
+                appear.Color = p.Results.color;
+            end
+            ad.markAppear{iMark} = appear;
             ad.markAppear = makecol(ad.markAppear);
             ad.markShowOnData(iMark) = p.Results.showOnData;
             ad.markShowOnData = makecol(ad.markShowOnData);
