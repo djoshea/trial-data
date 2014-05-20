@@ -210,11 +210,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             for iF = 1:cd.nFields
                 fld = cd.dataFields{iF};
                 missingValue = cd.missingValueByField{iF};
-                if ~isempty(missingValue)
-                    values = {data.(fld)};
-                    replace = cellfun(@isempty, values);
-                    [data(replace).(fld)] = deal(missingValue);
-                end
+                
+                values = {data.(fld)};
+                replace = cellfun(@isempty, values);
+                [data(replace).(fld)] = deal(missingValue);
             end
         end
 
