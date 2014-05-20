@@ -943,7 +943,7 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function durations = getValidDurations(td)
-            durations = td.td.alignInfoActive.getValidDurationByTrial();
+            durations = td.alignInfoActive.getValidDurationByTrial();
             durations(~td.valid) = NaN;
         end
         
