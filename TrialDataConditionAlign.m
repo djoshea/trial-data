@@ -2009,9 +2009,11 @@ classdef TrialDataConditionAlign < TrialData
                             plotSimultaneously = true;
                         end
                         
-                        yOffsets = makecol(yOffsetCurrent + (0:(nTrialsC-1)) * yOffsetTrial);
-                        yOffsetCurrent = max(yOffsets) + yOffsetCondition;
-                        yOffsetsByCondition{iCond} = yOffsets;
+                        if nTrialsC > 0
+                            yOffsets = makecol(yOffsetCurrent + (0:(nTrialsC-1)) * yOffsetTrial);
+                            yOffsetCurrent = max(yOffsets) + yOffsetCondition;
+                            yOffsetsByCondition{iCond} = yOffsets;
+                        end
 
                     elseif D == 2 || D == 3
                         dataC = data{iCond, iAlign};
