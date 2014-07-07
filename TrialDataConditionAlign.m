@@ -80,8 +80,6 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.nAlign(td)
             v = numel(td.alignInfoSet);
         end
-        
-        
     end
     
     % get / set accessors that read / write through to ODC
@@ -2224,6 +2222,12 @@ classdef TrialDataConditionAlign < TrialData
             axis(axh, 'tight');
             
             au = AutoAxis(axh);
+            if strcmp(axisStyleY, 'scaleBar')
+                au.axisMarginLeft = 0.5;
+            end
+            if strcmp(axisStyleX, 'scaleBar')
+                au.axisMarginBottom = 0.5;
+            end
             au.update();
             au.installCallbacks();
         end
