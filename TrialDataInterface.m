@@ -70,42 +70,38 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
             
             cd = ParamChannelDescriptor.buildStringParam('subject');
             cd.special = true;
+            cd.required = false;
             cds = cd;
 
             cd = ParamChannelDescriptor.buildStringParam('protocol');
             cd.special = true;
+            cd.required = false;
             cds(end+1) = cd;
 
             cd = ParamChannelDescriptor.buildScalarParam('protocolVersion');
             cd.special = true;
-            cds(end+1) = cd;
-
-            cd = ParamChannelDescriptor.buildStringParam('trialIdStr');
-            cd.special = true;
+            cd.required = false;
             cds(end+1) = cd;
 
             cd = ParamChannelDescriptor.buildScalarParam('trialId');
             cd.special = true;
-            cds(end+1) = cd;
-
-            cd = ParamChannelDescriptor.buildScalarParam('saveTag');
-            cd.special = true;
-            cds(end+1) = cd;
-
-            cd = ParamChannelDescriptor.buildScalarParam('duration', tUnits);
-            cd.special = true;
+            cd.required = false;
             cds(end+1) = cd;
             
             cd = ParamChannelDescriptor.buildDatenumParam('timeStartWallclock');
             cd.special = true;
+            cd.required = false;
             cds(end+1) = cd;
             
+            % these two are required to do time alignment
             cd = EventChannelDescriptor.buildSingleEvent('TrialStart', tUnits);
             cd.special = true;
+            cd.required = true;
             cds(end+1) = cd;
             
             cd = EventChannelDescriptor.buildSingleEvent('TrialEnd', tUnits);
             cd.special = true;
+            cd.required = true;
             cds(end+1) = cd;
         end
     end

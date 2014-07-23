@@ -120,18 +120,26 @@ classdef TrialData
             msg = cellvec(nChannels);
             for iChannel = 1:nChannels
                 chd = channelDescriptors(iChannel); 
-
+                
                 % check to make sure all fields were provided as expected 
                 [ok(iChannel), msg{iChannel}] = chd.checkData(data); %#ok<PROP>
+                
+                if ~chd.required
+                    % fill in missing values for optional channels but
+                    % issue a warning
+                    chd.addMissingFields(data); %#ok<PROP>
+                    fprintf('Warning: No data provided by interface for channel %s\n', chd.describe());
+                    ok(iChannel) = false;
+                end
             end
 
             if any(~ok)
                 msg = msg(~ok);
-                fprintf('Error: some data was missing from getChannelData():\n');
+                fprintf('Error: data not provided by interface for channels:\n');
                 for i = 1:length(msg)
                     fprintf('\t%s\n', msg{i});
                 end
-                error('Missing data provided by getChannelData');
+                error('Required channel data not provided by getChannelData');
             end
 
             %fprintf('Repairing and converting channel data...\n');

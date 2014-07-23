@@ -2223,11 +2223,11 @@ classdef TrialDataConditionAlign < TrialData
             
             au = AutoAxis(axh);
             if strcmp(axisStyleY, 'scaleBar')
-                au.axisMarginLeft = 0.5;
+                au.axisMarginLeft = 0.8;
             end
-            if strcmp(axisStyleX, 'scaleBar')
-                au.axisMarginBottom = 0.5;
-            end
+%             if strcmp(axisStyleX, 'scaleBar')
+%                 au.axisMarginBottom = 1;
+%             end
             au.update();
             au.installCallbacks();
         end

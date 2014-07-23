@@ -10,6 +10,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         meta % anything you'd like
 
         special = false; % whether this channel is a "special" identifier channel used by TrialData
+        
+        required = true; % whether data for this channel is required or not
     end
     
     % set by factory builder methods or inferAttributesFromData
@@ -203,6 +205,18 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 msg = '';
             end
         end
+        
+        function addMissingFields(cd, data)
+            % manually add the fields needed by this channel to data
+            % struct, filling them with the appropriate missing value
+            for iF = 1:cd.nFields
+                fld = cd.dataFields{iF};
+                if ~isfield(data, fld)
+                    % insert field with appropriate missing values
+                    [data(:).(fld)] = deal(cd.missingValueByField{iF});
+                end
+            end
+        end
 
         % do any replacement of missing values, etc.
         function data = repairData(cd, data)
@@ -211,17 +225,21 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 fld = cd.dataFields{iF};
                 missingValue = cd.missingValueByField{iF};
 
+                % replace empty values, with the appropriate missing value
+                % so that [] ends up as '' or NaN where appropriate
                 values = {data.(fld)};
                 replace = cellfun(@isempty, values);
                 [data(replace).(fld)] = deal(missingValue);
-                if ~isempty(missingValue)
-                    values = {data.(fld)};
-                    replace = cellfun(@isempty, values);
-                    [data(replace).(fld)] = deal(missingValue);
-                end
+                
+                % removing as it seems redundant
+%                 if ~isempty(missingValue)
+%                     values = {data.(fld)};
+%                     replace = cellfun(@isempty, values);
+%                     [data(replace).(fld)] = deal(missingValue);
+%                 end
 
                 if cd.elementTypeByField(iF) == cd.BOOLEAN
-                    % convert to logical
+                    % manually convert to logical
                     for i = 1:numel(data)
                         data(i).(fld) = logical(data(i).(fld));
                     end
