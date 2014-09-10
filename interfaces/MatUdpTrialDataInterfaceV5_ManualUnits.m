@@ -106,7 +106,7 @@ classdef MatUdpTrialDataInterfaceV5_ManualUnits < TrialDataInterface
             
             % now detect units
             fieldList = fieldnames(tdi.R);
-            mask = cell2mat(fieldList, 'unit[\d_]+', 'start');
+            mask = ~cellfun(@isempty, regexp(fieldList, '^unit[\d_]+$', 'start'));
             unitFields = fieldList(mask);
             
             for iU = 1:numel(unitFields)

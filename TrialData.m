@@ -235,12 +235,6 @@ classdef TrialData
             cause = td.buildInvalidCause();
         end
         
-        function cause = buildInvalidCause(td)
-            cause = cell(td.nTrials, 1);
-            cause(~td.valid) = {'marked invalid manually'};
-            cause(td.valid) = {''};
-        end
-        
         function nTrials = get.nTrials(td)
             nTrials = numel(td.data);
         end
@@ -301,6 +295,12 @@ classdef TrialData
     end
 
     methods(Access=protected) % Utility methods
+        function cause = buildInvalidCause(td)
+            cause = cell(td.nTrials, 1);
+            cause(~td.valid) = {'marked invalid manually'};
+            cause(td.valid) = {''};
+        end
+        
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~isa(obj, 'handle')
                 warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect', ...
