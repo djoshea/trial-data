@@ -216,21 +216,6 @@ classdef TrialData
             td.odc.valid = v;
         end
         
-        function valid = buildValid(td)
-            % compute the valid flag considering only trials marked as
-            % manually invalid to be invalid. This will be overriden in
-            % TDCA to consider the condition and align invalid as well
-            valid = td.getManualValid();
-        end
-        
-        function valid = getManualValid(td)
-            if isempty(td.manualValid)
-                valid = truevec(td.nTrials);
-            else
-                valid = makecol(td.manualValid);
-            end
-        end
-        
         function cause = get.invalidCause(td)
             cause = td.buildInvalidCause();
         end
@@ -287,14 +272,28 @@ classdef TrialData
             td.manualValid = true(td.nTrials, 1);
             td = td.updateValid();
         end
+    end
+
+    methods(Access=protected) % Utility methods   
+        function valid = buildValid(td)
+            % compute the valid flag considering only trials marked as
+            % manually invalid to be invalid. This will be overriden in
+            % TDCA to consider the condition and align invalid as well
+            valid = td.getManualValid();
+        end
+        
+        function valid = getManualValid(td)
+            if isempty(td.manualValid)
+                valid = truevec(td.nTrials);
+            else
+                valid = makecol(td.manualValid);
+            end
+        end
         
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
             td.valid = [];
         end
-    end
-
-    methods(Access=protected) % Utility methods
         function cause = buildInvalidCause(td)
             cause = cell(td.nTrials, 1);
             cause(~td.valid) = {'marked invalid manually'};
