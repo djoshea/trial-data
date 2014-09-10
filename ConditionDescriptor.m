@@ -9,7 +9,7 @@ classdef ConditionDescriptor
         nValuesByAttribute % how many values per attribute: size(values)
         
         nAxes % how many dimensions of grouping axe
-        nValuesAlongAxes % X x 1 array of number of elements along the axis
+        nValuesAlongAxes % X x 1 array of number of elements along the ax`is
         
         nConditions % how many total conditions
         conditionsSize 
@@ -41,11 +41,15 @@ classdef ConditionDescriptor
         description = '';
         
         % updates cache on set
-        nameFn % function which maps .values(i) struct --> name of condition i
+        
+        % function which maps .values(i) struct --> name of condition i
+        % called as nameFn(conditionInfo, 'multiline', tf) where
+        % multiline=true means use \n to separate lines when appropriate
+        nameFn 
         
         % updates cache on set
         appearanceFn; % function which takes struct('attrName1', attrVal1, 'attrName2', attrVal2)
-                      % and returns struct('color', 'k', 'lineWidth', 2, ...);      
+                      % and returns struct('color', 'k', 'lineWidth', 2, ...); 
     end
      
     properties(SetAccess=protected)
@@ -116,6 +120,8 @@ classdef ConditionDescriptor
         
         appearances % A-dimensional struct of appearance values
         names % A-dimensional cellstr array with names of each condition 
+        namesMultiline % A-dimension cellstr array with names of each condition separated into multiple lines via \n
+        
         attributeValueLists % A x 1 cell array of values allowed for this attribute
                            % here just computed from attributeValueListManual, but in ConditionInfo
                            % can be automatically computed from the data
@@ -189,6 +195,52 @@ classdef ConditionDescriptor
             ci = ci.clearAppearanceModifications();
             % only need to flush appearance info to save time
             ci = ci.invalidateAppearanceInfo();
+        end
+        
+        function ci = freezeAppearances(ci)
+            % cache the current condition appearances
+            
+            frozenConditions = ci.conditionsAxisAttributesOnly;
+            frozenAppearances = ci.appearances;
+            ci.appearanceFn = @frozenAppearanceLookup;
+            
+            function a = frozenAppearanceLookup(ci, varargin)
+                a = repmat(AppearanceSpec(), ci.conditionsSize);
+                [cFrozen, cNew] = matchFields(frozenConditions, ci.conditions);
+                if numel(fieldnames(cFrozen)) == 0
+                    warning('No attributes in common with frozen condition appearances');
+                    return;
+                end
+                
+                nDuplicate = 0;
+                nMissing = 0;
+                for i = 1:numel(a)
+                    mask = arrayfun(@(frozen) isequal(cNew(i), frozen), cFrozen);
+                    if nnz(mask) == 0
+                        nMissing = nMissing + 1;
+                        continue;
+                    elseif nnz(mask) > 1
+                        nDuplicate = nDuplicate + 1;
+                    end
+                    
+                    a(i) = frozenAppearances(find(mask, 1));
+                end
+                      
+                if nMissing > 0
+                    warning('Unable to find frozen AppearanceSpec for %d conditions', nMissing);
+                end
+                if nDuplicate > 0
+                    warning('Encountered multiple frozen AppearanceSpecs for %d conditions', nDuplicate);
+                end
+            end
+             
+            function [m1, m2] = matchFields(s1, s2)
+                f1 = fieldnames(s1);
+                f2 = fieldnames(s2);
+                m1 = rmfield(s1, setdiff(f1, f2));
+                m2 = rmfield(s2, setdiff(f2, f1));
+                m2 = orderfields(m2, m1);
+            end
         end
         
         function printDescription(ci) 
@@ -1329,7 +1381,7 @@ classdef ConditionDescriptor
         end
         
         function values = generateConditionsAsStrings(ci, separator)
-            % publically callable version of above in case build methods
+            % publically callable version of buildConditionsAsStrings in case build methods
             % end up having side effects
             if nargin < 2
                 separator = ' ';
@@ -1337,7 +1389,7 @@ classdef ConditionDescriptor
             if ci.nAxes == 0
                 values = {structToString(ci.conditions)};
             else
-                valueLists = ci.axisValueListsAsStrings; 
+                valueLists = ci.generateAxisValueListsAsStrings(separator); 
                 values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
                     valueLists, 'asCell', true);
             end
@@ -1448,6 +1500,19 @@ classdef ConditionDescriptor
             ci.odc.names = v;
         end
         
+        function v = get.namesMultiline(ci)
+            v = ci.odc.namesMultiline;
+            if isempty(v)
+                ci.odc.namesMultiline = ci.buildNamesMultiline();
+                v = ci.odc.namesMultiline;
+            end
+        end 
+        
+        function ci = set.namesMultiline(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.namesMultiline = v;
+        end
+        
         function v = get.attributeValueLists(ci)
             v = ci.odc.attributeValueLists;
             if isempty(v)
@@ -1510,11 +1575,18 @@ classdef ConditionDescriptor
                 valueLists = ci.axisValueLists; 
                 values = TensorUtils.mapFromAxisLists(@structMergeMultiple,...
                     valueLists, 'asCell', false);
+                if isempty(values)
+                    values = struct([]);
+                end
             end
         end
         
         function values = buildConditions(ci)
             values = ci.conditionsAxisAttributesOnly;
+            
+            if isempty(values)
+                return;
+            end
             
             % and add "wildcard" match for all other attributes that act as
             % filter (i.e. have manual value list or bins specified)
@@ -1626,6 +1698,13 @@ classdef ConditionDescriptor
         end
         
         function strCell = buildAxisValueListsAsStrings(ci)
+            strCell = ci.generateAxisValueListsAsStrings(' ');
+        end
+        
+        function strCell = generateAxisValueListsAsStrings(ci, separator)
+            if nargin < 2
+                separator = ' ';
+            end
             strCell = cellvec(ci.nAxes);
             valueLists = ci.axisValueLists;
             randStrCell = ci.axisRandomizeModesAsStrings;
@@ -1651,7 +1730,8 @@ classdef ConditionDescriptor
                     end
                 end
                 
-                strCell{iX} = arrayfun(@structToString, makecol(valueLists{iX}), ...
+                strCell{iX} = arrayfun(@(v) TrialDataUtilities.Data.structToString(v, separator), ...
+                    makecol(valueLists{iX}), ...
                    'UniformOutput', false);
 
                 % append randomization indicator when axis is randomized
@@ -1668,7 +1748,23 @@ classdef ConditionDescriptor
                 if isempty(fn)
                     fn = @ConditionDescriptor.defaultNameFn;
                 end
-                names = fn(ci);
+                names = fn(ci, 'multiline', false);
+                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
+                    'nameFn must return cellstr with same size as .conditions');
+            else
+                names = {};
+            end
+        end
+        
+        function names = buildNamesMultiline(ci)
+            % pass along values(i) and the subscripts of that condition in case useful 
+            if ci.nConditions > 0
+                fn = ci.nameFn;
+                if isempty(fn)
+                    fn = @ConditionDescriptor.defaultNameFn;
+                end
+                % multiline true
+                names = fn(ci, 'multiline', true);
                 assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
                     'nameFn must return cellstr with same size as .conditions');
             else
@@ -1824,7 +1920,16 @@ classdef ConditionDescriptor
         function nameCell = defaultNameFn(ci, varargin) 
             % receives the condition descriptor itself and returns a
             %  a cell tensor specifying the names of each condition
-            nameCell = ci.conditionsAsStrings;
+            p = inputParser();
+            p.addParamValue('multiline', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            if p.Results.multiline
+                nameCell = ci.generateConditionsAsStrings(char(10));
+            else
+                nameCell = ci.generateConditionsAsStrings(' ');
+            end
         end
     end
 
