@@ -5,13 +5,18 @@ function [freq, binEdges] = computeISIHistogram(td, unit, varargin)
     
     p = inputParser();
     p.addParamValue('binWidth', 0.5, @isscalar);
-    p.addParamValue('maxISI', 40, @isscalar);
+    p.addParamValue('maxISI', 30, @isscalar);
     p.parse(varargin{:});
 
     timesCell = td.getSpikeTimes(unit);
-    isiVec = cellfun(@(times) diff(times), timesCell, 'UniformOutput', false);
+    mask = cellfun(@(times) numel(times) > 1, timesCell);
+    isiVec = cellfun(@(times) makecol(diff(times)), timesCell(mask), 'UniformOutput', false);
 
     isiCat = cat(1, isiVec{:});
+    
+    if isempty(isiCat)
+        error('No spike pairs found for unit %s', unit);
+    end
 
     binEdges = 0:p.Results.binWidth:p.Results.maxISI;
     freq = histc(isiCat, binEdges);
