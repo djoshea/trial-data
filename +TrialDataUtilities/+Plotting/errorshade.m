@@ -33,9 +33,13 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
     y1 = makerow(y1);
     y2 = makerow(y2);
 
-    % desaturate the color for shading
+    % desaturate the color for shading if not translucent
     if isempty(p.Results.errorColor)
-        shadeColor = 1 - (1-color)*0.5;
+        if p.Results.alpha < 1
+            shadeColor = color;
+        else
+            shadeColor = 1 - (1-color)*0.5;
+        end
     else
         shadeColor = p.Results.errorColor;
     end

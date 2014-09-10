@@ -134,6 +134,7 @@ classdef DrawOnData
             p.addParamValue('xOffset', 0, @isscalar);
             p.addParamValue('yOffset', 0, @isscalar);
             p.addParamValue('intervalHeight', 1, @isscalar);
+            p.addParamValue('intervalMinWidth', NaN, @isscalar); % if specified, ensure that each interval is drawn at least this wide
             p.parse(varargin{:});
 
             xOffset = p.Results.xOffset;
@@ -143,9 +144,17 @@ classdef DrawOnData
             nTrials = size(intStart, 2);
             yStart = yOffset + repmat(0:-1:-(nTrials-1), nOccur, 1);
             yStop = yStart - p.Results.intervalHeight;
-
+            
             xStart = xOffset + intStart;
             xStop = xOffset + intStop;
+            
+            % enforce minimum interval width for display (to ensure
+            % visibility)
+            if ~isnan(p.Results.intervalMinWidth)
+                minWidth = p.Results.intervalMinWidth;
+                width = xStop - xStart;
+                xStop(width < minWidth) = xStart(width < minWidth) + minWidth;
+            end
 
             color = app.Color;
             if alpha < 1
