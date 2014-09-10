@@ -38,8 +38,10 @@ classdef TrialDataConditionAlign < TrialData
         conditionIdx
         conditionSubs
         conditions
+        conditionsAxisAttributesOnly
         conditionsAsStrings
         conditionNames
+        conditionNamesMultiline
         conditionAppearances
         conditionsSize
         
@@ -48,6 +50,7 @@ classdef TrialDataConditionAlign < TrialData
         axisValueListsAsStrings
         
         conditionAppearanceFn
+        conditionNameFn
     end
     
     % Simple dependent properties
@@ -125,7 +128,7 @@ classdef TrialDataConditionAlign < TrialData
     end
     
     % build* methods for properties stored in odc
-    methods
+    methods(Access=protected)
         function buildEventData(td)
             % build a cached version of event times into a matrix for easy alignment
             % sets .eventData and .eventCounts
@@ -133,6 +136,9 @@ classdef TrialDataConditionAlign < TrialData
             evStruct = td.getRawEventFlatStruct();
             evList = fieldnames(evStruct);
             nEvents = numel(evList);
+            eventCounts = struct();
+            eventData = struct();
+            
             for iE = 1:nEvents
                 ev = evList{iE};
                 times = evStruct.(ev);
@@ -168,24 +174,8 @@ classdef TrialDataConditionAlign < TrialData
             c = td.odc;
             c.alignSummarySet = alignSummarySet;
         end
-    end
-    
-    % General utilites
-    methods
-        % print a short description
-        function disp(td)
-            td.printDescriptionShort();
-            
-            td.conditionInfo.printDescription();
-            for iA = 1:td.nAlign
-                td.alignInfoSet{iA}.printDescription();
-            end
-            
-            fprintf('\n');
-            td.printChannelInfo();
-            fprintf('\n');
-        end
-
+        
+        
         % synchronize valid between AlignInfo and ConditionINfo
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
@@ -241,6 +231,23 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             cause(td.valid) = {''};
+        end
+    end
+    
+    % General utilites
+    methods
+        % print a short description
+        function disp(td)
+            td.printDescriptionShort();
+            
+            td.conditionInfo.printDescription();
+            for iA = 1:td.nAlign
+                td.alignInfoSet{iA}.printDescription();
+            end
+            
+            fprintf('\n');
+            td.printChannelInfo();
+            fprintf('\n');
         end
 
         function td = addChannel(td, varargin)
@@ -375,7 +382,11 @@ classdef TrialDataConditionAlign < TrialData
             assert(isequal(class(cd), 'ConditionDescriptor'), 'Must be a ConditionDescriptor instance');
             
             % grab the param data to feed to the condition descriptor
-            paramData = td.getRawChannelDataAsStruct(cd.attributeRequestAs);
+            if isempty(cd.attributeRequestAs)
+                paramData = emptyStructArray(td.nTrials);
+            else
+                paramData = td.getRawChannelDataAsStruct(cd.attributeRequestAs);
+            end
             
             % build condition info from condition descriptor
             td.conditionInfo = ConditionInfo.fromConditionDescriptor(cd, paramData);
@@ -385,8 +396,22 @@ classdef TrialDataConditionAlign < TrialData
         function td = setConditionAppearanceFn(td, fn)
             % Update the appearanceFn callback of conditionDescriptor
             % without invalidating any of the other cached info
+            assert(isa(fn, 'function_handle'));
             td.warnIfNoArgOut(nargout);
             td.conditionInfo.appearanceFn = fn;
+        end
+        
+        function td = freezeConditionAppearances(td)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.freezeAppearances();
+        end
+        
+        function td = setConditionNameFn(td, fn)
+            % Update the nameFn callback of conditionDescriptor
+            % without invalidating any of the other cached info
+            assert(isa(fn, 'function_handle'));
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo.nameFn = fn;
         end
         
         function td = colorByAttributes(td, varargin)
@@ -567,7 +592,7 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function valueList = getAttributeValueList(td, attrName)
-            td = td.addAttrbute(attrName);
+            td = td.addAttribute(attrName);
             valueList = td.conditionInfo.getAttributeValueList(attrName);
         end
 
@@ -621,6 +646,10 @@ classdef TrialDataConditionAlign < TrialData
             v = td.conditionInfo.conditions;
         end
         
+        function v = get.conditionsAxisAttributesOnly(td)
+            v = td.conditionInfo.conditionsAxisAttributesOnly;
+        end
+        
         function v = get.conditionsAsStrings(td)
             v = td.conditionInfo.conditionsAsStrings;
         end
@@ -640,13 +669,17 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.axisValueLists(td)
             v = td.conditionInfo.axisValueLists;
         end
-   td     
+  
         function v = get.axisValueListsAsStrings(td)
             v = td.conditionInfo.axisValueListsAsStrings;
         end
 
         function v = get.conditionNames(td)
             v = td.conditionInfo.names;
+        end
+        
+        function v = get.conditionNamesMultiline(td)
+            v = td.conditionInfo.namesMultiline;
         end
 
         function v = get.conditionAppearances(td)
@@ -659,6 +692,10 @@ classdef TrialDataConditionAlign < TrialData
         
         function v = get.conditionAppearanceFn(td)
             v = td.conditionInfo.appearanceFn;
+        end
+        
+        function v = get.conditionNameFn(td)
+            v = td.conditionInfo.nameFn;
         end
         
         function v = get.listByCondition(td)
@@ -1442,9 +1479,12 @@ classdef TrialDataConditionAlign < TrialData
     % Spike data
     methods
         % return aligned unit spike times
-        function [timesCell] = getSpikeTimes(td, unitName)
+        function [timesCell] = getSpikeTimes(td, unitName, includePadding)
+            if nargin < 3
+                includePadding = false;
+            end
             timesCell = getSpikeTimes@TrialData(td, unitName);
-            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, true);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, includePadding);
         end
         
         function [rateCell, timeCell] = getSpikeRateFiltered(td, unitName, varargin)
@@ -1457,7 +1497,7 @@ classdef TrialDataConditionAlign < TrialData
             % Pad trial data alignment for spike filter
             td = td.pad([sf.preWindow sf.postWindow]);
             
-            spikeCell = td.getSpikeTimes(unitName);
+            spikeCell = td.getSpikeTimes(unitName, true);
             timeInfo = td.alignInfoActive.timeInfo;
             
             % convert to .zero relative times since that's what spikeCell
@@ -1553,6 +1593,122 @@ classdef TrialDataConditionAlign < TrialData
             rates = td.getSpikeMeanRate(unitName);
             rateCell = td.groupElements(rates);
         end
+        
+        function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName) 
+            rateCell = td.getSpikeMeanRateGrouped(unitName);
+            
+            meanByGroup = cellfun(@nanmean, rateCell);
+            semByGroup = cellfun(@nansem, rateCell);
+            stdByGroup = cellfun(@nanstd, rateCell);
+            nByGroup = cellfun(@numel, rateCell);
+        end
+        
+        function [timesCell, markCounts] = getMarkAlignedSpikeTimes(td, unitName, markIdx, window)
+            % [timesCell] = getMarkAlignedSpikeTimes(td, unitName, markIdx, window)
+            % timesCell is nTrials x nMarkOccurMax, only the first
+            % markCounts(iTrial) are valid
+            timesCell = td.getSpikeTimesUnaligned(unitName);
+            timesCell = td.alignInfoActive.getMarkAlignedTimesCell(timesCell, markIdx, window);
+            markCounts = td.alignInfoActive.markCountsValid;
+        end
+        
+        function [timesCellByGroup, markCountsByGroup] = getMarkAlignedSpikeTimesGrouped(td, unitName, markIdx, window)
+            % [timesCell] = getMarkAlignedSpikeTimes(td, unitName, markIdx, window)
+            timesCell = td.getMarkAlignedSpikeTimes(unitName, markIdx, window);
+            markCounts = td.alignInfoActive.markCountsValid;
+            [timesCellByGroup, markCountsByGroup] = td.groupElements(timesCell, markCounts);
+        end
+        
+        function [spikeCounts, markCounts] = getMarkAlignedSpikeCounts(td, unitName, markIdx, window)
+            [timesCell, markCounts] = td.getMarkAlignedSpikeTimes(unitName, markIdx, window);
+            spikeCounts = cellfun(@numel, timesCell);
+            for iTrial = 1:td.nTrials
+                spikeCounts(iTrial, markCounts(iTrial)+1:end) = NaN;
+            end
+        end
+        
+        function [spikeCountsByGroup, markCountsByGroup] = getMarkAlignedSpikeCountsGrouped(td, unitName, markIdx, window)
+            [spikeCounts, markCounts] = td.getMarkAlignedSpikeCounts(unitName, markIdx, window);
+            [spikeCountsByGroup, markCountsByGroup] = td.groupElements(spikeCounts, markCounts);
+        end
+    end
+    
+    methods % spike waveforms
+        function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName, varargin)
+            [wavesCell, waveTvec, timesCell] = getSpikeWaveforms@TrialData(td, unitName);
+            [~, maskCell] = td.alignInfoActive.getAlignedTimesCell(timesCell, true);
+            wavesCell = cellfun(@(waves, mask) waves(mask, :), wavesCell, maskCell, 'UniformOutput', false);
+            timesCell = cellfun(@(times, mask) times(mask), timesCell, maskCell, 'UniformOutput', false);
+        end
+        
+        function h = plotSpikeWaveforms(td, unitName, varargin)
+            p = inputParser();
+            p.addParamValue('maxToPlot', 200, @isscalar);
+            p.addParamValue('alpha', 0.4, @isscalar);
+            p.addParamValue('color', 'k', @(x) ischar(x) || isvector(x));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [axh, unmatched] = td.getRequestedPlotAxis(p.Unmatched);
+            
+            [wavesCell, waveTvec] = td.getSpikeWaveforms(unitName, unmatched);
+            wavesMat = cat(1, wavesCell{:});
+            
+            maxSamples = p.Results.maxToPlot;
+            if maxSamples < size(wavesMat, 1)
+                s = RandStream('mt19937ar','Seed',1);
+                idx = randsample(s, size(wavesMat, 1), maxSamples);
+                wavesMat = wavesMat(idx, :);
+            end
+            
+            h = nanvec(size(wavesMat, 1));
+            for i = 1:size(wavesMat, 1)
+                h(i) = TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat(i, :), ...
+                    'Parent', axh, 'EdgeColor', p.Results.color, 'EdgeAlpha', p.Results.alpha);
+            end
+            
+            ht = title(sprintf('Spike Waveforms for %s', unitName));
+            set(ht, 'Interpreter', 'none');
+            
+            axis tight;
+            AutoAxis.replaceScaleBars(gca, td.timeUnitName, td.channelDescriptorsByName.(unitName).waveformsUnits);
+            
+        end
+        
+        function [wavesMat, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
+            % returns a matrix containing all waveforms in units. Units
+            % can be a string or cellstr, where each string is a spike unit name
+            % or, if paramValue 'regexp' is true, a regexp search over
+            % unitNames
+            p = inputParser();
+            p.addParamValue('regexp', false, @islogical);
+            p.parse(varargin{:});
+            
+            if ischar(units), units = {units}; end
+            
+            % do regexp matching
+            if p.Results.regexp
+                allUnits = td.listSpikeChannels();
+                matches = cellvec(numel(units));
+                for iU = 1:numel(units)
+                    matchRes = regexp(allUnits, units{iU}, 'match');
+                    matches{iU} = cat(1, matchRes{:});
+                end
+                units = cat(1, matches{:});
+            end
+            
+            % get waveforms for each unit
+            [waveByU, trialByU, timeByU] = deal(cellvec(numel(units)));
+            for iU = 1:numel(units)
+                [w, ~, t] = td.getSpikeWaveforms(units{iU});
+                [waveByU{iU}, trialByU{iU}] = TensorUtils.catWhich(1, w{:});
+                timeByU{iU} = cat(1, t{:});
+            end
+            
+            [wavesMat, whichUnit] = TensorUtils.catWhich(1, waveByU{:});
+            trialIdx = cat(1, trialByU{:});
+            timeWithinTrial = cat(1, timeByU{:});
+        end
     end
     
     % Plotting Spike data
@@ -1591,15 +1747,16 @@ classdef TrialDataConditionAlign < TrialData
             
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
-                'axisInfoX', 'time');
+                'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'));
             
-            title(sprintf('%s : Unit %s', td.datasetName, unitName));
+            h = title(sprintf('%s : Unit %s', td.datasetName, unitName));
+            set(h, 'Interpreter', 'none');
             axis(gca, 'tight');
             axis(gca, 'off');
             
             ylabel('spikes/sec');
             au = AutoAxis(gca);
-            au.addAutoAxisY();
+            %au.addAutoAxisY();
             au.update();
         end
         
@@ -1610,8 +1767,20 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('colorSpikes', false, @islogical);
             p.addParamValue('timeAxisStyle', 'marker', @ischar);
             p.addParamValue('intervalAlpha', 0.5, @isscalar);
+            p.addParamValue('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
+            p.addParamValue('gapBetweenConditions', [], @(x) isempty(x) || isscalar(x));
+            
+            % for plotting interval and marks above each condition
+            p.addParamValue('annotateAboveEachCondition', false, @islogical);
+            p.addParamValue('annotationHeight', 2, @islogical);
+            p.addParamValue('annotateUsingFirstTrialEachCondition', false, @islogical);
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            
+            if td.nTrialsValid == 0
+                error('No valid trials found');
+            end
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
             
@@ -1625,7 +1794,7 @@ classdef TrialDataConditionAlign < TrialData
             
             timesByAlign = cell(nAlignUsed, nConditionsUsed);
             
-            % compute x offsets for each align
+            % compute x-axis offsets for each align
             timePointsCell = cell(nAlignUsed, 1);
             [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed));
             for iAlign = 1:nAlignUsed
@@ -1650,10 +1819,20 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             tOffsetByAlign = td.getAlignPlottingTimeOffsets(timePointsCell);
-            
-            % compute y offsets for each condition
+           
+            % default gap depends on presence of annotations between conditions
+            if isempty(p.Results.gapBetweenConditions)
+                if p.Results.annotateAboveEachCondition
+                    gap = p.Results.annotationHeight + 3; % 2 above, 1 below
+                else
+                    gap = 3;
+                end
+            else
+                gap = p.Results.gapBetweenConditions;
+            end
+                    
+            % compute y-axis offsets for each condition
             trialCounts = cellfun(@numel, td.listByCondition(conditionIdx));
-            gap = 3;
             yOffsetByCondition = zeros(nConditionsUsed, 1);
             yLimsByCondition = nan(2, nConditionsUsed);
             currentOffset = 0;
@@ -1672,21 +1851,51 @@ classdef TrialDataConditionAlign < TrialData
             yLimsByCondition = yLimsByCondition + delta;
            
             % draw marks and intervals on each raster
-            for iAlign = 1:nAlignUsed
-                idxAlign = alignIdx(iAlign);
-                for iCond = 1:nConditionsUsed
-                    if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
-                    td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}, ...
-                        'stopByTrial', stopData{iAlign, iCond}, ...
-                        'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
-                        'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
-                        'yOffsetTop', yOffsetByCondition(iCond), ...
-                        'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+            if p.Results.annotateAboveEachCondition
+                if p.Results.annotateUsingFirstTrialEachCondition
+                    % draw first trial's marks and intervals above the
+                    % spikes for that condition. First trial is used when
+                    % only the gist of the marks/intervals is required and
+                    % is better seen from an individual trial rather than
+                    % the average
+                    for iAlign = 1:nAlignUsed
+                        idxAlign = alignIdx(iAlign);
+                        for iCond = 1:nConditionsUsed
+                            if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
+                            % use first trial to draw marks and intervals
+                            % on
+                            td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}(1), ...
+                                'stopByTrial', stopData{iAlign, iCond}(1), ...
+                                'trialIdx', td.listByCondition{conditionIdx(iCond)}(1), ...
+                                'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
+                                'yOffsetTop', yOffsetByCondition(iCond) + p.Results.annotationHeight + 1, ...
+                                'tickHeight', p.Results.annotationHeight, ...
+                                'intervalMinWidth', p.Results.intervalMinWidth, ...
+                                'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+                        end
+                    end
+                else
+                    error('Not yet implemented');
+                end
+            else
+                for iAlign = 1:nAlignUsed
+                    idxAlign = alignIdx(iAlign);
+                    for iCond = 1:nConditionsUsed
+                        if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
+                        td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}, ...
+                            'stopByTrial', stopData{iAlign, iCond}, ...
+                            'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
+                            'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
+                            'yOffsetTop', yOffsetByCondition(iCond), ...
+                            'intervalMinWidth', p.Results.intervalMinWidth, ...
+                            'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+                    end
                 end
             end
-            set(gcf, 'Renderer', 'painters');
+            %set(gcf, 'Renderer', 'painters');
             
-            % draw tick rasters in a grid pattern
+            % draw tick rasters in a grid pattern (conditions vertically,
+            % aligns horizontally)
             for iAlign = 1:nAlignUsed
                 for iC = 1:nConditionsUsed
                     app = td.conditionAppearances(conditionIdx(iC));
@@ -1705,28 +1914,39 @@ classdef TrialDataConditionAlign < TrialData
             
             % setup y axis condition labels
             colors = cat(1, td.conditionAppearances(conditionIdx).Color);
-            conditionNames = td.conditionInfo.generateConditionsAsStrings(sprintf('\n'));
-            conditionNames = conditionNames(conditionIdx);
-            conditionMultilineLabels = cellfun(@(str) strsplit(str, '\n'), ...
-                conditionNames, 'UniformOutput', false);
+            conditionNames = td.conditionNamesMultiline(conditionIdx);
             
             % only include conditions with at least 1 trial
             mask = trialCounts(conditionIdx) > 0;
             au = AutoAxis(axh);
             au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
-                conditionMultilineLabels(mask), 'color', colors);
+                conditionNames(mask), 'color', colors);
             
             % setup time axis markers
-            for iAlign = 1:nAlignUsed
-                idxAlign = alignIdx(iAlign);
-                td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', ...
-                    'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign));
+            if p.Results.annotateAboveEachCondition
+                if iAlign == nAlignUsed
+                    % just use horizontal scale bar
+                    au = AutoAxis(axh);
+                    au.xUnits = td.timeUnitName;
+                    au.addAutoScaleBarX();
+                    au.update();
+                    au.installCallbacks();
+                end
+            else
+                % use marks or tickBridges via AlignSummary
+                for iAlign = 1:nAlignUsed
+                    idxAlign = alignIdx(iAlign);
+                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', ...
+                        'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign));
+                end
             end
             
-            title(sprintf('%s : Unit %s', td.datasetName, unitName));
+            h = title(sprintf('%s : Unit %s', td.datasetName, unitName));
+            set(h, 'Interpreter', 'none');
             
             axis(axh, 'tight');
             au = AutoAxis(axh);
+            au.axisMarginLeft = 7; % make room for left hand side labels
             axis(axh, 'off');
             au.update();
         end
@@ -2290,9 +2510,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('data', {}, @(x) isnumeric(x) || iscell(x)); % for D == 1,2,3
             p.addParamValue('dataError', {}, @(x) isnumeric(x) || iscell(x)); 
             
-            p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
             
             p.addParamValue('scaleBars', false, @islogical);
             p.addParamValue('axisStyleX', 'tickBridge', @ischar);
@@ -2303,6 +2523,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('alignIdx', [], @isnumeric);
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
             p.addParamValue('alpha', 1, @isscalar);
+            p.addParamValue('errorAlpha', 0.5, @isscalar);
             p.addParamValue('markAlpha', 1, @isscalar);
             p.addParamValue('markShowRanges', true, @islogical); % show ranges for marks 
             p.addParamValue('markSize', 8, @isscalar);
@@ -2431,10 +2652,12 @@ classdef TrialDataConditionAlign < TrialData
                     if D == 1
                         tOffset = timeOffsetByAlign(iAlign);
                         if plotErrorY
-                            hData{iCond, iAlign} = errorshade(tvec + tOffset, dmat, ...                   
+                            hShade = errorshade(tvec + tOffset, dmat, ...                   
                                 errmat, app(iCond).Color, 'axh', axh, ...
-                                'alpha', p.Results.alpha);
-                        elseif p.Results.alpha < 1
+                                'alpha', p.Results.errorAlpha, 'z', -0.1);
+                            TrialDataUtilities.Plotting.hideInLegend(hShade);
+                        end
+                        if p.Results.alpha < 1
                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset, dmat, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                'LineWidth', p.Results.lineWidth, p.Results.plotOptions{:});
