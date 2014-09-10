@@ -352,6 +352,14 @@ classdef AlignInfo < AlignDescriptor
             
             % grab the event times for all needed events
             [eventData, eventCounts] = ad.getEventTimesFn(td, eventList);
+            if ~isfield(eventData, 'TrialStart')
+                eventData.TrialStart = nanvec(td.nTrials);
+                eventCounts.TrialStart = zerosvec(td.nTrials);
+            end
+            if ~isfield(eventData, 'TrialEnd')
+                eventData.TrialEnd = nanvec(td.nTrials);
+                eventCounts.TrialEnd = zerosvec(td.nTrials);
+            end
         end
         
         function assertHasEvent(ad, eventName)
@@ -894,13 +902,13 @@ classdef AlignInfo < AlignDescriptor
             
             % filter the spikes within the window and recenter on zero
             if includePadding
-                start = ad.timeInfo.startPad;
-                stop = ad.timeInfo.stopPad;
+                start = ad.timeInfoValid.startPad;
+                stop = ad.timeInfoValid.stopPad;
             else
-                start = ad.timeInfo.start;
-                stop = ad.timeInfo.stop;
+                start = ad.timeInfoValid.start;
+                stop = ad.timeInfoValid.stop;
             end
-            zero = ad.timeInfo.zero;
+            zero = ad.timeInfoValid.zero;
             
             rawTimesMask = bsxfun(@ge, rawTimesMatrix, start) & bsxfun(@le, rawTimesMatrix, stop);
             alignedTimes = bsxfun(@minus, rawTimesMatrix, zero);  
@@ -973,18 +981,73 @@ classdef AlignInfo < AlignDescriptor
            stopRel = stop - zero;
         end
        
-        function [markData, markDataMask] = getAlignedMarkData(ad)
+        function [markData, markDataMask] = getAlignedMarkData(ad, includePadding)
+            if nargin < 2
+                includePadding = false;
+            end
             [markData, markDataMask] = ...
-                cellfun(@ad.getAlignedTimesMatrix, ad.markDataValid, 'UniformOutput', false);
+                cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding), ad.markDataValid, 'UniformOutput', false);
         end
         
         function [intervalStartData, intervalStopData, intervalStartMask, intervalStopMask] = ...
-                getAlignedIntervalData(ad)
+                getAlignedIntervalData(ad, includePadding)
+            if nargin < 2
+                includePadding = false;
+            end
             [intervalStartData, intervalStartMask] = ...
-                cellfun(@ad.getAlignedTimesMatrix, ad.intervalStartDataValid, 'UniformOutput', false);
+                cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding), ad.intervalStartDataValid, 'UniformOutput', false);
             [intervalStopData, intervalStopMask] = ...
-                cellfun(@ad.getAlignedTimesMatrix, ad.intervalStopDataValid, 'UniformOutput', false);
+                cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding), ad.intervalStopDataValid, 'UniformOutput', false);
         end
+    end
+    
+    methods % Time-Aligning data transformations to individual marks and intervals
+        % use the alignment to shift the times in rawTimesCell to be zero relative
+        % to EACH mark and filter by time window determined by getTimeInfo for each trial
+        % if includePadding is true, will additional times found in the padWindow, see .setPadWindow
+        function [alignedTimes, rawTimesMask] = getMarkAlignedTimesCell(ad, rawTimesCell, markIdx, window, includePadding)
+            if nargin < 5
+                includePadding = false;
+            end
+            assert(markIdx >= 1 && markIdx <= ad.nMarks, 'Mark idx out of range');
+            
+            if isempty(rawTimesCell)
+                alignedTimes = rawTimesCell;
+                rawTimesMask = rawTimesCell;
+                return;
+            end
+
+            % grab the aligned mark data
+            assert(numel(rawTimesCell) == ad.nTrials, 'Size must match nTrials');
+            markDataAll = ad.getAlignedMarkData(includePadding);
+            alignedMarkMat = markDataAll{markIdx};
+           
+            % align the raw
+            [alignedTimesTrial, rawTimesMaskTrial] = ad.getAlignedTimesCell(rawTimesCell, includePadding);
+            
+            % filter the spikes within the window and recenter on zero
+            startMat = alignedMarkMat + window(1);
+            stopMat = alignedMarkMat + window(2);
+            zeroMat = alignedMarkMat;
+           
+            nMarkOccur = ad.markMaxCounts(markIdx);
+            [alignedTimes, rawTimesMask] = deal(cell(ad.nTrials, nMarkOccur));
+            %valid = ad.valid;
+            for i = 1:ad.nTrials
+                selectedFromTrial = alignedTimesTrial{i}; % this includes only pre-selected times in trial
+                maskWholeTrial = rawTimesMaskTrial{i}; % this is a mask over all times in trial
+                for m = 1:nMarkOccur
+                    % this is a sub-selection mask into selectedFromTrial
+                    selected = selectedFromTrial >= startMat(i, m) & selectedFromTrial <= stopMat(i, m);
+                    idxExclude = find(maskWholeTrial);
+                    mask = maskWholeTrial;
+                    mask(idxExclude(~selected)) = false;
+                    rawTimesMask{i, m} = mask;
+                    alignedTimes{i, m} = selectedFromTrial(selected) - zeroMat(i, m);
+                end
+            end
+        end
+        
     end
     
     methods % Drawing on data 
@@ -1183,6 +1246,8 @@ classdef AlignInfo < AlignDescriptor
             p.addParamValue('axh', gca, @ishandle);
             p.addParamValue('tOffsetZero', 0, @isscalar);
             p.addParamValue('yOffsetTop', 0, @isscalar);
+            p.addParamValue('tickHeight', 1, @isscalar);
+            p.addParamValue('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals wider than they really are to be more readily visible 
             
             p.addParamValue('markAsTicks', true, @islogical);
             p.addParamValue('markAlpha', 1, @isscalar);
@@ -1238,7 +1303,8 @@ classdef AlignInfo < AlignDescriptor
                 app = ad.intervalAppear{iInterval};
                 
                 hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
-                    app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
+                    app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', p.Results.intervalMinWidth);
 
                 if p.Results.showInLegend
                     TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
@@ -1279,7 +1345,8 @@ classdef AlignInfo < AlignDescriptor
                 
                 % plot mark and provide legend hint
                 hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
-                    p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
+                    p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    'tickHeight', p.Results.tickHeight);
 
                 if p.Results.showInLegend
                     TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
