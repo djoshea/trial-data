@@ -16,19 +16,19 @@ classdef TrialData
     
     % Internal data storage
     properties(SetAccess=protected)
-        data = struct();  % standardized format nTrials x 1 struct with all trial data  
+        data = struct([]);  % standardized format nTrials x 1 struct with all trial data  
         
         initialized = false; % has initialize() been called yet?
 
         trialDataInterfaceClass = ''; % how did we access the original data?
         
-        manualValid
+        manualValid = true(0, 1);
 
-        timeUnitName
+        timeUnitName = 'ms';
         
-        timeUnitsPerSecond
+        timeUnitsPerSecond = 1000;
         
-        channelDescriptorsByName % struct with ChannelDescriptor for each channel, by name
+        channelDescriptorsByName  = struct(); % struct with ChannelDescriptor for each channel, by name
     end
     
     properties(Access=protected, Hidden)
@@ -117,29 +117,36 @@ classdef TrialData
             % loop over channels and verify
             %fprintf('Validating channel data...\n');
             ok = falsevec(nChannels);
-            msg = cellvec(nChannels);
+            required = falsevec(nChannels);
+            missing = cellvec(nChannels);
+            chNames = cellvec(nChannels);
             for iChannel = 1:nChannels
                 chd = channelDescriptors(iChannel); 
                 
                 % check to make sure all fields were provided as expected 
-                [ok(iChannel), msg{iChannel}] = chd.checkData(data); %#ok<PROP>
+                [ok(iChannel), missing{iChannel}] = chd.checkData(data); %#ok<PROP>
+                chNames{iChannel} = chd.describe();
+                required(iChannel) = chd.required;
                 
-                if ~chd.required
+                if ~ok(iChannel) && ~chd.required
                     % fill in missing values for optional channels but
                     % issue a warning
-                    chd.addMissingFields(data); %#ok<PROP>
-                    fprintf('Warning: No data provided by interface for channel %s\n', chd.describe());
-                    ok(iChannel) = false;
+                    data = chd.addMissingFields(data); %#ok<PROP>
+                    tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
+                        chd.describe(), strjoin(missing{iChannel}, ', '));
+                    ok(iChannel) = true; % mark as okay since not required
                 end
             end
 
             if any(~ok)
-                msg = msg(~ok);
-                fprintf('Error: data not provided by interface for channels:\n');
-                for i = 1:length(msg)
-                    fprintf('\t%s\n', msg{i});
+                missing = missing(~ok);
+                chNames = chNames(~ok);
+                %tcprintf('Error: data not provided by interface for channels:\n');
+                for i = 1:length(missing)
+                    tcprintf('inline', '{red}Error:   {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
+                        chNames{i}, strjoin(missing{i}, ', '));
                 end
-                error('Required channel data not provided by getChannelData');
+                error('Required channel data fields not provided by getChannelData');
             end
 
             %fprintf('Repairing and converting channel data...\n');
@@ -165,8 +172,13 @@ classdef TrialData
     % General utilities
     methods
         function printDescriptionShort(td)
-            tcprintf('inline', '{yellow}%s: {none}%d trials (%d valid) with %d channels\n', ...
+            if td.nTrialsValid == 0
+                tcprintf('inline', '{yellow}%s: {none}%d trials {bright red}(%d valid){none} with %d channels\n', ...
                 class(td), td.nTrials, td.nTrialsValid, td.nChannels);
+            else
+                tcprintf('inline', '{yellow}%s: {none}%d trials (%d valid) with %d channels\n', ...
+                    class(td), td.nTrials, td.nTrialsValid, td.nChannels);
+            end
             if ~isempty(td.datasetName)
                 tcprintf('inline', '{yellow}Dataset: {none}%s\n', td.datasetName);
             end
@@ -277,7 +289,7 @@ classdef TrialData
             td = td.updateValid();
         end
         
-        function td = setAllValid(td, mask)
+        function td = setAllValid(td)
             td.manualValid = true(td.nTrials, 1);
             td = td.updateValid();
         end
@@ -379,8 +391,12 @@ classdef TrialData
         
         function cds = getChannelDescriptorArray(td)
             fields = fieldnames(td.channelDescriptorsByName);
-            for iF = 1:length(fields)
-                cds(iF) = td.channelDescriptorsByName.(fields{iF}); %#ok<AGROW>
+            if isempty(fields)
+                cds = [];
+            else
+                for iF = 1:length(fields)
+                    cds(iF) = td.channelDescriptorsByName.(fields{iF}); %#ok<AGROW>
+                end
             end
         end
         
@@ -493,12 +509,12 @@ classdef TrialData
                 else
                     error('%s is not a channel or data field name', times);
                 end
-                times = [];
+                %times = [];
 
             elseif iscell(times) || isnumeric(times)
                 % pass specified times along directly as cell
                 % and generate unique time field name
-                timeField = genvarname(sprintf('%s_time', name), fieldnames(td.data));
+                timeField = matlab.lang.makeUniqueStrings(sprintf('%s_time', name), fieldnames(td.data));
             else
                 error('Times must be channel/field name or cell array');
             end
@@ -574,6 +590,10 @@ classdef TrialData
         
         function names = listAnalogChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
+            if isempty(channelDescriptors)
+                names = {};
+                return;
+            end
             mask = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
@@ -688,6 +708,10 @@ classdef TrialData
         
         function names = listEventChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
+            if isempty(channelDescriptors)
+                names = {};
+                return;
+            end
             mask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
@@ -695,6 +719,8 @@ classdef TrialData
         % used mainly by AlignInfo to make sure it can access unaligned
         % event info
         function eventStruct = getRawEventFlatStruct(td, chList)
+            eventStruct = struct();
+            
             if nargin < 2
                 chList = td.listEventChannels();
             end
@@ -870,6 +896,10 @@ classdef TrialData
         
         function names = listParamChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
+            if isempty(channelDescriptors)
+                names = {};
+                return;
+            end
             mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
@@ -955,6 +985,10 @@ classdef TrialData
         
         function names = listSpikeChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
+            if isempty(channelDescriptors)
+                names = {};
+                return;
+            end
             mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
@@ -968,15 +1002,16 @@ classdef TrialData
         end
         
         function timesCell = getRawSpikeTimes(td, unitName)
-%             if td.hasSpikeChannel(unitName)
-                name = unitName;
-%             else
-%                 name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
-%             end
+            name = unitName;
             timesCell = {td.data.(name)}';
         end
 
         function timesCell = getSpikeTimes(td, unitName, varargin) 
+            timesCell = td.getRawSpikeTimes(unitName);
+            timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
+        end
+        
+        function timesCell = getSpikeTimesUnaligned(td, unitName)
             timesCell = td.getRawSpikeTimes(unitName);
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
@@ -989,6 +1024,20 @@ classdef TrialData
             counts = td.getSpikeCounts(unitName);
             durations = td.getValidDurations();
             rates = counts ./ durations * td.timeUnitsPerSecond;
+        end
+        
+         function [wavesCell, waveTvec, timesCell] = getRawSpikeWaveforms(td, unitName)
+            wavefield = td.channelDescriptorsByName.(unitName).waveformsField;
+            assert(~isempty(wavefield), 'Unit %s does not have waveforms', unitName);
+            wavesCell = {td.data.(wavefield)}';
+            waveTvec = td.channelDescriptorsByName.(unitName).waveformsTvec;
+            timesCell = td.getRawSpikeTimes(unitName);
+        end
+        
+        function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName)
+            [wavesCell, waveTvec, timesCell] = td.getRawSpikeWaveforms(unitName);
+            wavesCell = td.replaceInvalidMaskWithValue(wavesCell, []);
+            timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
     end
 
@@ -1065,7 +1114,7 @@ classdef TrialData
                 if isempty(otherChannels), continue; end
                 
                 % being used by other channels, rename and copy
-                newName = genvarname([dataFields{iF} '_' name 'Copy'], fieldnames(td.data));
+                newName = matlab.lang.makeUniqueStrings([dataFields{iF} '_' name 'Copy'], fieldnames(td.data));
                 td.data = copyStructField(td.data, td.data, dataFields{iF}, newName);
                 
                 cd = cd.renameDataField(iF, newName);
@@ -1179,50 +1228,64 @@ classdef TrialData
         % general utility to send plots to the correct axis
         function [axh, unmatched] = getRequestedPlotAxis(td, varargin) %#ok<INUSL>
             p = inputParser();
-            p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
+            p.addParamValue('figh', [], @(x) isempty(x) || ishandle(x));
+            p.addParamValue('axh', [], @(x) isempty(x) || ishandle(x));
             p.addParamValue('cla', false, @islogical); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            % default to gca
-            if isempty(p.Results.axh)
-                axh = newplot();
-            else
+            if ~isempty(p.Results.axh)
+                % if specified, use that axis
                 axh = p.Results.axh;
                 if ~ishold(axh)
                     cla(axh);
                 end
+            elseif ~isempty(p.Results.figh)
+                % if figure specified, use that figure's current axis
+                axh = get(p.Results.figh, 'CurrentAxes');
+                if isempty(axh)
+                    axh = axes('Parent', figh);
+                end
+            else
+                % if neither, use newplot
+                axh = newplot();
             end
 
             % optionally clear axis
             if p.Results.cla
                 cla(axh);
             end
-            
             unmatched = p.Unmatched;
         end
 
+        % used when plotting into a panel() object (multi-axis plotting)
+        % either return the specified panel or generate one in the current
+        % figure
         function [pan, unmatched] = getRequestedPlotPanel(td, varargin) %#ok<INUSL>
             p = inputParser();
             p.addParamValue('figh', [], @(x) isempty(x) || ishandle(x));
-            p.addParamValue('panel', [], @(x) isempty(x) || ishandle(x));
+            p.addParamValue('panel', [], @(x) isempty(x) || isa(x, 'panel'));
             p.addParamValue('clf', true, @islogical); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            % default to gcf
-            if isempty(p.Results.figh)
-                figh = gcf;
+            if ~isempty(p.Results.panel)
+                % use specified panel
+                pan = p.Results.panel;
             else
-                figh = p.Results.figh;
-            end
+                if ~isempty(p.Results.figh)
+                    figh = p.Results.figh;
+                else
+                    figh = gcf;
+                end
            
-            % optionally clear figure
-            if p.Results.clf
-                clf(figh);
-            end
+                % optionally clear figure
+                if p.Results.clf
+                    clf(figh);
+                end
             
-            pan = OuterPanel(figh);
+                pan = panel(figh);
+            end
             
             unmatched = p.Unmatched;
         end
