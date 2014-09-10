@@ -555,13 +555,21 @@ classdef ConditionInfo < ConditionDescriptor
             % indiciating which field invalidated a given trial (or NaN)
            
             if ci.nTrials == 0
-                mask = logical([]);
+                mask = false(0, 1);
+                whichField = nan(0, 1);
                 return;
             end
             
             nValues = numel(valueStruct);
             mask = true(ci.nTrials, nValues);
             whichField = nan(ci.nTrials, nValues);
+            
+            if nValues == 0
+                % no valid values provided, often because it's
+                % an auto-occupied axis but no trials are valid
+                mask = false(ci.nTrials, 1);
+                return;
+            end
             
             fields = fieldnames(valueStruct);
             attrIdx = ci.assertHasAttribute(fields);
@@ -669,7 +677,7 @@ classdef ConditionInfo < ConditionDescriptor
             if ci.nTrials > 0
                 computedValid = all(~isnan(ci.conditionSubsRaw), 2);
             else
-                computedValid = [];
+                computedValid = false(0, 1);
             end
         end
 
