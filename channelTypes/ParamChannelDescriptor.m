@@ -14,7 +14,11 @@ classdef ParamChannelDescriptor < ChannelDescriptor
         end
 
         function str = describe(cd)
-            str = sprintf('Param %s (%s)', cd.name, cd.unitsPrimary);  
+            if isempty(cd.unitsPrimary)
+                str = sprintf('Param %s', cd.name);  
+            else
+                str = sprintf('Param %s (%s)', cd.name, cd.unitsPrimary);  
+            end
         end
 
         function cd = inferAttributesFromData(cd, varargin)
@@ -56,14 +60,14 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                         cd.elementTypeByField = cd.SCALAR;
                     end
 
+                elseif strcmp(cls, 'char')
+                    cd.elementTypeByField = cd.STRING;
+                    
                 elseif vector
                     cd.elementTypeByField = cd.VECTOR;
 
                 elseif numeric
                     cd.elementTypeByField = cd.NUMERIC;
-
-                elseif strcmp(cls, 'char')
-                    cd.elementTypeByField = cd.STRING;
 
                 else
                     warning('Inconsistent data types encountered');
@@ -118,9 +122,13 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.BOOLEAN;
         end 
         
-        function cd = buildFromValues(name, values)
+        function cd = buildFromValues(name, values, units)
             cd = ParamChannelDescriptor(name);
             cd = cd.inferAttributesFromData(values);
+            if nargin < 3
+                units = '';
+            end
+            cd.unitsByField = {units};
         end
     end
 end

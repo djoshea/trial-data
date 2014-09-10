@@ -1,11 +1,14 @@
 classdef SpikeChannelDescriptor < ChannelDescriptor
-    properties(SetAccess=protected)
+    properties
         waveformsField = '';
+        waveformsTvec = []; % common time vector to be shared for ALL waveforms for this channel
+        waveformsUnits = 'mV';
         quality = NaN;
         sortMode = NaN;
     end
     
     properties(Dependent)
+        hasWaveforms
         unitStr
         unit
         electrode
@@ -38,6 +41,10 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             [e, ~] = SpikeChannelDescriptor.convertChannelNameToElectrodeUnit(cd.name);
         end
         
+        function tf = get.hasWaveforms(cd)
+            tf = ~isempty(cd.waveformsField);
+        end
+        
         function u = get.unit(cd)
             [~, u] = SpikeChannelDescriptor.convertChannelNameToElectrodeUnit(cd.name);
         end
@@ -56,7 +63,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 dataFields{end+1} = cd.waveformsField;
             end
         end
-        
+
         function cd = inferAttributesFromData(cd, varargin)
             assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
             

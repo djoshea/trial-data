@@ -44,7 +44,11 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             dataClass = ChannelDescriptor.getCellElementClass(dataCell);
             timeClass = ChannelDescriptor.getCellElementClass(timeCell);
             cd.originalDataClassByField = {dataClass, timeClass};
-            cd.elementTypeByField = [cd.VECTOR, cd.VECTOR]; 
+            if strcmp(dataClass, 'cell')
+                cd.elementTypeByField = [cd.CELL, cd.VECTOR];
+            else
+                cd.elementTypeByField = [cd.VECTOR, cd.VECTOR]; 
+            end
         end
     end
     

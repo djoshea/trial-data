@@ -39,6 +39,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         NUMERIC = 4;
         STRING = 5;
         DATENUM = 6;
+        CELL = 7;
     end
     
     properties(Dependent)
@@ -86,7 +87,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
         
         function vals = get.missingValueByField(cd)
-            missingVals = {false, NaN, [], [], '', {}};
+            missingVals = {false, NaN, [], [], '', {}, []};
             vals = missingVals(cd.elementTypeByField);
         end
         
@@ -118,6 +119,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         c{iF} = 'double';
                     case cd.STRING
                         c{iF} = 'char';
+                    case cd.CELL
+                        c{iF} = 'cell';
                     otherwise
                         c{iF} = '';
                 end
@@ -195,18 +198,18 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         % look at the data struct and check that the correct data fields
         % are present in the R struct
-        function [ok, msg] = checkData(cd, data)
+        function [ok, missing] = checkData(cd, data)
             fields = cd.dataFields;
             if ~all(isfield(data, fields))
                 ok = false;
-                msg = sprintf('Missing fields %s', strjoin(fields(~isfield(data, fields)), ', '));
+                missing = fields(~isfield(data, fields));
             else
                 ok = true;
-                msg = '';
+                missing = {};
             end
         end
         
-        function addMissingFields(cd, data)
+        function data = addMissingFields(cd, data)
             % manually add the fields needed by this channel to data
             % struct, filling them with the appropriate missing value
             for iF = 1:cd.nFields
@@ -230,18 +233,18 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 values = {data.(fld)};
                 replace = cellfun(@isempty, values);
                 [data(replace).(fld)] = deal(missingValue);
-                
-                % removing as it seems redundant
-%                 if ~isempty(missingValue)
-%                     values = {data.(fld)};
-%                     replace = cellfun(@isempty, values);
-%                     [data(replace).(fld)] = deal(missingValue);
-%                 end
-
+               
                 if cd.elementTypeByField(iF) == cd.BOOLEAN
                     % manually convert to logical
                     for i = 1:numel(data)
                         data(i).(fld) = logical(data(i).(fld));
+                    end
+                end
+                
+                if cd.elementTypeByField(iF) == cd.VECTOR
+                   % manually convert to logical
+                    for i = 1:numel(data)
+                        data(i).(fld) = makecol(data(i).(fld));
                     end
                 end
             end
@@ -275,9 +278,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             if isempty(dataCell)
                 cls = 'double';
             else
-                nonEmpty = cellfun(@isempty, dataCell);
+                nonEmpty = ~cellfun(@isempty, dataCell);
                 if ~any(nonEmpty)
-                    cls = 'double';
+                    cls = 'double'; % assume double if no values found
                 else
                     first = find(nonEmpty, 1);
                     cls = class(dataCell{first});

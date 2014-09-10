@@ -12,7 +12,7 @@ classdef EventChannelDescriptor < ChannelDescriptor
         end
 
         function str = describe(cd)
-            str = sprintf('%s', cd.name);  
+            str = sprintf('Event %s', cd.name);  
         end
 
         function cd = inferAttributesFromData(cd, dataCell)
