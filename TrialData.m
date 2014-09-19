@@ -933,9 +933,13 @@ classdef TrialData
             
             if isa(cd, 'ParamChannelDescriptor')
                 values = {td.data.(cd.dataFields{1})}';
-                % if this channel is marked as a scalar, convert to a numeric array
+                % if this channel is marked as a scalar, convert to a double numeric array
                 if ~cd.collectAsCellByField(1)
-                    values = cellfun(@double, values);
+                    if cd.isBooleanByField(1)
+                        values = cellfun(@logical, values);
+                    else
+                        values = cellfun(@double, values);
+                    end
                 end
             elseif isa(cd, 'AnalogChannelDescriptor')
                 values = td.getAnalogSample(name);
@@ -1070,6 +1074,7 @@ classdef TrialData
             p = inputParser();
             p.addOptional('valueCell', {}, @(x) true);
             p.addParamValue('ignoreOverwriteChannel', false, @islogical);
+            p.addParamValue('updateValidOnly', true, @islogical);
             p.parse(varargin{:});
             valueCell = p.Results.valueCell;
             
@@ -1097,7 +1102,8 @@ classdef TrialData
                 % set on fields where values are provided
                 nonEmptyMask = ~cellfun(@isempty, valueCell);
                 td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask && ~cd.isShareableByField);
-                td = td.setChannelData(cd.name, valueCell, 'fieldMask', nonEmptyMask);
+                td = td.setChannelData(cd.name, valueCell, 'fieldMask', nonEmptyMask, ...
+                    'updateValidOnly', p.Results.updateValidOnly);
             end
         end
         
@@ -1217,6 +1223,8 @@ classdef TrialData
                
                 td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}, updateMask);
             end 
+            
+            td.data = cd.repairData(td.data);
 
             td.channelDescriptorsByName.(cd.name) = cd;
             td = td.updatePostDataChange();

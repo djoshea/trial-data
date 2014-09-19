@@ -287,7 +287,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % check whether any of the events are in condition info
             conditionParams = td.conditionInfo.attributeNames;
-            mask = ismember(names, conditionParams);
+            mask = ismember(conditionParams, names);
             if any(mask)
                 error('TrialData conditioning depends on params %s', ...
                     strjoin(conditionParams(mask)));
