@@ -149,12 +149,14 @@ classdef TrialData
                 error('Required channel data fields not provided by getChannelData');
             end
 
-            %fprintf('Repairing and converting channel data...\n');
+            prog = ProgressBar(nChannels, 'Repairing and converting channel data');
             for iChannel = 1:nChannels
+                prog.update(iChannel);
                 chd = channelDescriptors(iChannel); 
                 data = chd.repairData(data); %#ok<PROP>
                 data = chd.convertDataToMemoryClass(data); %#ok<PROP>
             end
+            prog.finish();
 
             td.data = data; %#ok<PROP>
         
@@ -472,6 +474,12 @@ classdef TrialData
             
             td.data = rmfield(td.data, fieldsRemove);
             td = td.updatePostDataChange();
+        end
+    end
+    
+    methods
+        function saveTags = listSaveTags(td)
+            saveTags = td.getParamUnique('saveTag');
         end
     end
     

@@ -88,6 +88,11 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
             cd.required = false;
             cds(end+1) = cd;
             
+            cd = ParamChannelDescriptor.buildScalarParam('saveTag');
+            cd.special = true;
+            cd.required = false;
+            cds(end+1) = cd;
+            
             cd = ParamChannelDescriptor.buildDatenumParam('timeStartWallclock');
             cd.special = true;
             cd.required = false;

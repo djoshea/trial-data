@@ -492,6 +492,12 @@ classdef TrialDataConditionAlign < TrialData
             td = td.groupBy();
         end
         
+        function td = reset(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.resetConditionInfo();
+            td = td.unalign();
+        end
+        
         function td = reshapeAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.reshapeAxes(varargin{:});
@@ -1530,7 +1536,8 @@ classdef TrialDataConditionAlign < TrialData
             % Pad trial data alignment for spike filter
             td = td.pad([sf.preWindow sf.postWindow]);
             
-            spikeCell = td.getSpikeTimes(unitName);
+            % critical to include the spike times in the padded window
+            spikeCell = td.getSpikeTimes(unitName, true);
             [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
             
             % convert to .zero relative times since that's what spikeCell
@@ -1579,8 +1586,8 @@ classdef TrialDataConditionAlign < TrialData
             [psthMat, tvec, semMat, stdMat, nTrialsMat] = getSpikeRateFilteredMeanByGroup(td, varargin{:});
         end
         
-        function timesCellofCells = getSpikeTimesGrouped(td, unitName)
-            timesCell = td.getSpikeTimes(unitName);
+        function timesCellofCells = getSpikeTimesGrouped(td, unitName, includePadding)
+            timesCell = td.getSpikeTimes(unitName, includePadding);
             timesCellofCells = td.groupElements(timesCell);
         end
         
@@ -2654,13 +2661,14 @@ classdef TrialDataConditionAlign < TrialData
                         if plotErrorY
                             hShade = errorshade(tvec + tOffset, dmat, ...                   
                                 errmat, app(iCond).Color, 'axh', axh, ...
-                                'alpha', p.Results.errorAlpha, 'z', -0.1);
+                                'alpha', p.Results.errorAlpha, 'z', 1);
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
+                            
                         end
                         if p.Results.alpha < 1
                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset, dmat, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth, 'axh', axh, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, tvec + tOffset, dmat, '-', ...

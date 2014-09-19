@@ -55,7 +55,11 @@ classdef MatUdpTrialDataInterfaceV5_ManualUnits < TrialDataInterface
             signals = tdi.meta(1).signals;
             groupNames = fieldnames(groups);
             nGroups = numel(groupNames);
-            debug('Inferring channel data characteristics...\n');
+            
+            nChannels = sum(cellfun(@(name) numel(groups.(name).signalNames), groupNames));
+            
+            prog = ProgressBar(nChannels, 'Inferring channel data characteristics');
+            iSignal = 0;
             for iG = 1:nGroups
                 group = groups.(groupNames{iG});
 
@@ -69,6 +73,8 @@ classdef MatUdpTrialDataInterfaceV5_ManualUnits < TrialDataInterface
 
                 nSignals = numel(group.signalNames);
                 for iS = 1:nSignals
+                    iSignal = iSignal + 1;
+                    prog.update(iSignal);
                     name = group.signalNames{iS};
 
                     if ~strcmp(group.type, 'event')
@@ -103,13 +109,16 @@ classdef MatUdpTrialDataInterfaceV5_ManualUnits < TrialDataInterface
                     iChannel = iChannel + 1;
                 end
             end
+            prog.finish();
             
             % now detect units
             fieldList = fieldnames(tdi.R);
             mask = ~cellfun(@isempty, regexp(fieldList, '^unit[\d_]+$', 'start'));
             unitFields = fieldList(mask);
             
+            prog = ProgressBar(numel(unitFields), 'Adding spike units and waveforms');
             for iU = 1:numel(unitFields)
+                prog.update(iU);
                 cd = SpikeChannelDescriptor(unitFields{iU});
                 wavefield = sprintf('%s_waveforms', unitFields{iU});
                 if isfield(tdi.R, wavefield)
@@ -120,6 +129,7 @@ classdef MatUdpTrialDataInterfaceV5_ManualUnits < TrialDataInterface
                 channelDescriptors(iChannel) = cd; %#ok<AGROW>
                 iChannel = iChannel + 1;
             end
+            prog.finish();
         end
         
         % return a nTrials x 1 struct with all the data for each specified channel 
@@ -145,27 +155,26 @@ classdef MatUdpTrialDataInterfaceV5_ManualUnits < TrialDataInterface
         %
         function channelData = getChannelData(tdi, channelDescriptors, varargin)
             debug('Converting / repairing channel data...\n');
-            channelData = tdi.R;
+            channelData = tdi.R;            
             
             % rename special channels
-            channelData = mvfield(channelData, 'wallclockStart', 'timeStartWallclock');
+            for i = 1:numel(channelData)
+                channelData(i).timeStartWallclock = channelData(i).wallclockStart;
+                channelData(i).TrialStart = 0;
+                channelData(i).TrialEnd = channelData(i).duration;
+            end
             
-            channelData = assignIntoStructArray(channelData, 'TrialStart', 0);
-            channelData = copyStructField(channelData, channelData, 'duration', 'TrialEnd');
-            
+            debug('Fixing waveform data\n');
+            % transpose waveforms data
             for iC = 1:numel(channelDescriptors)
                 cd = channelDescriptors(iC);
-                if cd.special
-                    continue;
+                if isa(cd, 'SpikeChannelDescriptor')
+                    if ~isempty(cd.waveformsField)
+                        for iR = 1:numel(channelData)
+                            channelData(iR).(cd.waveformsField) = channelData(iR).(cd.waveformsField)';
+                        end
+                    end
                 end
-                
-%                 % rename field to remove group name
-%                 if isfield(channelData, cd.name)
-%                     warning('Duplicate channel name %s', cd.name);
-%                     continue;
-%                 end
-%                 channelData = mvfield(channelData, cd.meta.originalField, cd.name);
-%                 channelData = cd.repairData(channelData);
             end
         end
     end

@@ -106,13 +106,13 @@ xv = [x, fliplr(x)];
 yv = [y1, fliplr(y2)];
 zv = z * ones(size(xv));
 
-ha = patch(xv, yv, zv, 'k');
+ha = patch(xv, yv, zv, 'k', 'Parent', axh);
 set(ha, 'FaceColor', p.Results.FaceColor, ...
     'EdgeColor', p.Results.EdgeColor, 'Parent', axh, 'FaceAlpha', p.Results.alpha);
 
 % hide shading from legend
 set(get(get(ha, 'Annotation'), 'LegendInformation'), 'IconDisplayStyle', 'off');
 
-set(gca, 'Layer', 'top')
+set(axh, 'Layer', 'top')
 
 end

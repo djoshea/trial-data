@@ -1045,6 +1045,11 @@ classdef PopulationTrajectorySet
             if ~iscell(adSet)
                 adSet = {adSet};
             end
+            for i = 1:numel(adSet)
+                if isa(adSet{i}, 'AlignInfo')
+                    adSet{i} = AlignDescriptor.fromAlignDescriptor(adSet{i});
+                end
+            end
             assert(all(cellfun(@(x) isequal(class(x), 'AlignDescriptor') || ischar(x), ...
                 adSet)), 'Must be AlignDescriptor instance or string');
             
@@ -1430,7 +1435,7 @@ classdef PopulationTrajectorySet
                 if ~isempty(tdName)
                     basisNames{iBasis} = sprintf('%s %s', tdName, chName);
                 else
-                    basisNames = chName;
+                    basisNames{iBasis} = chName;
                 end
                 
                 % this call works for unit names as well
@@ -2644,7 +2649,7 @@ classdef PopulationTrajectorySet
             end
             
             % make large left side to accommodate labels
-            au.axisInset(1) = 4;
+            au.axisMarginLeft = 4;
             axis off;
             au.update();
             au.installCallbacks();

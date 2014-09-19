@@ -83,6 +83,7 @@ classdef PopulationTrajectorySetBuilder
         
     methods(Static)
         function pset = fromAllUnitsInTrialData(td)
+            % each unit in TrialData becomes a basis
             units = td.listSpikeUnits();
             nUnits = numel(units);
             
@@ -96,6 +97,41 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
             
+            pset = pset.initialize();
+        end
+        
+        function pset = fromAllUnitsInTrialDataSplitBySaveTag(td)
+            % each unit from each save tag in TrialData becomes a basis
+            td = TrialDataConditionAlign(td);
+            units = td.listSpikeChannels();
+            nUnits = numel(units);
+            
+            saveTags = td.getParamUnique('saveTag');
+            nSaveTags = numel(saveTags);
+            [~, saveTagIdxByTrial] = ismember(td.getParam('saveTag'), saveTags);
+            
+            % number of spikes in each save tag by each unit
+            debug('Counting spikes in each save tag for each unit\n');
+            spikeCountBySaveTag = zeros(nUnits, nSaveTags);
+            for iU = 1:nUnits
+                counts = accumarray(saveTagIdxByTrial, td.getSpikeCounts(units{iU}), [nSaveTags 1]); % accumarray is useful
+                spikeCountBySaveTag(iU, :) = counts;
+            end
+            [keepUnits, keepSaveTags] = find(spikeCountBySaveTag > 0);
+            
+            pset = PopulationTrajectorySet();
+            pset.datasetName = td.datasetName;
+            pset.timeUnitName = td.timeUnitName;
+            pset.timeUnitsPerSecond = td.timeUnitsPerSecond;
+            
+            % build separate TrialData for each save tag, then index the
+            % data sources back into these by save tag
+            debug('Splitting save tags\n');
+            pset.dataSources = arrayfun(@(st) td.selectTrials(saveTagIdxByTrial == st), 1:numel(saveTags), 'UniformOutput', false);
+            pset.basisDataSourceIdx = keepSaveTags;
+            pset.basisDataSourceChannelNames = units(keepUnits);
+
+            debug('Initializing PTS\n');
             pset = pset.initialize();
         end
         

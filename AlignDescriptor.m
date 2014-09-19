@@ -1307,6 +1307,9 @@ classdef AlignDescriptor
             if ad.roundTimes
                 tcprintf('inline', '  {darkGray}round times with min delta {white}%g\n', ad.minTimeDelta);
             end
+            if ad.padPre ~= 0 || ad.padPost ~= 0
+                tcprintf('inline', '  {darkGray}pad %g pre, %g post\n', ad.padPre, ad.padPost);
+            end
         end
 
         function disp(ad)
