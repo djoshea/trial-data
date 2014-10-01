@@ -607,6 +607,18 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo = td.conditionInfo.setAxisValueList(varargin{:});
             td = td.postUpdateConditionInfo();
         end
+        
+        function td = setAxisValueListAutoAll(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setAxisValueListAutoAll(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = setAxisValueListAutoOccupied(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setAxisValueListAutoOccupied(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
 
         function valueList = getAxisValueList(td, varargin)
             valueList = td.conditionInfo.getAxisValueList(varargin{:});
@@ -1270,6 +1282,18 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(td.getParam(name));
         end
         
+        function values = getParamUniqueGrouped(td, name)
+            vCell = td.getParamGrouped(name);
+            values = cellfun(@getUnique, vCell, 'UniformOutput', false);
+            
+            function values = getUnique(vals)
+                if ~iscell(vals)
+                    vals = removenan(vals);
+                end
+                values = unique(vals);
+            end
+        end
+        
         function [meanMat, semMat, stdMat, nTrialsMat] = getParamGroupMeans(td, name, varargin)
             % get averaged parameter value within each group
             
@@ -1341,6 +1365,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParamValue('plotOptions', {}, @(x) iscell(x));
             p.addParamValue('alpha', 1, @isscalar);
+            p.addParamValue('markerSize', 5, @isscalar);
             p.addParamValue('useThreeVector', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -1373,7 +1398,10 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:nConditionsUsed
                 idxC = conditionIdx(iC);
                 args = app(idxC).getMarkerPlotArgs();
-                h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', 5, ...
+                if isempty(dataX{iC}) || isempty(dataY{iC})
+                    continue;
+                end
+                h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
                     args{:}, p.Results.plotOptions{:});
                 
                 TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNames{idxC});
@@ -1732,6 +1760,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            
+            axh = td.getRequestedPlotAxis(p.Unmatched);
 
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
@@ -1756,16 +1786,16 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
-                'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
+                'data', meanMat, 'dataError', errorMat, 'axh', axh, ...
                 'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'));
             
             h = title(sprintf('%s : Unit %s', td.datasetName, unitName));
             set(h, 'Interpreter', 'none');
-            axis(gca, 'tight');
-            axis(gca, 'off');
+            axis(axh, 'tight');
+            axis(axh, 'off');
             
             ylabel('spikes/sec');
-            au = AutoAxis(gca);
+            au = AutoAxis(axh);
             %au.addAutoAxisY();
             au.update();
         end
@@ -2541,7 +2571,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('useThreeVector', true, @islogical);
             p.addParamValue('useTranslucentMark3d', false, @islogical);
             p.addParamValue('lineSmoothing', false, @islogical); % for alpha == 1 only
-            p.KeepUnmatched;
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             % plot the mean and sem for an analog channel vs. time within
@@ -2729,7 +2759,7 @@ classdef TrialDataConditionAlign < TrialData
                     idxAlign = alignIdx(iAlign);
     
                     % setup x axis 
-                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('tOffsetZero', timeOffsetByAlign(iAlign), ...
+                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
                         'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
                         'style', p.Results.timeAxisStyle, 'showRanges', p.Results.markShowRanges);
                 end

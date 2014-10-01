@@ -957,7 +957,7 @@ classdef TrialData
         function values = getParamUnique(td, name)
             vals = td.getParam(name);
             if ~iscell(vals)
-                vals =removenan(vals);
+                vals = removenan(vals);
             end
             values = unique(vals);
         end
