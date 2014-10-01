@@ -555,6 +555,15 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
             
+            if(numel(idx) == 1 && numel(ci.axisAttributes{idx}) == 1)
+                % for one axis with single attribute, valueList can simply be a cell
+                % array of values
+                debug('Auto converting value list for single attribute axis\n');
+                valueCell = valueList;
+                if ~iscell(valueCell), valueCell = num2cell(valueCell); end;
+                valueList = struct(ci.axisAttributes{idx}{1}, valueCell);
+            end  
+            
             assert(isstruct(valueList) && isvector(valueList), ....
                 'Value list must be a struct vector');
             assert(isempty(setxor(fieldnames(valueList), ci.axisAttributes{idx})), ...
