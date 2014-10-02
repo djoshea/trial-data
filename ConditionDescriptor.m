@@ -555,7 +555,7 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
             
-            if(numel(idx) == 1 && numel(ci.axisAttributes{idx}) == 1)
+            if(numel(idx) == 1 && numel(ci.axisAttributes{idx}) == 1 && iscell(valueList) && ~isstruct(valueList{1}))
                 % for one axis with single attribute, valueList can simply be a cell
                 % array of values
                 debug('Auto converting value list for single attribute axis\n');
