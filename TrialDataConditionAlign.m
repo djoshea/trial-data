@@ -401,6 +401,13 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo.appearanceFn = fn;
         end
         
+        function td = resetConditionAppearanceFn(td)
+            % Update the appearanceFn callback of conditionDescriptor
+            % without invalidating any of the other cached info
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo.appearanceFn = [];
+        end
+        
         function td = freezeConditionAppearances(td)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.freezeAppearances();
@@ -2701,11 +2708,11 @@ classdef TrialDataConditionAlign < TrialData
                         if p.Results.alpha < 1
                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset, dmat, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth, 'axh', axh, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, tvec + tOffset, dmat, '-', ...
-                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', lineSmoothing, ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, 'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
 
@@ -2713,11 +2720,11 @@ classdef TrialDataConditionAlign < TrialData
                         if p.Results.alpha < 1
                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1), dmat(:, 2), ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, dmat(:, 1), dmat(:, 2), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', lineSmoothing, ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, 'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
 
@@ -2729,7 +2736,7 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot3(axh, dmat(:, 1), dmat(:, 2), dmat(:, 3), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'LineSmoothing', lineSmoothing, ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, 'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
                     end  
