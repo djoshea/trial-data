@@ -1733,7 +1733,7 @@ classdef ConditionDescriptor
                             % convert valueList from 1 x 2 vector to '#-#' string
                             for iV = 1:numel(valueLists{iX})
                                 if ~iscellstr(valueLists{iX}(iV).(attr{iA}))
-                                    valueLists{iX}(iV).(attr{iA}) = sprintf('%g-%g', cell2mat(valueLists{iX}(iV).(attr{iA})));
+                                    valueLists{iX}(iV).(attr{iA}) = sprintf('%.3g-%.3g', cell2mat(valueLists{iX}(iV).(attr{iA})));
                                 end
                             end
                     end
@@ -1859,7 +1859,7 @@ classdef ConditionDescriptor
                             else
                                 bins = cat(1, valueList{i}{:});
                             end
-                            valueList{i} = arrayfun(@(row) sprintf('%g-%g', bins(row, 1), bins(row, 2)), ...
+                            valueList{i} = arrayfun(@(row) sprintf('%.3g-%.3g', bins(row, 1), bins(row, 2)), ...
                                 1:size(bins, 1), 'UniformOutput', false);
                         end
                         

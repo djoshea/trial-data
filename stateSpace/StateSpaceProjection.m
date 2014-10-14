@@ -154,7 +154,7 @@ classdef StateSpaceProjection
             stats = proj.computeProjectionStatistics(pset, false);
         end
         
-        function [psetProjected, proj, statsBuild, statsProject] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
+        function [proj, psetProjected, statsBuild, statsProject] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
             [proj, statsBuild] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
             [psetProjected, statsProject] = proj.projectPopulationTrajectorySet(pset);
         end

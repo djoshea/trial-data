@@ -9,6 +9,8 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         channelUnits % col 1 is channel, col 2 is units
         unitFieldNames
         waveFieldNames
+        
+        includeWaveforms = false;
     end
 
     methods
@@ -124,30 +126,37 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
             prog.finish();
             
             % now detect units
-            channelUnits = unique([cat(1, tdi.R.spikeChannels), cat(1, tdi.R.spikeUnits)], 'rows');
-            nUnits = size(channelUnits, 1);
-            tdi.unitFieldNames = cell(nUnits, 1);
-            tdi.waveFieldNames = cell(nUnits, 1);
+            channelDescriptors(iChannel) = ParamChannelDescriptor.buildBooleanParam('hasNeuralData');
             
-            prog = ProgressBar(nUnits, 'Adding spike units and waveforms');
-            for iU = 1:nUnits
-                prog.update(iU);
-                unitName = sprintf('unit%d_%d', channelUnits(iU, 1), channelUnits(iU, 2));
-                cd = SpikeChannelDescriptor(unitName);
-                wavefield = sprintf('%s_waveforms', unitName);
-                tdi.unitFieldNames{iU} = unitName;
-                tdi.waveFieldNames{iU} = wavefield;
-                if isfield(tdi.R, wavefield) && false
-                    cd.waveformsField = wavefield;
-                    cd.waveformsTvec = (-10:21)' / 30;
-                end
-                
-                channelDescriptors(iChannel) = cd; %#ok<AGROW>
-                iChannel = iChannel + 1;
-            end
-            prog.finish();
+            if isfield(tdi.R, 'spikeChannels') && isfield(tdi.R, 'spikeUnits')
+                channelUnits = unique([cat(1, tdi.R.spikeChannels), cat(1, tdi.R.spikeUnits)], 'rows');
+                nUnits = size(channelUnits, 1);
+                tdi.unitFieldNames = cell(nUnits, 1);
+                tdi.waveFieldNames = cell(nUnits, 1);
+            
+                prog = ProgressBar(nUnits, 'Adding spike units and waveforms');
+                for iU = 1:nUnits
+                    prog.update(iU);
+                    unitName = sprintf('unit%d_%d', channelUnits(iU, 1), channelUnits(iU, 2));
+                    cd = SpikeChannelDescriptor(unitName);
+                    wavefield = sprintf('%s_waveforms', unitName);
+                    tdi.unitFieldNames{iU} = unitName;
+                    tdi.waveFieldNames{iU} = wavefield;
+                    if isfield(tdi.R, wavefield) && false
+                        cd.waveformsField = wavefield;
+                        cd.waveformsTvec = (-10:21)' / 30;
+                    end
 
-            tdi.channelUnits = channelUnits;
+                    channelDescriptors(iChannel) = cd; %#ok<AGROW>
+                    iChannel = iChannel + 1;
+                end
+                prog.finish();
+                tdi.channelUnits = channelUnits;
+            else
+                tdi.unitFieldNames = {};
+                tdi.waveFieldNames = {};
+                tdi.channelUnits = {};
+            end
         end
         
         % return a nTrials x 1 struct with all the data for each specified channel 
@@ -173,7 +182,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         %
         function channelData = getChannelData(tdi, channelDescriptors, varargin)
             debug('Converting / repairing channel data...\n');
-            channelData = rmfield(tdi.R, {'spikeUnits', 'spikeChannels', 'spikeData_time', 'spikeWaveforms'});
+            channelData = rmfield(tdi.R, intersect(fieldnames(tdi.R), {'spikeUnits', 'spikeChannels', 'spikeData_time', 'spikeWaveforms'}));
             
             % rename special channels
             for i = 1:numel(channelData)
@@ -186,13 +195,16 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
             prog = ProgressBar(numel(channelData), 'Extracting spike data for trials');
             for iT = 1:numel(channelData)
                 prog.update(iT);
+                % mark as zero if no spikes at all occurred on this trial,
+                % USE CAUTION IF FIRING RATES ARE VERY LOW!!
+                channelData(iT).hasNeuralData = nUnits > 0 && ~isempty(tdi.R(iT).spikeChannels);
                 for iU = 1:nUnits
                     mask = tdi.R(iT).spikeChannels == tdi.channelUnits(iU, 1) & ...
                         tdi.R(iT).spikeUnits == tdi.channelUnits(iU, 2);
                     
                     fld = tdi.unitFieldNames{iU};
                     channelData(iT).(fld) = tdi.R(iT).spikeData_time(mask);
-                    if false
+                    if tdi.includeWaveforms
                         wfld = tdi.waveFieldNames{iU};
                         channelData(iT).(wfld) = tdi.R(iT).spikeWaveforms(:, mask) / 4; % over 4 is because I forgot to normalize the voltages
                     end

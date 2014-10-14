@@ -1687,8 +1687,8 @@ classdef PopulationTrajectorySet
             % for each align/condition, compute the widest window
             % that is valid for ALL bases (there's no point in taking a
             % window wider than that, for a given align/condition)
-            tMinValidByAlignCondition = squeeze(nanmax(tMinValidByBasisAlignCondition, [], 1));
-            tMaxValidByAlignCondition = squeeze(nanmin(tMaxValidByBasisAlignCondition, [], 1));
+            tMinValidByAlignCondition = TensorUtils.squeezeDims(nanmax(tMinValidByBasisAlignCondition, [], 1), 1);
+            tMaxValidByAlignCondition = TensorUtils.squeezeDims(nanmin(tMaxValidByBasisAlignCondition, [], 1), 1);
             
             % for each align, comput the widest window valid for ANY
             % condition
@@ -2528,7 +2528,7 @@ classdef PopulationTrajectorySet
             p.addParamValue('plotArgs', {}, @iscell)
             
             p.addParamValue('showRanges', true, @islogical);
-            p.addParamValue('timeAxisStyle', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
+            p.addParamValue('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
             p.parse(varargin{:});
 
             clf;

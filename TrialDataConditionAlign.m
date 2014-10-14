@@ -1376,6 +1376,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('useThreeVector', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            alpha = p.Results.alpha;
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
             hold(axh, 'on');
@@ -1409,7 +1410,7 @@ classdef TrialDataConditionAlign < TrialData
                     continue;
                 end
                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
-                    args{:}, p.Results.plotOptions{:});
+                    args{:}, 'MarkerFaceAlpha', alpha, 'MarkerEdgeAlpha', alpha, p.Results.plotOptions{:});
                 
                 TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNames{idxC});
             end
@@ -1967,7 +1968,7 @@ classdef TrialDataConditionAlign < TrialData
             mask = trialCounts(conditionIdx) > 0;
             au = AutoAxis(axh);
             au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
-                conditionNames(mask), 'color', colors);
+                conditionNames(mask), 'color', colors(mask, :));
             
             % setup time axis markers
             if p.Results.annotateAboveEachCondition
@@ -2110,7 +2111,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParamValue('alpha', 1, @isscalar);
             p.addParamValue('markAlpha', 1, @isscalar);
             p.addParamValue('markSize', 5, @isscalar);
-            p.addParamValue('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParamValue('timeAxisStyle', 'marker', @ischar);
             p.addParamValue('useThreeVector', true, @islogical);
             p.addParamValue('useTranslucentMark3d', false, @islogical);
             p.KeepUnmatched;
@@ -2587,7 +2588,7 @@ classdef TrialDataConditionAlign < TrialData
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
             
-            if p.Results.lineSmoothing
+            if p.Results.lineSmoothing && verLessThan('matlab', '8.4')
                 lineSmoothing = 'on';
             else
                 lineSmoothing = 'off';

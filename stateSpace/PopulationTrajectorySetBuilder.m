@@ -84,7 +84,7 @@ classdef PopulationTrajectorySetBuilder
     methods(Static)
         function pset = fromAllUnitsInTrialData(td)
             % each unit in TrialData becomes a basis
-            units = td.listSpikeUnits();
+            units = td.listSpikeChannels();
             nUnits = numel(units);
             
             pset = PopulationTrajectorySet();
@@ -97,6 +97,8 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
             
+            pset = pset.setConditionDescriptor(td.conditionInfo);
+            pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
         end
         

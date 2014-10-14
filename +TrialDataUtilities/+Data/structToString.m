@@ -21,7 +21,7 @@ function str = structToString(s, separator)
         elseif isempty(v)
             str = '[]';
         elseif isnumeric(v) || islogical(v)
-            str = mat2str(v);
+            str = mat2str(v, 3);
         elseif iscellstr(v)
             str = ['{', strjoin(v, ','), '}'];
         else
