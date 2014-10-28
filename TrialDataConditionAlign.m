@@ -48,6 +48,9 @@ classdef TrialDataConditionAlign < TrialData
         nAxes
         axisValueLists
         axisValueListsAsStrings
+        axisValueListsAsStringsShort
+        axisNames
+        axisDescriptions
         
         conditionAppearanceFn
         conditionNameFn
@@ -431,7 +434,6 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo = td.conditionInfo.colorByAxes(varargin{:});
         end
 
-
         function td = selectTrials(td, mask)
             % Apply a logical mask or index selection to the list of trials
             % within, appropriately notifying the condition descriptor and
@@ -514,6 +516,12 @@ classdef TrialDataConditionAlign < TrialData
         function td = flattenAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.flattenAxes(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = flattenAxesExceptFirst(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.flattenAxesExceptFirst(varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
@@ -697,6 +705,18 @@ classdef TrialDataConditionAlign < TrialData
   
         function v = get.axisValueListsAsStrings(td)
             v = td.conditionInfo.axisValueListsAsStrings;
+        end
+        
+        function v = get.axisValueListsAsStringsShort(td)
+            v = td.conditionInfo.axisValueListsAsStringsShort;
+        end
+        
+        function v = get.axisNames(td)
+            v = td.conditionInfo.axisNames;
+        end
+        
+        function v = get.axisDescriptions(td)
+            v = td.conditionInfo.axisDescriptions;
         end
 
         function v = get.conditionNames(td)
@@ -1647,6 +1667,50 @@ classdef TrialDataConditionAlign < TrialData
             semByGroup = cellfun(@nansem, rateCell);
             stdByGroup = cellfun(@nanstd, rateCell);
             nByGroup = cellfun(@numel, rateCell);
+        end
+        
+        function plotTuningCurve(td, unitName, varargin)
+            p = inputParser;
+            p.addParameter('errorType', 'sem', @ischar);
+            p.addParameter('LineWidth', 1, @isscalar); 
+            p.KeepUnmatched = true;
+            p.CaseSensitive = false;
+            p.parse(varargin{:});
+            
+            tdFlat = td.reshapeAxes(1); % keep only first axis to get appearances
+            
+            axh = td.getRequestedPlotAxis(p.Unmatched);
+            td = td.flattenAxesExceptFirst();
+            
+            [meanByGroup, semByGroup, stdByGroup, nByGroup] = td.getSpikeMeanRateGroupMeans(unitName);
+            if strcmp(p.Results.errorType, 'sem')
+                errorY = semByGroup;
+            elseif strcmp(p.Results.errorType, 'std')
+                errorY = stdByGroup;
+            else
+                error('Unknown errorType %s', p.Results.errorType);
+            end
+            
+            nFirst = size(td.conditions, 1);
+            nCurves = td.nConditions / nFirst;
+            xVals = 1:nFirst;
+            
+            for iC = 1:nCurves
+                app = tdFlat.conditionAppearances(iC);
+                h = TrialDataUtilities.Plotting.errorline(xVals, meanByGroup(:, iC), errorY(:, iC), ...
+                    'Color', app(iC).Color, 'axh', axh, 'LineWidth', p.Results.LineWidth);
+                if td.nAxes > 1
+                    TrialDataUtilities.Plotting.showInLegend(h, td.axisValueListsAsStringsShort{2}{iC});
+                end
+            end
+
+            set(axh, 'XTick', xVals, 'XTickLabel', td.axisValueListsAsStringsShort{1});
+            xlabel(axh, td.axisNames{1});
+            ylabel(axh, 'Firing Rate (spikes/sec)');
+            title(sprintf('Tuning Curve Unit %s', td.datasetName, unitName));
+            
+            au = AutoAxis.replace(axh);
+            au.update();
         end
         
         function [timesCell, markCounts] = getMarkAlignedSpikeTimes(td, unitName, markIdx, window)

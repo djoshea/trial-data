@@ -128,7 +128,8 @@ classdef ConditionDescriptor
         attributeValueListsAsStrings % same as above, but everything is a string
         
         axisValueLists % G dimensional cell array of structs which select attribute values for that position along an axis
-        axisValueListsAsStrings % G dimensional cell array of cellstr which give names for the values along each axis
+        axisValueListsAsStrings % G dimensional cell array of cellstr which give names for the values along each axis (including attribute name)
+        axisValueListsAsStringsShort % G dimensional cell array of cellstr which give shortened names for the values along each axis (just values)
         axisValueListModes % G dimensional array of AxisValueList* constants below indicating how axis value lists are generated
     end
     
@@ -865,6 +866,15 @@ classdef ConditionDescriptor
             ci = ci.reshapeAxes(1:ci.nAxes);
         end
         
+        function ci = flattenAxesExceptFirst(ci)
+            % combine all axes 2:end into one, going from an nAxes-dimensional conditions
+            % tensor to a size(conditions, 1) x N matrix of conditions
+            ci.warnIfNoArgOut(nargout);
+            if ci.nAxes > 1
+                ci = ci.reshapeAxes(1, 2:ci.nAxes);
+            end
+        end
+        
         function ci = selectConditions(ci, mask)
             % select specific conditions by linear index or mask
             % and return a single-axis condition descriptor with just those
@@ -1573,6 +1583,19 @@ classdef ConditionDescriptor
             ci.odc = ci.odc.copy();
             ci.odc.axisValueListsAsStrings = v;
         end
+        
+        function v = get.axisValueListsAsStringsShort(ci)
+            v = ci.odc.axisValueListsAsStringsShort;
+            if isempty(v)
+                ci.odc.axisValueListsAsStringsShort = ci.buildAxisValueListsAsStringsShort();
+                v = ci.odc.axisValueListsAsStringsShort;
+            end
+        end
+
+        function ci = set.axisValueListsAsStringsShort(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.axisValueListsAsStringsShort = v;
+        end
     end
 
     % build data stored inside odc (used by getters above)
@@ -1710,9 +1733,17 @@ classdef ConditionDescriptor
             strCell = ci.generateAxisValueListsAsStrings(' ');
         end
         
-        function strCell = generateAxisValueListsAsStrings(ci, separator)
+        function strCell = buildAxisValueListsAsStringsShort(ci)
+            strCell = ci.generateAxisValueListsAsStrings(' ', true);
+        end
+        
+        
+        function strCell = generateAxisValueListsAsStrings(ci, separator, shortNames)
             if nargin < 2
                 separator = ' ';
+            end
+            if nargin < 3
+                shortNames = false;
             end
             strCell = cellvec(ci.nAxes);
             valueLists = ci.axisValueLists;
@@ -1739,12 +1770,13 @@ classdef ConditionDescriptor
                     end
                 end
                 
-                strCell{iX} = arrayfun(@(v) TrialDataUtilities.Data.structToString(v, separator), ...
+                strCell{iX} = arrayfun(@(v) TrialDataUtilities.Data.structToString(v, ...
+                    separator, 'includeFieldNames', ~shortNames), ...
                     makecol(valueLists{iX}), ...
                    'UniformOutput', false);
 
                 % append randomization indicator when axis is randomized
-                if ci.axisRandomizeModes(iX) ~= ci.AxisOriginal
+                if ci.axisRandomizeModes(iX) ~= ci.AxisOriginal && ~shortNames
                     strCell{iX} = cellfun(@(s) [s ' ' randStrCell{iX}], strCell{iX}, 'UniformOutput', false);
                 end
             end

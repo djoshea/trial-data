@@ -1,8 +1,11 @@
-function str = structToString(s, separator)
-% given a struct s with string or numeric vector values, convert to string
-    if nargin < 2
-        separator = ' ';
-    end
+function str = structToString(s, varargin)
+    p = inputParser();
+    p.addOptional('separator', ' ', @ischar);
+    p.addParameter('includeFieldNames', true, @islogical);
+    p.parse(varargin{:});
+    
+    separator = p.Results.separator;
+    includeFieldNames = p.Results.includeFieldNames;
 
     fields = fieldnames(s);
     if isempty(fields)
@@ -11,7 +14,11 @@ function str = structToString(s, separator)
     end
     vals = structfun(@convertToString, s);
 
-    str = strjoin(cellfun(@(fld, val) [fld '=' val], fields, vals, 'UniformOutput', false), separator);
+    if includeFieldNames
+        str = strjoin(cellfun(@(fld, val) [fld '=' val], fields, vals, 'UniformOutput', false), separator);
+    else
+        str = strjoin(vals, separator);
+    end
     
     return;
     

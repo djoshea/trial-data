@@ -45,6 +45,23 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
         channelData = getChannelData(tdi, channelNames, varargin);
     end
 
+    methods % optional support for appending new trials with new channels on the fly
+
+        % The equivalent of getChannelDescriptors, except only new channels that do not exist
+        % need be added
+        function channelDescriptors = getNewChannelDescriptors(tdi, varargin)
+            channelDescriptors = [];
+        end
+
+        function channelData = getNewChannelData(tdi, channelNames, varargin)
+            channelData = struct([]);
+        end
+        
+        function markNewChannelDataAsReceived(tdi)
+            
+        end
+    end
+
     methods
         % return the time conversion factor, i.e. number of time units in 1 second
         function N = getTimeUnitsPerSecond(tdi, varargin)

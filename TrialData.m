@@ -6,31 +6,31 @@ classdef TrialData
 % will return the new TrialData. Any changes made to the underlying TrialDataStore
 % will be done via copy-on-write, so that changes will not propagate to another
 % TrialData instance.
-    
+
     % Metadata
     properties
         datasetName = ''; % string describing entire collection of trials dataset
 
         datasetMeta % arbitrary, user determined 
     end
-    
+
     % Internal data storage
     properties(SetAccess=protected)
         data = struct([]);  % standardized format nTrials x 1 struct with all trial data  
-        
+
         initialized = false; % has initialize() been called yet?
 
         trialDataInterfaceClass = ''; % how did we access the original data?
-        
+
         manualValid = true(0, 1);
 
         timeUnitName = 'ms';
-        
+
         timeUnitsPerSecond = 1000;
-        
+
         channelDescriptorsByName  = struct(); % struct with ChannelDescriptor for each channel, by name
     end
-    
+
     properties(Access=protected, Hidden)
         odc % TrialDataOnDemandCache instance
     end
@@ -44,12 +44,12 @@ classdef TrialData
         nChannels
         channelNames % cell array of channel names
     end
-    
+
     % Initializing and building
     methods
         function td = TrialData(varargin)
             td.odc = TrialDataOnDemandCache();
-            
+
             if ~isempty(varargin)
                 if isa(varargin{1}, 'TrialData')
                     td = td.initializeFromTrialData(varargin{1});
@@ -114,37 +114,129 @@ classdef TrialData
             % request all channel data at once
             data = tdi.getChannelData(channelDescriptors);  %#ok<PROP>
 
+            % build channelDescriptorByName
+            td.channelDescriptorsByName = struct();
+            for i = 1:numel(channelDescriptors)
+                td.channelDescriptorsByName.(channelDescriptors(i).name) = channelDescriptors(i);
+            end
+            
+            % validate and replace missing values
+            data = td.validateData(data, td.channelDescriptorsByName);
+
+            td.data = data; %#ok<PROP>
+
+            td.manualValid = truevec(td.nTrials);
+            td.initialized = true;
+        end
+
+        function td = addNewTrialsFromTrialDataInterface(td, varargin)
+            % this is a reduced form of initializeFromTDI that requests only new channel descriptors and new data
+            td.warnIfNoArgOut(nargout);
+
+            p = inputParser();
+            p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
+            p.parse(varargin{:});
+            tdi = p.Results.trialDataInterface;
+
+            % check equivalence of basic details from the TrialDataInterface
+            assert(strcmp(td.trialDataInterfaceClass, class(tdi)));
+            assert(strcmp(td.timeUnitName, tdi.getTimeUnitName()));
+            assert(td.timeUnitsPerSecond == tdi.getTimeUnitsPerSecond());
+
+            % request channel descriptors for both special params and regular channels
+            newChannels = makecol(tdi.getNewChannelDescriptors());
+            td = td.addChannels(newChannels);
+
+            % request all channel data at once
+            newData = tdi.getNewChannelData(td.getChannelDescriptorArray());
+
+            % defer to addNewTrials
+            td = td.addNewTrialsRaw(newData);
+        end
+
+        function td = addTrialsFromTrialData(td, td2)
+            td.warnIfNoArgOut(nargout);
+            
+            % add the channels
+            td = td.addChannels(td2.channelDescriptorsByName);
+
+            % add the data
+            td = td.addNewTrialsRaw(td2td2);
+        end
+
+        function td = addNewTrialsRaw(td, dataOrTrialData, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            if isa(dataOrTrialData, 'TrialData')
+                tdNew = dataOrTrialData;
+                newData = td.data;
+            else
+                tdNew = [];
+                newData = dataOrTrialData;
+            end
+
+            % validate new data against all channel descriptors (old + new)
+            debug('Validating new channel data...\n');
+            newData = td.validateData(newData, td.channelDescriptorsByName);
+
+            % concatenate onto the old data
+            td.data = TrialDataUtilities.Data.structcat(td.data, newData); 
+
+            % concatenate the valid array
+            if isempty(tdNew)
+                newValid = truevec(numel(newData));
+            else
+                newValid = tdNew.manualValid;
+                assert(numel(newValid) == numel(newData), 'manualValid must be same length as data');
+            end
+            td.manualValid = cat(1, td.manualValid, newValid);
+            
+        end
+
+        % performs a validation of all channel data against the specified channelDescriptors,
+        % also fixing empty values appropriately
+        function data = validateData(td, data, channelDescriptorsByName, varargin)
+            p = inputParser();
+            p.addParameter('addMissingFields', false, @islogical); % if true, don't complain about missing channels, just add the missing fields
+            p.parse(varargin{:});
+
+            names = fieldnames(channelDescriptorsByName);
+            nChannels = numel(names);
+
             % loop over channels and verify
             %fprintf('Validating channel data...\n');
             ok = falsevec(nChannels);
             required = falsevec(nChannels);
             missing = cellvec(nChannels);
-            chNames = cellvec(nChannels);
+            chDescs = cellvec(nChannels);
             for iChannel = 1:nChannels
-                chd = channelDescriptors(iChannel); 
+                name = names{iChannel};
+                chd = channelDescriptorsByName.(name);
                 
                 % check to make sure all fields were provided as expected 
-                [ok(iChannel), missing{iChannel}] = chd.checkData(data); %#ok<PROP>
-                chNames{iChannel} = chd.describe();
+                [ok(iChannel), missing{iChannel}] = chd.checkData(data); 
+                chDescs{iChannel} = chd.describe();
                 required(iChannel) = chd.required;
                 
-                if ~ok(iChannel) && ~chd.required
-                    % fill in missing values for optional channels but
-                    % issue a warning
-                    data = chd.addMissingFields(data); %#ok<PROP>
-                    tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
-                        chd.describe(), strjoin(missing{iChannel}, ', '));
-                    ok(iChannel) = true; % mark as okay since not required
+                if ~ok(iChannel)
+                    data = chd.addMissingFields(data);
+
+                    if ~p.Results.addMissingFields && ~chd.required
+                        % fill in missing values for optional channels but
+                        % issue a warning
+                        tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
+                            chd.describe(), strjoin(missing{iChannel}, ', '));
+                        ok(iChannel) = true; % mark as okay since not required
+                    end
                 end
             end
 
             if any(~ok)
                 missing = missing(~ok);
-                chNames = chNames(~ok);
-                %tcprintf('Error: data not provided by interface for channels:\n');
+                chDescs = chDescs(~ok);
                 for i = 1:length(missing)
                     tcprintf('inline', '{red}Error:   {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
-                        chNames{i}, strjoin(missing{i}, ', '));
+                        chDescs{i}, strjoin(missing{i}, ', '));
                 end
                 error('Required channel data fields not provided by getChannelData');
             end
@@ -152,22 +244,12 @@ classdef TrialData
             prog = ProgressBar(nChannels, 'Repairing and converting channel data');
             for iChannel = 1:nChannels
                 prog.update(iChannel);
-                chd = channelDescriptors(iChannel); 
-                data = chd.repairData(data); %#ok<PROP>
-                data = chd.convertDataToMemoryClass(data); %#ok<PROP>
+                chd = channelDescriptorsByName.(names{iChannel}); 
+                data = chd.repairData(data); 
+                data = chd.convertDataToMemoryClass(data);
             end
             prog.finish();
 
-            td.data = data; %#ok<PROP>
-        
-            % build channelDescriptorByName
-            td.channelDescriptorsByName = struct();
-            for i = 1:numel(channelDescriptors)
-                td.channelDescriptorsByName.(channelDescriptors(i).name) = channelDescriptors(i);
-            end
-            
-            td.manualValid = truevec(td.nTrials);
-            td.initialized = true;
         end
     end
 
@@ -1066,6 +1148,25 @@ classdef TrialData
             offsets = zerosvec(td.nTrials);
         end
         
+        function td = addChannels(td, cds, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            % handle struct with .name = cd, or array of ChannelDescriptors
+            if isstruct(cds)
+                flds = fieldnames(cds);
+                getFn = @(i) cds.(flds{i});
+                nChannels = numel(flds);
+            else
+                getFn = @(i) cds(i);
+                nChannels = numel(cds);
+            end
+            
+            for iC = 1:nChannels
+            	cd = getFn(iC);
+                td = td.addChannel(cd, varargin{:});
+            end
+        end
+        
         function td = addChannel(td, cd, varargin)
             % adds a new channel described by ChannelDescriptor cd.
             % valueCell must be nDataFields x 1 cell each with nTrials x 1
@@ -1073,8 +1174,8 @@ classdef TrialData
             % data will be cleared when adding the channel.
             p = inputParser();
             p.addOptional('valueCell', {}, @(x) true);
-            p.addParamValue('ignoreOverwriteChannel', false, @islogical);
-            p.addParamValue('updateValidOnly', true, @islogical);
+            p.addParameter('ignoreOverwriteChannel', false, @islogical);
+            p.addParameter('updateValidOnly', true, @islogical);
             p.parse(varargin{:});
             valueCell = p.Results.valueCell;
             
@@ -1082,11 +1183,14 @@ classdef TrialData
             
             % check for overwrite if requested
             assert(isa(cd, 'ChannelDescriptor'), 'Argument cd must be ChannelDescriptor');
-%             if ~p.Results.ignoreOverwriteChannel && td.hasChannel(cd.name)
-%                 warning('Overwriting existing channel %s', cd.name);
-%             end
 
-            td.channelDescriptorsByName.(cd.name) = cd;
+            if td.hasChannel(cd.name) && ~p.Results.ignoreOverwriteChannel
+                % check that existing channel matches
+                assert(isequal(cd, td.channelDescriptorsByName.(cd.name)), ...
+                    'ChannelDescriptor for channel %s does not match existing channel', cd.name);
+            else
+                td.channelDescriptorsByName.(cd.name) = cd;
+            end
             
             % touch each of the value fields to make sure they exist
             for iF = 1:cd.nFields

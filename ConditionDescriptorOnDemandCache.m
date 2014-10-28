@@ -20,6 +20,7 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
         
         axisValueLists
         axisValueListsAsStrings
+        axisValueListsAsStringsShort
     end
     
     methods
@@ -34,6 +35,7 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
             c.attributeValueListsAsStrings = [];
             c.axisValueLists = [];
             c.axisValueListsAsStrings = [];
+            c.axisValueListsAsStringsShort = [];
         end
         
         function flushAppearanceInfo(c)

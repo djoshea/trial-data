@@ -1,7 +1,7 @@
 classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
 % like V3, but uses millisecond timestamps as doubles
     properties(SetAccess=protected)
-        R % original struct array over trials
+        trials % original struct array over trials
         meta % meta data merged over all trials
         nTrials
         timeUnits 
@@ -11,18 +11,22 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         waveFieldNames
         
         includeWaveforms = false;
+
+        % these are used for streaming mode, where new trials, possibly with new channels are loaded in dynamically
+        newR
+        newMeta
     end
 
     methods
         % Constructor : bind to MatUdp R struct and parse channel info
-        function td = MatUdpTrialDataInterfaceV6(R, meta)
-            assert(isvector(R) && ~isempty(R) && isstruct(R), 'Trial data must be a struct vector');
+        function td = MatUdpTrialDataInterfaceV6(trials, meta)
+            assert(isvector(trials) && ~isempty(trials) && isstruct(trials), 'Trial data must be a struct vector');
             assert(isstruct(meta) && ~isempty(meta) && isvector(meta), 'Meta data must be a vector struct');
-            td.R = makecol(R);
+            td.trials = makecol(trials);
             td.meta = meta;
-            td.nTrials = numel(R);
+            td.nTrials = numel(trials);
 
-            td.timeUnits = R(1).timeUnits;
+            td.timeUnits = trials(1).timeUnits;
         end
     end
     
@@ -40,7 +44,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
 
         % return the number of trials wrapped by this interface
         function nTrials = getTrialCount(tdi, varargin)
-            nTrials = numel(tdi.R);
+            nTrials = numel(tdi.trials);
         end
 
         % return the name of the time unit used by this interface
@@ -51,21 +55,31 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         % Describe the channels present in the dataset 
         % channelDescriptors: scalar struct. fields are channel names, values are ChannelDescriptor 
         function channelDescriptors = getChannelDescriptors(tdi, varargin)
+            channelDescriptors = tdi.getChannelDescriptorsForTrials(tdi.trials, tdi.meta, false);
+        end
+
+        function channelDescriptors = getChannelDescriptorsForTrials(tdi, trials, meta, newOnly)
             % remove special fields
 %             maskSpecial = ismember({fieldInfo.name}, ...
 %                 {'subject', 'protocol', 'protocolVersion', 'trialId', 'duration', ...
 %                  'saveTag', 'tsStartWallclock', 'tsStopWallclock', ...
 %                  'tUnits', 'version', 'time'});
             iChannel = 1;
-            groups = tdi.meta(1).groups;
-            signals = tdi.meta(1).signals;
+            groups = meta(1).groups;
+            signals = meta(1).signals;
             groupNames = fieldnames(groups);
             nGroups = numel(groupNames);
             
             nChannels = sum(cellfun(@(name) numel(groups.(name).signalNames), groupNames));
             
-            prog = ProgressBar(nChannels, 'Inferring channel data characteristics');
+            if newOnly
+                prog = ProgressBar(nChannels, 'Checking for new channels');
+            else
+                prog = ProgressBar(nChannels, 'Inferring channel data characteristics');
+            end
+        
             iSignal = 0;
+            channelDescriptors = [];
             for iG = 1:nGroups
                 group = groups.(groupNames{iG});
 
@@ -77,7 +91,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     % for event groups, the meta signalNames field is unreliable unless we take
                     % the union of all signal names
                     names = arrayfun(@(m) m.groups.(groupNames{iG}).signalNames, ...
-                        tdi.meta, 'UniformOutput', false, 'ErrorHandler', @(varargin) {});
+                        meta, 'UniformOutput', false, 'ErrorHandler', @(varargin) {});
                     group.signalNames = unique(cat(1, names{:}));
                 end
 
@@ -96,14 +110,19 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                         signalInfo = signals.(name);
                     end
                     dataFieldMain = name;
+                   
+                    % skip this field if already processed
+                    if newOnly && isfield(tdi.trials, dataFieldMain)
+                        continue;
+                    end
                     
-                    dataCell = {tdi.R.(dataFieldMain)};
+                    dataCell = {trials.(dataFieldMain)};
                     
                     switch(lower(group.type))
                         case 'analog'
                             timeField = signalInfo.timeFieldName;
                             cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, signalInfo.units, tdi.timeUnits);
-                            timeCell = {tdi.R.(timeField)};
+                            timeCell = {tdi.trials.(timeField)};
                             cd = cd.inferAttributesFromData(dataCell, timeCell);
                         case 'event'
                             cd = EventChannelDescriptor.buildMultipleEvent(name, tdi.timeUnits);
@@ -119,39 +138,63 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     % store original field name to ease lookup in getDataForChannel()
                     cd.meta.originalField = dataFieldMain;
 
-                    channelDescriptors(iChannel) = cd; %#ok<AGROW>
+                    if isempty(channelDescriptors)
+                        channelDescriptors = cd;
+                    else
+                        channelDescriptors(iChannel) = cd; %#ok<AGROW>
+                    end
                     iChannel = iChannel + 1;
                 end
             end
             prog.finish();
             
-            % now detect units
-            channelDescriptors(iChannel) = ParamChannelDescriptor.buildBooleanParam('hasNeuralData');
+            if ~newOnly
+                % now detect units
+                channelDescriptors(iChannel) = ParamChannelDescriptor.buildBooleanParam('hasNeuralData');
+            end
             
-            if isfield(tdi.R, 'spikeChannels') && isfield(tdi.R, 'spikeUnits')
-                channelUnits = unique([cat(1, tdi.R.spikeChannels), cat(1, tdi.R.spikeUnits)], 'rows');
+            if isfield(trials, 'spikeChannels') && isfield(trials, 'spikeUnits')
+                channelUnits = unique([cat(1, trials.spikeChannels), cat(1, trials.spikeUnits)], 'rows'); %#ok<*PROP>
                 nUnits = size(channelUnits, 1);
-                tdi.unitFieldNames = cell(nUnits, 1);
-                tdi.waveFieldNames = cell(nUnits, 1);
+
+                unitFieldNames = cell(nUnits, 1);
+                waveFieldNames = cell(nUnits, 1);
+                maskKeep = falsevec(nUnits);
             
                 prog = ProgressBar(nUnits, 'Adding spike units and waveforms');
                 for iU = 1:nUnits
                     prog.update(iU);
                     unitName = sprintf('unit%d_%d', channelUnits(iU, 1), channelUnits(iU, 2));
+
+                    if newOnly && isfield(tdi.trials, unitName)
+                        continue;
+                    end
+
                     cd = SpikeChannelDescriptor(unitName);
                     wavefield = sprintf('%s_waveforms', unitName);
-                    tdi.unitFieldNames{iU} = unitName;
-                    tdi.waveFieldNames{iU} = wavefield;
-                    if isfield(tdi.R, wavefield) && false
+                    unitFieldNames{iU} = unitName;
+                    waveFieldNames{iU} = wavefield;
+                    if isfield(tdi.trials, wavefield) && false
                         cd.waveformsField = wavefield;
                         cd.waveformsTvec = (-10:21)' / 30;
                     end
 
+                    maskKeep(iU) = true;
                     channelDescriptors(iChannel) = cd; %#ok<AGROW>
                     iChannel = iChannel + 1;
                 end
+
                 prog.finish();
-                tdi.channelUnits = channelUnits;
+
+                if newOnly
+                    tdi.channelUnits = cat(1, tdi.channelUnits, channelUnits(maskKeep, :));
+                    tdi.unitFieldNames = cat(1, tdi.unitFieldNames, unitFieldNames(maskKeep)); 
+                    tdi.waveFieldNames = cat(1, tdi.waveFieldNames, waveFieldNames(maskKeep)); 
+                else
+                    tdi.channelUnits = channelUnits;
+                    tdi.unitFieldNames = unitFieldNames;
+                    tdi.waveFieldNames = waveFieldNames;
+                end
             else
                 tdi.unitFieldNames = {};
                 tdi.waveFieldNames = {};
@@ -181,8 +224,12 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         %   timeStartWallclock : wallclock datenum indicating when this trial began
         %
         function channelData = getChannelData(tdi, channelDescriptors, varargin)
+            channelData = tdi.getChannelDataForTrials(tdi.trials, channelDescriptors, varargin{:});
+        end
+
+        function channelData = getChannelDataForTrials(tdi, trials, channelDescriptors, varargin) %#ok<INUSD>
             debug('Converting / repairing channel data...\n');
-            channelData = rmfield(tdi.R, intersect(fieldnames(tdi.R), {'spikeUnits', 'spikeChannels', 'spikeData_time', 'spikeWaveforms'}));
+            channelData = rmfield(trials, intersect(fieldnames(trials), {'spikeUnits', 'spikeChannels', 'spikeData_time', 'spikeWaveforms'}));
             
             % rename special channels
             for i = 1:numel(channelData)
@@ -197,20 +244,49 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                 prog.update(iT);
                 % mark as zero if no spikes at all occurred on this trial,
                 % USE CAUTION IF FIRING RATES ARE VERY LOW!!
-                channelData(iT).hasNeuralData = nUnits > 0 && ~isempty(tdi.R(iT).spikeChannels);
+                channelData(iT).hasNeuralData = nUnits > 0 && ~isempty(trials(iT).spikeChannels);
                 for iU = 1:nUnits
-                    mask = tdi.R(iT).spikeChannels == tdi.channelUnits(iU, 1) & ...
-                        tdi.R(iT).spikeUnits == tdi.channelUnits(iU, 2);
+                    mask = trials(iT).spikeChannels == tdi.channelUnits(iU, 1) & ...
+                        trials(iT).spikeUnits == tdi.channelUnits(iU, 2);
                     
                     fld = tdi.unitFieldNames{iU};
-                    channelData(iT).(fld) = tdi.R(iT).spikeData_time(mask);
+                    channelData(iT).(fld) = trials(iT).spikeData_time(mask);
                     if tdi.includeWaveforms
                         wfld = tdi.waveFieldNames{iU};
-                        channelData(iT).(wfld) = tdi.R(iT).spikeWaveforms(:, mask) / 4; % over 4 is because I forgot to normalize the voltages
+                        channelData(iT).(wfld) = trials(iT).spikeWaveforms(:, mask) / 4; % over 4 is because I forgot to normalize the voltages
                     end
                 end
             end
             prog.finish();
+        end
+    end
+
+    % Support for appending new trials with new channels on the fly
+    methods
+        % add these trials to the pending buffer
+        function receiveNewTrials(tdi, R, meta)
+            if isempty(tdi.newR)
+                tdi.newR = R;
+                tdi.newMeta = meta;
+            else
+                tdi.newR = TrialDataUtilities.Data.structcat(tdi.newR, R);
+                tdi.newMeta = TrialDataUtilities.Data.structcat(tdi.newMeta, meta);
+            end
+        end
+
+        % The equivalent of getChannelDescriptors, except only new channels that do not exist
+        % need be added
+        function channelDescriptors = getNewChannelDescriptors(tdi, varargin)
+            channelDescriptors = tdi.getChannelDescriptorsForTrials(tdi.newR, tdi.newMeta, true);
+        end
+
+        function channelData = getNewChannelData(tdi, channelDescriptors, varargin)
+            channelData = tdi.getChannelDataForTrials(tdi.newR, channelDescriptors, varargin{:});
+        end
+        
+        function markNewChannelDataAsReceived(tdi)
+            tdi.newR = [];
+            tdi.newMeta = [];
         end
     end
 end
