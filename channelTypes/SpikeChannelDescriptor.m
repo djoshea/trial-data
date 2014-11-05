@@ -113,7 +113,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 
         function [electrode, unit] = convertChannelNameToElectrodeUnit(ch)
             unitName = SpikeChannelDescriptor.convertChannelNameToUnitName(ch);
-            [electrode, unit] = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+            [electrode, unit] = SpikeChannelDescriptor.convertUnitNameToElectrodeUnit(unitName);
         end
     end
 
