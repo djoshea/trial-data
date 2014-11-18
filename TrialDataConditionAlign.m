@@ -41,6 +41,7 @@ classdef TrialDataConditionAlign < TrialData
         conditionsAxisAttributesOnly
         conditionsAsStrings
         conditionNames
+        conditionNamesShort
         conditionNamesMultiline
         conditionAppearances
         conditionsSize
@@ -74,10 +75,15 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function td = TrialDataConditionAlign(varargin)
             td = td@TrialData(varargin{:});
-            td.odc = TrialDataConditionAlignOnDemandCache();
+            td = td.rebuildOnDemandCache();
             td = td.initializeConditionInfo();
             td = td.initializeAlignInfo();
             td = td.updateValid();
+        end
+        
+        function td = rebuildOnDemandCache(td)
+            td.warnIfNoArgOut(nargout);
+            td.odc = TrialDataConditionAlignOnDemandCache(); 
         end
     end
     
@@ -723,6 +729,10 @@ classdef TrialDataConditionAlign < TrialData
             v = td.conditionInfo.names;
         end
         
+        function v = get.conditionNamesShort(td)
+            v = td.conditionInfo.namesShort;
+        end
+        
         function v = get.conditionNamesMultiline(td)
             v = td.conditionInfo.namesMultiline;
         end
@@ -1089,7 +1099,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function tvec = getAnalogCommonTimeVector(nameCell, varargin)
             p = inputParser();
-            p.addParamValue('timeDelta', [], @isscalar); 
+            p.addParameter('timeDelta', [], @isscalar); 
             p.parse(varargin{:});
             
             % infer timeDelta to use
@@ -1124,8 +1134,8 @@ classdef TrialDataConditionAlign < TrialData
             % tensor of values
             
             p = inputParser;
-            p.addParamValue('timeDelta', [], @isscalar);
-            p.addParamValue('tvec', [], @isvector);
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('tvec', [], @isvector);
             p.parse(varargin{:});
 
             if ischar(name)
@@ -1158,8 +1168,8 @@ classdef TrialDataConditionAlign < TrialData
 
         function [data, tvec] = getMultiAnalogAsMatrix(td, name, varargin)
             p = inputParser;
-            p.addParamValue('timeDelta', [], @isscalar);
-            p.addParamValue('tvec', [], @isvector);
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('tvec', [], @isvector);
             p.parse(varargin{:});
 
             if ischar(name)
@@ -1224,7 +1234,7 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -1243,7 +1253,7 @@ classdef TrialDataConditionAlign < TrialData
              % *Mat will be nConditions x T x nChannels tensors
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -1327,7 +1337,7 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be size(conditions) tensors
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -1343,7 +1353,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function prepareAxesForChannels(td, nameX, nameY, varargin)
             p = inputParser();
-            p.addParamValue('axh', gca, @isscalar);
+            p.addParameter('axh', gca, @isscalar);
             p.parse(varargin{:});
             axh = p.Results.axh;
             
@@ -1381,22 +1391,29 @@ classdef TrialDataConditionAlign < TrialData
             p.addRequired('dataY', @(x) isnumeric(x) || iscell(x)); 
             %p.addOptional('dataZ', [], @(x) isnumeric(x) || iscell(x)); 
             
-            p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            %p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            %p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             
-            p.addParamValue('scaleBars', false, @islogical);
-            p.addParamValue('axisStyleX', 'tickBridge', @ischar);
-            p.addParamValue('axisStyleY', 'tickBridge', @ischar);
+            p.addParameter('scaleBars', false, @islogical);
+            p.addParameter('axisStyleX', 'tickBridge', @ischar);
+            p.addParameter('axisStyleY', 'tickBridge', @ischar);
             
-            p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
-            p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.addParamValue('alpha', 1, @isscalar);
-            p.addParamValue('markerSize', 5, @isscalar);
-            p.addParamValue('useThreeVector', true, @islogical);
+            p.addParameter('conditionIdx', 1:td.nConditions, @isnumeric);
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
+            p.addParameter('alpha', 0.7, @isscalar);
+            p.addParameter('edgeAlpha', [], @isscalar);
+            p.addParameter('markerSize', 5, @isscalar);
+            p.addParameter('useThreeVector', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            
             alpha = p.Results.alpha;
+            if isempty(p.Results.edgeAlpha)
+                edgeAlpha = alpha;
+            else
+                edgeAlpha = p.Results.edgeAlpha;
+            end
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
             hold(axh, 'on');
@@ -1430,9 +1447,10 @@ classdef TrialDataConditionAlign < TrialData
                     continue;
                 end
                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
-                    args{:}, 'MarkerFaceAlpha', alpha, 'MarkerEdgeAlpha', alpha, p.Results.plotOptions{:});
+                    args{:}, p.Results.plotOptions{:});
+                SaveFigure.setMarkerOpacity(h(iC), alpha, edgeAlpha);
                 
-                TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNames{idxC});
+                TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNamesShort{idxC});
             end
       
             if ~isempty(p.Results.axisInfoX)
@@ -1459,16 +1477,17 @@ classdef TrialDataConditionAlign < TrialData
             % list).
             
             p = inputParser();
-            p.addParamValue('errorType', 'sem', @ischar);
-            p.addParamValue('LineWidth', 1, @isscalar);
+            p.addParameter('errorType', 'sem', @ischar);
+            p.addParameter('LineWidth', 1, @isscalar);
             p.KeepUnmatched = true;
+            p.CaseSensitive = false;
             p.parse(varargin{:});
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
             hold(axh, 'on');
             
             % cache before messing with axis shapes
-            conditionNames = td.conditionNames;
+            conditionNames = td.conditionNamesShort;
             
             % add as the last axis
             td = td.addAxis(nameX);
@@ -1515,7 +1534,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function plotParamVsParamCovariance(td, nameX, nameY, varargin)
             p = inputParser();
-            p.addParamValue('LineWidth', 1, @isscalar);
+            p.addParameter('LineWidth', 1, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1549,9 +1568,10 @@ classdef TrialDataConditionAlign < TrialData
             timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, includePadding);
         end
         
-        function [rateCell, timeCell] = getSpikeRateFiltered(td, unitName, varargin)
+        function [rateCell, timeCell, hasSpikes] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
-            p.addParamValue('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.addParameter('removeZeroSpikeTrials', true, @islogical);
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -1562,6 +1582,9 @@ classdef TrialDataConditionAlign < TrialData
             spikeCell = td.getSpikeTimes(unitName, true);
             timeInfo = td.alignInfoActive.timeInfo;
             
+            % provide an indication as to which trials have spikes
+            hasSpikes = ~cellfun(@isempty, spikeCell);
+            
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
@@ -1570,10 +1593,10 @@ classdef TrialDataConditionAlign < TrialData
                 tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond);
         end
            
-        function [rates, tvec] = getSpikeRateFilteredAsMatrix(td, unitName, varargin)
+        function [rates, tvec, hasSpikes] = getSpikeRateFilteredAsMatrix(td, unitName, varargin)
             p = inputParser;
-            p.addParamValue('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
-            p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -1596,6 +1619,9 @@ classdef TrialDataConditionAlign < TrialData
             spikeCell = td.getSpikeTimes(unitName, true);
             [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
             
+            % provide an indication as to which trials have spikes
+            hasSpikes = ~cellfun(@isempty, spikeCell);
+            
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
             [rates, tvec] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
@@ -1604,15 +1630,18 @@ classdef TrialDataConditionAlign < TrialData
             tvec = makecol(tvec);
         end
 
-        function [rateCell, timeCell] = getSpikeRateFilteredGrouped(td, unitName, varargin)
+        function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGrouped(td, unitName, varargin)
+            p = inputParser();
             [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
             rateCell = td.groupElements(rateCell);
             timeCell = td.groupElements(timeCell);
+            hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
-        function [rateCell, tvec] = getSpikeRateFilteredAsMatrixGrouped(td, unitName, varargin)
-            [rates, tvec] = td.getSpikeRateFilteredAsMatrix(unitName, varargin{:});
+        function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGrouped(td, unitName, varargin)
+            [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitName, varargin{:});
             rateCell = td.groupElements(rates);
+            hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
         function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
@@ -1620,15 +1649,24 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
-            p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
-            p.addParamValue('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParameter('removeZeroSpikeTrials', true, @islogical);
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
-            [rateCell, tvec] = td.getSpikeRateFilteredAsMatrixGrouped(unitName, ...
+            [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitName, ...
                 'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
             
+            % remove trials from each group that have no spikes
+            if p.Results.removeZeroSpikeTrials
+                for iC = 1:td.nConditions
+                    rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
+                end
+            end
+            
+            % comute the means
             [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
             for iC = 1:td.nConditions
                 if ~isempty(rateCell{iC})
@@ -1682,7 +1720,7 @@ classdef TrialDataConditionAlign < TrialData
             axh = td.getRequestedPlotAxis(p.Unmatched);
             td = td.flattenAxesExceptFirst();
             
-            [meanByGroup, semByGroup, stdByGroup, nByGroup] = td.getSpikeMeanRateGroupMeans(unitName);
+            [meanByGroup, semByGroup, stdByGroup, nByGroup] = td.getSpikeMeanRateGroupMeans(unitName); %#ok<ASGLU>
             if strcmp(p.Results.errorType, 'sem')
                 errorY = semByGroup;
             elseif strcmp(p.Results.errorType, 'std')
@@ -1753,9 +1791,9 @@ classdef TrialDataConditionAlign < TrialData
         
         function h = plotSpikeWaveforms(td, unitName, varargin)
             p = inputParser();
-            p.addParamValue('maxToPlot', 200, @isscalar);
-            p.addParamValue('alpha', 0.4, @isscalar);
-            p.addParamValue('color', 'k', @(x) ischar(x) || isvector(x));
+            p.addParameter('maxToPlot', 200, @isscalar);
+            p.addParameter('alpha', 0.4, @isscalar);
+            p.addParameter('color', 'k', @(x) ischar(x) || isvector(x));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1791,7 +1829,7 @@ classdef TrialDataConditionAlign < TrialData
             % or, if paramValue 'regexp' is true, a regexp search over
             % unitNames
             p = inputParser();
-            p.addParamValue('regexp', false, @islogical);
+            p.addParameter('regexp', false, @islogical);
             p.parse(varargin{:});
             
             if ischar(units), units = {units}; end
@@ -1826,10 +1864,11 @@ classdef TrialDataConditionAlign < TrialData
         function plotPSTH(td, unitName, varargin)
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar); % minimum trial count to average
-            p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
-            p.addParamValue('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
-            p.addParamValue('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1841,7 +1880,8 @@ classdef TrialDataConditionAlign < TrialData
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getSpikeRateFilteredMeanByGroup(unitName, 'minTrials', p.Results.minTrials, ...
-                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
+                    'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
             
                 [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
@@ -1857,14 +1897,18 @@ classdef TrialDataConditionAlign < TrialData
                     errorMat = stdMat;
             end
             
+            maskEmpty = cellfun(@isempty, tvecCell);
+            if any(maskEmpty)
+                error('No valid time window found for alignment. Perhaps there are not enough trials with spikes in all of the conditions? Try lowering minTrials or setting removeZeroSpikeTrials to false.');
+            end
+            
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, 'axh', axh, ...
-                'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'));
+                'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'), ...
+                p.Unmatched);
             
-            h = title(sprintf('%s : Unit %s', td.datasetName, unitName));
-            set(h, 'Interpreter', 'none');
+            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s : Unit %s', td.datasetName, unitName);
             axis(axh, 'tight');
-            axis(axh, 'off');
             
             ylabel('spikes/sec');
             au = AutoAxis(axh);
@@ -1874,19 +1918,22 @@ classdef TrialDataConditionAlign < TrialData
         
         function plotRaster(td, unitName, varargin)
             p = inputParser();
-            p.addParamValue('conditionIdx', 1:td.nConditions, @isvector);
-            p.addParamValue('alignIdx', 1:td.nAlign, @isvector);
-            p.addParamValue('colorSpikes', false, @islogical);
-            p.addParamValue('timeAxisStyle', 'marker', @ischar);
-            p.addParamValue('intervalAlpha', 0.5, @isscalar);
-            p.addParamValue('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
-            p.addParamValue('gapBetweenConditions', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('conditionIdx', 1:td.nConditions, @isvector);
+            p.addParameter('alignIdx', 1:td.nAlign, @isvector);
+            p.addParameter('colorSpikes', false, @islogical);
+            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('intervalAlpha', 0.5, @isscalar);
+            p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
+            p.addParameter('gapBetweenConditions', [], @(x) isempty(x) || isscalar(x));
             
             % for plotting interval and marks above each condition
-            p.addParamValue('annotateAboveEachCondition', false, @islogical);
-            p.addParamValue('annotationHeight', 2, @islogical);
-            p.addParamValue('annotateUsingFirstTrialEachCondition', false, @islogical);
+            p.addParameter('annotateAboveEachCondition', false, @islogical);
+            p.addParameter('annotationHeight', 2, @islogical);
+            p.addParameter('annotateUsingFirstTrialEachCondition', false, @islogical);
             
+            % make room for labels using AutoAxis
+            p.addParameter('axisMarginLeft', 7, @isscalar);
+           
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2053,12 +2100,11 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            h = title(sprintf('%s : Unit %s', td.datasetName, unitName));
-            set(h, 'Interpreter', 'none');
+            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s : Unit %s', td.datasetName, unitName);
             
             axis(axh, 'tight');
             au = AutoAxis(axh);
-            au.axisMarginLeft = 7; % make room for left hand side labels
+            au.axisMarginLeft = p.Results.axisMarginLeft; % make room for left hand side labels
             axis(axh, 'off');
             au.update();
         end
@@ -2084,7 +2130,7 @@ classdef TrialDataConditionAlign < TrialData
             %  alignIdx : vector indicating which alignments to include
             
             p = inputParser();
-            p.addParamValue('alignIdx', 1:td.nAlign, @isvector);
+            p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.parse(varargin{:});
             
             % select alignment indices
@@ -2102,6 +2148,8 @@ classdef TrialDataConditionAlign < TrialData
                 if iscell(tvecCell{iAlign})
                     mins(iAlign) = nanmin(cellfun(@nanminNanEmpty, tvecCell{iAlign}));
                     maxs(iAlign) = nanmax(cellfun(@nanmaxNanEmpty, tvecCell{iAlign}));
+                elseif isempty(tvecCell{iAlign})
+                    error('Time cell for alignment %d is empty', iAlign);
                 else
                     mins(iAlign) = nanmin(tvecCell{iAlign});
                     maxs(iAlign) = nanmax(tvecCell{iAlign});
@@ -2156,28 +2204,28 @@ classdef TrialDataConditionAlign < TrialData
             %     cell of T x D matrices or containing nTrials x T x D data matrices
             
             p = inputParser();
-            p.addParamValue('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
-            p.addParamValue('data', {}, @iscell); % for D == 1,2,3
-            p.addParamValue('yOffsetBetweenTrials', 0, @isscalar);
-            p.addParamValue('yOffsetBetweenConditions', [], @isscalar);
+            p.addParameter('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
+            p.addParameter('data', {}, @iscell); % for D == 1,2,3
+            p.addParameter('yOffsetBetweenTrials', 0, @isscalar);
+            p.addParameter('yOffsetBetweenConditions', [], @isscalar);
             
-            p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             
-            p.addParamValue('scaleBars', false, @islogical);
-            p.addParamValue('axisStyleX', 'tickBridge', @ischar);
-            p.addParamValue('axisStyleY', 'tickBridge', @ischar);
+            p.addParameter('scaleBars', false, @islogical);
+            p.addParameter('axisStyleX', 'tickBridge', @ischar);
+            p.addParameter('axisStyleY', 'tickBridge', @ischar);
             
-            p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
-            p.addParamValue('alignIdx', [], @isnumeric);
-            p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.addParamValue('alpha', 1, @isscalar);
-            p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('markSize', 5, @isscalar);
-            p.addParamValue('timeAxisStyle', 'marker', @ischar);
-            p.addParamValue('useThreeVector', true, @islogical);
-            p.addParamValue('useTranslucentMark3d', false, @islogical);
+            p.addParameter('conditionIdx', 1:td.nConditions, @isnumeric);
+            p.addParameter('alignIdx', [], @isnumeric);
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
+            p.addParameter('alpha', 1, @isscalar);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markSize', 5, @isscalar);
+            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('useThreeVector', true, @islogical);
+            p.addParameter('useTranslucentMark3d', false, @islogical);
             p.KeepUnmatched;
             p.parse(varargin{:});
             
@@ -2324,6 +2372,8 @@ classdef TrialDataConditionAlign < TrialData
                 
                 % plot one condition at a time
                 for iCond = 1:nConditionsUsed
+                    zlevel = iCond / (2*nConditionsUsed);
+                    
                     % determine whether we can plot all trials simultaneously
                     % (matrix format with shared time vector) or one at a time 
                     % (cell element for each trial). Grab the data for this
@@ -2365,6 +2415,7 @@ classdef TrialDataConditionAlign < TrialData
                             dataC = bsxfun(@plus, dataC, yOffsets);
                             if p.Results.alpha < 1
                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(timeC' + tOffset, dataC', ...
+                                   ones(size(timeC)) * zlevel, ...
                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                             else
@@ -2376,6 +2427,7 @@ classdef TrialDataConditionAlign < TrialData
                         elseif D == 2
                             if p.Results.alpha < 1
                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', ...
+                                   ones(size(dataC(:, :, 1)')) * zlevel, ...
                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                             else
@@ -2417,6 +2469,7 @@ classdef TrialDataConditionAlign < TrialData
                                 if ~isempty(tvec) && ~isempty(dvec)
                                     if p.Results.alpha < 1
                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec + yOffset, ...
+                                           ones(size(yvec)) * zlevel, ...
                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                                     else
@@ -2433,6 +2486,7 @@ classdef TrialDataConditionAlign < TrialData
                                 if ~isempty(dxvec) && ~isempty(dyvec)
                                     if p.Results.alpha < 1
                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(dxvec, dyvec, ...
+                                           ones(size(dxvec)) * zlevel, ...
                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
                                     else
@@ -2512,11 +2566,11 @@ classdef TrialDataConditionAlign < TrialData
                 else
                     % y is data, x is time
                     if ~isempty(p.Results.axisInfoY)
-                        if yOffsetTrial ~= 0 || yOffsetCondition ~= 0
-                            scaleBar = true;
-                        else
-                            scaleBar = false;
-                        end
+%                         if yOffsetTrial ~= 0 || yOffsetCondition ~= 0
+%                             scaleBar = true;
+%                         else
+%                             scaleBar = false;
+%                         end
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
                             'which', 'y', 'style', axisStyleY);
                     end
@@ -2562,6 +2616,7 @@ classdef TrialDataConditionAlign < TrialData
 %             end
             au.update();
             au.installCallbacks();
+            hold(axh, 'off');
         end
         
         function plotAnalogGroupedEachTrial(td, name, varargin) 
@@ -2618,31 +2673,32 @@ classdef TrialDataConditionAlign < TrialData
             %     nAlign x 1 cell of nConditions x T x D matrices
             %
             p = inputParser();
-            p.addParamValue('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
-            p.addParamValue('data', {}, @(x) isnumeric(x) || iscell(x)); % for D == 1,2,3
-            p.addParamValue('dataError', {}, @(x) isnumeric(x) || iscell(x)); 
+            p.addParameter('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
+            p.addParameter('data', {}, @(x) isnumeric(x) || iscell(x)); % for D == 1,2,3
+            p.addParameter('dataError', {}, @(x) isnumeric(x) || iscell(x)); 
             
-            p.addParamValue('axisInfoX', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
-            p.addParamValue('axisInfoY', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
-            p.addParamValue('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
             
-            p.addParamValue('scaleBars', false, @islogical);
-            p.addParamValue('axisStyleX', 'tickBridge', @ischar);
-            p.addParamValue('axisStyleY', 'tickBridge', @ischar);
+            p.addParameter('scaleBars', false, @islogical);
+            p.addParameter('axisStyleX', 'tickBridge', @ischar);
+            p.addParameter('axisStyleY', 'tickBridge', @ischar);
             
-            p.addParamValue('lineWidth', 2, @isscalar);
-            p.addParamValue('conditionIdx', 1:td.nConditions, @isnumeric);
-            p.addParamValue('alignIdx', [], @isnumeric);
-            p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.addParamValue('alpha', 1, @isscalar);
-            p.addParamValue('errorAlpha', 0.5, @isscalar);
-            p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('markShowRanges', true, @islogical); % show ranges for marks 
-            p.addParamValue('markSize', 8, @isscalar);
-            p.addParamValue('timeAxisStyle', 'marker', @ischar);
-            p.addParamValue('useThreeVector', true, @islogical);
-            p.addParamValue('useTranslucentMark3d', false, @islogical);
-            p.addParamValue('lineSmoothing', false, @islogical); % for alpha == 1 only
+            p.addParameter('lineWidth', 2, @isscalar);
+            p.addParameter('conditionIdx', 1:td.nConditions, @isnumeric);
+            p.addParameter('alignIdx', [], @isnumeric);
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
+            p.addParameter('alpha', 1, @isscalar);
+            p.addParameter('errorAlpha', 0.5, @isscalar);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markShowRangesOnData', true, @islogical); % show ranges for marks on traces
+            p.addParameter('markShowRangesOnAxis', true, @islogical); % show ranges for marks below axis
+            p.addParameter('markSize', 8, @isscalar);
+            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('useThreeVector', true, @islogical);
+            p.addParameter('useTranslucentMark3d', false, @islogical);
+            p.addParameter('lineSmoothing', false, @islogical); % for alpha == 1 only
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2777,7 +2833,7 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, tvec + tOffset, dmat, '-', ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, 'LineSmoothing', lineSmoothing, ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... %'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
 
@@ -2789,7 +2845,7 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot(axh, dmat(:, 1), dmat(:, 2), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, 'LineSmoothing', lineSmoothing, ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... %'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
 
@@ -2801,7 +2857,7 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData{iCond, iAlign} = plot3(axh, dmat(:, 1), dmat(:, 2), dmat(:, 3), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, 'LineSmoothing', lineSmoothing, ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... %'LineSmoothing', lineSmoothing, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
                     end  
@@ -2821,7 +2877,7 @@ classdef TrialDataConditionAlign < TrialData
                     permute(data{iAlign}, [2 3 1]), ...  % data needs to be T x D x C x N, currently C x T x D
                     'tOffsetZero', timeOffsetByAlign(iAlign), 'alpha', p.Results.alpha, ...
                     'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
-                    'markShowRanges', p.Results.markShowRanges, ...
+                    'markShowRanges', p.Results.markShowRangesOnData, ...
                     'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
             end
             
@@ -2833,7 +2889,7 @@ classdef TrialDataConditionAlign < TrialData
                     % setup x axis 
                     td.alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
                         'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
-                        'style', p.Results.timeAxisStyle, 'showRanges', p.Results.markShowRanges);
+                        'style', p.Results.timeAxisStyle, 'showRanges', p.Results.markShowRangesOnAxis);
                 end
             end
 
@@ -2891,6 +2947,7 @@ classdef TrialDataConditionAlign < TrialData
             au = AutoAxis(axh);
             au.update();
             au.installCallbacks();
+            hold(axh, 'off');
         end
         
         function plotAnalogGroupMeans(td, name, varargin) 
@@ -2898,8 +2955,8 @@ classdef TrialDataConditionAlign < TrialData
             % each condition
             
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar);
-            p.addParamValue('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('minTrials', 1, @isscalar);
+            p.addParameter('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -2933,8 +2990,8 @@ classdef TrialDataConditionAlign < TrialData
             % each condition
             
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar);
-            p.addParamValue('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('minTrials', 1, @isscalar);
+            p.addParameter('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -2959,8 +3016,8 @@ classdef TrialDataConditionAlign < TrialData
             % each condition
             
             p = inputParser();
-            p.addParamValue('minTrials', 1, @isscalar);
-            p.addParamValue('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('minTrials', 1, @isscalar);
+            p.addParameter('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -2994,8 +3051,8 @@ classdef TrialDataConditionAlign < TrialData
             
             import TrialDataUtilities.Plotting.errorshade;
             p = inputParser();
-            p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.addParamValue('legend', false, @islogical);
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
+            p.addParameter('legend', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(args);
 

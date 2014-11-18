@@ -2,11 +2,19 @@ classdef AppearanceSpec
     properties(Dependent)
         Color
         LineWidth
+        TextOffsetX
+        TextOffsetY
+        HorizontalAlignment
+        VerticalAlignment
     end
     
     properties(Hidden)
         mColor
         mLineWidth
+        mTextOffsetX
+        mTextOffsetY
+        mHorizontalAlignment
+        mVerticalAlignment
     end
     
     methods
@@ -41,6 +49,70 @@ classdef AppearanceSpec
         function c = defaultLineWidth(~)
             c = 1;
         end
+        
+        function v = get.HorizontalAlignment(app)
+            if isempty(app.mHorizontalAlignment)
+                v = app.defaultHorizontalAlignment();
+            else
+                v = app.mHorizontalAlignment;
+            end
+        end
+
+        function app = set.HorizontalAlignment(app, v)
+            app.mHorizontalAlignment = v;
+        end
+        
+        function c = defaultHorizontalAlignment(~)
+            c = 'center';
+        end
+        
+         function v = get.VerticalAlignment(app)
+            if isempty(app.mVerticalAlignment)
+                v = app.defaultVerticalAlignment();
+            else
+                v = app.mVerticalAlignment;
+            end
+        end
+
+        function app = set.VerticalAlignment(app, v)
+            app.mVerticalAlignment = v;
+        end
+        
+        function c = defaultVerticalAlignment(~)
+            c = 'middle';
+        end
+        
+        function v = get.TextOffsetX(app)
+            if isempty(app.mTextOffsetX)
+                v = app.defaultTextOffsetX();
+            else
+                v = app.mTextOffsetX;
+            end
+        end
+
+        function app = set.TextOffsetX(app, v)
+            app.mTextOffsetX = v;
+        end
+        
+        function c = defaultTextOffsetX(~)
+            c = 0;
+        end
+        
+        function v = get.TextOffsetY(app)
+            if isempty(app.mTextOffsetY)
+                v = app.defaultTextOffsetY();
+            else
+                v = app.mTextOffsetY;
+            end
+        end
+
+        function app = set.TextOffsetY(app, v)
+            app.mTextOffsetY = v;
+        end
+        
+        function c = defaultTextOffsetY(~)
+            c = 0;
+        end
     end
         
     methods
@@ -69,7 +141,8 @@ classdef AppearanceSpec
        end
        
        function args = getMarkerPlotArgs(app)
-           args = {'MarkerFaceColor', app.Color, 'MarkerEdgeColor', 'none'};
+           args = {'MarkerFaceColor', app.Color, ...
+               'MarkerEdgeColor', AppearanceSpec.darkenColor(app.Color, 0.5)};
        end
        
     end
@@ -111,6 +184,12 @@ classdef AppearanceSpec
             % brighten color by shifting fractionally towards white
             c = AppearanceSpec.convertColor(c);
             cvec = 1 - ((1-c) .* (alpha));
+        end
+        
+        function cvec = darkenColor(c, alpha)
+            % brighten color by shifting fractionally towards white
+            c = AppearanceSpec.convertColor(c);
+            cvec = c .* alpha;
         end
     end
 end

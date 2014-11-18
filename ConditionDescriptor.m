@@ -120,6 +120,7 @@ classdef ConditionDescriptor
         
         appearances % A-dimensional struct of appearance values
         names % A-dimensional cellstr array with names of each condition 
+        namesShort 
         namesMultiline % A-dimension cellstr array with names of each condition separated into multiple lines via \n
         
         attributeValueLists % A x 1 cell array of values allowed for this attribute
@@ -1399,16 +1400,20 @@ classdef ConditionDescriptor
             ci = ci.invalidateCache();
         end
         
-        function values = generateConditionsAsStrings(ci, separator)
+        function values = generateConditionsAsStrings(ci, varargin)
             % publically callable version of buildConditionsAsStrings in case build methods
             % end up having side effects
-            if nargin < 2
-                separator = ' ';
-            end
+            p = inputParser();
+            p.addOptional('separator', ' ', @ischar);
+            p.addOptional('short', false, @islogical);
+            p.parse(varargin{:});
+            separator = p.Results.separator;
+            short = p.Results.short;
+            
             if ci.nAxes == 0
                 values = {structToString(ci.conditions)};
             else
-                valueLists = ci.generateAxisValueListsAsStrings(separator); 
+                valueLists = ci.generateAxisValueListsAsStrings(separator, short); 
                 values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
                     valueLists, 'asCell', true);
             end
@@ -1517,6 +1522,19 @@ classdef ConditionDescriptor
         function ci = set.names(ci, v)
             ci.odc = ci.odc.copy();
             ci.odc.names = v;
+        end
+        
+        function v = get.namesShort(ci)
+            v = ci.odc.namesShort;
+            if isempty(v)
+                ci.odc.namesShort = ci.buildNamesShort();
+                v = ci.odc.namesShort;
+            end
+        end 
+        
+        function ci = set.namesShort(ci, v)
+            ci.odc = ci.odc.copy();
+            ci.odc.namesShort = v;
         end
         
         function v = get.namesMultiline(ci)
@@ -1797,6 +1815,21 @@ classdef ConditionDescriptor
             end
         end
         
+        function names = buildNamesShort(ci)
+            % pass along values(i) and the subscripts of that condition in case useful 
+            if ci.nConditions > 0
+                fn = ci.nameFn;
+                if isempty(fn)
+                    fn = @ConditionDescriptor.defaultNameFn;
+                end
+                names = fn(ci, 'multiline', false, 'shortNames', true);
+                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
+                    'nameFn must return cellstr with same size as .conditions');
+            else
+                names = {};
+            end
+        end
+        
         function names = buildNamesMultiline(ci)
             % pass along values(i) and the subscripts of that condition in case useful 
             if ci.nConditions > 0
@@ -1962,15 +1995,17 @@ classdef ConditionDescriptor
             % receives the condition descriptor itself and returns a
             %  a cell tensor specifying the names of each condition
             p = inputParser();
-            p.addParamValue('multiline', false, @islogical);
+            p.addParameter('multiline', false, @islogical);
+            p.addParameter('shortNames', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             if p.Results.multiline
-                nameCell = ci.generateConditionsAsStrings(char(10));
+                separator = char(10);
             else
-                nameCell = ci.generateConditionsAsStrings(' ');
+                separator = ' ';
             end
+            nameCell = ci.generateConditionsAsStrings(separator, p.Results.shortNames);
         end
     end
 

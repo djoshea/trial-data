@@ -3,11 +3,11 @@ classdef DrawOnData
         function h = plotMark(axh, dMark, app, alpha, markerSize, varargin)
             % plot a set of mark points onto data
             % dMark is ? x D x ? where D is the dimensionality (2 or 3)
-            import TrialDataUtilities.Plotting.patchcircle;
-            import TrialDataUtilities.Plotting.patchsphere;
+           % import TrialDataUtilities.Plotting.patchcircle;
+            %import TrialDataUtilities.Plotting.patchsphere;
             
             p = inputParser;
-            p.addParamValue('useTranslucentMark3d', false, @islogical);
+            p.addParameter('useTranslucentMark3d', true, @islogical);
             p.parse(varargin{:});
             
             % plot a single mark on the data
@@ -16,23 +16,26 @@ classdef DrawOnData
             flatten = @(x) x(:);
             
             if D == 1 || D == 2
+                zvals = 1 * ones(size(flatten(dMark(:, 1, :))));
+                h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), zvals, ...
+                    'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.Color, ...
+                    'MarkerSize', markerSize, 'Parent', axh);
                 if alpha < 1
-                    h = patchcircle(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), markerSize, ...
-                        'z', 0.1, 'FaceAlpha', alpha, 'FaceColor', app.Color, 'axh', axh);
-                else   
-                    zvals = 0.1 * ones(size(flatten(dMark(:, 1, :))));
-                    h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), zvals, ...
-                        'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.Color, ...
-                        'MarkerSize', markerSize, 'Parent', axh);
+                    SaveFigure.setMarkerOpacity(alpha, 0);
                 end
+                
             elseif D == 3
+%                 if alpha < 1 && p.Results.useTranslucentMark3d
+%                     h = patchcircle(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), markerSize, ...
+%                         'z', 1, 'alpha', alpha, 'color', app.Color, 'axh', axh);
+% %                     h = patchsphere(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
+% %                         markerSize, 'FaceColor', app.Color, 'FaceAlpha', alpha);
+%                 else
+                h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
+                    'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
+                    'Parent', axh, 'MarkerSize', markerSize);
                 if alpha < 1 && p.Results.useTranslucentMark3d
-                    h = patchsphere(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
-                        markerSize, 'FaceColor', app.Color, 'FaceAlpha', alpha);
-                else
-                    h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
-                        'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
-                        'Parent', axh, 'MarkerSize', markerSize);
+                    SaveFigure.setMarkerOpacity(alpha, 0);
                 end
             else
                 error('Invalid Dimensionality of data');
@@ -50,7 +53,7 @@ classdef DrawOnData
             p.addParamValue('tickWidth', 2, @isscalar);
             p.parse(varargin{:});
 
-            import TrialDataUtilities.Plotting.patchcircle;
+           % import TrialDataUtilities.Plotting.patchcircle;
             
             nOccur = size(timesMat, 1);
             nTrials = size(timesMat, 2);
@@ -62,9 +65,9 @@ classdef DrawOnData
                 X = xOffset + timesMat;
                 X = X(:);
                 Y = Y(:);
-                h = patchcircle(X, Y, p.Results.tickHeight, 'z', 0.1, ...
-                    'FaceAlpha', alpha, ...
-                    'FaceColor', app.Color, 'axh', axh);
+                h = plot3(X, Y, p.Results.tickHeight, 'z', 0.1, 'o', ...
+                    'color', app.Color, 'Parent', axh);
+                SaveFigure.setMarkerOpacity(h, alpha, 0);
             else
                 timesByTrial = mat2cell(timesMat, nOccur, ones(nTrials, 1))';
                 h = TrialDataUtilities.Plotting.drawTickRaster(timesByTrial, ...

@@ -4,14 +4,14 @@ function showInLegend(h, names)
 % use legend(axh, 'show') to activate default legend
 % names is either char (for scalar h), or cellstr
 
-    if nargin >= 2 && ~isempty(names) && ~iscell(names)
-        names = {names};
+    if nargin >= 2 && ~isempty(names) && ischar(names)
+        names = repmat({names}, numel(h), 1);
     else
         names = [];
     end
 
     for i = 1:numel(h)
-        if TrialDataUtilities.Plotting.isGraphicsHandle(h(i)), continue; end
+        if ~TrialDataUtilities.Plotting.isGraphicsHandle(h(i)), continue; end
         ann = get(h(i), 'Annotation');
         leg = get(ann, 'LegendInformation');
         set(leg, 'IconDisplayStyle', 'on');

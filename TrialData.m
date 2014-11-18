@@ -48,7 +48,7 @@ classdef TrialData
     % Initializing and building
     methods
         function td = TrialData(varargin)
-            td.odc = TrialDataOnDemandCache();
+            td = td.rebuildOnDemandCache();
 
             if ~isempty(varargin)
                 if isa(varargin{1}, 'TrialData')
@@ -59,6 +59,11 @@ classdef TrialData
                     error('Unknown initializer');
                 end
             end
+        end
+        
+        function td = rebuildOnDemandCache(td)
+            td.warnIfNoArgOut(nargout);
+            td.odc = TrialDataOnDemandCache(); 
         end
 
         function td = initializeFromTrialData(td, tdOther)
@@ -109,7 +114,7 @@ classdef TrialData
             channelDescriptors = [specialParams; regularChannels];
 
             %nTrials = tdi.getTrialCount();
-            nChannels = numel(channelDescriptors);
+            %nChannels = numel(channelDescriptors);
 
             % request all channel data at once
             data = tdi.getChannelData(channelDescriptors);  %#ok<PROP>
@@ -121,7 +126,7 @@ classdef TrialData
             end
             
             % validate and replace missing values
-            data = td.validateData(data, td.channelDescriptorsByName);
+            data = td.validateData(data, td.channelDescriptorsByName); %#ok<PROP>
 
             td.data = data; %#ok<PROP>
 
@@ -196,7 +201,7 @@ classdef TrialData
 
         % performs a validation of all channel data against the specified channelDescriptors,
         % also fixing empty values appropriately
-        function data = validateData(td, data, channelDescriptorsByName, varargin)
+        function data = validateData(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
             p = inputParser();
             p.addParameter('addMissingFields', false, @islogical); % if true, don't complain about missing channels, just add the missing fields
             p.parse(varargin{:});
@@ -257,6 +262,41 @@ classdef TrialData
 
         end
     end
+    
+    % Faster saving
+    methods
+        function saveFast(td, location)
+            % saves in a custom hdf5 format that allows partial loading
+            data = td.data; %#ok<PROP>
+            td.data = 'saved separately';
+            td.odc = []; %#ok<MCHV2>
+            
+            mkdirRecursive(location);
+            savefast(fullfile(location, 'td.mat'), 'td');
+            
+            % save elements of data
+            TrialDataUtilities.Data.SaveStructArrayIndividualized.saveStructArray(location, data); %#ok<PROP>
+        end
+    end
+    
+    methods(Static)
+        function td = loadFast(location)
+            % strip extension
+            [path, name] = fileparts(location);
+            location = fullfile(path, name);
+            
+            if ~exist(location, 'dir')
+                error('Directory %s not found. Did you save with saveFast?', location);
+            end
+            loaded = load(fullfile(path, 'td.mat'));
+            td = loaded.td;
+            
+            % load elements of data
+            td.data = TrialDataUtilities.Data.SaveStructArrayIndividualized.loadStructArray(location);
+            
+            td = td.rebuildOnDemandCache();
+        end
+    end
 
     % General utilities
     methods
@@ -300,7 +340,7 @@ classdef TrialData
         end
         
         function td = set.valid(td, v)
-            if isempty(td.odc), td.odc = TrialDataOnDemandCache(); end
+            if isempty(td.odc), td = td.rebuildOnDemandCache(); end
             td.odc = td.odc.copy();
             td.odc.valid = v;
         end
@@ -568,6 +608,13 @@ classdef TrialData
         function saveTags = listSaveTags(td)
             saveTags = td.getParamUnique('saveTag');
         end
+        
+        function td = selectTrialsFromSaveTag(td, saveTags)
+            td.warnIfNoArgOut(nargout);
+            
+            mask = ismember(td.getParam('saveTag'), saveTags);
+            td = td.selectTrials(mask);
+        end
     end
     
     methods % Analog channel methods
@@ -575,7 +622,7 @@ classdef TrialData
             p = inputParser();
             p.addOptional('values', {}, @(x) iscell(x) || ismatrix(x));
             p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x));
-            p.addParamValue('units', '', @ischar);
+            p.addParameter('units', '', @ischar);
             p.parse(varargin{:});
             times = p.Results.times;
             values = p.Results.values;
@@ -916,7 +963,7 @@ classdef TrialData
             p = inputParser;
             p.addRequired('name', @ischar);
             p.addOptional('values', @isvector);
-            p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.parse(name, varargin{:});
             
             name = p.Results.name;
@@ -942,7 +989,7 @@ classdef TrialData
             
             p = inputParser();
             p.addOptional('values', {}, @isvector);
-            p.addParamValue('units', '', @ischar);
+            p.addParameter('units', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1249,7 +1296,7 @@ classdef TrialData
         
         function td = clearChannelData(td, name, varargin)
             p = inputParser();
-            p.addParamValue('fieldMask', [], @islogical);
+            p.addParameter('fieldMask', [], @islogical);
             p.parse(varargin{:});
             
             cd = td.channelDescriptorsByName.(name);
@@ -1283,10 +1330,10 @@ classdef TrialData
             % note that by default, updateValidOnly is true, meaning that
             % the values on invalid trials will not be updated
             p = inputParser();
-            p.addParamValue('fieldMask', [], @islogical);
-            p.addParamValue('clearForInvalid', false, @islogical);
-            p.addParamValue('updateValidOnly', true, @islogical);
-            p.addParamValue('updateMask', [], @isvector);
+            p.addParameter('fieldMask', [], @islogical);
+            p.addParameter('clearForInvalid', false, @islogical);
+            p.addParameter('updateValidOnly', true, @islogical);
+            p.addParameter('updateMask', [], @isvector);
             p.parse(varargin{:});
             
             updateMaskManual = p.Results.updateMask;
@@ -1354,9 +1401,9 @@ classdef TrialData
         % general utility to send plots to the correct axis
         function [axh, unmatched] = getRequestedPlotAxis(td, varargin) %#ok<INUSL>
             p = inputParser();
-            p.addParamValue('figh', [], @(x) isempty(x) || ishandle(x));
-            p.addParamValue('axh', [], @(x) isempty(x) || ishandle(x));
-            p.addParamValue('cla', false, @islogical); 
+            p.addParameter('figh', [], @(x) isempty(x) || ishandle(x));
+            p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
+            p.addParameter('cla', false, @islogical); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -1389,9 +1436,9 @@ classdef TrialData
         % figure
         function [pan, unmatched] = getRequestedPlotPanel(td, varargin) %#ok<INUSL>
             p = inputParser();
-            p.addParamValue('figh', [], @(x) isempty(x) || ishandle(x));
-            p.addParamValue('panel', [], @(x) isempty(x) || isa(x, 'panel'));
-            p.addParamValue('clf', true, @islogical); 
+            p.addParameter('figh', [], @(x) isempty(x) || ishandle(x));
+            p.addParameter('panel', [], @(x) isempty(x) || isa(x, 'panel'));
+            p.addParameter('clf', true, @islogical); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -1418,7 +1465,7 @@ classdef TrialData
         
         function plotAnalogEachTrial(td, name, varargin) 
             p = inputParser();
-            p.addParamValue('plotOptions', {}, @(x) iscell(x));
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.KeepUnmatched;
             p.parse(varargin{:});
 

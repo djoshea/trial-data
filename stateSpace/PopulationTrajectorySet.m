@@ -1397,7 +1397,7 @@ classdef PopulationTrajectorySet
         
         function pset = normalizeBasesByStd(pset, varargin)
             p = inputParser();
-            p.addParamValue('denominatorOffset', 0, @isscalar); % x = x / (std(x) + offset)
+            p.addParameter('denominatorOffset', 0, @isscalar); % x = x / (std(x) + offset)
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             pset.warnIfNoArgOut(nargout);
@@ -1514,7 +1514,7 @@ classdef PopulationTrajectorySet
                         
                     elseif src.hasSpikeChannel(chName)
                         %src = src.padForSpikeFilter(spikeFilter); % should have been done in applyAlignInfoSet already
-                        dataCell{iBasis, iAlign} = src.getSpikeTimes(chName);
+                        dataCell{iBasis, iAlign} = src.getSpikeTimes(chName, true); % include padding
                         timeInfoCell{iBasis, iAlign} = src.alignInfoActive.timeInfo;
                         unitsPerSecondCell{iBasis, iAlign} = src.timeUnitsPerSecond;
                         isSpikeChannel(iBasis) = true;
