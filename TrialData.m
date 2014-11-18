@@ -1179,7 +1179,8 @@ classdef TrialData
             % data will be cleared when adding the channel.
             p = inputParser();
             p.addOptional('valueCell', {}, @(x) true);
-            p.addParameter('ignoreOverwriteChannel', false, @islogical);
+            p.addParameter('clearIfPresent', false, @islogical);
+           % p.addParameter('ignoreOverwriteChannel', false, @islogical);
             p.addParameter('updateValidOnly', true, @islogical);
             p.parse(varargin{:});
             valueCell = p.Results.valueCell;
@@ -1189,7 +1190,8 @@ classdef TrialData
             % check for overwrite if requested
             assert(isa(cd, 'ChannelDescriptor'), 'Argument cd must be ChannelDescriptor');
 
-            if td.hasChannel(cd.name) && ~p.Results.ignoreOverwriteChannel
+            alreadyHasChannel = td.hasChannel(cd.name);
+            if alreadyHasChannel
                 % check that existing channel matches
                 assert(isequaln(cd, td.channelDescriptorsByName.(cd.name)), ...
                     'ChannelDescriptor for channel %s does not match existing channel', cd.name);
@@ -1204,9 +1206,9 @@ classdef TrialData
                 end
             end     
             
-            if isempty(valueCell)
+            if isempty(valueCell) && (~alreadyHasChannel || p.Results.clearIfPresent)
                 td = td.clearChannelData(cd.name, 'fieldMask', ~cd.isShareableByField);
-            else
+            elseif ~isempty(valueCell)
                 % clear on fields where no values provided and it's not shared, 
                 % set on fields where values are provided
                 nonEmptyMask = ~cellfun(@isempty, valueCell);
