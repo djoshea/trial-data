@@ -639,6 +639,12 @@ classdef AlignSummary
                 info = info(timeMask);
             end
             
+            for i = 1:numel(info)
+                if isempty(info(i).appear)
+                    info(i).appear = AppearanceSpec();
+                end
+            end
+            
             as.labelInfo = makecol(info);
         end
         
@@ -668,6 +674,10 @@ classdef AlignSummary
                     info(counter).appear = ad.intervalAppear{iInterval};
                     info(counter).fixed = ad.isIntervalFixedTime(iInterval);
                     counter = counter + 1;
+                    
+                    if isempty(info(counter).appear)
+                        info(counter).appear = AppearanceSpec();
+                    end
                 end
             end
             
@@ -762,7 +772,10 @@ classdef AlignSummary
                         errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
                             'errorInterval', errorInterval, 'errorIntervalColor', errorColor, ...
-                            'color', cvec);
+                            'color', cvec, ...
+                            'textOffsetX', ii.appear.TextOffsetX, ...
+                            'textOffsetY', ii.appear.TextOffsetY, ...
+                            'horizontalAlignment', ii.appear.HorizontalAlignment);
                     end
                     
                     for iLabel = 1:numel(labelInfo)
@@ -781,7 +794,10 @@ classdef AlignSummary
                         errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
                         au.addMarkerX(li.time + xOffset, li.name, ...
                             'interval', errorInterval, ...
-                            'markerColor', cvec, 'intervalColor', errorColor);
+                            'markerColor', cvec, 'intervalColor', errorColor, ...
+                            'textOffsetX', li.appear.TextOffsetX, ...
+                            'textOffsetY', li.appear.TextOffsetY, ...
+                            'horizontalAlignment', li.appear.HorizontalAlignment);
                     end
                     
                     au.addAutoScaleBarX();
