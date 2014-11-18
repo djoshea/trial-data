@@ -182,7 +182,7 @@ classdef TrialData
 
             % validate new data against all channel descriptors (old + new)
             debug('Validating new channel data...\n');
-            newData = td.validateData(newData, td.channelDescriptorsByName);
+            newData = td.validateData(newData, td.channelDescriptorsByName, 'addMissingFields', true);
 
             % concatenate onto the old data
             td.data = TrialDataUtilities.Data.structcat(td.data, newData); 
@@ -196,6 +196,7 @@ classdef TrialData
             end
             td.manualValid = cat(1, td.manualValid, newValid);
             
+            td = td.updateValid();
         end
 
         % performs a validation of all channel data against the specified channelDescriptors,
@@ -225,17 +226,21 @@ classdef TrialData
                 
                 if ~ok(iChannel)
                     data = chd.addMissingFields(data);
-
-                    if ~p.Results.addMissingFields && ~chd.required
+                    if ~chd.required
                         % fill in missing values for optional channels but
                         % issue a warning
                         tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
                             chd.describe(), strjoin(missing{iChannel}, ', '));
-                        ok(iChannel) = true; % mark as okay since not required
+                    else
+                        tcprintf('inline', '{yellow}Warning: {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
+                            chd.describe(), strjoin(missing{iChannel}, ', '));
                     end
+                    if p.Results.addMissingFields || ~chd.required
+                        ok(iChannel) = true; % mark as okay since not required
+                    end 
                 end
             end
-
+            
             if any(~ok)
                 missing = missing(~ok);
                 chDescs = chDescs(~ok);
@@ -1233,7 +1238,7 @@ classdef TrialData
 
             if td.hasChannel(cd.name) && ~p.Results.ignoreOverwriteChannel
                 % check that existing channel matches
-                assert(isequal(cd, td.channelDescriptorsByName.(cd.name)), ...
+                assert(isequaln(cd, td.channelDescriptorsByName.(cd.name)), ...
                     'ChannelDescriptor for channel %s does not match existing channel', cd.name);
             else
                 td.channelDescriptorsByName.(cd.name) = cd;

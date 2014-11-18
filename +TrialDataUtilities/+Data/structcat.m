@@ -19,7 +19,7 @@ function S = structcat(varargin)
         % add missing fields
         fieldsMissing = fieldsMissingByElement{iT};
         for iF = 1:length(fieldsMissing)
-            structs{iT}.(fieldsMissing{iF}) = [];
+            [structs{iT}.(fieldsMissing{iF})] = deal([]);
         end
         structs{iT} = makecol(orderfields(structs{iT}, fields));
     end

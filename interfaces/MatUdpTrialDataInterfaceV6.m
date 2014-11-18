@@ -79,7 +79,6 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
             end
         
             iSignal = 0;
-            channelDescriptors = [];
             for iG = 1:nGroups
                 group = groups.(groupNames{iG});
 
@@ -138,11 +137,8 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     % store original field name to ease lookup in getDataForChannel()
                     cd.meta.originalField = dataFieldMain;
 
-                    if isempty(channelDescriptors)
-                        channelDescriptors = cd;
-                    else
-                        channelDescriptors(iChannel) = cd; %#ok<AGROW>
-                    end
+                    channelDescriptors(iChannel) = cd; %#ok<AGROW>
+                    
                     iChannel = iChannel + 1;
                 end
             end
@@ -180,7 +176,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     end
 
                     maskKeep(iU) = true;
-                    channelDescriptors(iChannel) = cd; %#ok<AGROW>
+                    channelDescriptors(iChannel) = cd;
                     iChannel = iChannel + 1;
                 end
 
@@ -199,6 +195,10 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                 tdi.unitFieldNames = {};
                 tdi.waveFieldNames = {};
                 tdi.channelUnits = {};
+            end
+            
+            if ~exist('channelDescriptors', 'var')
+                channelDescriptors = [];
             end
         end
         
@@ -285,6 +285,8 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         end
         
         function markNewChannelDataAsReceived(tdi)
+            tdi.trials = TrialDataUtilities.Data.structcat(tdi.trials, tdi.newR);
+            tdi.meta = TrialDataUtilities.Data.structcat(tdi.meta, tdi.newMeta);
             tdi.newR = [];
             tdi.newMeta = [];
         end
