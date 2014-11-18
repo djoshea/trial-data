@@ -1379,7 +1379,7 @@ classdef TrialData
                     valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
                 end
                
-                td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}, updateMask);
+                td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}(updateMask, :), updateMask);
             end 
             
             td.data = cd.repairData(td.data);
