@@ -875,20 +875,20 @@ classdef AlignInfo < AlignDescriptor
 %                 ad.timeInfo.(fld) = ad.timeInfo.(fld)(mask);
 %                 ad.timeInfoValid.(fld) = ad.timeInfoValid.(fld)(mask);
 %             end
-%             
+%            
             if ~isempty(ad.odc.markData)
                 for iM = 1:ad.nMarks
                     ad.markData{iM} = ad.markData{iM}(mask, :);
-                    ad.markCounts = ad.markCounts(mask, :);
                 end
+                ad.markCounts = ad.markCounts(mask, :);
             end
             
             if ~isempty(ad.odc.intervalStartData)
                 for iI = 1:ad.nIntervals
                     ad.intervalStartData{iI} = ad.intervalStartData{iI}(mask, :);
                     ad.intervalStopData{iI} = ad.intervalStopData{iI}(mask, :);
-                    ad.intervalCounts = ad.intervalCounts(mask, :);
                 end
+                ad.intervalCounts = ad.intervalCounts(mask, :);
             end
             
             ad.manualInvalid = ad.manualInvalid(mask);
