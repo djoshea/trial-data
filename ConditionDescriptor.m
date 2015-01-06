@@ -448,8 +448,8 @@ classdef ConditionDescriptor
 
             p = inputParser;
             p.addOptional('attributes', {}, @(x) ischar(x) || iscellstr(x));
-            p.addParamValue('name', '', @ischar);
-            p.addParamValue('valueList', {}, @(x) true);
+            p.addParameter('name', '', @ischar);
+            p.addParameter('valueList', {}, @(x) true);
             p.parse(varargin{:});
 
             if ~iscell(p.Results.attributes)
@@ -629,7 +629,9 @@ classdef ConditionDescriptor
                 attr = {attr};
             end
             for iAttr = 1:numel(attr)
-                if ~iscell(attr{iAttr}), attr{iAttr} = {attr{iAttr}}; end
+                if ~iscell(attr{iAttr})
+                    attr{iAttr} = attr(iAttr);
+                end
             end
             
             % attr is a cell of cellstr of attributes, and axisAttributes is a cell
@@ -884,7 +886,7 @@ classdef ConditionDescriptor
             idx = ci.conditionsAsLinearInds(mask);
             attr = ci.attributeNames(~isnan(ci.attributeAlongWhichAxis));
             valList = ci.conditionsAxisAttributesOnly;
-            valList = valList(mask);
+            valList = valList(idx);
             
             ci = ci.clearAxes();
             ci = ci.addAxis(attr, 'valueList', valList);
@@ -1198,9 +1200,9 @@ classdef ConditionDescriptor
             p.addRequired('name', @ischar);
             % is this attribute always numeric?
             % list of allowed values for this value (other values will be ignored)
-            p.addParamValue('requestAs', '', @ischar);
-            p.addParamValue('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
-            p.addParamValue('valueBins', {}, @(x) isnumeric(x) || iscell(x));
+            p.addParameter('requestAs', '', @ischar);
+            p.addParameter('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
+            p.addParameter('valueBins', {}, @(x) isnumeric(x) || iscell(x));
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
             requestAs = p.Results.requestAs;

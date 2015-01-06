@@ -424,10 +424,11 @@ classdef AlignDescriptor
 
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
-            p.addParamValue('index', 1, @(x) ischar(x) || isscalar(x));
-            p.addParamValue('as', '', @ischar);
-            p.addParamValue('mark', false, @islogical);
-            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
+            p.addParameter('as', '', @ischar);
+            p.addParameter('mark', false, @islogical);
+            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('color', [], @(x) true);
             p.parse(varargin{:});
             offset = p.Results.offset;
 
@@ -443,8 +444,11 @@ classdef AlignDescriptor
                 % use default again
                 ad.startLabel = '';
             end
-
-            ad.startAppear = p.Results.appear;
+            appear = p.Results.appear;
+            if ~isempty(p.Results.color)
+                appear.Color = p.Results.color;
+            end
+            ad.startAppear = appear;
             ad.startDefault = false;
 
             % if no zero is specified, determine it from the start event
@@ -458,10 +462,11 @@ classdef AlignDescriptor
 
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
-            p.addParamValue('index', 1, @(x) ischar(x) || isscalar(x));
-            p.addParamValue('as', '', @ischar);
-            p.addParamValue('mark', false, @islogical);
-            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
+            p.addParameter('as', '', @ischar);
+            p.addParameter('mark', false, @islogical);
+            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('color', [], @(x) true);
             p.parse(varargin{:});
             offset = p.Results.offset;
 
@@ -477,7 +482,11 @@ classdef AlignDescriptor
                 % use default again
                 ad.stopLabel = '';
             end
-            ad.stopAppear = p.Results.appear;
+            appear = p.Results.appear;
+            if ~isempty(p.Results.color)
+                appear.Color = p.Results.color;
+            end
+            ad.stopAppear = appear;
             ad.stopDefault = true;
 
             ad = ad.update();
@@ -501,10 +510,11 @@ classdef AlignDescriptor
 
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
-            p.addParamValue('index', 1, @(x) ischar(x) || isscalar(x));
-            p.addParamValue('as', '', @ischar);
-            %p.addParamValue('mark', true, @islogical);
-            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
+            p.addParameter('as', '', @ischar);
+            %p.addParameter('mark', true, @islogical);
+            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('color', [], @(x) true);
             p.parse(varargin{:});
             offset = p.Results.offset;
 
@@ -519,6 +529,10 @@ classdef AlignDescriptor
             else
                 % use default again
                 ad.zeroLabel = '';
+            end
+            appear = p.Results.appear;
+            if ~isempty(p.Results.color)
+                appear.Color = p.Results.color;
             end
             ad.zeroAppear = p.Results.appear;
             ad.zeroDefault = true;
@@ -548,15 +562,16 @@ classdef AlignDescriptor
             ad.warnIfNoArgOut(nargout);
 
             p = inputParser;
-            p.addParamValue('offsetStart', 0, @isscalar);
-            p.addParamValue('offsetStop', 0, @isscalar);
-            p.addParamValue('indexStart', ':', @(x) ischar(x) || isscalar(x));
-            p.addParamValue('indexStop', ':', @(x) ischar(x) || isscalar(x));
-            p.addParamValue('as', '', @ischar);
-            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
-            p.addParamValue('showOnData', true, @islogical);
-            p.addParamValue('showOnAxis', true, @islogical);
-            %p.addParamValue('conditionMatch', struct(), @(x) isstruct(x) && isscalar(x));
+            p.addParameter('offsetStart', 0, @isscalar);
+            p.addParameter('offsetStop', 0, @isscalar);
+            p.addParameter('indexStart', ':', @(x) ischar(x) || isscalar(x));
+            p.addParameter('indexStop', ':', @(x) ischar(x) || isscalar(x));
+            p.addParameter('as', '', @ischar);
+            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('color', [], @(x) true);
+            p.addParameter('showOnData', true, @islogical);
+            p.addParameter('showOnAxis', true, @islogical);
+            %p.addParameter('conditionMatch', struct(), @(x) isstruct(x) && isscalar(x));
             p.parse(varargin{:});
             as = p.Results.as;
             %conditionMatch = p.Results.conditionMatch;
@@ -588,7 +603,12 @@ classdef AlignDescriptor
             ad.intervalOffsetsStart(iInterval) = offsetStart;
             ad.intervalOffsetsStop(iInterval) = offsetStop;
             ad.intervalLabelsStored{iInterval} = as;
-            ad.intervalAppear{iInterval} = p.Results.appear;
+            
+            appear = p.Results.appear;
+            if ~isempty(p.Results.color)
+                appear.Color = p.Results.color;
+            end
+            ad.intervalAppear{iInterval} = appear;
             
             ad.intervalEventsStart = makecol(ad.intervalEventsStart);
             ad.intervalEventsStop = makecol(ad.intervalEventsStop);
@@ -626,12 +646,12 @@ classdef AlignDescriptor
 
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
-            p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
-            p.addParamValue('as', '', @ischar);
-            p.addParamValue('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
-            p.addParamValue('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
-            p.addParamValue('showOnData', true, @islogical);
-            p.addParamValue('showOnAxis', true, @islogical);
+            p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParameter('as', '', @ischar);
+            p.addParameter('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
+            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('showOnData', true, @islogical);
+            p.addParameter('showOnAxis', true, @islogical);
             p.parse(varargin{:});
             
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
@@ -681,8 +701,8 @@ classdef AlignDescriptor
 
         function ad = truncateBefore(ad, eventStr, varargin)
             p = inputParser;
-            p.addParamValue('offset', 0, @isnumeric);
-            p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParameter('offset', 0, @isnumeric);
+            p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
@@ -702,8 +722,8 @@ classdef AlignDescriptor
 
         function ad = truncateAfter(ad, eventStr, varargin)
             p = inputParser;
-            p.addParamValue('offset', 0, @isscalar);
-            p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParameter('offset', 0, @isscalar);
+            p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
@@ -723,8 +743,8 @@ classdef AlignDescriptor
 
         function ad = invalidateOverlap(ad, eventStr, varargin)
             p = inputParser;
-            p.addParamValue('offset', 0, @isscalar);
-            p.addParamValue('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParameter('offset', 0, @isscalar);
+            p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
             
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
@@ -812,7 +832,7 @@ classdef AlignDescriptor
             ad.intervalShowOnAxis = [];
 
             ad = ad.postUpdateMark();
-            ad = ad.postUpdateInterval();
+            ad = ad.postUpdateInterval(); %#ok<NASGU>
         end
             
     end
@@ -1105,7 +1125,7 @@ classdef AlignDescriptor
             % end-1, end-2 or 1:end or :
             % errorName provides information for printing error message about what we're trying to parse
             p = inputParser;
-            p.addParamValue('defaultIndex', [], @isvector);
+            p.addParameter('defaultIndex', [], @isvector);
             p.parse(varargin{:});
             
             % match event name

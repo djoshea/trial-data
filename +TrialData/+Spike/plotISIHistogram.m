@@ -9,7 +9,7 @@ function plotISIHistogram(td, unit, varargin)
     
     %freq = freq ./ sum(freq);
 
-    TrialDataUtilities.Plotting.plotHistogram(binEdges, freq, p.Unmatched);
+    TrialDataUtilities.Plotting.plotHistogram('binEdges', binEdges, 'freq', freq, p.Unmatched);
     xlabel(sprintf('ISI (%s)', td.timeUnitName));
     %ylabel('Proportion');
     ylabel('Spike count');

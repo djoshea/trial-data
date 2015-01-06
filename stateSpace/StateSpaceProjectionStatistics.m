@@ -60,9 +60,9 @@ classdef StateSpaceProjectionStatistics
         
         function plotBasisMixtures(proj, varargin)
             p = inputParser;
-            p.addParamValue('basisIdx', [1:min([10 proj.nBasesProj])], @(x) isvector(x) && ...
+            p.addParameter('basisIdx', [1:min([10 proj.nBasesProj])], @(x) isvector(x) && ...
                 all(inRange(x, [1 proj.nBasesSource])));
-            p.addParamValue('mixtureColors', [], @ismatrix);
+            p.addParameter('mixtureColors', [], @ismatrix);
             p.parse(varargin{:});
             basisIdx = p.Results.basisIdx;
             if islogical(basisIdx)
@@ -81,10 +81,10 @@ classdef StateSpaceProjectionStatistics
             hPatch = nan(nCov, 1);
             
             if isempty(p.Results.mixtureColors)
-                cmap = distinguishable_colors(nCov);
+                cmap = [0.5 0.5 0.5; distinguishable_colors(nCov, {'w', [0.5 0.5 0.5]})];
             else
                 cmap = p.Results.mixtureColors;                
-                assert(size(cmap, 1) == nCov && size(cmap, 2) == 3, 'mixtureColors must be nCov x 3 matrix');
+                assert(size(cmap, 1) >= nCov && size(cmap, 2) == 3, 'mixtureColors must be nCov x 3 matrix');
             end
             
             for iIdxB = 1:nBases
@@ -103,23 +103,35 @@ classdef StateSpaceProjectionStatistics
                     hold on
                 end
                 
-                h = text(-0.03, nBases-iB+rowHeight/2, proj.basisNamesProj{iB}, ...
-                    'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Right'); 
-                extent = get(h, 'Extent');
-                %xMin = min(extent(1), xMin);
+%                 h = text(0, nBases-iB+rowHeight/2, proj.basisNamesProj{iB}, ...
+%                     'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Right');
+%                 extent = get(h, 'Extent');
+%                 %xMin = min(extent(1), xMin);
                 
-                h = text(xMax+0.03, nBases-iB+rowHeight/2, sprintf('%.2f%%', proj.explained(iB)*100), ...
+                text(cumBasisMix(iB, end), nBases-iB+rowHeight/2, sprintf('  %.2f%%', proj.explained(iB)*100), ...
                     'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Left'); 
-                extent = get(h, 'Extent');
+               % extent = get(h, 'Extent');
                 %xMax = max(extent(1)+extent(3), xMax);
             end
             
-            xlim([xMin xMax]);
+            xlim([xMin xMax*1.1]);
             ylim([0 nBases]);
             axis off;
             title('Basis Mixtures');
-            legend(hPatch, nCov, proj.covMarginalizedNames, 'Location', 'NorthEastOutside');
-            legend boxoff;
+            
+            au = AutoAxis(gca);
+            au.addTitle();
+            au.addTicklessLabels('y', 'tick', nBases-0.5:-1:0.5, 'tickLabel', proj.basisNamesProj);
+            
+            au.addColoredLabels(proj.covMarginalizedNames, cmap, ...
+                'posY', AutoAxis.PositionType.Bottom, 'posX', AutoAxis.PositionType.Right);
+
+            au.update();
+            au.installCallbacks();
+%             
+
+%             legend(hPatch, nCov, proj.covMarginalizedNames, 'Location', 'NorthEastOutside');
+%             legend boxoff;
             
         end
     end

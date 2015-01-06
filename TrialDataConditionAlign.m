@@ -468,13 +468,55 @@ classdef TrialDataConditionAlign < TrialData
             td = td.updateValid();
         end
         
-        function td = addAttribute(td, names)
+        function [td, namesModified] = addAttribute(td, names)
             % add attributes in names that aren't already in ConditionInfo
-            new = setdiff(names, td.conditionInfo.attributeNames);
+            % for non-param channels, the name of the attribute might be
+            % modified to reflect the specific way in which the channel was
+            % used to create the scalar attribute value
+            %
+            % for event channels, the first event occurrence time will be
+            % used, relative to the current alignment zero.
             
-            for i = 1:numel(new)
-                td.conditionInfo = td.conditionInfo.addAttribute(new{i}, ...
-                    'values', td.getParamRaw(new{i}));
+            if ischar(names)
+                wasChar = true;
+                names = {names};
+            else
+                wasChar = false;
+            end
+            namesModified = names;
+            
+            for i = 1:numel(names)
+                name = names{i};
+                if ismember(name, td.conditionInfo.attributeNames)
+                    continue;
+                end
+                
+                cd = td.channelDescriptorsByName.(name);
+                if isa(cd, 'EventChannelDescriptor')
+                    % the event time will be referenced from the current
+                    % zero event
+                    nameMod = matlab.lang.makeValidName(sprintf('%s_from_%s', name, td.alignInfoActive.zeroLabel));
+                    values = td.getEventFirst(name);
+                    
+                elseif isa(cd, 'AnalogChannelDescriptor')
+                    % take analog sample at zero time
+                    nameMod = matlab.lang.makeValidName(sprintf('%s_at_%s', name, td.alignInfoActive.zeroLabel));
+                    values = td.getAnalogSample(name);
+                    
+                elseif isa(cd, 'ParamChannelDescriptor')
+                    % params get used as is
+                    nameMod = name;
+                    values = td.getParamRaw(name);
+                else
+                    error('Unable to create attribute for channel type %s', class(cd));
+                end
+                
+                td.conditionInfo = td.conditionInfo.addAttribute(nameMod, 'values', values);
+                namesModified{i} = nameMod;
+            end
+            
+            if wasChar
+                namesModified = namesModified{1};
             end
         end
         
@@ -537,15 +579,17 @@ classdef TrialDataConditionAlign < TrialData
             if ischar(attrList)
                 attrList = {attrList};
             end
+            
+            attrListModified = cellvec(numel(attrList));
             for i = 1:numel(attrList)
                 if strncmp(attrList{i}, '-', 1)
-                    td = td.addAttribute(attrList{i}(2:end));
+                    [td, attrListModified{i}] = td.addAttribute(attrList{i}(2:end));
                 else
-                    td = td.addAttribute(attrList{i});
+                    [td, attrListModified{i}] = td.addAttribute(attrList{i});
                 end
             end
             
-            td.conditionInfo = td.conditionInfo.sortWithinConditionsBy(attrList, varargin{:});
+            td.conditionInfo = td.conditionInfo.sortWithinConditionsBy(attrListModified, varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
@@ -1631,7 +1675,6 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGrouped(td, unitName, varargin)
-            p = inputParser();
             [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
             rateCell = td.groupElements(rateCell);
             timeCell = td.groupElements(timeCell);
@@ -1914,6 +1957,8 @@ classdef TrialDataConditionAlign < TrialData
             au = AutoAxis(axh);
             %au.addAutoAxisY();
             au.update();
+            
+            hold(axh, 'off');
         end
         
         function plotRaster(td, unitName, varargin)
@@ -2107,6 +2152,8 @@ classdef TrialDataConditionAlign < TrialData
             au.axisMarginLeft = p.Results.axisMarginLeft; % make room for left hand side labels
             axis(axh, 'off');
             au.update();
+            
+            hold(axh, 'off');
         end
     end
 
@@ -2685,34 +2732,45 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('axisStyleX', 'tickBridge', @ischar);
             p.addParameter('axisStyleY', 'tickBridge', @ischar);
             
-            p.addParameter('lineWidth', 2, @isscalar);
+            p.addParameter('lineWidth', 1, @isscalar);
             p.addParameter('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParameter('alignIdx', [], @isnumeric);
             p.addParameter('plotOptions', {}, @(x) iscell(x));
-            p.addParameter('alpha', 1, @isscalar);
-            p.addParameter('errorAlpha', 0.5, @isscalar);
+            
+            p.addParameter('alpha', 1, @isscalar); % alpha for main traces
+            p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
+            
+            p.addParameter('markShowOnData', true, @islogical);
+            p.addParameter('markShowOnAxis', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
-            p.addParameter('markShowRangesOnData', true, @islogical); % show ranges for marks on traces
-            p.addParameter('markShowRangesOnAxis', true, @islogical); % show ranges for marks below axis
             p.addParameter('markSize', 8, @isscalar);
+            
+            p.addParameter('intervalShowOnData', true, @islogical);
+            p.addParameter('intervalShowOnAxis', true, @islogical);
+            p.addParameter('intervalAlpha', 1, @isscalar);
+            
+            p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
+            p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
+            
             p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
             p.addParameter('lineSmoothing', false, @islogical); % for alpha == 1 only
-            p.KeepUnmatched = true;
+            p.addParameter('axh', [], @(x) true);
+            p.KeepUnmatched = false;
             p.parse(varargin{:});
             
             % plot the mean and sem for an analog channel vs. time within
             % each condition
             import TrialDataUtilities.Plotting.errorshade;
             
-            axh = td.getRequestedPlotAxis(p.Unmatched);
-            
-            if p.Results.lineSmoothing && verLessThan('matlab', '8.4')
-                lineSmoothing = 'on';
-            else
-                lineSmoothing = 'off';
-            end
+             axh = p.Results.axh; %td.getRequestedPlotAxis(p.Unmatched);
+%             
+%             if p.Results.lineSmoothing && verLessThan('matlab', '8.4')
+%                 lineSmoothing = 'on';
+%             else
+%                 lineSmoothing = 'off';
+%             end
             
             if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
                 axisStyleX = 'scaleBar';
@@ -2824,7 +2882,6 @@ classdef TrialDataConditionAlign < TrialData
                                 errmat, app(iCond).Color, 'axh', axh, ...
                                 'alpha', p.Results.errorAlpha, 'z', 1);
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
-                            
                         end
                         if p.Results.alpha < 1
                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset, dmat, ...
@@ -2875,9 +2932,11 @@ classdef TrialDataConditionAlign < TrialData
                 idxAlign = alignIdx(iAlign);
                 td.alignSummarySet{idxAlign}.drawOnDataByCondition(time{iAlign}, ...
                     permute(data{iAlign}, [2 3 1]), ...  % data needs to be T x D x C x N, currently C x T x D
+                    'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
                     'tOffsetZero', timeOffsetByAlign(iAlign), 'alpha', p.Results.alpha, ...
                     'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
-                    'markShowRanges', p.Results.markShowRangesOnData, ...
+                    'intervalAlpha', p.Results.intervalAlpha, ...
+                    'showRanges', p.Results.showRangesOnData, ...
                     'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
             end
             
@@ -2889,7 +2948,7 @@ classdef TrialDataConditionAlign < TrialData
                     % setup x axis 
                     td.alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
                         'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
-                        'style', p.Results.timeAxisStyle, 'showRanges', p.Results.markShowRangesOnAxis);
+                        'style', p.Results.timeAxisStyle, 'showRanges', p.Results.showRangesOnAxis);
                 end
             end
 

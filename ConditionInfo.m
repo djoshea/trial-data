@@ -827,7 +827,7 @@ classdef ConditionInfo < ConditionDescriptor
                 % since we won't be requesting them
                 p = inputParser;
                 p.KeepUnmatched = true;
-                p.addParamValue('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
+                p.addParameter('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
                 p.parse(varargin{:});
                 
                 if ismember('values', p.UsingDefaults)

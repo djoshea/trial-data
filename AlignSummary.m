@@ -254,7 +254,8 @@ classdef AlignSummary
         
         function as = buildByAggregation(alignSummarySet)
             % build a new AlignSummary object by aggregating over multiple
-            % objects
+            % AlignSummary objects, shifting error ranges and means as
+            % appropriate
             
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
@@ -559,7 +560,7 @@ classdef AlignSummary
            
             % optionally provide time window which filters which labels will be included
             p = inputParser();
-            p.addParamValue('timeWindow', [], @isvector);
+            p.addParameter('timeWindow', [], @isvector);
             p.parse(varargin{:});
             timeWindow = p.Results.timeWindow;
 
@@ -583,36 +584,6 @@ classdef AlignSummary
                 
                 counter = counter + 1;
             end
-            
-%             % label the start event
-%             if ad.startMark
-%                 info(counter).name = ad.startLabel;
-%                 info(counter).time = as.startMean;
-%                 info(counter).min = as.startMin;
-%                 info(counter).max = as.startMax;
-%                 info(counter).timeByCondition = as.startMeanByCondition;
-%                 info(counter).minByCondition = as.startMinByCondition;
-%                 info(counter).maxByCondition = as.startMaxByCondition;
-%                 info(counter).appear = ad.startAppear;
-%                 info(counter).fixed = ad.isStartFixedTime;
-%                 
-%                 counter = counter + 1;
-%             end
-
-%             % label the stop event
-%             if ad.stopMark
-%                 info(counter).name = ad.stopLabel;
-%                 info(counter).time = as.stopMean;
-%                 info(counter).min = as.stopMin;
-%                 info(counter).max = as.stopMax;
-%                 info(counter).timeByCondition = as.stopMeanByCondition;
-%                 info(counter).minByCondition = as.stopMinByCondition;
-%                 info(counter).maxByCondition = as.stopMaxByCondition;
-%                 info(counter).appear = ad.stopAppear;
-%                 info(counter).fixed = ad.isStopFixedTime;
-%                 
-%                 counter = counter + 1;
-%             end
 
             % label each of the event marks that are fixed with respect to the zero event
             for iMark = 1:ad.nMarks
@@ -673,11 +644,12 @@ classdef AlignSummary
                     info(counter).stopMaxByCondition = as.intervalStopMaxByCondition{iInterval}(:, iOccur);
                     info(counter).appear = ad.intervalAppear{iInterval};
                     info(counter).fixed = ad.isIntervalFixedTime(iInterval);
-                    counter = counter + 1;
                     
                     if isempty(info(counter).appear)
                         info(counter).appear = AppearanceSpec();
                     end
+                    counter = counter + 1;
+                    
                 end
             end
             
@@ -690,14 +662,16 @@ classdef AlignSummary
             % add ticks and markers to the x-axis of a plot representing
             % all marks and intervals for this align descriptor
             p = inputParser();
-            p.addParamValue('which', 'x', @(x) ismember(x, {'x', 'y', 'z'}));
-            p.addParamValue('axh', [], @(x) isempty(x) || isscalar(x));
-            p.addParamValue('tOffsetZero', 0, @isscalar); % x position of t=0 on the axis
-            p.addParamValue('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
-            p.addParamValue('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
-            p.addParamValue('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
-            p.addParamValue('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
-            p.addParamValue('allowedRange', 0, @isscalar); % allowed size of min - max range before surrounding label with < >
+            p.addParameter('which', 'x', @(x) ismember(x, {'x', 'y', 'z'}));
+            p.addParameter('axh', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('tOffsetZero', 0, @isscalar); % x position of t=0 on the axis
+            p.addParameter('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
+            p.addParameter('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
+            p.addParameter('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
+            p.addParameter('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
+            p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showIntervals', true, @islogical);
+            p.addParameter('allowedRange', 0, @isscalar); % allowed size of min - max range before surrounding label with < >
             p.parse(varargin{:});
 
             style = p.Results.style;
@@ -754,50 +728,54 @@ classdef AlignSummary
                     au.addTickBridge('x', 'tick', ticks, 'tickLabel', tickLabels, 'tickAlignment', tickAlignment); 
                     
                 case 'marker'
-                    for iInterval = 1:numel(intervalInfo)
-                        ii = intervalInfo(iInterval);
-                        
-                        % constrain to tMin:tMax
-                        if ii.startTime < tMin, ii.startTime = tMin; end
-                        if ii.startMin < tMin, ii.startMin = tMin; end
-                        if ii.stopTime > tMax, ii.stopTime = tMax; end
-                        if ii.stopMax > tMax, ii.stopMax = tMax; end
-                        
-                        if showRanges
-                            errorInterval = [ii.startMin, ii.stopMax] + xOffset;
-                        else
-                            errorInterval = [];
+                    if p.Results.showIntervals
+                        for iInterval = 1:numel(intervalInfo)
+                            ii = intervalInfo(iInterval);
+
+                            % constrain to tMin:tMax
+                            if ii.startTime < tMin, ii.startTime = tMin; end
+                            if ii.startMin < tMin, ii.startMin = tMin; end
+                            if ii.stopTime > tMax, ii.stopTime = tMax; end
+                            if ii.stopMax > tMax, ii.stopMax = tMax; end
+
+                            if showRanges
+                                errorInterval = [ii.startMin, ii.stopMax] + xOffset;
+                            else
+                                errorInterval = [];
+                            end
+                            cvec = ii.appear.Color;
+                            errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
+                            au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
+                                'errorInterval', errorInterval, 'errorIntervalColor', errorColor, ...
+                                'color', cvec, ...
+                                'textOffsetX', ii.appear.TextOffsetX, ...
+                                'textOffsetY', ii.appear.TextOffsetY, ...
+                                'horizontalAlignment', ii.appear.HorizontalAlignment);
                         end
-                        cvec = ii.appear.Color;
-                        errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
-                        au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
-                            'errorInterval', errorInterval, 'errorIntervalColor', errorColor, ...
-                            'color', cvec, ...
-                            'textOffsetX', ii.appear.TextOffsetX, ...
-                            'textOffsetY', ii.appear.TextOffsetY, ...
-                            'horizontalAlignment', ii.appear.HorizontalAlignment);
                     end
                     
-                    for iLabel = 1:numel(labelInfo)
-                        li = labelInfo(iLabel);  
-                        
-                        % constrain to tMin:tMax
-                        if li.min < tMin, li.min = tMin; end
-                        if li.max > tMax, li.max = tMax; end
-                            
-                        if showRanges
-                            errorInterval = [li.min, li.max] + xOffset;
-                        else
-                            errorInterval = [];
+                    if p.Results.showMarks
+                        for iLabel = 1:numel(labelInfo)
+                            li = labelInfo(iLabel);  
+
+                            % constrain to tMin:tMax
+                            if li.min < tMin, li.min = tMin; end
+                            if li.max > tMax, li.max = tMax; end
+
+                            if showRanges
+                                errorInterval = [li.min, li.max] + xOffset;
+                            else
+                                errorInterval = [];
+                            end
+                            cvec = li.appear.Color;
+                            errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
+                            au.addMarkerX(li.time + xOffset, li.name, ...
+                                'interval', errorInterval, ...
+                                'markerColor', cvec, 'intervalColor', errorColor, ...
+                                'textOffsetX', li.appear.TextOffsetX, ...
+                                'textOffsetY', li.appear.TextOffsetY, ...
+                                'horizontalAlignment', li.appear.HorizontalAlignment);
                         end
-                        cvec = li.appear.Color;
-                        errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
-                        au.addMarkerX(li.time + xOffset, li.name, ...
-                            'interval', errorInterval, ...
-                            'markerColor', cvec, 'intervalColor', errorColor, ...
-                            'textOffsetX', li.appear.TextOffsetX, ...
-                            'textOffsetY', li.appear.TextOffsetY, ...
-                            'horizontalAlignment', li.appear.HorizontalAlignment);
                     end
                     
                     au.addAutoScaleBarX();
@@ -822,7 +800,7 @@ classdef AlignSummary
 %         % T is number of time points
 %         % N is the number of traces to be annotated
 %             p = inputParser();
-%             p.addParamValue('drawLegend', false, @islogical);
+%             p.addParameter('drawLegend', false, @islogical);
 %             p.parse(varargin{:});
 %             drawLegend = p.Results.drawLegend;
 %             
@@ -888,19 +866,22 @@ classdef AlignSummary
         %   N is the number of traces to be annotated (with the same time)
         
             p = inputParser();
-            p.addParamValue('includeInLegend', false, @islogical);
-            p.addParamValue('tOffsetZero', 0, @isscalar);
-            p.addParamValue('conditionIdx', truevec(as.conditionDescriptor.nConditions), @isvector);
-            p.addParamValue('axh', gca, @ishandle);
-            p.addParamValue('tMin', -Inf, @isscalar);
-            p.addParamValue('tMax', Inf, @isscalar);
-            p.addParamValue('alpha', 1, @isscalar);
-            p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('markSize', 5, @isscalar);
-            p.addParamValue('showInLegend', true, @islogical);
-            p.addParamValue('useTranslucentMark3d', true, @islogical);
-%             p.addParamValue('markErrorAlpha', 1, @isscalar);
-            p.addParamValue('markShowRanges', false, @islogical);
+            p.addParameter('includeInLegend', false, @islogical);
+            p.addParameter('tOffsetZero', 0, @isscalar);
+            p.addParameter('conditionIdx', truevec(as.conditionDescriptor.nConditions), @isvector);
+            p.addParameter('axh', gca, @ishandle);
+            p.addParameter('tMin', -Inf, @isscalar);
+            p.addParameter('tMax', Inf, @isscalar);
+            p.addParameter('alpha', 1, @isscalar);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markSize', 5, @isscalar);
+            p.addParameter('intervalAlpha', 1, @isscalar);
+            p.addParameter('showInLegend', true, @islogical);
+            p.addParameter('useTranslucentMark3d', true, @islogical);
+%             p.addParameter('markErrorAlpha', 1, @isscalar);
+            p.addParameter('showRanges', false, @islogical);
+            p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showIntervals', true, @islogical);
             p.parse(varargin{:});
             
             tOffsetZero = p.Results.tOffsetZero;
@@ -930,173 +911,178 @@ classdef AlignSummary
             hold(axh, 'on');
             
             % plot intervals
-            hIntervals = cell(as.nIntervals, 1);
-            nOccurByInterval = as.nOccurrencesByInterval;
-            for iInterval = 1:as.nIntervals
-                if ~as.alignDescriptor.intervalShowOnData(iInterval), continue, end
-                % gather mark locations
-                % nOccur x nConditions cell of T x D data in interval
-                [intLoc, intRangeLoc] = deal(cell(nOccurByInterval(iInterval), as.nConditions)); 
-                for iCond = 1:C
-                    idxCond = conditionIdx(iCond);
-                    % filter by the time window specified (for this condition)
-                    % tStart/tStop will be nOccur x 1
-                    tStart = as.intervalStartMeanByCondition{iInterval}(idxCond, :)';
-                    tStop = as.intervalStopMeanByCondition{iInterval}(idxCond, :)';;
-                    tRangeStart = as.intervalStartMinByCondition{iInterval}(idxCond, :)';
-                    tRangeStop = as.intervalStopMaxByCondition{iInterval}(idxCond, :)';;
-                    
-                    % tvec should T vector, dmat should be T x D 
-                    if iscell(time)
-                        tvec = time{iCond};
+            if p.Results.showIntervals
+                hIntervals = cell(as.nIntervals, 1);
+                nOccurByInterval = as.nOccurrencesByInterval;
+                for iInterval = 1:as.nIntervals
+                    if ~as.alignDescriptor.intervalShowOnData(iInterval), continue, end
+                    % gather mark locations
+                    % nOccur x nConditions cell of T x D data in interval
+                    [intLoc, intRangeLoc] = deal(cell(nOccurByInterval(iInterval), as.nConditions)); 
+                    for iCond = 1:C
+                        idxCond = conditionIdx(iCond);
+                        % filter by the time window specified (for this condition)
+                        % tStart/tStop will be nOccur x 1
+                        tStart = as.intervalStartMeanByCondition{iInterval}(idxCond, :)';
+                        tStop = as.intervalStopMeanByCondition{iInterval}(idxCond, :)';
+                        tRangeStart = as.intervalStartMinByCondition{iInterval}(idxCond, :)';
+                        tRangeStop = as.intervalStopMaxByCondition{iInterval}(idxCond, :)';
+
+                        % tvec should T vector, dmat should be T x D 
+                        if iscell(time)
+                            tvec = time{iCond};
+                        else
+                            tvec = time;
+                        end
+                        if iscell(data)
+                            dmat = data{iCond};
+                        else
+                            % data is T x D x C matrix
+                            dmat = TensorUtils.squeezeDims(data(:, :, iCond, :), 3);
+                        end
+
+                        % constrain the time window to the interval being
+                        % plotted as defined by tvec
+                        valid = ~isnan(tStart) & ~isnan(tStop);
+                        valid(tStart > max(tvec)) = false;
+                        valid(tStop < min(tvec)) = false;
+
+                        if ~any(valid), continue; end
+
+                        tStart(tStart < min(tvec)) = min(tvec);
+                        tStop(tStop > max(tvec)) = max(tvec);
+                        tRangeStart(tRangeStart < min(tvec)) = min(tvec);
+                        tRangeStop(tRangeStop > max(tvec)) = max(tvec);
+
+                        % and slice the interval location out of the
+                        % timeseries data.
+                        % tStart, tStop is nOccur x 1
+                        % dInterval will be nOccur cell with T x D values
+                        dInterval = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
+                        intLoc(:, iCond) = dInterval;
+
+                        dIntervalRange = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tRangeStart, tRangeStop);
+                        intRangeLoc(:, iCond) = dIntervalRange;
+                    end
+
+                     % add the time offset if plotting against time
+                    if D == 1
+                        for i = 1:numel(intLoc)
+                            if isempty(intLoc{i}), continue; end;
+                            intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
+                            intRangeLoc{i}(:, 1, :) = intRangeLoc{i}(:, 1, :) + tOffsetZero;
+                        end
+                    end
+
+                    app = as.alignDescriptor.intervalAppear{iInterval};
+
+                    % first plot range interval and suppress from legend
+                    if p.Results.showRanges
+                        errorThickness = p.Results.markSize * 0.5;
+                        errorAppear = app;
+                        errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
+                        h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intRangeLoc, D, ...
+                            errorAppear, errorThickness, p.Results.intervalAlpha);
+                        TrialDataUtilities.Plotting.hideInLegend(h);
+                    end
+
+                    % then plot interval
+                    hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
+                        app, p.Results.markSize, p.Results.intervalAlpha);
+
+                    if p.Results.showInLegend
+                        TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, as.alignDescriptor.intervalLabels{iInterval});
                     else
-                        tvec = time;
+                        TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
                     end
-                    if iscell(data)
-                        dmat = data{iCond};
-                    else
-                        % data is T x D x C matrix
-                        dmat = TensorUtils.squeezeDims(data(:, :, iCond, :), 3);
-                    end
-                    
-                    % constrain the time window to the interval being
-                    % plotted as defined by tvec
-                    valid = ~isnan(tStart) & ~isnan(tStop);
-                    valid(tStart > max(tvec)) = false;
-                    valid(tStop < min(tvec)) = false;
-                    
-                    if ~any(valid), continue; end
-                    
-                    tStart(tStart < min(tvec)) = min(tvec);
-                    tStop(tStop > max(tvec)) = max(tvec);
-                    tRangeStart(tRangeStart < min(tvec)) = min(tvec);
-                    tRangeStop(tRangeStop > max(tvec)) = max(tvec);
-                    
-                    % and slice the interval location
-                    % tStart, tStop is nOccur x 1
-                    % dInterval will be nOccur cell with T x D values
-                    dInterval = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
-                    intLoc(:, iCond) = dInterval;
-                    
-                    dIntervalRange = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tRangeStart, tRangeStop);
-                    intRangeLoc(:, iCond) = dIntervalRange;
-                end
- 
-                 % add the time offset if plotting against time
-                if D == 1
-                    for i = 1:numel(intLoc)
-                        if isempty(intLoc{i}), continue; end;
-                        intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
-                        intRangeLoc{i}(:, 1, :) = intRangeLoc{i}(:, 1, :) + tOffsetZero;
-                    end
-                end
-                
-                app = as.alignDescriptor.intervalAppear{iInterval};
-                
-                % first plot range interval and suppress from legend
-                if p.Results.markShowRanges
-                    errorThickness = p.Results.markSize * 0.5;
-                    errorAppear = app;
-                    errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
-                    h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intRangeLoc, D, ...
-                        errorAppear, errorThickness, p.Results.markAlpha);
-                    TrialDataUtilities.Plotting.hideInLegend(h);
-                end
-                
-                % then plot interval
-                hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
-                    app, p.Results.markSize, p.Results.markAlpha);
-                                
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, as.alignDescriptor.intervalLabels{iInterval});
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
                 end
             end
 
             nMarks = as.nMarks;
             
-            % markMeanByCondition is nMarks x 1 cell with nConditions x 
-            % nOccurrences matrices.
-            % for each mark we want to find where to plot the mean/min/max
-            % location of each occurrence on the data via interpolation
-            % we assemble this in a nConditions x nOccurrences x 2or3 matrix
-            % of locations
-            nOccurByMark = as.nOccurrencesByMark;
-            for iMark = 1:nMarks
-                if ~as.alignDescriptor.markShowOnData(iMark), continue, end
-                
-                markMeanLoc = nan(nOccurByMark(iMark), max(2, D), nConditions);
-                markErrorLoc = cell(nOccurByMark(iMark), nConditions);
-                
-                for iC = 1:nConditions
-                    % get the mark times to plot
-                    c = conditionIdx(iC);
-                    tMarkMean = as.markMeanByCondition{iMark}(c, :)';
-                    tMarkMin = as.markMinByCondition{iMark}(c, :)';
-                    tMarkMax = as.markMaxByCondition{iMark}(c, :)';
-                    
-                    % filter by the time window specified
-                    maskInvalid = tMarkMean < p.Results.tMin | tMarkMean > p.Results.tMax;
-                    tMarkMean(maskInvalid) = NaN;
-                    tMarkMin(maskInvalid) = NaN;
-                    tMarkMax(maskInvalid) = NaN;
-                    
-                    if all(isnan(tMarkMean))
-                        % none found for this condition
-                        continue;
+            if p.Results.showMarks
+                % markMeanByCondition is nMarks x 1 cell with nConditions x 
+                % nOccurrences matrices.
+                % for each mark we want to find where to plot the mean/min/max
+                % location of each occurrence on the data via interpolation
+                % we assemble this in a nConditions x nOccurrences x 2or3 matrix
+                % of locations
+                nOccurByMark = as.nOccurrencesByMark;
+                for iMark = 1:nMarks
+                    if ~as.alignDescriptor.markShowOnData(iMark), continue, end
+
+                    markMeanLoc = nan(nOccurByMark(iMark), max(2, D), nConditions);
+                    markErrorLoc = cell(nOccurByMark(iMark), nConditions);
+
+                    for iC = 1:nConditions
+                        % get the mark times to plot
+                        c = conditionIdx(iC);
+                        tMarkMean = as.markMeanByCondition{iMark}(c, :)';
+                        tMarkMin = as.markMinByCondition{iMark}(c, :)';
+                        tMarkMax = as.markMaxByCondition{iMark}(c, :)';
+
+                        % filter by the time window specified
+                        maskInvalid = tMarkMean < p.Results.tMin | tMarkMean > p.Results.tMax;
+                        tMarkMean(maskInvalid) = NaN;
+                        tMarkMin(maskInvalid) = NaN;
+                        tMarkMax(maskInvalid) = NaN;
+
+                        if all(isnan(tMarkMean))
+                            % none found for this condition
+                            continue;
+                        end
+
+                        % get the position along the timeseries via
+                        % interpolation
+                        % d will be T x D x N, t will be T x 1;
+                        if iscell(data)
+                            d = data{iC};
+                            t = time{iC};
+                        else
+                            d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
+                            t = time;
+                        end
+
+                        % dMean/dMin/dMax will be nOccur x max(2,D) x 1
+                        % since time will become dMean(:, 1, :) if D == 1
+                        dMean = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(t, d, tMarkMean);
+
+                        % permute to be D x nOccur
+                        markMeanLoc(:, :, iC) = dMean;
+
+                        % and slice the error interval location
+                        % tMarkMin is nOcccur x 1
+                        % dError will be nOccur cell with 
+                        dError = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(t, d, tMarkMin, tMarkMax);
+                        markErrorLoc(:, iC) = dError;
                     end
-                    
-                    % get the position along the timeseries via
-                    % interpolation
-                    % d will be T x D x N, t will be T x 1;
-                    if iscell(data)
-                        d = data{iC};
-                        t = time{iC};
-                    else
-                        d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
-                        t = time;
+
+                    % add the time offset if plotting against time
+                    if D == 1
+                        markMeanLoc(:, 1, :) = markMeanLoc(:, 1, :) + tOffsetZero;
+                        for i = 1:numel(markErrorLoc)
+                            if isempty(markErrorLoc{i}), continue; end;
+                            markErrorLoc{i}(:, 1) = markErrorLoc{i}(:, 1) + tOffsetZero;
+                        end
                     end
-                    
-                    % dMean/dMin/dMax will be nOccur x max(2,D) x 1
-                    % since time will become dMean(:, 1, :) if D == 1
-                    dMean = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(t, d, tMarkMean);
-                    
-                    % permute to be D x nOccur
-                    markMeanLoc(:, :, iC) = dMean;
-                    
-                    % and slice the error interval location
-                    % tMarkMin is nOcccur x 1
-                    % dError will be nOccur cell with 
-                    dError = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(t, d, tMarkMin, tMarkMax);
-                    markErrorLoc(:, iC) = dError;
-                end
-                
-                % add the time offset if plotting against time
-                if D == 1
-                    markMeanLoc(:, 1, :) = markMeanLoc(:, 1, :) + tOffsetZero;
-                    for i = 1:numel(markErrorLoc)
-                        if isempty(markErrorLoc{i}), continue; end;
-                        markErrorLoc{i}(:, 1) = markErrorLoc{i}(:, 1) + tOffsetZero;
+
+                    app = as.alignDescriptor.markAppear{iMark};
+
+                    % plot mark error interval and suppress from legend
+                    if p.Results.showRanges
+                        errorThickness = p.Results.markSize * 0.25;
+                        errorAppear = app;
+                        errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
+                        h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
+                            errorAppear, errorThickness, p.Results.markAlpha);
+                        TrialDataUtilities.Plotting.hideInLegend(h);
                     end
+
+                    % plot mark and provide legend hint
+                    h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
+                        p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
                 end
-                
-                app = as.alignDescriptor.markAppear{iMark};
-                
-                % plot mark error interval and suppress from legend
-                if p.Results.markShowRanges
-                    errorThickness = p.Results.markSize * 0.25;
-                    errorAppear = app;
-                    errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
-                    h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
-                        errorAppear, errorThickness, p.Results.markAlpha);
-                    TrialDataUtilities.Plotting.hideInLegend(h);
-                end
-                
-                % plot mark and provide legend hint
-                h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
-                    p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
-                TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
             end
         end
         
@@ -1111,17 +1097,17 @@ classdef AlignSummary
             % yOffsetTop to yOffsetTop + 1, with timeCell{2} drawn 1 below that
             %
             p = inputParser();
-            p.addParamValue('startByTrial', [], @(x) isnumeric(x) && isvector(x));
-            p.addParamValue('stopByTrial', [], @(x) isnumeric(x) && isvector(x));
-            p.addParamValue('axh', gca, @ishandle);
-            p.addParamValue('tOffsetZero', 0, @isscalar);
-            p.addParamValue('yOffsetTop', 0, @isscalar);
+            p.addParameter('startByTrial', [], @(x) isnumeric(x) && isvector(x));
+            p.addParameter('stopByTrial', [], @(x) isnumeric(x) && isvector(x));
+            p.addParameter('axh', gca, @ishandle);
+            p.addParameter('tOffsetZero', 0, @isscalar);
+            p.addParameter('yOffsetTop', 0, @isscalar);
             
-            p.addParamValue('markAsTicks', true, @islogical);
-            p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('intervalAlpha', 0.5, @isscalar);
-            p.addParamValue('conditionIdx', 1:ad.nConditions, @isnumeric);
-            p.addParamValue('showInLegend', true, @islogical);
+            p.addParameter('markAsTicks', true, @islogical);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('intervalAlpha', 0.5, @isscalar);
+            p.addParameter('conditionIdx', 1:ad.nConditions, @isnumeric);
+            p.addParameter('showInLegend', true, @islogical);
             p.parse(varargin{:});
 
             axh = p.Results.axh;

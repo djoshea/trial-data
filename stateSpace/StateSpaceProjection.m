@@ -204,6 +204,8 @@ classdef StateSpaceProjection
             % of projection building, false indicates we are simply
             % projecting a pset with already computed coefficients.
             
+            import TrialDataUtilities.DPCA.*;
+            
             s = StateSpaceProjectionStatistics();
             
             % get the names and counts of source -> proj bases
@@ -227,24 +229,31 @@ classdef StateSpaceProjection
             
             % Use dpca_covs_nanSafe to compute each covariance matrix for us
             NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
-            attrNames = [ {'time'}, pset.conditionDescriptor.axisNames{:} ];
-            [covMarginalizedMap, ~, attrSets] = dpca_covs_nanSafe(NbyTAbyAttr);
+%             attrNames = [ {'time'}, pset.conditionDescriptor.axisNames{:} ];
+%             [covMarginalizedMap, ~, attrSets] = dpca_covs_nanSafe(NbyTAbyAttr);
 
-            % generate mixture names
-            covMarginalizedNames = cellfun(@(attrInds) ...
-                strjoin(attrNames(attrInds-1), ' x '), ...
-                attrSets, 'UniformOutput', false);
-            s.covMarginalizedNames = makecol(covMarginalizedNames);
+            % combine all descriptors with time
+            descriptorNames = pset.conditionDescriptor.axisNames(:);
+            nDescriptors = numel(descriptorNames);
+            [combinedParams, s.covMarginalizedNames] = dpca_generateTimeCombinedParams(nDescriptors, descriptorNames);
+            s.covMarginalized = dpca_marginalizedCov(NbyTAbyAttr, 'combinedParams', combinedParams);
 
-            % unpack covariance map into nMixtures x 1 cell array
-            nCov = length(covMarginalizedMap);
-            s.covMarginalized = cell(nCov, 1);
-            for iCov = 1:nCov
-                s.covMarginalized{iCov} = covMarginalizedMap(mat2str(attrSets{iCov}));
-            end
-            
+%             % generate mixture names
+%             covMarginalizedNames = cellfun(@(attrInds) ...
+%                 strjoin(attrNames(attrInds-1), ' x '), ...
+%                 attrSets, 'UniformOutput', false);
+%             s.covMarginalizedNames = makecol(covMarginalizedNames);
+% 
+%             % unpack covariance map into nMixtures x 1 cell array
+%             nCov = length(covMarginalizedMap);
+%             s.covMarginalized = cell(nCov, 1);
+%             for iCov = 1:nCov
+%                 s.covMarginalized{iCov} = covMarginalizedMap(mat2str(attrSets{iCov}));
+%             end
+%             
             % compute the marginalized variance explained, i.e. the amount
             % of source variance marginalized according to dpca_cov, in each direction 
+            nCov = numel(s.covMarginalized);
             s.latentMarginalized = nan(proj.nBasesProj, nCov);
             for iCov = 1:nCov
                 s.latentMarginalized(:, iCov) = ...

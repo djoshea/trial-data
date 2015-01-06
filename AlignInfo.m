@@ -353,12 +353,20 @@ classdef AlignInfo < AlignDescriptor
             % grab the event times for all needed events
             [eventData, eventCounts] = ad.getEventTimesFn(td, eventList);
             if ~isfield(eventData, 'TrialStart')
-                eventData.TrialStart = nanvec(td.nTrials);
-                eventCounts.TrialStart = zerosvec(td.nTrials);
+                error('Missing event field TrialStart');
+%                 eventData.TrialStart = nanvec(td.nTrials);
+%                 eventCounts.TrialStart = zerosvec(td.nTrials);
             end
             if ~isfield(eventData, 'TrialEnd')
-                eventData.TrialEnd = nanvec(td.nTrials);
-                eventCounts.TrialEnd = zerosvec(td.nTrials);
+                error('Missing event field TrialEnd');
+%                 eventData.TrialEnd = nanvec(td.nTrials);
+%                 eventCounts.TrialEnd = zerosvec(td.nTrials);
+            end
+
+            for iE = 1:numel(eventList)
+                if ~isfield(eventData, eventList{iE})
+                    error('Missing event field %s', eventList{iE});
+                end
             end
         end
         
@@ -897,9 +905,15 @@ classdef AlignInfo < AlignDescriptor
     end
     
     methods % Time-Aligning data transformations
-        function [alignedTimes, rawTimesMask] = getAlignedTimesMatrix(ad, rawTimesMatrix, includePadding)
+        function [alignedTimes, rawTimesMask] = getAlignedTimesMatrix(ad, rawTimesMatrix, includePadding, beforeStartReplaceStart, afterStopReplaceStop)
             if nargin < 3
                 includePadding = false;
+            end
+            if nargin < 4 
+                beforeStartReplaceStart = false;
+            end
+            if nargin < 5
+                afterStopReplaceStop = false;
             end
 
             assert(size(rawTimesMatrix, 1) == ad.nTrials, 'Size(1) must match nTrials');
@@ -914,6 +928,15 @@ classdef AlignInfo < AlignDescriptor
             end
             zero = ad.timeInfoValid.zero;
             
+            if beforeStartReplaceStart
+                mask = rawTimesMatrix < start;
+                rawTimesMatrix(mask) = repmat(start(mask), 1, size(rawTimesMatrix, 2));
+            end
+            if afterStopReplaceStop
+                mask = rawTimesMatrix > stop;
+                rawTimesMatrix(mask) = repmat(stop(mask), 1, size(rawTimesMatrix, 2));
+            end
+               
             rawTimesMask = bsxfun(@ge, rawTimesMatrix, start) & bsxfun(@le, rawTimesMatrix, stop);
             alignedTimes = bsxfun(@minus, rawTimesMatrix, zero);  
 
@@ -999,9 +1022,9 @@ classdef AlignInfo < AlignDescriptor
                 includePadding = false;
             end
             [intervalStartData, intervalStartMask] = ...
-                cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding), ad.intervalStartDataValid, 'UniformOutput', false);
+                cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding, true, false), ad.intervalStartDataValid, 'UniformOutput', false);
             [intervalStopData, intervalStopMask] = ...
-                cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding), ad.intervalStopDataValid, 'UniformOutput', false);
+                cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding, false, true), ad.intervalStopDataValid, 'UniformOutput', false);
         end
     end
     
@@ -1068,16 +1091,16 @@ classdef AlignInfo < AlignDescriptor
             %     timeData is T vector or N x 1 cell of T_i vectors
             %     data is N x T x D matrix or N x 1 cell of T_i x D matrices
             p = inputParser();
-            p.addParamValue('time', [], @(x) isnumeric(x) || iscell(x));
-            p.addParamValue('data', [], @(x) isnumeric(x) || iscell(x));
-            p.addParamValue('axh', gca, @ishandle);
-            p.addParamValue('tOffsetZero', 0, @isscalar);
-            p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('markSize', 4, @isscalar);
-            p.addParamValue('intervalThickness', 3, @isscalar);
-            p.addParamValue('trialIdx', 1:ad.nTrials, @isnumeric);
-            p.addParamValue('showInLegend', true, @islogical);
-            p.addParamValue('useTranslucentMark3d', false, @islogical);
+            p.addParameter('time', [], @(x) isnumeric(x) || iscell(x));
+            p.addParameter('data', [], @(x) isnumeric(x) || iscell(x));
+            p.addParameter('axh', gca, @ishandle);
+            p.addParameter('tOffsetZero', 0, @isscalar);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markSize', 4, @isscalar);
+            p.addParameter('intervalThickness', 3, @isscalar);
+            p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
+            p.addParameter('showInLegend', true, @islogical);
+            p.addParameter('useTranslucentMark3d', false, @islogical);
             p.parse(varargin{:});
             
             data = p.Results.data;
@@ -1245,19 +1268,19 @@ classdef AlignInfo < AlignDescriptor
             % yOffsetTop to yOffsetTop + 1, with timeCell{2} drawn 1 below that
             %
             p = inputParser();
-            p.addParamValue('startByTrial', [], @(x) isnumeric(x) && isvector(x));
-            p.addParamValue('stopByTrial', [], @(x) isnumeric(x) && isvector(x));
-            p.addParamValue('axh', gca, @ishandle);
-            p.addParamValue('tOffsetZero', 0, @isscalar);
-            p.addParamValue('yOffsetTop', 0, @isscalar);
-            p.addParamValue('tickHeight', 1, @isscalar);
-            p.addParamValue('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals wider than they really are to be more readily visible 
+            p.addParameter('startByTrial', [], @(x) isnumeric(x) && isvector(x));
+            p.addParameter('stopByTrial', [], @(x) isnumeric(x) && isvector(x));
+            p.addParameter('axh', gca, @ishandle);
+            p.addParameter('tOffsetZero', 0, @isscalar);
+            p.addParameter('yOffsetTop', 0, @isscalar);
+            p.addParameter('tickHeight', 1, @isscalar);
+            p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals wider than they really are to be more readily visible 
             
-            p.addParamValue('markAsTicks', true, @islogical);
-            p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('intervalAlpha', 0.5, @isscalar);
-            p.addParamValue('trialIdx', 1:ad.nTrials, @isnumeric);
-            p.addParamValue('showInLegend', true, @islogical);
+            p.addParameter('markAsTicks', true, @islogical);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('intervalAlpha', 0.5, @isscalar);
+            p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
+            p.addParameter('showInLegend', true, @islogical);
             p.parse(varargin{:});
 
             axh = p.Results.axh;

@@ -2463,7 +2463,7 @@ classdef PopulationTrajectorySet
 % 
 %         function plotBasisPanels(pset, varargin)
 %             p = inputParser;
-%             p.addParamValue('basisIdx', [1:6], @(x) isvector(x) && ...
+%             p.addParameter('basisIdx', [1:6], @(x) isvector(x) && ...
 %                 all(inRange(x, [1 pset.nBases])));
 %             p.parse(varargin{:});
 % 
@@ -2506,29 +2506,29 @@ classdef PopulationTrajectorySet
         function plotBases(pset, varargin)
             % plot bases one above the next 
             p = inputParser;
-            p.addParamValue('basisIdx', 1:min(pset.nBases, 20), @(x) isvector(x) && ...
+            p.addParameter('basisIdx', 1:min(pset.nBases, 20), @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nBases])));
-            p.addParamValue('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
+            p.addParameter('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nConditions])));
             % plot each basis at it's original scale or normalized to fit
             % the bands
-            p.addParamValue('normalize', true, @islogical);
+            p.addParameter('normalize', true, @islogical);
             % each basis starts at y = 1, 2, 3 and data is scaled to fit a
             % band with y-height scaling
-            p.addParamValue('scaling', 0.8, @isscalar);
+            p.addParameter('scaling', 0.8, @isscalar);
             
             % usually plot first basis at top, last basis at bottom
-            p.addParamValue('reverse', false, @islogical);
+            p.addParameter('reverse', false, @islogical);
             
             % when no interAlignGap is specified, this is used to compute
             % the interAlignGap
-            p.addParamValue('alignGapFraction', 0.02, @isscalar);
-            p.addParamValue('xOffset', 0, @isscalar);
-            p.addParamValue('yOffset', 0, @isscalar);
-            p.addParamValue('plotArgs', {}, @iscell)
+            p.addParameter('alignGapFraction', 0.02, @isscalar);
+            p.addParameter('xOffset', 0, @isscalar);
+            p.addParameter('yOffset', 0, @isscalar);
+            p.addParameter('plotArgs', {}, @iscell)
             
-            p.addParamValue('showRanges', true, @islogical);
-            p.addParamValue('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
+            p.addParameter('showRanges', true, @islogical);
+            p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
             p.parse(varargin{:});
 
             clf;
@@ -2641,7 +2641,7 @@ classdef PopulationTrajectorySet
                         
                         as.setupTimeAutoAxis('axh', gca, 'style', 'marker', ...
                             'tMin', min(tvec), 'tMax', max(tvec), 'tOffsetZero', offset, ...
-                            'showRanges', showRanges)
+                            'showRanges', showRanges);
                     end
                     au.xUnits = pset.timeUnitName;
                     au.addAutoScaleBarX();
@@ -2649,7 +2649,7 @@ classdef PopulationTrajectorySet
             end
             
             % make large left side to accommodate labels
-            au.axisMarginLeft = 4;
+            au.axisMarginLeft = 7;
             axis off;
             au.update();
             au.installCallbacks();
@@ -2658,17 +2658,17 @@ classdef PopulationTrajectorySet
         function plotStateSpace(pset, varargin)
             % plot a 2d or 3d basis1 x basis2 x basis3 trajectory plot
             p = inputParser;
-            p.addParamValue('basisIdx', 1:min(pset.nBases, 3), @(x) isvector(x) && ...
+            p.addParameter('basisIdx', 1:min(pset.nBases, 3), @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nBases])));
-            p.addParamValue('conditionIdx', truevec(pset.nConditions), @isvector);
-            p.addParamValue('alignIdx', [], @isnumeric);
-            p.addParamValue('plotOptions', {}, @(x) iscell(x));
-            p.addParamValue('lineWidth', 2, @isscalar);
-            p.addParamValue('alpha', 1, @isscalar);
-            p.addParamValue('markAlpha', 1, @isscalar);
-            p.addParamValue('markSize', 10, @isscalar);
-            p.addParamValue('useThreeVector', true, @islogical);
-            p.addParamValue('useTranslucentMark3d', true, @islogical);
+            p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
+            p.addParameter('alignIdx', [], @isnumeric);
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
+            p.addParameter('lineWidth', 2, @isscalar);
+            p.addParameter('alpha', 1, @isscalar);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markSize', 10, @isscalar);
+            p.addParameter('useThreeVector', true, @islogical);
+            p.addParameter('useTranslucentMark3d', true, @islogical);
             
             p.parse(varargin{:});
             
@@ -2780,9 +2780,9 @@ classdef PopulationTrajectorySet
         function [NbyCbyTA, tvec, avec] = buildNbyCbyTA(pset, varargin)
             % [NbyCbyTA, tvec, avec] = buildNbyCbyTA(pset, ...)
             p = inputParser();
-            p.addParamValue('conditionIdx', truevec(pset.nConditions), @isvector);
-            p.addParamValue('alignIdx', truevec(pset.nAlign), @isvector);
-            p.addParamValue('basisIdx', truevec(pset.nBases), @isvector);
+            p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
+            p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
+            p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.parse(varargin{:});
             alignIdx = makecol(p.Results.alignIdx);
             nAlign = numel(alignIdx);
@@ -2802,9 +2802,9 @@ classdef PopulationTrajectorySet
         function [CTAbyN, cvec, tvec, avec, nvec] = buildCTAbyN(pset, varargin)
             % out is C*T*A x N concatenated matrix
             p = inputParser();
-            p.addParamValue('conditionIdx', truevec(pset.nConditions), @isvector);
-            p.addParamValue('alignIdx', truevec(pset.nAlign), @isvector);
-            p.addParamValue('basisIdx', truevec(pset.nBases), @isvector);
+            p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
+            p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
+            p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.parse(varargin{:});
             %alignIdx = makecol(p.Results.alignIdx);
             basisIdx = makecol(p.Results.basisIdx);
@@ -2837,7 +2837,7 @@ classdef PopulationTrajectorySet
 %             % timeVec: nAlign cell of time vectors common to alignment
 %             
 %             p = inputParser();
-%             p.addParamValue('timeValidAcrossConditions', false, @islogical)
+%             p.addParameter('timeValidAcrossConditions', false, @islogical)
 %             p.parse(varargin{:});
 % 
 %             % data is N bases x nConditions x nAlign cell array with vectors of length t
@@ -2861,7 +2861,7 @@ classdef PopulationTrajectorySet
 %             % tvecByConditionAlign is C x A cell of time vectors common to condition x alignment
 % 
 %             p = inputParser();
-%             p.addParamValue('timeValidAcrossConditions', false, @islogical)
+%             p.addParameter('timeValidAcrossConditions', false, @islogical)
 %             p.parse(varargin{:});
 %                         
 %             % data is N bases x nConditions x nAlign cell array with vectors of length t
@@ -2896,24 +2896,24 @@ classdef PopulationTrajectorySet
             % if true, search the entire from trajectory for the closest point to 
             % each point on the to trajectory looking across multiple alignments as well.
             % If false, compute distance at each timepoint separately
-            p.addParamValue('searchEntire', true, @islogical); 
+            p.addParameter('searchEntire', true, @islogical); 
             % calculate distances within this subset of bases
-            p.addParamValue('basisIdx', true(pset.nBases, 1), @isvector);
+            p.addParameter('basisIdx', true(pset.nBases, 1), @isvector);
 
             % when searchEntire is true, calculate distances from trajectories (with condition cTo) along
             % each of the alignments indexed in fromAlign, to the closest point in
             % trajectories in ANY of the alignments indexed in  toAlign
             % to the closest point on condition cTo within these alignments
-            p.addParamValue('fromAlign', 1:pset.nAlign, @isvector);
-            p.addParamValue('toAlign', 1:pset.nAlign, @isvector);
+            p.addParameter('fromAlign', 1:pset.nAlign, @isvector);
+            p.addParameter('toAlign', 1:pset.nAlign, @isvector);
             
             % leave empty to compute a distance vs time trajectory for the
             % entire from trajectory at each alignment. Populate with a
             % nAlign x 1 cell array of time points to compute the distance
             % only from a specific set of time points
-            p.addParamValue('timepointsByFromAlign', [], @(x) isempty(x) || iscell(x));
+            p.addParameter('timepointsByFromAlign', [], @(x) isempty(x) || iscell(x));
 
-            p.addParamValue('showPlot', true, @islogical);
+            p.addParameter('showPlot', true, @islogical);
 
             p.parse(varargin{:});
             searchEntire = p.Results.searchEntire;
@@ -3045,7 +3045,7 @@ classdef PopulationTrajectorySet
             % default is to compare
             % compare from condition 1 to condition 2 instead of 2 to 1 along the axis?
             p.addRequired('compareAcross', @ischar);
-            p.addParamValue('reverse', false, @islogical);
+            p.addParameter('reverse', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(compareAcross, varargin{:});
             reverse = p.Results.reverse;
