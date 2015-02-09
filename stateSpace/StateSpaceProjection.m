@@ -89,12 +89,19 @@ classdef StateSpaceProjection
             proj.initialized = true;
         end
 
-        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset)
+        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, applyTranslationNormalization)
+            if nargin < 3
+                applyTranslationNormalization = true;
+            end
+            
             assert(pset.nBases == proj.nBasesSource, ...
                 'Number of bases must match in order to project');
 
             % replace translation normalization
-            pset = pset.clearTranslationNormalization().applyTranslationNormalization(proj.translationNormalization);
+            if applyTranslationNormalization
+                debug('Applying Translation/Normalization to data\n');
+                pset = pset.clearTranslationNormalization().applyTranslationNormalization(proj.translationNormalization);
+            end
             
             % copy basic settings from pset 
             b = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(pset);
@@ -123,8 +130,14 @@ classdef StateSpaceProjection
                 b.dataMean{iAlign} = reshape(projMat, proj.nBasesProj, ...
                     pset.nConditions, pset.nTimeDataMean(iAlign));
 
-                % leave sem as NaN
-                b.dataSem{iAlign} = nan(proj.nBasesProj, pset.nConditions, pset.nTimeDataMean(iAlign));
+                % use sqrt(sd1^2 / n1 + sd2^2 / n2 + ...) formula
+                % which equals sqrt(coeff1 * sem1^2 + coeff2 * sem2^2 + ...)
+                mat = reshape(pset.dataSem{iAlign}, pset.nBases, ...
+                    pset.nConditions * pset.nTimeDataMean(iAlign));
+                projMat = sqrt(abs(proj.coeff)' * (mat.^2));
+                b.dataSem{iAlign} = reshape(projMat, proj.nBasesProj, ...
+                    pset.nConditions, pset.nTimeDataMean(iAlign));
+                % b.dataSem{iAlign} = nan(proj.nBasesProj, pset.nConditions, pset.nTimeDataMean(iAlign));
             end
           
             % project randomized data, recompute intervals
@@ -156,7 +169,7 @@ classdef StateSpaceProjection
         
         function [proj, psetProjected, statsBuild, statsProject] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
             [proj, statsBuild] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
-            [psetProjected, statsProject] = proj.projectPopulationTrajectorySet(pset);
+            [psetProjected, statsProject] = proj.projectPopulationTrajectorySet(pset, false); % false --> don't apply translation normalization since we'll pull that from this pset to begin with
         end
     end
 
@@ -231,11 +244,15 @@ classdef StateSpaceProjection
             NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
 %             attrNames = [ {'time'}, pset.conditionDescriptor.axisNames{:} ];
 %             [covMarginalizedMap, ~, attrSets] = dpca_covs_nanSafe(NbyTAbyAttr);
-
-            % combine all descriptors with time
-            descriptorNames = pset.conditionDescriptor.axisNames(:);
-            nDescriptors = numel(descriptorNames);
-            [combinedParams, s.covMarginalizedNames] = dpca_generateTimeCombinedParams(nDescriptors, descriptorNames);
+            
+            % filter for non-singular axes
+            nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
+            dimMask = nConditionsAlongAxis > 1;
+            dimIdx = find(dimMask);
+            
+            % merge each covariate with each covariate + time mixture
+            [combinedParams, s.covMarginalizedNames] = dpca_generateTimeCombinedParams(...
+                dimIdx, 'dimNames', pset.conditionDescriptor.axisNames(:), 'combineEachWithTime', true);
             s.covMarginalized = dpca_marginalizedCov(NbyTAbyAttr, 'combinedParams', combinedParams);
 
 %             % generate mixture names
@@ -260,34 +277,29 @@ classdef StateSpaceProjection
                     diag(proj.coeff' * s.covMarginalized{iCov} * proj.coeff);
             end
         end
-
-%         function normalization = calculateBasisNormalization(proj, pset, ctaByN)
-%             switch proj.normalizationMode
-%                 case 'none'
-%                     normalization = ones(1, size(ctaByN, 2));
-%                     
-%                 case 'softMax'
-%                     normalization = max(abs(ctaByN), [], 1) + proj.softMaxAlpha;
-%                
-%                 case 'softMaxCrossConditionVariance'
-%                     ccvByUnit = pset.crossConditionVariance();
-%                     maxCCV = cellfun(@(ccv) nanmax(ccv), ccvByUnit);
-%                     normalization = maxCCV' + proj.softMaxAlpha;
-% 
-%                 case 'softMaxCrossConditionStd'
-%                     ccsByUnit = pset.crossConditionStd();
-%                     maxCCS = cellfun(@(ccs) nanmax(ccs), ccsByUnit);
-%                     normalization = maxCCS' + proj.softMaxAlpha;
-%                     
-%                 case 'softMaxVariance'
-%                     normalization = var(ctaByN, [], 1) + proj.softMaxAlpha;
-%                     
-%                 case 'softMaxStd'
-%                     normalization = std(ctaByN, [], 1) + proj.softMaxAlpha;
-%             end
-%             
-%             normalization = makecol(normalization);
-%         end
+        
+        function proj = orthonormalize(proj)
+            proj.warnIfNoArgOut(nargout);
+            proj.coeff = orth(proj.coeff);
+        end
+        
+        function tf = testIsOrthogonal(proj)
+            assert(proj.initialized, 'Call after building / initializing');
+            
+            thresh = 1e-10;
+            dp = proj.coeff' * proj.coeff;
+            dp = abs(dp - diag(diag(dp)));
+            tf = max(dp(:)) < thresh;
+        end
+    
+        function proj = set.coeff(proj, v)
+            %assert(isequal(size(proj.coeff), size(v)), 'Size of coeff must be [%d %d]', size(proj.coeff, 1), size(proj.coeff, 2));
+            proj.coeff = v;
+        end
+        
+        function proj = orthonormalizeOutputBases(proj, basisIdx)
+            proj.coeff(:, basisIdx) = orth(proj.coeff(:, basisIdx));
+        end
     end
-
+    
 end

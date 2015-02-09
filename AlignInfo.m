@@ -362,12 +362,20 @@ classdef AlignInfo < AlignDescriptor
 %                 eventData.TrialEnd = nanvec(td.nTrials);
 %                 eventCounts.TrialEnd = zerosvec(td.nTrials);
             end
+            
+            if isfield(eventData, 'TimeZero')
+                error('Event "TimeZero" is reserved');
+            end
 
             for iE = 1:numel(eventList)
                 if ~isfield(eventData, eventList{iE})
                     error('Missing event field %s', eventList{iE});
                 end
             end
+    
+            % create the "TimeZero" event as 0 on each trial
+            eventData.TimeZero = zerosvec(numel(eventData.TrialStart));
+            eventCounts.TimeZero = onesvec(numel(eventData.TrialStart));
         end
         
         function assertHasEvent(ad, eventName)
@@ -383,6 +391,11 @@ classdef AlignInfo < AlignDescriptor
         function times = getEventNthTimeVector(ad, event, n, offset, roundRelativeTo)
             ad.assertHasEvent(event);
            
+            if ad.nTrials == 0
+                times = zeros(0, 1);
+                return;
+            end
+            
             timesMat = ad.eventData.(event);
             counts = ad.eventCounts.(event);
             

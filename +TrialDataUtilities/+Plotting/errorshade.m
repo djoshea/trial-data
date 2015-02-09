@@ -6,18 +6,22 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
 %
 
     p = inputParser();
-    p.addParamValue('showLine', true, @islogical);
-    p.addParamValue('errorColor', [], @(x) true);
-    p.addParamValue('lineArgs', {}, @iscell);
-    p.addParamValue('shadeArgs', {}, @iscell);
-    p.addParamValue('axh', gca, @ishandle);
-    p.addParamValue('alpha', 1, @isscalar);
-    p.addParamValue('z', 0, @isscalar); % used for visual stacking on 2-d plots
+    p.addParameter('showLine', true, @islogical);
+    p.addParameter('errorColor', [], @(x) true);
+    p.addParameter('lineArgs', {}, @iscell);
+    p.addParameter('shadeArgs', {}, @iscell);
+    p.addParameter('axh', [], @(x) true);
+    p.addParameter('alpha', 1, @isscalar);
+    p.addParameter('z', 0, @isscalar); % used for visual stacking on 2-d plots
     p.parse(varargin{:}); 
     
     z = p.Results.z;
 
-    axh = p.Results.axh;
+    if isempty(p.Results.axh)
+        axh = newplot;
+    else
+        axh = p.Results.axh;
+    end
     
     y1 = ym - ye;
     y2 = ym + ye;
@@ -96,9 +100,9 @@ end
 function [ha] = shadeSimple(axh, x, y1, y2, z, varargin)
 
 p = inputParser();
-p.addParamValue('FaceColor', [0.8 0.8 1], @(x) true);
-p.addParamValue('EdgeColor', 'none', @(x) true);
-p.addParamValue('alpha', 1, @isscalar);
+p.addParameter('FaceColor', [0.8 0.8 1], @(x) true);
+p.addParameter('EdgeColor', 'none', @(x) true);
+p.addParameter('alpha', 1, @isscalar);
 p.KeepUnmatched = false;
 p.parse(varargin{:});
 

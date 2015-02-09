@@ -45,28 +45,28 @@ classdef AlignDescriptor
         startEvent;
         startEventIndex = 1;
         startOffset = 0;
-        startLabel = ''; 
         startAppear
         startMark % mark this point on a data trace in drawOnData
         startDefault = true;
+        startLabelStored = '';
 
         % slice times <= t_stopEvent + stopOffset
         stopEvent;
         stopOffset = 0;
         stopEventIndex = 1;
-        stopLabel = '';
         stopAppear
         stopMark 
         stopDefault = true;
+        stopLabelStored = '';
 
         % shift time such that t_zeroEvent + zeroOffset is t=0
         zeroEvent;
         zeroOffset = 0;
         zeroEventIndex = 1;
-        zeroLabel = '';
         zeroAppear
         zeroMark
         zeroDefault = true;
+        zeroLabelStored = '';
 
         % move interval start forward in time to avoid these times
         truncateBeforeEvents = {};
@@ -128,6 +128,10 @@ classdef AlignDescriptor
         padWindow
         markLabels
         intervalLabels
+        
+        startLabel
+        stopLabel
+        zeroLabel
 
         startUnabbreviatedLabel
         stopUnabbreviatedLabel
@@ -242,37 +246,49 @@ classdef AlignDescriptor
     
     methods % Auto-generated / manually set abbreviated labels
         function str = get.startLabel(ad)
-            if isempty(ad.startLabel)
+            if isempty(ad.startLabelStored)
                 if ad.isStartFixedTime && ~ad.isStartZero && ad.omitRedundantLabel 
                     str = ad.buildLabel('', [], ad.startOffset);
                 else
                     str = ad.buildLabel(ad.startEvent, ad.startEventIndex, ad.startOffset);
                 end
             else
-                str = ad.startLabel;
+                str = ad.startLabelStored;
             end
         end
         
+        function ad = set.startLabel(ad, v)
+            ad.startLabelStored = v;
+        end
+        
         function str = get.stopLabel(ad)
-            if isempty(ad.stopLabel)
+            if isempty(ad.stopLabelStored)
                 if ad.isStopFixedTime && ~ad.isStopZero && ad.omitRedundantLabel 
                     str = ad.buildLabel('', [], ad.stopOffset);
                 else
                     str = ad.buildLabel(ad.stopEvent, ad.stopEventIndex, ad.stopOffset);
                 end
             else
-                str = ad.stopLabel;
+                str = ad.stopLabelStored;
             end
+        end
+        
+        function ad = set.stopLabel(ad, v)
+            ad.stopLabelStored = v;
         end
 
         function str = get.zeroLabel(ad)
-            if isempty(ad.zeroLabel)
+            if isempty(ad.zeroLabelStored)
                 str = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset);
             else
-                str = ad.zeroLabel;
+                str = ad.zeroLabelStored;
             end
         end
-
+        
+        function ad = set.zeroLabel(ad, v)
+            ad.zeroLabelStored = v;
+        end
+            
         function markLabels = get.markLabels(ad)
             if isempty(ad.markLabelsStored)
                 ad.markLabelsStored = cell(length(ad.markEvents), 1);
@@ -293,6 +309,10 @@ classdef AlignDescriptor
                         [], ad.markOffsets(iMark));
                 end
             end
+        end
+        
+        function ad = set.markLabels(ad, v)
+            ad.markLabelsStored = v;
         end
 
         function intervalLabels = get.intervalLabels(ad)
@@ -325,6 +345,10 @@ classdef AlignDescriptor
                     intervalLabels{i} = sprintf('%s : %s', label1, label2);
                 end
             end
+        end
+        
+        function ad = set.intervalLabels(ad, v)
+            ad.intervalLabelsStored = v;
         end
     end
 
@@ -380,7 +404,7 @@ classdef AlignDescriptor
 
             ad.startEvent = 'TrialStart';
             ad.stopEvent = 'TrialEnd';
-            ad.zeroEvent = 'TrialStart';
+            ad.zeroEvent = 'TimeZero';
 
             % either use named property value pairs or string syntax
             if nargin == 1 && ischar(varargin{1});
@@ -411,6 +435,7 @@ classdef AlignDescriptor
                 ad.startEvent; ad.stopEvent; ad.zeroEvent; ...
                 ad.truncateBeforeEvents; ad.truncateAfterEvents; ad.invalidateEvents; ...
                 ad.markEvents; ad.intervalEventsStart; ad.intervalEventsStop]);
+            eventList = setdiff(eventList, 'TimeZero');
         end
         
         function assertHasEvent(ad, eventName) %#ok<INUSD>
@@ -495,12 +520,16 @@ classdef AlignDescriptor
         function ad = pad(ad, pre, post, varargin)
             ad.warnIfNoArgOut(nargout);
             if nargin < 3
-                ad.padPre = pre(1);
-                ad.padPost = pre(2);
-            else
-                ad.padPre = pre;
-                ad.padPost = post;
+                if isscalar(pre)
+                    post = pre;
+                else
+                    post = pre(2);
+                    pre = pre(1);
+                end
             end
+               
+            ad.padPre = pre;
+            ad.padPost = post;
 
             ad = ad.update();
         end
@@ -834,7 +863,16 @@ classdef AlignDescriptor
             ad = ad.postUpdateMark();
             ad = ad.postUpdateInterval(); %#ok<NASGU>
         end
-            
+       
+        function ad = lag(ad, tDelay)
+            % shift the alignment tDelay forward in time, instead of
+            % start/stop at Event, start/stop at Event+tDelay. keeps zero
+            % the same so that the time vector shifts according to the lag
+            ad.warnIfNoArgOut(nargout);
+            ad.startOffset = ad.startOffset + tDelay;
+            ad.stopOffset = ad.stopOffset + tDelay;
+            ad = ad.update();
+        end
     end
 
     methods % post-hoc appearance specification

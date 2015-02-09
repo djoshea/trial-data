@@ -1,5 +1,17 @@
 function h = plotHistogram(varargin)
-
+% Plots a histogram using stairs.
+%
+% plotHistogram('freq', countsToPlot, 'binEdges', binEdges, ...)
+% plotHistogram('values', rawValueVector, 'binEdges', binEdges, ...)
+% plotHistogram('values', rawValueVector, 'nBins', nBins, ...)
+%
+% Parameters:
+% axh : axis to plot into
+% color : line color
+% lineWidth: line width 
+% lineAlpha : line alpha
+% fillColor
+% fillAlpha
 iscolor = @(x) ischar(x) || (isnumeric(x) && isvector(x) && numel(x) == 3);
 p = inputParser();
 p.addParameter('nBins', 100, @isscalar);
@@ -8,7 +20,7 @@ p.addParameter('freq', [], @(x) isempty(x) || isvector(x));
 p.addParameter('values', [], @(x) isempty(x) || isvector(x));
 p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
 p.addParameter('color', [0 0 0], iscolor);
-p.addParameter('alpha', 1, @isscalar);
+p.addParameter('lineAlpha', 1, @isscalar);
 p.addParameter('fillColor', [0.5 0.5 0.5], @(x) isempty(x) || iscolor(x));
 p.addParameter('fillAlpha', 0.5, @isscalar);
 p.addParameter('lineWidth', 1, @isscalar);
@@ -53,7 +65,7 @@ if ~isempty(p.Results.color) && ~strcmp(p.Results.color, 'none')
     h.line = stairs(xPts, yPts, '-', 'LineWidth', p.Results.lineWidth, ...
         'Color', p.Results.color, ...
         'Parent', axh);
-    SaveFigure.setLineOpacity(h.line, p.Results.alpha);
+    SaveFigure.setLineOpacity(h.line, p.Results.lineAlpha);
 end
 
 

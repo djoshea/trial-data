@@ -8,7 +8,13 @@ classdef DrawOnData
             
             p = inputParser;
             p.addParameter('useTranslucentMark3d', true, @islogical);
+            p.addParameter('xOffset', 0, @isscalar);
+            p.addParameter('yOffset', 0, @isscalar);
+            p.addParameter('zOffset', 0, @isscalar);
             p.parse(varargin{:});
+            xOffset = p.Results.xOffset;
+            yOffset = p.Results.yOffset;
+            zOffset = p.Results.zOffset;
             
             % plot a single mark on the data
             D = size(dMark, 2);
@@ -17,11 +23,11 @@ classdef DrawOnData
             
             if D == 1 || D == 2
                 zvals = 1 * ones(size(flatten(dMark(:, 1, :))));
-                h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), zvals, ...
+                h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, zvals, ...
                     'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.Color, ...
                     'MarkerSize', markerSize, 'Parent', axh);
                 if alpha < 1
-                    SaveFigure.setMarkerOpacity(alpha, 0);
+                    SaveFigure.setMarkerOpacity(h, alpha, 0);
                 end
                 
             elseif D == 3
@@ -31,11 +37,11 @@ classdef DrawOnData
 % %                     h = patchsphere(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
 % %                         markerSize, 'FaceColor', app.Color, 'FaceAlpha', alpha);
 %                 else
-                h  = plot3(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
+                h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, flatten(dMark(:, 3, :)) + zOffset, ...
                     'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
                     'Parent', axh, 'MarkerSize', markerSize);
                 if alpha < 1 && p.Results.useTranslucentMark3d
-                    SaveFigure.setMarkerOpacity(alpha, 0);
+                    SaveFigure.setMarkerOpacity(h, alpha, 0);
                 end
             else
                 error('Invalid Dimensionality of data');
@@ -46,11 +52,11 @@ classdef DrawOnData
             % plot a set of mark points onto data displayed in a raster
             % timeMat is nOccur x nTrials matrix
             p = inputParser();
-            p.addParamValue('xOffset', 0, @isscalar);
-            p.addParamValue('yOffset', 0, @isscalar);
-            p.addParamValue('asTick', true, @islogical);
-            p.addParamValue('tickHeight', 1, @isscalar);
-            p.addParamValue('tickWidth', 2, @isscalar);
+            p.addParameter('xOffset', 0, @isscalar);
+            p.addParameter('yOffset', 0, @isscalar);
+            p.addParameter('asTick', true, @islogical);
+            p.addParameter('tickHeight', 1, @isscalar);
+            p.addParameter('tickWidth', 2, @isscalar);
             p.parse(varargin{:});
 
            % import TrialDataUtilities.Plotting.patchcircle;
@@ -77,13 +83,22 @@ classdef DrawOnData
             
         end
         
-        function h = plotInterval(axh, data, D, app, thickness, alpha)
+        function h = plotInterval(axh, data, D, app, thickness, alpha, varargin)
             % plot a single interval of data
             % data is max(D,2) x T where D is dimensionality, T is number of
             % time points. D must be provided to discriminate D==1 (which
             % uses errorshade) from D==2 (which uses tubeplot)
             
             import TrialDataUtilities.Plotting.errorshade;
+            
+            p = inputParser();
+            p.addParameter('xOffset', 0, @isscalar);
+            p.addParameter('yOffset', 0, @isscalar);
+            p.addParameter('zOffset', 0, @isscalar);
+            p.parse(varargin{:});
+            xOffset = p.Results.xOffset;
+            yOffset = p.Results.yOffset;
+            zOffset = p.Results.zOffset;
             
             nOccur = numel(data);
             h = nan(nOccur, 1);
@@ -97,12 +112,12 @@ classdef DrawOnData
                     y = data{iOccur}(:, 2);
                   
                     if alpha < 1
-                       h(iOccur) = TrialDataUtilities.Plotting.patchline(x, y, ...
+                       h(iOccur) = TrialDataUtilities.Plotting.patchline(x + xOffset, y + yOffset, ...
                            'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
                            'LineWidth', thickness);
                     else
                         zvals = 0.09 * ones(size(x,1), 1);
-                        h(iOccur) = plot3(axh, x, y, zvals, '-', ...
+                        h(iOccur) = plot3(axh, x + xOffset, y + yOffset, zvals, '-', ...
                             'Color', app.Color, 'LineWidth', thickness);
                     end
                 end
@@ -118,11 +133,11 @@ classdef DrawOnData
                     z = data{iOccur}(:, 3);
                   
                     if alpha < 1
-                       h(iOccur) = TrialDataUtilities.Plotting.patchline(x, y, z, ...
+                       h(iOccur) = TrialDataUtilities.Plotting.patchline(x + xOffset, y + yOffset, z + zOffset, ...
                            'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
                            'LineWidth', thickness);
                     else
-                        h(iOccur) = plot3(axh, x, y, z, '-', ...
+                        h(iOccur) = plot3(axh, x + xOffset, y + yOffset, z + zOffset, '-', ...
                             'Color', app.Color, 'LineWidth', thickness);
                     end
                 end
@@ -134,10 +149,10 @@ classdef DrawOnData
             % plot intervals on a tick raster
             % intStart/Stop are nOccur x nTrials
             p = inputParser();
-            p.addParamValue('xOffset', 0, @isscalar);
-            p.addParamValue('yOffset', 0, @isscalar);
-            p.addParamValue('intervalHeight', 1, @isscalar);
-            p.addParamValue('intervalMinWidth', NaN, @isscalar); % if specified, ensure that each interval is drawn at least this wide
+            p.addParameter('xOffset', 0, @isscalar);
+            p.addParameter('yOffset', 0, @isscalar);
+            p.addParameter('intervalHeight', 1, @isscalar);
+            p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, ensure that each interval is drawn at least this wide
             p.parse(varargin{:});
 
             xOffset = p.Results.xOffset;

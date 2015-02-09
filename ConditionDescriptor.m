@@ -12,7 +12,7 @@ classdef ConditionDescriptor
         nValuesAlongAxes % X x 1 array of number of elements along the ax`is
         
         nConditions % how many total conditions
-        conditionsSize 
+        conditionsSize
         
         allAxisValueListsManual
         allAttributeValueListsManual
@@ -81,9 +81,16 @@ classdef ConditionDescriptor
 
         axisRandomizeModes % G x 1 numeric of constants beginning with Axis* (see below)
         axisRandomizeWithReplacement % G x 1 logical indicating whether ot not to use replacement
-        axisRandomizeResampleFromList % G x 1 cell of cells: each specifies which axis value bin to resample from, 
-            % i.e. {2 1} would be sampling from trials with value 2 to fill bin 1, and from trials with value 1 to fill bin 2, like a swap
-            % {1 2 3} would be the equivalent of AxisResampleFromSame
+        axisRandomizeResampleFromList % G x 1 cell of cells: one for each axis
+            % for each axis, a cell whose length matches the number of
+            % values for that axis, specifying which positions to draw
+            % conditions from for that position
+            %
+            % e.g. if axis..List{1} contained {2 2}, we would be sampling along axis 1
+            % from trials with valueList{2} to fill conditions at subscript 1 and 2
+            %
+            % e.g. if axis..List{1} contained {1 2 3}, we would be doing
+            % the equivalent of axisResampleFromSame along axis 1
             
         isResampledWithinConditions = false; % boolean flag indicating whether to resampleFromSame the listByCondition
                       % after building it, which resamples with replacement
@@ -720,7 +727,7 @@ classdef ConditionDescriptor
             ci = ci.invalidateCache();
         end
 
-        function ci = axisResampleFromSpecified(ci, axisIdxOrAttr, resampleFromList, replace) 
+        function ci = axisResampleFromSpecifiedValueListIndices(ci, axisIdxOrAttr, resampleFromList, replace) 
             ci.warnIfNoArgOut(nargout);
             if nargin < 4
                 replace = false;
@@ -734,15 +741,87 @@ classdef ConditionDescriptor
                 % all resampling from same, clone to length of axis
                 resampleFromList = repmat(resampleFromList, nValues, 1);
             end
-            if isvector (resampleFromList)
+            
+            assert(numel(resampleFromList) == nValues, 'Resample from list must match number of values along axis');
+            
+            if ~iscell(resampleFromList)
                 % convert to cell array
                 resampleFromList = num2cell(resampleFromList);
             end
-
-            assert(numel(resampleFromList) == nValues, 'Resample from list must match number of values along axis');
+            
+            % replace each list of numeric indices with struct match
+            % templates
+            axisValueList = ci.axisValueLists{idx};
+            for i = 1:nValues
+                resampleFromList{i} = axisValueList(resampleFromList{i});
+            end
+            
             ci.axisRandomizeModes(idx) = ci.AxisResampledFromSpecified;
             ci.axisRandomizeResampleFromList{idx} = resampleFromList;
             ci.axisRandomizeWithReplacement(idx) = replace;
+
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = axisResampleFromSpecifiedValues(ci, axisIdxOrAttr, resampleFromList, replace) 
+            % resampleFromList specifies a set of value specifiers
+            ci.warnIfNoArgOut(nargout);
+            if nargin < 4
+                replace = false;
+            end
+            ci = ci.newRandomSeedIfEmpty();
+            aIdx = ci.axisLookupByAttributes(axisIdxOrAttr);
+            assert(isscalar(aIdx), 'Method operates on only one axis');
+
+            nValues = ci.nValuesAlongAxes(aIdx);
+            if ischar(resampleFromList)
+                resampleFromList = repmat({resampleFromList}, nValues, 1);
+            elseif isscalar(resampleFromList)
+                % all resampling from same, clone scalar value to to length of axis
+                resampleFromList = repmat(resampleFromList, nValues, 1);
+            end
+            
+            if ~isstruct(resampleFromList) && ~iscell(resampleFromList)
+                % values specified as numbers, okay if single attribute,
+                % convert to struct array with single attribute as the
+                % field name
+                nAttr = numel(ci.axisAttributes{aIdx});
+                assert(nAttr == 1, 'Must specify values as struct for multi-attribute axes');
+                resampleFromList = struct(ci.axisAttributes{aIdx}{1}, num2cell(resampleFromList));
+            end
+            
+            assert(numel(resampleFromList) == nValues, 'Resample from list must match number of values along axis');
+            
+            if iscell(resampleFromList)
+                nAttr = numel(ci.axisAttributes{aIdx});
+                list = resampleFromList;
+                for i = 1:numel(list)
+                    if ~isstruct(list{i})
+                        assert(nAttr == 1, 'Must specify values as struct for multi-attribute axes');
+                        if ischar(list{i}) || iscell(list{i})
+                            resampleFromList{i} = struct(ci.axisAttributes{aIdx}{1}, list{i});
+                        else
+                            resampleFromList{i} = struct(ci.axisAttributes{aIdx}{1}, num2cell(list{i}));
+                        end
+                    end
+                end
+            end
+            
+            if isstruct(resampleFromList)
+                % split struct array into separate cells
+                resampleFromList = num2cell(resampleFromList);
+            end
+            
+%             % lookup each struct in the axis value list to convert to a
+%             % subscript for storage
+%             idxList = cellvec(nValues);
+%             for iC = 1:nValues
+%                 idxList{iC} = ci.axisLookupValueInValueList(aIdx, resampleFromList{iC});
+%             end
+            
+            ci.axisRandomizeModes(aIdx) = ci.AxisResampledFromSpecified;
+            ci.axisRandomizeResampleFromList{aIdx} = resampleFromList;
+            ci.axisRandomizeWithReplacement(aIdx) = replace;
 
             ci = ci.invalidateCache();
         end
@@ -878,7 +957,7 @@ classdef ConditionDescriptor
             end
         end
         
-        function ci = selectConditions(ci, mask)
+        function [ci, maskC] = selectConditions(ci, mask)
             % select specific conditions by linear index or mask
             % and return a single-axis condition descriptor with just those
             % conditions selected
@@ -888,21 +967,32 @@ classdef ConditionDescriptor
             valList = ci.conditionsAxisAttributesOnly;
             valList = valList(idx);
             
+            maskC = TensorUtils.vectorIndicesToMask(mask, ci.nConditions);
+            
             ci = ci.clearAxes();
             ci = ci.addAxis(attr, 'valueList', valList);
         end
         
-        function ci = selectConditionsAlongAxis(ci, axisAttr, mask)
+        function [ci, maskC] = selectConditionsAlongAxis(ci, axisAttr, mask)
             % select specific conditions along an axis specified by
-            % axisAttr. mask can be a logical or linear mask, 
+            % axisAttr. mask can be a logical or linear mask.
+            %
+            % maskC is the mask into .conditions that indicates which
+            % conditions will be kept.
             ci.warnIfNoArgOut(nargout);
             aIdx = ci.axisLookupByAttributes(axisAttr);
             valList = ci.axisValueLists{aIdx};      
             valList = valList(mask);
+            
+            % compute this before changing conditions
+            if nargout > 1
+                maskC = TensorUtils.maskSelectAlongDimension(ci.conditionsSize, aIdx, mask);
+            end
+            
             ci = ci.setAxisValueList(aIdx, valList);
         end
         
-        function ci = matchSelectConditionsAlongAxis(ci, axisAttr, match)
+        function [ci, maskC] = matchSelectConditionsAlongAxis(ci, axisAttr, match)
             % select specific conditions along an axis specified by
             % axisAttr. match can be a struct which matches against the
             % conditions or an array of values for axes with only one
@@ -911,19 +1001,44 @@ classdef ConditionDescriptor
             aIdx = ci.axisLookupByAttributes(axisAttr);
             valList = ci.axisValueLists{aIdx};    
             
-            nAttr = numel(ci.axisAttributes{aIdx});
+            [~, mask] = ci.axisLookupValueInValueList(aIdx, match);
+     
+            % do this before changing conditions
+            if nargout > 1
+                maskC = TensorUtils.maskSelectAlongDimension(ci.conditionsSize, aIdx, mask);
+            end
             
+            valList = valList(mask);
+            ci = ci.setAxisValueList(aIdx, valList);
+            
+        end
+        
+        function [idx, mask] = axisLookupValueInValueList(ci, axisAttr, match)
+            % find a specific attribute value or set of attribute values
+            % (specified as a struct) along a specific axis. if match is a
+            % struct array, the union of all matches is taken. unspecified
+            % fields will act as wildcards, matching all possible values
+            % taken along the axis
+            aIdx = ci.axisLookupByAttributes(axisAttr);
+            valList = ci.axisValueLists{aIdx};    
+            
+            nAttr = numel(ci.axisAttributes{aIdx});
             if ~isstruct(match)
                 assert(nAttr == 1, 'Must specify struct array to match against when multiple attributes on axis');
-                
+
+                % for single attribute axes, convert to a match struct to
+                % make the search the same as for multi-attribute axes
                 if ~iscell(match)
                     match = num2cell(match);
                 end
                 match = struct(ci.axisAttributes{aIdx}{1}, match);
             end
             
-            % match the structs
+            % remove the irrelevant (unspecified in match) fields from
+            % valueList
             valListMatch = rmfield(valList, setdiff(fieldnames(valList), fieldnames(match)));
+            % match the struct in the value list
+            % if match is an array, the union of values matched by each 
             mask = false(numel(valList), 1);
             for c = 1:numel(valListMatch)
                 for v = 1:numel(match)
@@ -933,9 +1048,8 @@ classdef ConditionDescriptor
                     end
                 end
             end
-     
-            valList = valList(mask);
-            ci = ci.setAxisValueList(aIdx, valList);
+            
+            idx = find(mask);
         end
     end
 
@@ -1797,7 +1911,13 @@ classdef ConditionDescriptor
 
                 % append randomization indicator when axis is randomized
                 if ci.axisRandomizeModes(iX) ~= ci.AxisOriginal && ~shortNames
-                    strCell{iX} = cellfun(@(s) [s ' ' randStrCell{iX}], strCell{iX}, 'UniformOutput', false);
+                    if ci.axisRandomizeModes(iX) == ci.AxisResampledFromSpecified
+                        % indicate which attribute 
+                        strCell{iX} = cellfun(@(s, from) [s ' resampled from ' structToString(from)], ...
+                            strCell{iX}, ci.axisRandomizeResampleFromList{iX}, 'UniformOutput', false);
+                    else
+                        strCell{iX} = cellfun(@(s) [s ' ' randStrCell{iX}], strCell{iX}, 'UniformOutput', false);
+                    end
                 end
             end
         end

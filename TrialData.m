@@ -296,6 +296,40 @@ classdef TrialData
             
             td = td.rebuildOnDemandCache();
         end
+        
+        
+
+        % general utility to send plots to the correct axis
+        function [axh, unmatched] = getRequestedPlotAxis(varargin)
+            if isa(varargin{1}, 'TrialData') % used to be non-static method
+                varargin = varargin(2:end);
+            end
+            
+            p = inputParser();
+            p.addParameter('figh', [], @(x) isempty(x) || ishandle(x));
+            p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
+            p.KeepUnmatched = false;
+            p.parse(varargin{:});
+
+            if ~isempty(p.Results.axh)
+                % if specified, use that axis
+                axh = p.Results.axh;
+                if ~ishold(axh)
+                    cla(axh);
+                end
+            elseif ~isempty(p.Results.figh)
+                % if figure specified, use that figure's current axis
+                axh = get(p.Results.figh, 'CurrentAxes');
+                if isempty(axh)
+                    axh = axes('Parent', figh);
+                end
+            else
+                % if neither, use newplot
+                axh = newplot();
+            end
+            
+            unmatched = p.Unmatched;
+        end
     end
 
     % General utilities
@@ -378,6 +412,7 @@ classdef TrialData
             else
                 td.manualValid = td.manualValid(mask);
             end
+            td = td.updateValid();
         end
         
         function td = selectValidTrials(td)
@@ -419,10 +454,6 @@ classdef TrialData
             end
         end
         
-        function td = updateValid(td)
-            td.warnIfNoArgOut(nargout);
-            td.valid = [];
-        end
         function cause = buildInvalidCause(td)
             cause = cell(td.nTrials, 1);
             cause(~td.valid) = {'marked invalid manually'};
@@ -455,6 +486,12 @@ classdef TrialData
     end
 
     methods % Channel metadata access and manipulation
+                
+        function td = updateValid(td)
+            td.warnIfNoArgOut(nargout);
+            td.valid = [];
+        end
+        
         function tf = hasChannel(td, name)
             tf = ismember(name, td.channelNames);
         end
@@ -509,11 +546,17 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
+        function durations = getDurationsRaw(td)
+            starts = td.getEventRawFirst('TrialStart');
+            ends = td.getEventRawLast('TrialEnd');
+            durations = ends - starts;
+        end
+        
         function durations = getValidDurations(td)
             % get the time window for each trial
             starts = td.getEventFirst('TrialStart');
             ends = td.getEventLast('TrialEnd');
-            durations = ends - starts;
+            durations = ends-starts;
             durations = td.replaceInvalidMaskWithValue(durations, NaN);
         end
         
@@ -580,6 +623,9 @@ classdef TrialData
                 names = {names};
             end
             
+            % don't remove special channels
+            names = setdiff(names, td.listSpecialChannels());
+            
             % first hold onto the to-be-removed channel descriptors
             cds = cellvec(numel(names));
             for i = 1:numel(names)
@@ -623,6 +669,8 @@ classdef TrialData
             p.addOptional('values', {}, @(x) iscell(x) || ismatrix(x));
             p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x));
             p.addParameter('units', '', @ischar);
+            p.addParameter('isAligned', true, @islogical);
+            p.addParameter('clearForInvalid', false, @islogical);
             p.parse(varargin{:});
             times = p.Results.times;
             values = p.Results.values;
@@ -668,7 +716,7 @@ classdef TrialData
             
             if ~isempty(values)
                 td = td.setAnalog(name, values, times, ...
-                    'clearForInvalid', false);
+                    'clearForInvalid', p.Results.clearForInvalid, 'isAligned', p.Results.isAligned);
             end
         end
         
@@ -678,6 +726,7 @@ classdef TrialData
             
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) ||  isnumeric(x));
+            p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             times = p.Results.times;
@@ -715,7 +764,12 @@ classdef TrialData
             % add the zero offset to the time vector for each trial
             % this is mostly for TDCA, so that alignments info is
             % preserved
-            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            if p.Results.isAligned
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+            else
+                % consider it aligned to trial start
+                offsets = zerosvec(td.nTrials);
+            end
             times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
 
             td = td.setChannelData(name, {values, times}, p.Unmatched);
@@ -794,6 +848,37 @@ classdef TrialData
                 timeVec = cellfun(@(v) v(1), timeCell, 'ErrorHandler', @(varargin) NaN);
             end
         end 
+       
+        function [dataUnif, timeUnif, delta] = getAnalogRawUniformlySampled(td, name, varargin)
+            p = inputParser();
+            p.addParameter('method', 'linear', @ischar);
+            p.addParameter('delta', [], @(x) isscalar(x) || isempty(x));
+            p.parse(varargin{:});
+            
+            delta = p.Results.delta;
+            if isempty(delta)
+                delta = td.getAnalogTimeDelta(name);
+            end
+            [data, time] = td.getAnalogRaw(name);  %#ok<*PROP>
+            
+            [dataUnif, timeUnif] = cellvec(td.nTrials);
+            for iT = 1:td.nTrials
+                if isempty(time{iT}) || isempty(data{iT})
+                    continue;
+                end
+                tmin = nanmin(time{iT});
+                tmax = nanmax(time{iT});
+                timeUnif{iT} = tmin:delta:tmax;
+                dataUnif{iT} = interp1(time{iT}, data{iT}, timeUnif{iT}, p.Results.method);
+            end
+        end
+        
+        function [dataUnif, timeUnif, delta] = getAnalogUniformlySampled(td, name, varargin)
+            [dataUnif, timeUnif, delta] = td.getAnalogRawUniformlySampled(name, varargin{:});
+            dataUnif = td.replaceInvalidMaskWithValue(dataUnif, []);
+            timeUnif = td.replaceInvalidMaskWithValue(timeUnif, []);
+        end
+        
     end
     
     methods % Event channel methods
@@ -882,6 +967,34 @@ classdef TrialData
                 
         function timesCell = getEventRaw(td, name)
             timesCell = {td.data.(name)}';
+        end
+        
+        function times = getEventRawFirst(td, name)
+            timesCell = {td.data.(name)}';
+            
+            times = cellfun(@getFirst, timesCell);
+            
+            function t = getFirst(times)
+                if ~isempty(times)
+                    t = times(1);
+                else
+                    t = NaN;
+                end
+            end
+        end
+        
+        function times = getEventRawLast(td, name)
+            timesCell = {td.data.(name)}';
+            
+            times = cellfun(@getLast, timesCell);
+            
+            function t = getLast(times)
+                if ~isempty(times)
+                    t = times(end);
+                else
+                    t = NaN;
+                end
+            end
         end
         
         % replace invalid trials with []
@@ -1396,71 +1509,6 @@ classdef TrialData
 
         function str = getTimeAxisLabel(td)
            str = sprintf('Time (%s)',  td.timeUnitName);
-        end
-
-        % general utility to send plots to the correct axis
-        function [axh, unmatched] = getRequestedPlotAxis(td, varargin) %#ok<INUSL>
-            p = inputParser();
-            p.addParameter('figh', [], @(x) isempty(x) || ishandle(x));
-            p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
-            p.addParameter('cla', false, @islogical); 
-            p.KeepUnmatched = true;
-            p.parse(varargin{:});
-
-            if ~isempty(p.Results.axh)
-                % if specified, use that axis
-                axh = p.Results.axh;
-                if ~ishold(axh)
-                    cla(axh);
-                end
-            elseif ~isempty(p.Results.figh)
-                % if figure specified, use that figure's current axis
-                axh = get(p.Results.figh, 'CurrentAxes');
-                if isempty(axh)
-                    axh = axes('Parent', figh);
-                end
-            else
-                % if neither, use newplot
-                axh = newplot();
-            end
-
-            % optionally clear axis
-            if p.Results.cla
-                cla(axh);
-            end
-            unmatched = p.Unmatched;
-        end
-
-        % used when plotting into a panel() object (multi-axis plotting)
-        % either return the specified panel or generate one in the current
-        % figure
-        function [pan, unmatched] = getRequestedPlotPanel(td, varargin) %#ok<INUSL>
-            p = inputParser();
-            p.addParameter('figh', [], @(x) isempty(x) || ishandle(x));
-            p.addParameter('panel', [], @(x) isempty(x) || isa(x, 'panel'));
-            p.addParameter('clf', true, @islogical); 
-            p.KeepUnmatched = true;
-            p.parse(varargin{:});
-
-            if ~isempty(p.Results.panel)
-                % use specified panel
-                pan = p.Results.panel;
-            else
-                if ~isempty(p.Results.figh)
-                    figh = p.Results.figh;
-                else
-                    figh = gcf;
-                end
-           
-                % optionally clear figure
-                if p.Results.clf
-                    clf(figh);
-                end
-            
-                pan = panel(figh);
-            end
-            
-            unmatched = p.Unmatched;
         end
         
         function plotAnalogEachTrial(td, name, varargin) 

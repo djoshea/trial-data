@@ -274,9 +274,18 @@ classdef ConditionInfo < ConditionDescriptor
                     case ci.AxisShuffled
                         replace = ci.axisRandomizeWithReplacement(iA);
                         list = TensorUtils.listShuffleAlongDimension(list, iA, replace); 
-                    case ci.AxisResampledFromSpecified
+                    case ci.AxisResampledFromSpecified  
+                        
+                        % build lookup index list in value list based on
+                        % struct match
+                        nValues = ci.nValuesAlongAxes(iA);
+                        idxResampleFromList = cellvec(nValues);
+                        for iV = 1:nValues
+                            idxResampleFromList{iV} = ci.axisLookupValueInValueList(iA, ci.axisRandomizeResampleFromList{iA}{iV});
+                        end
+                            
                         replace = true; % replace must be true since we will be sampling from a different condition with a different trial count
-                        list = TensorUtils.listResampleFromSpecifiedAlongDimension(list, ci.axisRandomizeResampleFromList{iA}, iA, replace);
+                        list = TensorUtils.listResampleFromSpecifiedAlongDimension(list, idxResampleFromList, iA, replace);
                     otherwise
                         error('Unknown randomize mode for axis %d', iA);
                 end
@@ -661,6 +670,9 @@ classdef ConditionInfo < ConditionDescriptor
             % only invalidate if changing
             ci.warnIfNoArgOut(nargout);
             assert(isvector(invalid) & numel(invalid) == ci.nTrials, 'Size mismatch');
+            if isempty(invalid)
+                return;
+            end
             if any(ci.manualInvalid ~= invalid)
                 ci.manualInvalid = makecol(invalid);
                 ci = ci.invalidateCache();

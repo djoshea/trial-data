@@ -44,6 +44,7 @@ classdef TrialDataConditionAlign < TrialData
         conditionNamesShort
         conditionNamesMultiline
         conditionAppearances
+        conditionColors
         conditionsSize
         
         nAxes
@@ -184,27 +185,6 @@ classdef TrialDataConditionAlign < TrialData
             c.alignSummarySet = alignSummarySet;
         end
         
-        
-        % synchronize valid between AlignInfo and ConditionINfo
-        function td = updateValid(td)
-            td.warnIfNoArgOut(nargout);
-            td = updateValid@TrialData(td);
-
-            if isempty(td.manualValid)
-                td.manualValid = truevec(td.nTrials);
-            end
-
-            valid = td.buildValid();
-
-            td.conditionInfo = td.conditionInfo.setInvalid(~valid);
-            for iA = 1:td.nAlign
-                td.alignInfoSet{iA} = td.alignInfoSet{iA}.setInvalid(~valid);
-            end
-            
-            % cause align summary to be recomputed
-            td.alignSummarySet = [];
-        end
-        
         function valid = buildValid(td)
             % valid is the intersection of manualValid, conditionInfo valid,
             % and all AlignInfo valid
@@ -245,6 +225,27 @@ classdef TrialDataConditionAlign < TrialData
     
     % General utilites
     methods
+         % synchronize valid between AlignInfo and ConditionINfo
+         % shouldn't need to call this manually, but just in case
+        function td = updateValid(td)
+            td.warnIfNoArgOut(nargout);
+            td = updateValid@TrialData(td);
+
+            if isempty(td.manualValid)
+                td.manualValid = truevec(td.nTrials);
+            end
+
+            valid = td.buildValid();
+
+            td.conditionInfo = td.conditionInfo.setInvalid(~valid);
+            for iA = 1:td.nAlign
+                td.alignInfoSet{iA} = td.alignInfoSet{iA}.setInvalid(~valid);
+            end
+            
+            % cause align summary to be recomputed
+            td.alignSummarySet = [];
+        end
+        
         % print a short description
         function disp(td)
             td.printDescriptionShort();
@@ -287,7 +288,7 @@ classdef TrialDataConditionAlign < TrialData
             % check whether any of the alignInfo events and error if so
             for iA = 1:td.nAlign
                 alignEvents = td.alignInfoSet{iA}.getEventList();
-                mask = ismember(names, alignEvents);
+                mask = ismember(alignEvents, names);
                 if any(mask)
                     error('TrialData alignment depends on event %s', ...
                         strjoin(alignEvents(mask)));
@@ -445,7 +446,6 @@ classdef TrialDataConditionAlign < TrialData
             % within, appropriately notifying the condition descriptor and
             % align descriptor within
             td.warnIfNoArgOut(nargout);
-            td = selectTrials@TrialData(td, mask);
             td.conditionInfo = td.conditionInfo.selectTrials(mask);
             for i = 1:td.nAlign
                 td.alignInfoSet{i} = td.alignInfoSet{i}.selectTrials(mask);
@@ -464,8 +464,11 @@ classdef TrialDataConditionAlign < TrialData
                 
                 td.odc = c;
             end
-                
-            td = td.updateValid();
+                       
+            % update this after calling everythign above, since it will
+            % call update valid and requires .valid lengths to be consistent
+            % in the align descriptors and condition descriptor once that happens
+            td = selectTrials@TrialData(td, mask);
         end
         
         function [td, namesModified] = addAttribute(td, names)
@@ -593,24 +596,24 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
-       function td = selectConditions(td, varargin)
+       function [td, maskC] = selectConditions(td, varargin)
             % select specific conditions by linear index or mask
             % and return a single-axis condition descriptor with just those
             % conditions selected
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.selectConditions(varargin{:});
+            [td.conditionInfo, maskC] = td.conditionInfo.selectConditions(varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
-        function td = selectConditionsAlongAxis(td, varargin)
+        function [td, maskC] = selectConditionsAlongAxis(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.selectConditionsAlongAxis(varargin{:});
+            [td.conditionInfo, maskC] = td.conditionInfo.selectConditionsAlongAxis(varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
-        function td = matchSelectConditionsAlongAxis(td, varargin)
+        function [td, maskC] = matchSelectConditionsAlongAxis(td, varargin)
             td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.matchSelectConditionsAlongAxis(varargin{:});
+            [td.conditionInfo, maskC] = td.conditionInfo.matchSelectConditionsAlongAxis(varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
@@ -687,6 +690,62 @@ classdef TrialDataConditionAlign < TrialData
 
         function valueList = getAxisValueList(td, varargin)
             valueList = td.conditionInfo.getAxisValueList(varargin{:});
+        end
+        
+        % Axis randomization settings
+        function td = setRandomSeed(td, varargin)
+            % args: seed
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setRandomSeed(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = newRandomSeed(td, varargin)
+            % no args
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.newRandomSeed(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = noRandomization(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.axisNoRandomization(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end  
+        
+        function td = resampleTrialsWithinConditions(td, varargin)
+            % no args
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.resampleTrialsWithinConditions(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = axisNoRandomization(td, varargin)
+            % args: idxOrAttr
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.axisNoRandomization(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+                   
+        function td = axisShuffle(td, varargin)
+            % args (idxOrAttr, replace)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.axisShuffle(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+
+        function td = axisResampleFromSpecifiedValueListIndices(td, varargin)
+            % args: (axisIdxOrAttr, resampleFromIndices, replace) 
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.axisResampleFromSpecifiedValueListIndices(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = axisResampleFromSpecifiedValues(td, varargin)
+            % args: (axisIdxOrAttr, resampleFromValueStructMatch, replace) 
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.axisResampleFromSpecifiedValues(varargin{:});
+            td = td.postUpdateConditionInfo();
         end
         
         function td = postUpdateConditionInfo(td)
@@ -793,6 +852,10 @@ classdef TrialDataConditionAlign < TrialData
             v = td.conditionInfo.appearanceFn;
         end
         
+        function v = get.conditionColors(td)
+            v = cat(1, td.conditionInfo.appearances.Color);
+        end
+        
         function v = get.conditionNameFn(td)
             v = td.conditionInfo.nameFn;
         end
@@ -881,7 +944,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = unalign(td)
             td.warnIfNoArgOut(nargout);
-            td = td.align('TrialStart:TrialEnd');
+            td = td.align('TrialStart:TrialEnd @ TimeZero');
         end
         
         function td = setInterAlignGap(td, gaps)
@@ -1025,6 +1088,20 @@ classdef TrialDataConditionAlign < TrialData
             td.alignInfoActive = td.alignInfoActive.abbrev(varargin{:});
         end
         
+        function td = lag(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.lag(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = lagEachAlign(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            for iA = 1:td.nAlign
+                td.alignInfoSet{iA} = td.alignInfoSet{iA}.lag(varargin{:});
+            end
+            td = td.postUpdateAlignInfo();
+        end
+        
         function td = setStartAppearance(td, varargin)
             % updates the AppearanceSpec for start
             td.warnIfNoArgOut(nargout);
@@ -1072,6 +1149,7 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function td = useAlign(td, idx)
+            td.warnIfNoArgOut(nargout);
             assert(isscalar(idx) && isnumeric(idx) && idx >= 1 && idx <= td.nAlign);
             td.alignInfoActiveIdx = idx;
         end
@@ -1167,6 +1245,11 @@ classdef TrialDataConditionAlign < TrialData
                 'timeDelta', timeDelta);
         end
         
+        function [dataUnif, timeUnif, delta] = getAnalogUniformlySampled(td, name, varargin)
+            [dataUnif, timeUnif, delta] = getAnalogUniformlySampled@TrialData(td, name, varargin{:});
+            [dataUnif, timeUnif] = td.alignInfoActive.getAlignedTimeseries(dataUnif, timeUnif, false);
+        end
+        
         function [mat, tvec] = getAnalogAsMatrix(td, name, varargin)
             % return aligned analog channel, resampled and interpolated to
             % a uniformly spaced time vector around t=0 such that the
@@ -1175,7 +1258,9 @@ classdef TrialDataConditionAlign < TrialData
             % trials. Missing samples will be returned as NaN
             %
             % if name is a cellstr of multiple channels, mat will be nTrials x nTime x nChannels
-            % tensor of values
+            % tensor of values, but this will fail if the channels do not
+            % share a common time vector to begin with. If this is not the
+            % case, use getMultiAnalogAsMatrix
             
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
@@ -1209,6 +1294,21 @@ classdef TrialDataConditionAlign < TrialData
             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
                 'timeDelta', timeDelta, 'timeReference', 0, 'tvec', p.Results.tvec);
         end
+        
+        function [mat, tvec, alignIdx] = getAnalogAsMatrixEachAlign(td, name, varargin)
+            % similar to getAnalogAsMatrix, except each alignment will be
+            % concatenated in time
+            
+            matCell = cellvec(td.nAlign);
+            tvecCell = cellvec(td.nAlign);
+            for iA = 1:td.nAlign
+                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getAnalogAsMatrix(name, varargin{:});
+            end
+            
+            [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
+            tvec = cat(2, tvecCell{:});
+        end
+        
 
         function [data, tvec] = getMultiAnalogAsMatrix(td, name, varargin)
             p = inputParser;
@@ -1249,6 +1349,20 @@ classdef TrialDataConditionAlign < TrialData
             data = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, 'tvec', tvec);
         end
         
+        function [mat, tvec, alignIdx] = getMultiAnalogAsMatrixEachAlign(td, name, varargin)
+            % similar to getMultiAnalogAsMatrix, except each alignment will be
+            % concatenated in time
+            
+            matCell = cellvec(td.nAlign);
+            tvecCell = cellvec(td.nAlign);
+            for iA = 1:td.nAlign
+                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getMultiAnalogAsMatrix(name, varargin{:});
+            end
+            
+            [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
+            tvec = cat(2, tvecCell{:});
+        end
+        
         function [dCell, tCell] = getAnalogGrouped(td, name)
             [dataCell, timeCell] = td.getAnalog(name);
             [dCell, tCell] = td.groupElements(dataCell, timeCell);
@@ -1258,7 +1372,7 @@ classdef TrialDataConditionAlign < TrialData
             [dataCell, timeCell] = td.getAnalogEachAlign(name, varargin{:});
             [dCell, tCell] = deal(cell(td.nConditions, td.nAlign));
             for iA = 1:td.nAlign
-                [dCell(:, iA), tCell(:, iA)] = td.groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
+                [dCell(:, iA), tCell(:, iA)] = td.useAlign(iA).groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
             end
         end
         
@@ -1267,11 +1381,21 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(mat);
         end
         
+        function [dCell, tvec, alignIdx] = getAnalogAsMatrixGroupedEachAlign(td, name)
+            [mat, tvec, alignIdx] = td.getAnalogAsMatrixEachAlign(name);
+            dCell = td.groupElements(mat);
+        end
+        
         function [dataCell, tvec] = getMultiAnalogAsMatrixGrouped(td, nameCell, varargin)
             % dataCell will be size(td.conditions)
             % contents will be nTrials x T x nChannels
             [data, tvec] = td.getMultiAnalogAsMatrix(nameCell);
             dataCell = td.groupElements(data);
+        end
+        
+        function [dCell, tvec, alignIdx] = getMultiAnalogAsMatrixGroupedEachAlign(td, nameCell)
+            [mat, tvec, alignIdx] = td.getMultiAnalogAsMatrixEachAlign(nameCell);
+            dCell = td.groupElements(mat);
         end
         
         function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogGroupMeans(td, name, varargin)
@@ -1287,6 +1411,29 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
                     [meanMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                end
+            end
+        end
+        
+        function [meanMat, semMat, tvec, stdMat, nTrialsMat, alignIdx] = getAnalogGroupMeansEachAlign(td, name, varargin)
+            % *Mat will be nConditions x T x nChannels matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            if iscell(name)
+                nC = numel(name);
+            else
+                nC = 1;
+            end
+            [dCell, tvec, alignIdx] = td.getAnalogAsMatrixGroupedEachAlign(name);
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nC));
+            for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    [meanMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
                         nanMeanSemMinCount(dCell{iC}, 1, minTrials);
                 end
             end 
@@ -1314,10 +1461,35 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end 
          end
+         
+         function [meanMat, semMat, tvec, nTrialsMat, stdMat, alignIdx] = ...
+                 getMultiAnalogGroupMeansEachAlign(td, nameCell, varargin)
+             % *Mat will be nConditions x T x nChannels tensors
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            assert(iscellstr(nameCell), 'Must be cellstr of channel names');
+            nChannels = numel(nameCell);
+            
+            % dCell is size(conditions) with nTrials x T x nChannels inside
+            [dCell, tvec, alignIdx] = td.getMultiAnalogAsMatrixGroupedEachAlign(nameCell);
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nChannels));
+            for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    [meanMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), ...
+                        stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                end
+            end 
+         end
         
          function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
              % same as in TrialData, except issues warning if alignment has
-             % more than one sample
+             % more than one sample. Pulls a single time point from the t=0
+             % aligned time for each trial. Guaranteed to be scalar per
+             % trial, i.e. vector over trials
              if ~td.alignInfoActive.isStartStopEqual
                  warning('Getting analog sample when alignment is not for single timepoint');
              end
@@ -1327,6 +1499,47 @@ classdef TrialDataConditionAlign < TrialData
         function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
             [dataVec, timeVec] = td.getAnalogSample(name);
             [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
+        end
+        
+        % differentiation
+        function [diffData, time, diffUnits] = differentiateAnalogChannel(td, name, varargin)
+            % data will be in units / second, checking .timeUnitsPerSecond
+            % in order to normalize appropriately
+            p = inputParser;
+            p.addParameter('delta', [], @isscalar);
+            p.addParameter('interpolationMethod', 'linear', @ischar);
+            p.addParameter('smoothing', 7, @(x) isscalar(x) && mod(x, 2) == 1);
+            p.addParameter('order', 1, @isscalar);
+            p.addParameter('polynomialOrder', 2, @isscalar);
+            p.parse(varargin{:});
+            
+            [data, time, delta] = td.getAnalogUniformlySampled(name, ...
+                'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
+            diffData = cellvec(td.nTrials);
+            
+            w = -1 / (delta / td.timeUnitsPerSecond) ^ p.Results.order;
+            prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', name);
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                if isempty(data{iT})
+                    continue;
+                end
+                
+                diffData{iT} = w * TrialDataUtilities.Data.savitzkyGolayFilt( ...
+                    data{iT}, p.Results.polynomialOrder, p.Results.order, p.Results.smoothing)'; 
+            end
+            prog.finish();
+            
+            diffUnits = sprintf('%s/sec', td.getChannelUnitsPrimary(name));
+        end
+        
+        function td = addDifferentiatedAnalogChannel(td, name, diffName, varargin)
+            % drops alignment and grouping before differentiating since
+            % this is typically what the user wants
+            
+            td.warnIfNoArgOut(nargout);
+            [diffData, time, diffUnits] = td.reset().differentiateAnalogChannel(name, varargin{:});
+            td = td.addAnalog(diffName, diffData, time, 'units', diffUnits, 'isAligned', false);
         end
     end
 
@@ -1673,6 +1886,19 @@ classdef TrialDataConditionAlign < TrialData
                 'timeDelta', timeDelta);
             tvec = makecol(tvec);
         end
+        
+        function [rates, tvec, hasSpikes, alignVec] = getSpikeRateFilteredAsMatrixEachAlign(td, unitName, varargin)
+            ratesCell = cellvec(td.nAlign);
+            tvecCell = cellvec(td.nAlign);
+            hasSpikesMat = nan(td.nTrials, td.nAlign);
+            for iA = 1:td.nAlign
+                [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA)] = td.useAlign(iA).getSpikeRateFilteredAsMatrix(unitName);
+            end
+            
+            [rates, alignVec] = TensorUtils.catWhich(2, ratesCell{:});
+            tvec = cat(1, tvecCell{:});
+            hasSpikes = any(hasSpikesMat, 2);
+        end
 
         function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGrouped(td, unitName, varargin)
             [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
@@ -1683,6 +1909,12 @@ classdef TrialDataConditionAlign < TrialData
         
         function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGrouped(td, unitName, varargin)
             [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitName, varargin{:});
+            rateCell = td.groupElements(rates);
+            hasSpikesGrouped = td.groupElements(hasSpikes);
+        end
+        
+        function [rateCell, tvec, hasSpikesGrouped, alignVec] = getSpikeRateFilteredAsMatrixGroupedEachAlign(td, unitName, varargin)
+            [rates, tvec, hasSpikes, alignVec] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
             rateCell = td.groupElements(rates);
             hasSpikesGrouped = td.groupElements(hasSpikes);
         end
@@ -1719,6 +1951,38 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
+                getSpikeRateFilteredMeanByGroupEachAlign(td, unitName, varargin)
+            % *Mat will be nConditions x T matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParameter('removeZeroSpikeTrials', true, @islogical);
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
+                'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+            
+            % remove trials from each group that have no spikes
+            if p.Results.removeZeroSpikeTrials
+                for iC = 1:td.nConditions
+                    rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
+                end
+            end
+            
+            % comute the means
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            for iC = 1:td.nConditions
+                if ~isempty(rateCell{iC})
+                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
+                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials);
+                end
+            end
+        end
+            
         function [psthMat, tvec, semMat, stdMat, nTrialsMat] = getPSTH(td, varargin)
             [psthMat, tvec, semMat, stdMat, nTrialsMat] = getSpikeRateFilteredMeanByGroup(td, varargin{:});
         end
@@ -1912,6 +2176,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1956,6 +2221,7 @@ classdef TrialDataConditionAlign < TrialData
             ylabel('spikes/sec');
             au = AutoAxis(axh);
             %au.addAutoAxisY();
+            au.axisMarginLeft = p.Results.axisMarginLeft;
             au.update();
             
             hold(axh, 'off');
@@ -1977,7 +2243,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('annotateUsingFirstTrialEachCondition', false, @islogical);
             
             % make room for labels using AutoAxis
-            p.addParameter('axisMarginLeft', 7, @isscalar);
+            p.addParameter('axisMarginLeft', 2.5, @isscalar);
            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -2145,7 +2411,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s : Unit %s', td.datasetName, unitName);
+            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitName);
             
             axis(axh, 'tight');
             au = AutoAxis(axh);
@@ -2704,309 +2970,18 @@ classdef TrialDataConditionAlign < TrialData
     % Plotting Analog means by group
     methods
         function plotProvidedAnalogDataGroupMeans(td, D, varargin)
-            % common utility function for drawing analog data averaged by
-            % condition, used by the plotAnalogGroupMeans functions below.
-            % Can handle multiple alignments. If a single alignment is
-            % specified, defaults to the active alignment. Override by
-            % specifying parameter 'alignIdx'. If nAlign alignments are
-            % specified, uses all of them.
-            % 
-            % time is either:
-            %     vector, for nAlign == 1
-            %     nAlign x 1 cell of ime vectors for each align 
-            %
-            %  data, dataErrorY is either
-            %     nConditions x T x D matrix 
-            %     nAlign x 1 cell of nConditions x T x D matrices
-            %
             p = inputParser();
-            p.addParameter('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
-            p.addParameter('data', {}, @(x) isnumeric(x) || iscell(x)); % for D == 1,2,3
-            p.addParameter('dataError', {}, @(x) isnumeric(x) || iscell(x)); 
-            
-            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
-            
-            p.addParameter('scaleBars', false, @islogical);
-            p.addParameter('axisStyleX', 'tickBridge', @ischar);
-            p.addParameter('axisStyleY', 'tickBridge', @ischar);
-            
-            p.addParameter('lineWidth', 1, @isscalar);
-            p.addParameter('conditionIdx', 1:td.nConditions, @isnumeric);
-            p.addParameter('alignIdx', [], @isnumeric);
-            p.addParameter('plotOptions', {}, @(x) iscell(x));
-            
-            p.addParameter('alpha', 1, @isscalar); % alpha for main traces
-            p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
-            
-            p.addParameter('markShowOnData', true, @islogical);
-            p.addParameter('markShowOnAxis', true, @islogical);
-            p.addParameter('markAlpha', 1, @isscalar);
-            p.addParameter('markSize', 8, @isscalar);
-            
-            p.addParameter('intervalShowOnData', true, @islogical);
-            p.addParameter('intervalShowOnAxis', true, @islogical);
-            p.addParameter('intervalAlpha', 1, @isscalar);
-            
-            p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
-            p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
-            
-            p.addParameter('timeAxisStyle', 'marker', @ischar);
-            p.addParameter('useThreeVector', true, @islogical);
-            p.addParameter('useTranslucentMark3d', false, @islogical);
-            p.addParameter('lineSmoothing', false, @islogical); % for alpha == 1 only
-            p.addParameter('axh', [], @(x) true);
-            p.KeepUnmatched = false;
+            p.addParameter('time', [], @(x) true);
+            p.addParameter('alignIdx', 1:td.nAlign, @(x) true);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            % plot the mean and sem for an analog channel vs. time within
-            % each condition
-            import TrialDataUtilities.Plotting.errorshade;
-            
-             axh = p.Results.axh; %td.getRequestedPlotAxis(p.Unmatched);
-%             
-%             if p.Results.lineSmoothing && verLessThan('matlab', '8.4')
-%                 lineSmoothing = 'on';
-%             else
-%                 lineSmoothing = 'off';
-%             end
-            
-            if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
-                axisStyleX = 'scaleBar';
-                axisStyleY = 'scaleBar';
-            else
-                axisStyleX = p.Results.axisStyleX;
-                axisStyleY = p.Results.axisStyleY;
-            end
-            
-            conditionIdx = p.Results.conditionIdx;
-            if islogical(conditionIdx)
-                conditionIdx = find(conditionIdx);
-            end
-            nConditionsUsed = numel(conditionIdx);
-            app = td.conditionAppearances(conditionIdx);
-            
-            data = p.Results.data;
-            dataError = p.Results.dataError;
-            time = p.Results.time;
-            if isempty(data) || isempty(time)
-                error('Must provide data and time');
-            end
-            
-            plotErrorY = ~isempty(dataError);
-                
-            if iscell(time)
-                assert(isvector(time) && isvector(data) && (isempty(dataError) || isvector(dataError)), ...
-                    'Arguments must be nAlign x 1 cell or C x T x D matrices');
-                nAlignUsed = numel(time);
-            else
-                assert(~iscell(time) && ~iscell(data) && (isEmpty(dataError) || ~iscell(dataError)), ...
-                    'Arguments must be nAlign x 1 cell or C x T x D matrices');
-                nAlignUsed = 1;
-                
-                time = {time};
-                data = {data};
-                dataError = {dataError};
-            end
-              
-            % check size of time/data cell contents and mask conditions if
-            % needed
-            for iA = 1:nAlignUsed
-                if size(time{iA}, 1) == nConditionsUsed
-                    % okay as is
-                elseif size(time{iA}, 1) == td.nConditions
-                    % needs to be masekd
-                    time{iA} = time{iA}(conditionIdx, :);
-                end
-                if size(data{iA}, 1) == nConditionsUsed
-                    % okay as is
-                elseif size(data{iA}, 1) == td.nConditions
-                    % needs to be masekd
-                    data{iA} = data{iA}(conditionIdx, :);
-                end
-                if ~isempty(dataError)
-                    if size(dataError{iA}, 1) == nConditionsUsed
-                        % okay as is
-                    elseif size(dataError{iA}, 1) == td.nConditions
-                        % needs to be masekd
-                        dataError{iA} = dataError{iA}(conditionIdx, :);
-                    end
-                end
-            end
-            
-            % figure out which alignments are used
-            if isempty(p.Results.alignIdx)
-                if nAlignUsed == 1
-                    alignIdx = td.alignInfoActiveIdx;
-                else
-                    alignIdx = 1:td.nAlign;
-                end
-            else
-                alignIdx = 1:td.nAlign;
-                alignIdx = alignIdx(p.Results.alignIdx);
-            end
-            assert(numel(data) == nAlignUsed, 'Number of alignments must match numel(data)');
-            if ~isempty(dataError)
-                assert(numel(dataError) == nAlignUsed, 'Number of alignments must match numel(dataError)');
-            end
-            assert(numel(alignIdx) == nAlignUsed, 'numel(time) must match numel(alignIdx)');
-            
-            % compute time offsets between successive alignments
-            if D == 1
-                timeOffsetByAlign = td.getAlignPlottingTimeOffsets(time, 'alignIdx', alignIdx);
-            else
-                timeOffsetByAlign = zeros(nAlignUsed, 1);
-            end
-
-            % store handles as we go
-            hData = cell(nConditionsUsed, nAlignUsed);
-            
-            % plot data traces
-            hold(axh, 'on');
-            for iAlign = 1:nAlignUsed
-                for iCond = 1:td.nConditions
-                    tvec = time{iAlign};
-                    % these will be T X D
-                    dmat = squeeze(data{iAlign}(iCond, :, :));
-                    if ~isempty(dataError)
-                        errmat = squeeze(dataError{iAlign}(iCond, :, :));
-                    end
-                    
-                    if all(isnan(dmat(:))), continue; end
-                    
-                    if D == 1
-                        tOffset = timeOffsetByAlign(iAlign);
-                        if plotErrorY
-                            hShade = errorshade(tvec + tOffset, dmat, ...                   
-                                errmat, app(iCond).Color, 'axh', axh, ...
-                                'alpha', p.Results.errorAlpha, 'z', 1);
-                            TrialDataUtilities.Plotting.hideInLegend(hShade);
-                        end
-                        if p.Results.alpha < 1
-                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset, dmat, ...
-                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
-                        else
-                            plotArgs = app(iCond).getPlotArgs();
-                            hData{iCond, iAlign} = plot(axh, tvec + tOffset, dmat, '-', ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... %'LineSmoothing', lineSmoothing, ...
-                                plotArgs{:}, p.Results.plotOptions{:});
-                        end
-
-                    elseif D == 2
-                        if p.Results.alpha < 1
-                           hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1), dmat(:, 2), ...
-                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
-                        else
-                            plotArgs = app(iCond).getPlotArgs();
-                            hData{iCond, iAlign} = plot(axh, dmat(:, 1), dmat(:, 2), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... %'LineSmoothing', lineSmoothing, ...
-                                plotArgs{:}, p.Results.plotOptions{:});
-                        end
-
-                    elseif D == 3
-                        if p.Results.alpha < 1
-                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1), dmat(:, 2), dmat(:, 3), ... 
-                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth,  'Parent', axh, p.Results.plotOptions{:});
-                        else
-                            plotArgs = app(iCond).getPlotArgs();
-                            hData{iCond, iAlign} = plot3(axh, dmat(:, 1), dmat(:, 2), dmat(:, 3), '-', ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... %'LineSmoothing', lineSmoothing, ...
-                                plotArgs{:}, p.Results.plotOptions{:});
-                        end
-                    end  
-                    
-                    % update name for inclusion in legend
-                    TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, td.conditionNames{iCond});
-                end
-                
-                box(axh, 'off');
-                axis(axh, 'tight');
-            end
-            
-            % draw marks and intervals on data
-            for iAlign = 1:nAlignUsed
-                idxAlign = alignIdx(iAlign);
-                td.alignSummarySet{idxAlign}.drawOnDataByCondition(time{iAlign}, ...
-                    permute(data{iAlign}, [2 3 1]), ...  % data needs to be T x D x C x N, currently C x T x D
-                    'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
-                    'tOffsetZero', timeOffsetByAlign(iAlign), 'alpha', p.Results.alpha, ...
-                    'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
-                    'intervalAlpha', p.Results.intervalAlpha, ...
-                    'showRanges', p.Results.showRangesOnData, ...
-                    'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
-            end
-            
-            % setup time axes for each alignment
-            if D == 1
-                for iAlign = 1:nAlignUsed
-                    idxAlign = alignIdx(iAlign);
-    
-                    % setup x axis 
-                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
-                        'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
-                        'style', p.Results.timeAxisStyle, 'showRanges', p.Results.showRangesOnAxis);
-                end
-            end
-
-           % setup non-time axes
-            if D == 1
-                if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
-                    % x is data, y is time
-                    if ~isempty(p.Results.axisInfoX)
-                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
-                            'which', 'x', 'style', axisStyleX);
-                    end
-                else
-                    % y is data, x is time
-                    if ~isempty(p.Results.axisInfoY)
-                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                            'which', 'y', 'style', axisStyleY);
-                    end
-                end
-
-            elseif D == 2
-                if ~isempty(p.Results.axisInfoX)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
-                        'which', 'x', 'style', axisStyleX);
-                end
-                if ~isempty(p.Results.axisInfoY)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                        'which', 'y', 'style', axisStyleY);
-                end
-
-            elseif D == 3
-                if ~isempty(p.Results.axisInfoX)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
-                        'which', 'x', 'useAutoAxis', false);
-                end
-                if ~isempty(p.Results.axisInfoY)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                        'which', 'y', 'useAutoAxis', false);
-                end
-                if ~isempty(p.Results.axisInfoZ)
-                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoZ, ...
-                        'which', 'z', 'useAutoAxis', false);
-                end
-
-                if p.Results.useThreeVector
-                    ThreeVector(axh);
-                    axis(axh, 'off');
-                    axis(axh, 'vis3d');
-                end                   
-            end
-
-            box(axh, 'off');
-            axis(axh, 'off');
-            axis(axh, 'tight');
-            
-            au = AutoAxis(axh);
-            au.update();
-            au.installCallbacks();
-            hold(axh, 'off');
+            alignTimeOffsets = td.getAlignPlottingTimeOffsets(p.Results.time, 'alignIdx', p.Results.alignIdx);
+            TrialDataConditionAlign.plotConditionAlignedAnalogDataGroupMeans(D, varargin{:}, ...
+                'conditionDescriptor', td.conditionInfo, ...
+                'alignSummarySet', td.alignSummarySet, ...
+                'alignInfoActiveIdx', td.alignInfoActiveIdx, ...
+                'alignTimeOffsets', alignTimeOffsets);
         end
         
         function plotAnalogGroupMeans(td, name, varargin) 
@@ -3192,4 +3167,333 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
     end
+    
+    methods(Static) % Utility drawing methods
+        function plotConditionAlignedAnalogDataGroupMeans(D, varargin)
+            % common utility function for drawing analog data averaged by
+            % condition, used by the plotAnalogGroupMeans functions below.
+            % Can handle multiple alignments. If a single alignment is
+            % specified, defaults to the active alignment. Override by
+            % specifying parameter 'alignIdx'. If nAlign alignments are
+            % specified, uses all of them.
+            % 
+            % time is either:
+            %     vector, for nAlign == 1
+            %     nAlign x 1 cell of ime vectors for each align 
+            %
+            %  data, dataErrorY is either
+            %     nConditions x T x D matrix 
+            %     nAlign x 1 cell of nConditions x T x D matrices
+            %
+            p = inputParser();
+            p.addParameter('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
+            p.addParameter('data', {}, @(x) isnumeric(x) || iscell(x)); % for D == 1,2,3
+            p.addParameter('dataError', {}, @(x) isnumeric(x) || iscell(x)); 
+            
+            p.addParameter('conditionDescriptor', [], @(x) isa(x, 'ConditionDescriptor'));
+            p.addParameter('alignSummarySet', [], @iscell);
+            p.addParameter('alignInfoActiveIdx', 1, @isscalar);
+            p.addParameter('alignTimeOffsets', [], @isvector);
+            p.addParameter('xOffset', 0, @isscalar);
+            p.addParameter('yOffset', 0, @isscalar);
+            p.addParameter('zOffset', 0, @isscalar);
+            
+            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            
+            p.addParameter('scaleBars', false, @islogical);
+            p.addParameter('axisStyleX', 'tickBridge', @ischar);
+            p.addParameter('axisStyleY', 'tickBridge', @ischar);
+            
+            p.addParameter('lineWidth', 0.5, @isscalar);
+            p.addParameter('conditionIdx', [], @isnumeric);
+            p.addParameter('alignIdx', [], @isnumeric);
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
+            
+            p.addParameter('alpha', 1, @isscalar); % alpha for main traces
+            p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
+            
+            p.addParameter('markShowOnData', true, @islogical);
+            p.addParameter('markShowOnAxis', true, @islogical);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markSize', 2, @isscalar);
+            
+            p.addParameter('intervalShowOnData', true, @islogical);
+            p.addParameter('intervalShowOnAxis', true, @islogical);
+            p.addParameter('intervalAlpha', 1, @isscalar);
+            
+            p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
+            p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
+            
+            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('useThreeVector', true, @islogical);
+            p.addParameter('useTranslucentMark3d', true, @islogical);
+            
+            p.addParameter('axh', [], @(x) true); % pass thru to getRequestedPlotAxis
+            
+            p.KeepUnmatched = false;
+            p.parse(varargin{:});
+            
+            xOffset = p.Results.xOffset;
+            yOffset = p.Results.yOffset;
+            zOffset = p.Results.zOffset;
+            
+            % plot the mean and sem for an analog channel vs. time within
+            % each condition
+            import TrialDataUtilities.Plotting.errorshade;
+            
+            axh = TrialDataConditionAlign.getRequestedPlotAxis('axh', p.Results.axh);
+            
+            if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
+                axisStyleX = 'scaleBar';
+                axisStyleY = 'scaleBar';
+            else
+                axisStyleX = p.Results.axisStyleX;
+                axisStyleY = p.Results.axisStyleY;
+            end
+            
+            cd = p.Results.conditionDescriptor;
+            
+            conditionIdx = p.Results.conditionIdx;
+            if isempty(conditionIdx)
+                conditionIdx = 1:cd.nConditions;
+            elseif islogical(conditionIdx)
+                conditionIdx = find(conditionIdx);
+            end
+            nConditionsUsed = numel(conditionIdx);
+            app = cd.appearances(conditionIdx);
+            
+            data = p.Results.data;
+            dataError = p.Results.dataError;
+            time = p.Results.time;
+            if isempty(data) || isempty(time)
+                error('Must provide data and time');
+            end
+            
+            plotErrorY = ~isempty(dataError);
+                
+            if iscell(time)
+                assert(isvector(time) && isvector(data) && (isempty(dataError) || isvector(dataError)), ...
+                    'Arguments must be nAlign x 1 cell or C x T x D matrices');
+                nAlignUsed = numel(time);
+            else
+                assert(~iscell(time) && ~iscell(data) && (isEmpty(dataError) || ~iscell(dataError)), ...
+                    'Arguments must be nAlign x 1 cell or C x T x D matrices');
+                nAlignUsed = 1;
+                
+                time = {time};
+                data = {data};
+                dataError = {dataError};
+            end
+              
+            % check size of time/data cell contents and mask conditions if
+            % needed
+            for iA = 1:nAlignUsed
+                if size(time{iA}, 1) == nConditionsUsed
+                    % okay as is
+                elseif size(time{iA}, 1) == cd.nConditions
+                    % needs to be masekd
+                    time{iA} = time{iA}(conditionIdx, :);
+                end
+                if size(data{iA}, 1) == nConditionsUsed
+                    % okay as is
+                elseif size(data{iA}, 1) == cd.nConditions
+                    % needs to be masekd
+                    data{iA} = data{iA}(conditionIdx, :);
+                end
+                if ~isempty(dataError)
+                    if size(dataError{iA}, 1) == nConditionsUsed
+                        % okay as is
+                    elseif size(dataError{iA}, 1) == cd.nConditions
+                        % needs to be masekd
+                        dataError{iA} = dataError{iA}(conditionIdx, :);
+                    end
+                end
+            end
+            
+            % figure out which alignments are used
+            alignSummarySet = p.Results.alignSummarySet;
+            if isempty(p.Results.alignIdx)
+                if nAlignUsed == 1
+                    alignIdx = p.Results.alignInfoActiveIdx;
+                else
+                    alignIdx = 1:numel(alignSummarySet);
+                end
+            else
+                alignIdx = 1:numel(alignSummarySet);
+                alignIdx = alignIdx(p.Results.alignIdx);
+            end
+            assert(numel(data) == nAlignUsed, 'Number of alignments must match numel(data)');
+            if ~isempty(dataError)
+                assert(numel(dataError) == nAlignUsed, 'Number of alignments must match numel(dataError)');
+            end
+            assert(numel(alignIdx) == nAlignUsed, 'numel(time) must match numel(alignIdx)');
+            
+            % compute time offsets between successive alignments
+            if D == 1
+                timeOffsetByAlign = p.Results.alignTimeOffsets;
+            else
+                timeOffsetByAlign = zeros(nAlignUsed, 1);
+            end
+
+            % store handles as we go
+            hData = cell(nConditionsUsed, nAlignUsed);
+            
+            % plot data traces
+            hold(axh, 'on');
+            for iAlign = 1:nAlignUsed
+                for iCond = 1:cd.nConditions
+                    tvec = time{iAlign};
+                    % these will be T X D
+                    dmat = squeeze(data{iAlign}(iCond, :, :));
+                    if ~isempty(dataError)
+                        errmat = squeeze(dataError{iAlign}(iCond, :, :));
+                    end
+                    
+                    if all(isnan(dmat(:))), continue; end
+                    
+                    if D == 1
+                        tOffset = timeOffsetByAlign(iAlign);
+                        if plotErrorY
+                            hShade = errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
+                                errmat, app(iCond).Color, 'axh', axh, ...
+                                'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false);
+                            TrialDataUtilities.Plotting.hideInLegend(hShade);
+                        end
+                        if p.Results.alpha < 1
+                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat + yOffset, ...
+                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
+                        else
+                            plotArgs = app(iCond).getPlotArgs();
+                            hData{iCond, iAlign} = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
+                                plotArgs{:}, p.Results.plotOptions{:});
+                        end
+
+                    elseif D == 2
+                        if p.Results.alpha < 1
+                           hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, ...
+                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
+                        else
+                            plotArgs = app(iCond).getPlotArgs();
+                            hData{iCond, iAlign} = plot(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, '-', ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... 
+                                plotArgs{:}, p.Results.plotOptions{:});
+                        end
+
+                    elseif D == 3
+                        if p.Results.alpha < 1
+                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, ... 
+                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+                               'LineWidth', p.Results.lineWidth,  'Parent', axh, p.Results.plotOptions{:});
+                        else
+                            plotArgs = app(iCond).getPlotArgs();
+                            hData{iCond, iAlign} = plot3(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, '-', ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ... 
+                                plotArgs{:}, p.Results.plotOptions{:});
+                        end
+                    end  
+                    
+                    % update name for inclusion in legend
+                    if iAlign == 1
+                        TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, cd.names{iCond});
+                    end
+                end
+                
+                box(axh, 'off');
+                axis(axh, 'tight');
+            end
+            
+            % draw marks and intervals on data
+            if ~isempty(alignSummarySet)
+                for iAlign = 1:nAlignUsed
+                    idxAlign = alignIdx(iAlign);
+                    alignSummarySet{idxAlign}.drawOnDataByCondition(time{iAlign}, ...
+                        permute(data{iAlign}, [2 3 1]), ...  % data needs to be T x D x C x N, currently C x T x D
+                        'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, ...
+                        'tOffsetZero', timeOffsetByAlign(iAlign), 'alpha', p.Results.alpha, ...
+                        'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
+                        'intervalAlpha', p.Results.intervalAlpha, ...
+                        'showRanges', p.Results.showRangesOnData, ...
+                        'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
+                end
+            end
+            
+            % setup time axes for each alignment
+            if ~isempty(alignSummarySet)
+                if D == 1
+                    for iAlign = 1:nAlignUsed
+                        idxAlign = alignIdx(iAlign);
+
+                        % setup x axis 
+                        alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign) + xOffset, ...
+                            'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
+                            'style', p.Results.timeAxisStyle, 'showRanges', p.Results.showRangesOnAxis);
+                    end
+                end
+            end
+                
+            % setup non-time axes
+            if D == 1
+                if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
+                    % x is data, y is time
+                    if ~isempty(p.Results.axisInfoX)
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                            'which', 'x', 'style', axisStyleX);
+                    end
+                else
+                    % y is data, x is time
+                    if ~isempty(p.Results.axisInfoY)
+                        TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                            'which', 'y', 'style', axisStyleY);
+                    end
+                end
+
+            elseif D == 2
+                if ~isempty(p.Results.axisInfoX)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                        'which', 'x', 'style', axisStyleX);
+                end
+                if ~isempty(p.Results.axisInfoY)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                        'which', 'y', 'style', axisStyleY);
+                end
+
+            elseif D == 3
+                if ~isempty(p.Results.axisInfoX)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                        'which', 'x', 'useAutoAxis', false);
+                end
+                if ~isempty(p.Results.axisInfoY)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                        'which', 'y', 'useAutoAxis', false);
+                end
+                if ~isempty(p.Results.axisInfoZ)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoZ, ...
+                        'which', 'z', 'useAutoAxis', false);
+                end
+
+                if p.Results.useThreeVector
+                    ThreeVector(axh);
+                    axis(axh, 'off');
+                    axis(axh, 'vis3d');
+                end                   
+            end
+
+            box(axh, 'off');
+            axis(axh, 'off');
+            axis(axh, 'tight');
+            
+            au = AutoAxis(axh);
+            au.update();
+            au.installCallbacks();
+            hold(axh, 'off');
+        end
+    end
+        
+        
 end

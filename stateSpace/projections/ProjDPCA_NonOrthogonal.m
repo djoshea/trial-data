@@ -3,6 +3,17 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
     properties
         K % if empty, keep all components. Otherwise, keep only first K components.
         lambda = 1e-6;
+        
+        axisCombinations % see TrialDataUtilities.DPCA.dpca for dimListsToCombineList argument
+        
+        makeOrthogonal = false;
+    end
+    
+    methods
+        function proj = set.axisCombinations(proj, v)
+            assert(iscell(v), 'Axis Combinations must be a cell of vectors');
+            proj.axisCombinations = v;
+        end
     end
 
     methods
@@ -17,14 +28,22 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
         function coeff = computeProjectionCoefficients(proj, pset, varargin) 
             NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
             if isempty(proj.K)
-                K = 10;
-            else
-                K = proj.K;
+                proj.K = 10;
             end
             
             % generate combinations to add together
-            combinedParams = dpca_generateTimeCombinedParams(pset.conditionDescriptor.nAxes);
-            coeff = dpca(NbyTAbyAttr, K, 'combinedParams', combinedParams, 'lambda', 1e-6);
+            nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
+            dimMask = nConditionsAlongAxis > 1;
+            dimIdx = find(dimMask);
+            
+            % merge each covariate with each covariate + time mixture
+            combinedParams = TrialDataUtilities.DPCA.dpca_generateTimeCombinedParams(dimIdx, ...
+                'combine', proj.axisCombinations, 'combineEachWithTime', true);
+            coeff = TrialDataUtilities.DPCA.dpca(NbyTAbyAttr, proj.K, 'combinedParams', combinedParams, 'lambda', 1e-6);
+            
+            if proj.makeOrthogonal
+                coeff = orth(coeff);
+            end
         end
 
         function names = getBasisNames(proj, pset) %#ok<INUSD>

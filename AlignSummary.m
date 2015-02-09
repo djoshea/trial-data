@@ -882,7 +882,13 @@ classdef AlignSummary
             p.addParameter('showRanges', false, @islogical);
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
+            p.addParameter('xOffset', 0, @isscalar);
+            p.addParameter('yOffset', 0, @isscalar);
+            p.addParameter('zOffset', 0, @isscalar);
             p.parse(varargin{:});
+            xOffset = p.Results.xOffset;
+            yOffset = p.Results.yOffset;
+            zOffset = p.Results.zOffset;
             
             tOffsetZero = p.Results.tOffsetZero;
             axh = p.Results.axh;
@@ -982,13 +988,15 @@ classdef AlignSummary
                         errorAppear = app;
                         errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
                         h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intRangeLoc, D, ...
-                            errorAppear, errorThickness, p.Results.intervalAlpha);
+                            errorAppear, errorThickness, p.Results.intervalAlpha, ...
+                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
                         TrialDataUtilities.Plotting.hideInLegend(h);
                     end
 
                     % then plot interval
                     hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
-                        app, p.Results.markSize, p.Results.intervalAlpha);
+                        app, p.Results.markSize, p.Results.intervalAlpha, ...
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
 
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, as.alignDescriptor.intervalLabels{iInterval});
@@ -1074,13 +1082,15 @@ classdef AlignSummary
                         errorAppear = app;
                         errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
                         h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
-                            errorAppear, errorThickness, p.Results.markAlpha);
+                            errorAppear, errorThickness, p.Results.markAlpha, ...
+                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
                         TrialDataUtilities.Plotting.hideInLegend(h);
                     end
 
                     % plot mark and provide legend hint
                     h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
-                        p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
+                        p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
                     TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
                 end
             end

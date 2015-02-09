@@ -3,7 +3,7 @@ classdef PopulationTrajectorySetBuilder
     % manually by holding property values temporarily in the factory
     % instance. See PopulationTrajectorySet for documentation on the
     % meanings of these values
-   
+    
     % These properties hold temporary data for injecting into a PopulationTrajectorySet
     % when building 
     properties
@@ -138,13 +138,30 @@ classdef PopulationTrajectorySetBuilder
         end
         
         function pset = fromMultipleTrialData(tdCell, channelNames)
+            % if only tdCell is provided, all spiking units in each td will
+            % be used
             pset = PopulationTrajectorySet();
             %pset.datasetName = td.datasetName;
             
             nSources = numel(tdCell);
+            iBasis = 1;
             for i = 1:nSources
                 if ~isa(tdCell{i}, 'TrialDataConditionAlign')
                     tdCell{i} = TrialDataConditionAlign(tdCell{i});
+                end
+                units = tdCell{i}.listSpikeChannels();
+                if nargin < 2
+                    % use all spike channels in each file
+                    for j = 1:numel(units)
+                        basisDataSourceIdx(iBasis) = i; %#ok<AGROW,PROP>
+                        basisDataSourceChannelNames{iBasis} = units{j}; %#ok<AGROW,PROP>
+                        iBasis = iBasis + 1;
+                    end
+                else
+                    % use specified channel names
+                    basisDataSourceIdx(iBasis) = i; %#ok<AGROW,PROP>
+                    basisDataSourceChannelNames{iBasis} = channelNames{i}; %#ok<PROP> 
+                    iBasis = iBasis + 1;
                 end
             end
             
@@ -155,9 +172,13 @@ classdef PopulationTrajectorySetBuilder
             pset.timeUnitName = tdCell{1}.timeUnitName;
             pset.timeUnitsPerSecond = tdCell{1}.timeUnitsPerSecond;
             pset.dataSources = makecol(tdCell);
-            pset.basisDataSourceIdx = makecol(1:nSources);
-            pset.basisDataSourceChannelNames = makecol(channelNames);
+            pset.basisDataSourceIdx = makecol(basisDataSourceIdx); %#ok<PROP>
+            pset.basisDataSourceChannelNames = makecol(basisDataSourceChannelNames); %#ok<PROP>
             
+            
+            td = tdCell{1};
+            pset = pset.setConditionDescriptor(td.conditionInfo);
+            pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
         end
         

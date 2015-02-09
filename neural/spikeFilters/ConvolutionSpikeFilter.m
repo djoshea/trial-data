@@ -42,6 +42,13 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         %   times in the preceding and postceding window
         function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec)
             % build filter
+            
+            if isempty(spikeCell)
+                rateCell = {};
+                timeCell = {};
+                return;
+            end
+            
             filt = sf.filter;
             filt = filt ./ sum(filt);
             

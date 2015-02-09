@@ -1278,6 +1278,9 @@ classdef PopulationTrajectorySet
             cellApplyToDataFn = @(data) cellfun(@trNorm.applyTranslationNormalizationToData, ...
                 data, 'UniformOutput', false);
             
+            cellApplyNormOnlyToDataFn = @(data) cellfun(@trNorm.applyNormalizationToData, ...
+                data, 'UniformOutput', false);
+            
             if pset.dataSourceManual
                 % for manual data, we apply this now to all data stored
                 % manually since it will not be regenerated later
@@ -1286,6 +1289,9 @@ classdef PopulationTrajectorySet
                 end
                 if ~isempty(pset.dataMean)
                     pset.dataMean = cellApplyToDataFn(pset.dataMean);
+                end
+                if ~isempty(pset.dataSem)
+                    pset.dataSem = cellApplyNormOnlyToDataFn(pset.dataSem);
                 end
                 if ~isempty(pset.dataIntervalHigh)
                     pset.dataIntervalHigh = cellApplyToDataFn(pset.dataIntervalHigh);
@@ -1304,6 +1310,9 @@ classdef PopulationTrajectorySet
                 end
                 if ~isempty(pset.odc.dataMean)
                     pset.dataMean = cellApplyToDataFn(pset.dataMean);
+                end
+                if ~isempty(pset.odc.dataSem)
+                    pset.dataSem = cellApplyNormOnlyToDataFn(pset.dataSem);
                 end
                 if ~isempty(pset.odc.dataIntervalHigh)
                     pset.dataIntervalHigh = cellApplyToDataFn(pset.dataIntervalHigh);
@@ -1336,6 +1345,9 @@ classdef PopulationTrajectorySet
                 if ~isempty(pset.dataMean)
                     pset.dataMean = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataMean, 'UniformOutput', false);
                 end
+                if ~isempty(pset.dataSem)
+                    pset.dataSem = cellfun(@trNorm.undoNormalizationToData, pset.dataSem, 'UniformOutput', false);
+                end
                 if ~isempty(pset.dataIntervalHigh)
                     pset.dataIntervalHigh = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataIntervalHigh, 'UniformOutput', false);
                 end
@@ -1353,6 +1365,9 @@ classdef PopulationTrajectorySet
                 end
                 if ~isempty(pset.odc.dataMean)
                     pset.dataMean = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataMean, 'UniformOutput', false);
+                end
+                if ~isempty(pset.odc.dataSem)
+                    pset.dataSem = cellfun(@trNorm.undoNormalizationToData, pset.dataSem, 'UniformOutput', false);
                 end
                 if ~isempty(pset.odc.dataIntervalHigh)
                     pset.dataIntervalHigh = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataIntervalHigh, 'UniformOutput', false);
@@ -1457,7 +1472,7 @@ classdef PopulationTrajectorySet
         function buildDataByTrial(pset)
             % stores dataByTrial, alignValidByTrial, tMinByTrial, and tMaxByTrial in odc
             % This method fetches the aligned data for EVERY trial in 
-            % each data source, for each alignment. It does not consider
+            % each data source, for each alignment. It does NOT consider
             % the condition grouping, allowing this to be handled later.
             % It stores this data as a matrix, whose time vector is given
             % by the widest time vector along any trial. Missing samples in
@@ -1740,6 +1755,10 @@ classdef PopulationTrajectorySet
                     % matrix
                     tMinAll = tMinForDataByTrial(iBasis, iAlign);
                     tMaxAll = tMaxForDataByTrial(iBasis, iAlign);
+                    
+                    if isnan(tMinAll) || isnan(tMaxAll)
+                        error('Basis %d has no valid timepoints', iBasis);
+                    end
                     tvecAll = tMinAll:timeDelta:tMaxAll;
                     
                     % lookup the new time limits which we'll compute the
@@ -2077,7 +2096,6 @@ classdef PopulationTrajectorySet
                 dataSourcesKeep = false(numel(pset.dataSources), 1);
                 dataSourcesKeep(pset.basisDataSourceIdx(mask)) = true;
                 
-                
                 % updating the lookup table is tricky, since the lookup
                 % indices change
                 newIdxForOldSrc = cumsum(dataSourcesKeep) .* dataSourcesKeep;
@@ -2100,7 +2118,31 @@ classdef PopulationTrajectorySet
             mask = ~pset.basesMissingTrialsForNonEmptyConditionAlignments;
             pset = pset.filterBases(mask);
         end
-
+        
+        function [pset, maskC] = selectConditions(pset, varargin)
+            % select specific conditions by linear index or mask
+            pset.warnIfNoArgOut(nargout);
+            
+            [cd, maskC] = pset.conditionDescriptor.selectConditions(varargin{:});
+            pset = pset.setConditionDescriptor(cd);
+        end
+        
+        function [pset, maskC] = selectConditionsAlongAxis(pset, varargin)
+            % select specific conditions by linear index or mask
+            pset.warnIfNoArgOut(nargout);
+            
+            [cd, maskC] = pset.conditionDescriptor.selectConditionsAlongAxis(varargin{:});
+            pset = pset.setConditionDescriptor(cd);
+        end
+        
+        function [pset, maskC] = matchSelectConditionsAlongAxis(pset, varargin)
+            % select specific conditions by linear index or mask
+            pset.warnIfNoArgOut(nargout);
+            
+            [cd, maskC] = pset.conditionDescriptor.matchSelectConditionsAlongAxis(varargin{:});
+            pset = pset.setConditionDescriptor(cd);
+        end
+        
 %         function filterConditionsByAttribute(pset, attributeName, valueList)
 %             % keep only bases listed in or masked by idx
 %             p = inputParser;
@@ -2158,6 +2200,11 @@ classdef PopulationTrajectorySet
             else
                 sz = pset.conditionDescriptor.conditionsSize;
             end
+        end
+        
+        function as = lookupAlignSummaryDataForBasis(pset, basisIdx)
+            asIdx = pset.basisAlignSummaryLookup(basisIdx);
+            as = pset.alignSummaryData(asIdx, :);
         end
         
         function conditions = get.conditions(pset)
@@ -2231,7 +2278,25 @@ classdef PopulationTrajectorySet
 %         end
     end
 
-    methods % Simple statistics     
+    methods % Simple statistics  
+        function snrByBasis = computeSnrByBasis(pset, varargin)
+            semCTAbyN = pset.buildCTAbyN('type', 'sem');
+            noiseByBasis = nanmax(semCTAbyN, [], 1)';
+            rangeByBasis = pset.computeRangeByBasis();
+            
+            snrByBasis = rangeByBasis ./ noiseByBasis;
+        end
+        
+        function minByBasis = computeMinByBasis(pset, varargin)
+            CTAbyN = pset.buildCTAbyN(varargin{:});
+            minByBasis = nanmin(CTAbyN, [], 1)';
+        end
+        
+        function maxByBasis = computeMaxByBasis(pset, varargin)
+            CTAbyN = pset.buildCTAbyN(varargin{:});
+            maxByBasis = nanmax(CTAbyN, [], 1)';
+        end
+        
         function meanByBasis = computeMeanByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
             meanByBasis = nanmean(CTAbyN, 1)';
@@ -2243,6 +2308,11 @@ classdef PopulationTrajectorySet
         
         function stdByBasis = computeStdByBasis(pset, varargin)
             stdByBasis = nanstd(pset.buildCTAbyN(varargin{:}), 0, 1)';
+        end
+        
+        function rangeByBasis = computeRangeByBasis(pset, varargin)
+            CTAbyN = pset.buildCTAbyN(varargin{:});
+            rangeByBasis = nanmax(CTAbyN, [], 1)' - nanmin(CTAbyN, [], 1)';
         end
   
 %         function [maxValues maxTimes] = getMaximumByBasisEachConditionEachAlign(pset, varargin)
@@ -2506,6 +2576,7 @@ classdef PopulationTrajectorySet
         function plotBases(pset, varargin)
             % plot bases one above the next 
             p = inputParser;
+            p.addParameter('alignIdx', 1:pset.nAlign, @isnumeric);            
             p.addParameter('basisIdx', 1:min(pset.nBases, 20), @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nBases])));
             p.addParameter('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
@@ -2525,15 +2596,38 @@ classdef PopulationTrajectorySet
             p.addParameter('alignGapFraction', 0.02, @isscalar);
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
-            p.addParameter('plotArgs', {}, @iscell)
             
-            p.addParameter('showRanges', true, @islogical);
+            p.addParameter('lineWidth', 1, @isscalar);
+            
+            p.addParameter('alpha', 1, @isscalar); % alpha for main traces
+            p.addParameter('showSem', false, @islogical); % show standard error traces?
+            p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
+            
+            % show less by default than in TDCA
+            p.addParameter('markShowOnData', false, @islogical);
+            p.addParameter('markShowOnAxis', true, @islogical);
+            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markSize', 2, @isscalar);
+            
+            p.addParameter('intervalShowOnData', false, @islogical);
+            p.addParameter('intervalShowOnAxis', true, @islogical);
+            p.addParameter('intervalAlpha', 0.5, @isscalar);
+            
+            p.addParameter('showRangesOnData', false, @islogical); % show ranges for marks on traces
+            p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
+            
             p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
+            
+            % make room for labels using AutoAxis
+            p.addParameter('axisMarginLeft', 2.5, @isscalar);
+           
             p.parse(varargin{:});
 
-            clf;
+            axh = newplot;
+            wasHolding = ishold(axh);
+            hold(axh, 'on');
             
-            basisIdx = p.Results.basisIdx;
+            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             nBasesPlot = numel(basisIdx);
             conditionIdx = p.Results.conditionIdx;
             nConditionsPlot = numel(conditionIdx);
@@ -2544,25 +2638,25 @@ classdef PopulationTrajectorySet
             alignGapFraction = p.Results.alignGapFraction;
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
-            plotArgs = p.Results.plotArgs;
-            showRanges = p.Results.showRanges;
             
-            timeWidthByAlign = pset.nTimeDataMean*pset.timeDelta;
+            alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
+            timeWidthByAlign = pset.nTimeDataMean(alignIdx)*pset.timeDelta;
+            nAlignUsed = numel(alignIdx);
             
             if isempty(pset.interAlignGaps)
                 % compute absolute x-gap between alignments
-                alignGaps = repmat(alignGapFraction*sum(timeWidthByAlign) / (1 - alignGapFraction*pset.nAlign), pset.nAlign-1, 1);
+                alignGaps = repmat(alignGapFraction*sum(timeWidthByAlign) / (1 - alignGapFraction*nAlignUsed), nAlignUsed-1, 1);
             else
                 alignGaps = pset.interAlignGaps;
             end 
             
             % keep track of start and stop of each align in time
-            tAlignZero = deal(nanvec(pset.nAlign));
+            tAlignZero = nanvec(nAlignUsed);
 
             % concatenate the data across alignments in order to compute
             % normalization constants. data is N x CTA
             data = pset.buildCTAbyN('basisIdx', basisIdx, ...
-                'conditionIdx', conditionIdx)';
+                'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
 
             if normalize
                 % each basis will be independently scaled to [0 1]
@@ -2578,43 +2672,109 @@ classdef PopulationTrajectorySet
                 norms = repmat(nanmax(ranges), nBasesPlot, 1);
             end
             
-            for iAlign = 1:pset.nAlign
-                tvec = pset.tvecDataMean{iAlign};
-                tAlignZero(iAlign) = xOffset - min(tvec);
-                tvec = tvec - min(tvec) + xOffset;
+            app = pset.conditionDescriptor.appearances;
+            
+            hData = cell(nConditionsPlot, nAlignUsed);
+            for iAlign = 1:nAlignUsed
+                idxAlign = alignIdx(iAlign);
+                tvecOrig = pset.tvecDataMean{idxAlign};
+                % figure out where zero in tvec should be located
+                if iAlign == 1
+                    tOffsetCurrent = nanmin(tvecOrig);
+                end
+                tAlignZero(iAlign) = tOffsetCurrent - nanmin(tvecOrig) + xOffset;
                 
-                % N x C x T
-                data = pset.dataMean{iAlign}(basisIdx, conditionIdx, :);
+                tvecPlot = tvecOrig + tAlignZero(iAlign);
+                
+                % here we assemble all data across bases, normalize and
+                % scale and offset them vertically. This makes plotting
+                % much more efficient than looping over bases individually.
+                
+                % N x C x T matrices
+                % apply separate translation /normalization to each basis
+                % to bring in range
+                data = pset.dataMean{idxAlign}(basisIdx, conditionIdx, :);
                 data = bsxfun(@minus, data, offsets);
                 data = bsxfun(@rdivide, data, norms);
-           
-                % scale and separate data by basis vertically
+                
+                dataSem = pset.dataSem{idxAlign}(basisIdx, conditionIdx, :);
+                % only apply normalization
+                dataSem = bsxfun(@rdivide, dataSem, norms);
+                
+                % uniformly scale and separate data vertically
                 data = data * scaling + yOffset;
                 data = bsxfun(@plus, data, (nBasesPlot:-1:1)');
                 
+                dataSem = dataSem * scaling;
+                
                 if reverse
                     data = flipud(data);
+                    dataSem = flipud(dataSem);
                 end
                 
-                for iCondition = 1:nConditionsPlot
-                    dataC = squeeze(data(:, iCondition, :));
-                    plotArgsC = pset.conditionDescriptor.appearances(conditionIdx(iCondition)).getPlotArgs();
-                    plot(tvec, dataC, '-', plotArgsC{:}, plotArgs{:})
-                    hold on
+                % draw error bars
+                if p.Results.showSem
+                    for iCondition = 1:nConditionsPlot
+                        idxCondition = conditionIdx(iCondition);
+                        dataC = TensorUtils.squeezeDims(data(:, iCondition, :), 2);
+                        dataSemC = TensorUtils.squeezeDims(dataSem(:, iCondition, :), 2);
+                        for iBasis = 1:nBasesPlot
+                            hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...                   
+                                dataSemC(iBasis, :), app(idxCondition).Color, 'axh', axh, ...
+                                'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false);
+                            TrialDataUtilities.Plotting.hideInLegend(hShade);
+                        end
+                    end
                 end
                 
-                if iAlign == pset.nAlign
+                % draw means
+                for iCond = 1:nConditionsPlot
+                    idxCondition = conditionIdx(iCond);
+                    dataC = squeeze(data(:, iCond, :));
+                    if p.Results.alpha < 1
+                        hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvecPlot, dataC, ...
+                            'EdgeColor', app(idxCondition).Color, 'EdgeAlpha', p.Results.alpha, ...
+                            'LineWidth', p.Results.lineWidth, 'Parent', axh);
+                    else
+                        hData{iCond, iAlign} = plot(axh, tvecPlot, dataC, '-', ...
+                            'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
+                            'Color', app(idxCondition).Color);
+                    end
+                end
+                
+                %draw marks and intervals on data
+                if p.Results.markShowOnData || p.Results.intervalShowOnData
+                    for iBasis = 1:numel(basisIdx)
+                        idxBasis = basisIdx(iBasis);
+                        alignSummary = pset.alignSummaryData{pset.basisAlignSummaryLookup(idxBasis), idxAlign};
+                        
+                        % data needs to be T x D x C, currently N (select 1) x C x T 
+                        dataPermute = permute(data(iBasis, :, :), [3 1 2]);
+                        alignSummary.drawOnDataByCondition(tvecOrig, ...
+                            dataPermute + yOffset, ...  
+                            'conditionIdx', conditionIdx, ...
+                            'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
+                            'tOffsetZero', tAlignZero(iAlign), 'alpha', p.Results.alpha, ...
+                            'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
+                            'intervalAlpha', p.Results.intervalAlpha, ...
+                            'showRanges', p.Results.showRangesOnData, ...
+                            'tMin', min(tvecOrig), 'tMax', max(tvecOrig));
+                    end
+                end
+                
+                % advance laterally
+                if iAlign == nAlignUsed
                     gap = 0;
                 else
                     gap = alignGaps(iAlign);
                 end
-                xOffset = xOffset + timeWidthByAlign(iAlign) + gap;
+                tOffsetCurrent = tOffsetCurrent + timeWidthByAlign(iAlign) + gap;
             end
             
             box off;
             ylim([0.9, nBasesPlot+1.1]);
-            xlim([0 xOffset]);
-
+            xlim([min(pset.tvecDataMean{alignIdx(1)}) tOffsetCurrent]);
+            
             % setup auto axis
             au = AutoAxis();
             yloc = yOffset + (nBasesPlot:-1:1)' + 0.5;
@@ -2623,36 +2783,41 @@ classdef PopulationTrajectorySet
             
             switch p.Results.timeAxisStyle
                 case 'tickBridge'
-                    for iAlign = 1:pset.nAlign
-                        as = pset.alignSummaryAggregated{iAlign};
-                        tvec = pset.tvecDataMean{iAlign};
+                    for iAlign = 1:nAlignUsed
+                        idxAlign = alignIdx(iAlign);
+                        as = pset.alignSummaryAggregated{idxAlign};
+                        tvec = pset.tvecDataMean{idxAlign};
                         offset = tAlignZero(iAlign);
                         
                         as.setupTimeAutoAxis('axh', gca, 'style', 'tickBridge', ...
                             'tMin', min(tvec), 'tMax', max(tvec), 'tOffsetZero', offset, ...
-                            'showRanges', showRanges);
+                            'showRanges', p.Results.showRangesOnAxis);
                     end
                     
                 case 'marker'
-                    for iAlign = 1:pset.nAlign
-                        as = pset.alignSummaryAggregated{iAlign};
-                        tvec = pset.tvecDataMean{iAlign};
+                    for iAlign = 1:nAlignUsed
+                        idxAlign = alignIdx(iAlign);
+                        as = pset.alignSummaryAggregated{idxAlign};
+                        tvec = pset.tvecDataMean{idxAlign};
                         offset = tAlignZero(iAlign);
                         
                         as.setupTimeAutoAxis('axh', gca, 'style', 'marker', ...
                             'tMin', min(tvec), 'tMax', max(tvec), 'tOffsetZero', offset, ...
-                            'showRanges', showRanges);
+                            'showRanges', p.Results.showRangesOnAxis);
                     end
                     au.xUnits = pset.timeUnitName;
                     au.addAutoScaleBarX();
-
             end
             
             % make large left side to accommodate labels
-            au.axisMarginLeft = 7;
+            au.axisMarginLeft = p.Results.axisMarginLeft;
             axis off;
             au.update();
             au.installCallbacks();
+            
+            if ~wasHolding
+                hold(axh, 'off');
+            end
         end
 
         function plotStateSpace(pset, varargin)
@@ -2672,7 +2837,7 @@ classdef PopulationTrajectorySet
             
             p.parse(varargin{:});
             
-            clf;
+            axh = newplot;
             
             basisIdx = p.Results.basisIdx;
             conditionIdx = p.Results.conditionIdx;
@@ -2699,7 +2864,7 @@ classdef PopulationTrajectorySet
                 case 3
                     use3d = true;
                 otherwise
-                    error('Number of bases must be 2 or 3');
+                    error('Number of bases must be 2 or 3. For 1 basis, use plotBases(''basisIdx'', idx)');
             end
 
             for iAlign = 1:nAlignUsed
@@ -2721,7 +2886,6 @@ classdef PopulationTrajectorySet
                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
                                  plotArgs{:});
                         else
-                            dataMat = [dataVec1 dataVec2];
                             TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
                                 'LineWidth', p.Results.lineWidth, ...
                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
@@ -2732,7 +2896,7 @@ classdef PopulationTrajectorySet
                             plot3(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
                                 'LineWidth', p.Results.lineWidth, plotArgsC{:}, plotArgs{:});
                         else
-                            dataMat = [dataVec1 dataVec2];
+%                             dataMat = [dataVec1 dataVec2];
                             plot(dataMat(1, :), dataMat(2, :), ...
                                 'LineWidth', p.Results.lineWidth, ...
                                 plotArgsC{:}, plotArgs{:});
@@ -2755,16 +2919,21 @@ classdef PopulationTrajectorySet
             box off
             axis tight
 
-            xlabel(pset.basisNames{basisIdx(1)});
-            ylabel(pset.basisNames{basisIdx(2)});
-
+             xlabel(pset.basisNames{basisIdx(1)});
+             ylabel(pset.basisNames{basisIdx(2)});
              if use3d
                 zlabel(pset.basisNames{basisIdx(3)});
                 view([-40 20]);
                 axis vis3d
                 axis off
                 tv = ThreeVector(gca);
-            end
+             else
+                axis off;
+                tv = ThreeVector(gca);
+             end
+             
+             hold off;
+             
         end
         
     end
@@ -2783,18 +2952,27 @@ classdef PopulationTrajectorySet
             p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
             p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
+            p.addParameter('type', 'mean', @ischar); % mean, sem
             p.parse(varargin{:});
-            alignIdx = makecol(p.Results.alignIdx);
+            alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
-            basisIdx = makecol(p.Results.basisIdx);
+            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             conditionIdx = makecol(p.Results.conditionIdx);
             
-            dataMean = cellvec(nAlign);
+            data = cellvec(nAlign);
             for iAlign = 1:numel(alignIdx)
-                dataMean{iAlign} = pset.dataMean{iAlign}(basisIdx, conditionIdx, :);
+                idxAlign = alignIdx(iAlign);
+                switch p.Results.type
+                    case 'mean'
+                        data{iAlign} = pset.dataMean{idxAlign}(basisIdx, conditionIdx, :);
+                    case 'sem'
+                        data{iAlign} = pset.dataSem{idxAlign}(basisIdx, conditionIdx, :);
+                    otherwise
+                        error('Unknown data type %s', p.Results.type);
+                end
             end 
             
-            [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, dataMean{:});
+            [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
             avec = makecol(alignIdx(avecRaw));
             tvec = cat(1, pset.tvecDataMean{alignIdx});
         end
@@ -2805,12 +2983,13 @@ classdef PopulationTrajectorySet
             p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
             p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
+            p.addParameter('type', 'mean', @ischar);
             p.parse(varargin{:});
             %alignIdx = makecol(p.Results.alignIdx);
             basisIdx = makecol(p.Results.basisIdx);
             conditionIdx = makecol(p.Results.conditionIdx);
 
-            [NbyCbyTA, tvec, avec] = pset.buildNbyCbyTA(varargin{:});
+            [NbyCbyTA, tvec, avec] = pset.buildNbyCbyTA(varargin{:}, 'type', p.Results.type);
             nvec = basisIdx;
             cvec = conditionIdx;
             labels = {nvec, cvec, [tvec, avec]};
@@ -2822,10 +3001,16 @@ classdef PopulationTrajectorySet
             nvec = labelsOut{2};
         end
 
-         function NbyTAbyAttr = buildNbyTAbyConditionAttributes(pset, varargin)
+         function [NbyTAbyAttr, tvec, avec] = buildNbyTAbyConditionAttributes(pset, varargin)
              % build a tensor of N by T by nValsAttr1 by nValsAttr2 x ...
              % this tensor is the format used by dpca_covs
-             NbyTAbyC = permute(pset.buildNbyCbyTA(), [1 3 2]);
+             p = inputParser();
+             p.addParameter('type', 'mean', @ischar);
+             p.KeepUnmatched = true;
+             p.parse(varargin{:});
+             
+             [NbyCbyTA, tvec, avec] = pset.buildNbyCbyTA('type', p.Results.type, p.Unmatched);
+             NbyTAbyC = permute(NbyCbyTA, [1 3 2]);
              N = pset.nBases;
              TA = size(NbyTAbyC, 2);
              condSize = pset.conditionDescriptor.conditionsSize;

@@ -108,7 +108,7 @@ if ~isempty(options.combinedParams)
         for j=1:length(options.combinedParams{i})
             for k=1:length(paramsubsets)
                 if length(paramsubsets{k}) == length(options.combinedParams{i}{j}) ...
-                   && all(sort(paramsubsets{k}) == sort(options.combinedParams{i}{j}))
+                   && all(makecol(sort(paramsubsets{k})) == makecol(sort(options.combinedParams{i}{j})))
                     margsToAdd = [margsToAdd k];
                     continue
                 end

@@ -44,6 +44,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.KeepUnmatched = true;
     p.parse(dataCell, timeCell, varargin{:});
     
+    
     % check sizes match
     % okay to have one empty and the other not, simply ignore
     szData = cellfun(@numel, dataCell);
@@ -54,6 +55,12 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     dataCell(empty) = {[]};
     timeCell(empty) = {[]};
     assert(all(szData(:) == szTime(:)), 'Sizes of dataCell and timeCell contents must match');
+    
+    if isempty(dataCell)
+        mat = [];
+        tvec = zeros(0, 1);
+        return;
+    end
     
     % fix duplicate timestamps
     if p.Results.fixDuplicateTimes
@@ -77,7 +84,12 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     end
     
     tMinGlobal = nanmin(tvec);
-    timeDelta = inferTimeDelta(tvec);
+    if numel(tvec) == 1
+        % special case with one sample
+        timeDelta = 1;
+    else
+        timeDelta = inferTimeDelta(tvec);
+    end
     
     % build the data matrix by inserting the interpolated segment of each timeseries
     % in the appropriate location in each row, keeping the non-spanned timepoints as NaN
@@ -85,7 +97,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     N = size(dataCell, 1);
     C = size(dataCell, 2);
     mat = nan([N, T, C]);
-	indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
+    
+    indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     for c = 1:C
         for i = 1:N
@@ -118,7 +131,7 @@ function [d, t] = fix(d, t)
     skip = find(diffT(1:end-1) == 2 & diffT(2:end) == 0);
     t(skip+1) = t(skip+1) - 1;
 
-    tMask = diff(t)>0;
+    tMask = [true; makecol(diff(t)>0)];
     t = t(tMask);
     d = d(tMask);
 end
