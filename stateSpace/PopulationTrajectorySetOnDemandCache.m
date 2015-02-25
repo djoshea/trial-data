@@ -2,7 +2,10 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
 
     properties
         basisNames
-        basisUnits
+        basisUnits 
+        
+        basisValid
+        basisInvalidCause
         
         alignSummaryData
         basisAlignSummaryLookup
@@ -15,6 +18,10 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         tMinByTrial
         tMaxByTrial
         alignValidByTrial
+        
+        % time windows for trial averaged data
+        tMinValidByAlignBasisCondition
+        tMaxValidByAlignBasisCondition
         
         % trial-averaged data
         dataMean
@@ -35,6 +42,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         function flush(odc)
             odc.basisNames = {};
             odc.basisUnits = {};
+            odc.basisValid = [];
            
             odc.dataByTrial = {};
             odc.tMinForDataByTrial = {};
@@ -47,6 +55,11 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.flushAlignSummaryData();
         end
         
+        function flushValid(odc)
+            odc.basisValid = [];
+            odc.basisInvalidCause = {};
+        end
+        
         function flushTrialAveragedData(odc)
             odc.dataMean = {};
             odc.dataSem = {};
@@ -56,7 +69,9 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.tMaxForDataMean = [];
             odc.nTimeDataMean = [];
             odc.tvecDataMean = [];
-
+            odc.tMinValidByAlignBasisCondition = [];
+            odc.tMaxValidByAlignBasisCondition = [];
+        
             odc.flushRandomizedTrialAveragedData();
         end
         
