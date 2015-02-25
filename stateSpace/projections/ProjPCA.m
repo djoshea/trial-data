@@ -9,22 +9,41 @@ classdef ProjPCA < StateSpaceProjection
             proj = proj@StateSpaceProjection(varargin{:}); 
             proj.K = [];
         end
+        
+        function pset = preparePsetForInference(proj, pset) 
+            pset = pset.meanSubtractBases('conditionIdx', proj.buildFromConditionIdx);
+        end
     end
 
     methods
         
         function coeff = computeProjectionCoefficients(proj, pset, varargin)
-            CTAbyN = pset.buildCTAbyN('conditionIdx', proj.buildFromConditionIdx);
+            % run pca on valid bases
+            CTAbyNvalid = pset.buildCTAbyN('conditionIdx', proj.buildFromConditionIdx, ...
+                'validBasesOnly', true);
+            
+            idx = find(all(isnan(CTAbyNvalid), 1));
+            if ~isempty(idx)
+                error('No valid trial average timepoints found for %d bases', numel(idx));
+            end
             
             if exist('pca', 'file') == 2
-               coeff = pca(CTAbyN, 'Rows', 'complete');
+                coeffValid = pca(CTAbyNvalid, 'Rows', 'complete');
             else
-                coeff = princomp(CTAbyN);
+                coeffValid = princomp(CTAbyNvalid);
             end
             
+            % filter down to K output bases
             if ~isempty(proj.K)
-                coeff = coeff(:, 1:proj.K);
+                coeffValid = coeffValid(:, 1:proj.K);
             end
+            
+            % make coefficients for invalid bases 0 so that multiply
+            % suppresses invalid bases automatically
+            % if NaN is used, they will need to be masked out when
+            % multiplying or you'll get a NaN result
+            coeff = zeros(pset.nBases, size(coeffValid, 2));
+            coeff(pset.basisValid, :) = coeffValid;
         end
 
         function names = getBasisNames(proj, pset) %#ok<INUSD>

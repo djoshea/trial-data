@@ -14,8 +14,9 @@ classdef ProjDPCA < StateSpaceProjection
         end
 
         function coeff = computeProjectionCoefficients(proj, pset, varargin) 
-            NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
-            coeff = dpca_nanSafe(NbyTAbyAttr, proj.K, 10000, 1e-7);
+            NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true);
+            coeffValid = dpca_nanSafe(NvbyTAbyAttr, proj.K, 10000, 1e-7);
+            coeff = TensorUtils.inflateMaskedTensor(coeffValid, 1, pset.basisValid);
         end
 
         function names = getBasisNames(proj, pset) %#ok<INUSD>

@@ -7,9 +7,7 @@ classdef StateSpaceProjection
     % settings which control how the StateSpaceProjection behaves
     % These must be set before building from PopulationTrajectorySet
     properties
-        % if true, computes the dataErrorHigh/Low for the projected bases
-        % using resampling methods and the interval size from the pset
-        propagateDataError = false; 
+        axisCombinations % see TrialDataUtilities.DPCA.dpca for dimListsToCombineList argument
     end
 
     properties(SetAccess=protected)
@@ -17,6 +15,8 @@ classdef StateSpaceProjection
         initialized = false;
         translationNormalization % stored translation / normalization stored when building and used when projecting
         coeff % N x K matrix of component weights; coeff(i,j) is weight for component j from input basis i 
+        
+        basisValid % N x 1 logical vector indicating which bases were considered valid in the projection
     end
 
     properties(Dependent)
@@ -50,6 +50,13 @@ classdef StateSpaceProjection
         end   
     end
     
+    methods
+        function proj = set.axisCombinations(proj, v)
+            assert(iscell(v), 'Axis Combinations must be a cell of vectors');
+            proj.axisCombinations = v;
+        end
+    end
+    
     methods(Abstract)
         % return a list of basis names for the new basis
         names = getBasisNames(proj, pset, data)
@@ -81,6 +88,11 @@ classdef StateSpaceProjection
 
             % compute the coefficients for the projection
             proj.coeff = proj.computeProjectionCoefficients(pset);
+            
+            assert(size(proj.coeff, 1) == pset.nBases, 'Coefficient matrix returned by computeProjectionCoefficients must match pset.nBases along dim 1');
+            
+            % copy the basis valid mask
+            proj.basisValid = pset.basisValid;
             
             % results will store statistics and useful quantities related to the
             % projection
@@ -123,30 +135,37 @@ classdef StateSpaceProjection
             [b.dataMean, b.dataSem] = deal(cell(pset.nAlign, 1));
             for iAlign = 1:pset.nAlign
 
-                % mat is N x CT, coeff is N x K
+                % mat is N x CT, coeff is Nvalid x K
                 mat = reshape(pset.dataMean{iAlign}, pset.nBases, ...
                     pset.nConditions * pset.nTimeDataMean(iAlign));
+
+                % coeff must have 0 for invalid bases, but we'll zero out
+                % mat because it has NaNs for invalid bases that will mess
+                % up the matrix multiply
+                mat(~proj.basisValid, :) = 0;
+
                 projMat = proj.coeff' * mat;
                 b.dataMean{iAlign} = reshape(projMat, proj.nBasesProj, ...
                     pset.nConditions, pset.nTimeDataMean(iAlign));
 
                 % use sqrt(sd1^2 / n1 + sd2^2 / n2 + ...) formula
-                % which equals sqrt(coeff1 * sem1^2 + coeff2 * sem2^2 + ...)
+                % which equals sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
                 mat = reshape(pset.dataSem{iAlign}, pset.nBases, ...
                     pset.nConditions * pset.nTimeDataMean(iAlign));
+                mat(~proj.basisValid, :) = 0;
                 projMat = sqrt(abs(proj.coeff)' * (mat.^2));
                 b.dataSem{iAlign} = reshape(projMat, proj.nBasesProj, ...
                     pset.nConditions, pset.nTimeDataMean(iAlign));
-                % b.dataSem{iAlign} = nan(proj.nBasesProj, pset.nConditions, pset.nTimeDataMean(iAlign));
             end
           
             % project randomized data, recompute intervals
-            if proj.propagateDataError
+            if ~isempty(pset.dataMeanRandomized)
                 [b.dataMeanRandomized, b.dataIntervalLow, b.dataIntervalHigh] = deal(cell(pset.nAlign, 1));
                 for iAlign = 1:pset.nAlign
                     % mat is N x CTS, coeff is N x K, where S is nRandomSamples 
                     mat = reshape(pset.dataMeanRandomized{iAlign}, pset.nBases, ...
                         pset.nConditions*pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
+                    mat(~proj.basisValid, :) = 0;
                     projMat = proj.coeff' * mat;
                     b.dataMeanRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
                         pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
@@ -176,23 +195,18 @@ classdef StateSpaceProjection
     methods(Access=protected, Sealed)
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~ishandle(obj)
-                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
                     class(obj));
-                expr = sprintf('debug(''%s'')', message);
-                evalin('caller', expr); 
             end
         end
     end
 
     methods
         function proj = filterBases(proj, idx)
-            % after building from a PopulationTrajectorySet, mask the bases
-            % within to reduce the total contribution
+            % select on output bases
             proj.warnIfNoArgOut(nargout);
             assert(proj.initialized, 'Call filterBases after building / initializing');
-            
-            proj.translationNormalization = proj.translationNormalization.filterBases(idx);
-            proj.coeff = proj.coeff(idx, :);
+            proj.coeff = proj.coeff(:, idx); % select on output bases
         end
         
         function names = getBasisUnits(proj, pset)  %#ok<INUSL>
@@ -204,18 +218,22 @@ classdef StateSpaceProjection
             % to pset before inferring coefficients for projection. The .translationNormalization
             % found in pset after this function runs will be used to normalize all psets
             % that are projected via this StateSpaceProjection. By default, this will
-            % will not do any normalization, but will perform mean-subtraction. 
+            % will not do anything.
+            
             % the caller may manually specify the normalization in the pset before 
             % building the StateSpaceProjection. Subclasses may wish to override this method
-            % to prevent mean-subtraction or add basis normalization, if necessary
+            % to do mean-subtraction or add basis normalization, if necessary
 
-            pset = pset.meanSubtractBases('conditionIdx', proj.buildFromConditionIdx);
+           % pset = pset.meanSubtractBases('conditionIdx', proj.buildFromConditionIdx);
         end
         
         function s = computeProjectionStatistics(proj, pset, forBuild)
             % for buildIndicates if we are computing statistics at the time
             % of projection building, false indicates we are simply
             % projecting a pset with already computed coefficients.
+            %
+            % we'll work with valid bases only and then inflate the results
+            % to the full size
             
             import TrialDataUtilities.DPCA.*;
             
@@ -228,22 +246,20 @@ classdef StateSpaceProjection
             s.nBasesProj = proj.nBasesProj;
 
             if forBuild
-                CTAbyN = pset.buildCTAbyN('conditionIdx', proj.buildFromConditionIdx);
+                CTAbyNv = pset.buildCTAbyN('validBasesOnly', true, 'conditionIdx', proj.buildFromConditionIdx);
             else
-                CTAbyN = pset.buildCTAbyN();
+                CTAbyNv = pset.buildCTAbyN('validBasesOnly', true);
             end
 
-            s.covSource = nancov(CTAbyN, 1); 
-            s.corrSource= corrcoef(CTAbyN, 'rows', 'complete');
+            s.covSource = TensorUtils.inflateMaskedTensor(nancov(CTAbyNv, 1), [1 2], proj.basisValid); 
+            s.corrSource = TensorUtils.inflateMaskedTensor(corrcoef(CTAbyNv, 'rows', 'complete'), [1 2], proj.basisValid);
 
-            % covSource is N*N, coeff is N*K, latent is K*K
-            s.latent = diag(proj.coeff' * s.covSource * proj.coeff);
-            s.explained = s.latent / trace(s.covSource);
+            % covSource is N*N, coeff is N*K, latent is K*1
+            s.latent = diag(proj.coeff(proj.basisValid, :)' * s.covSource(proj.basisValid, proj.basisValid) * proj.coeff(proj.basisValid, :));
+            s.explained = s.latent / trace(s.covSource(proj.basisValid, proj.basisValid));
             
             % Use dpca_covs_nanSafe to compute each covariance matrix for us
-            NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
-%             attrNames = [ {'time'}, pset.conditionDescriptor.axisNames{:} ];
-%             [covMarginalizedMap, ~, attrSets] = dpca_covs_nanSafe(NbyTAbyAttr);
+            NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true);
             
             % filter for non-singular axes
             nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
@@ -253,28 +269,17 @@ classdef StateSpaceProjection
             % merge each covariate with each covariate + time mixture
             [combinedParams, s.covMarginalizedNames] = dpca_generateTimeCombinedParams(...
                 dimIdx, 'dimNames', pset.conditionDescriptor.axisNames(:), 'combineEachWithTime', true);
-            s.covMarginalized = dpca_marginalizedCov(NbyTAbyAttr, 'combinedParams', combinedParams);
+            covMarginalizedValidCell = dpca_marginalizedCov(NvbyTAbyAttr, 'combinedParams', combinedParams);
+            s.covMarginalized = cellfun(@(x) TensorUtils.inflateMaskedTensor(x, [1 2], proj.basisValid), ...
+                covMarginalizedValidCell, 'UniformOutput', false);
 
-%             % generate mixture names
-%             covMarginalizedNames = cellfun(@(attrInds) ...
-%                 strjoin(attrNames(attrInds-1), ' x '), ...
-%                 attrSets, 'UniformOutput', false);
-%             s.covMarginalizedNames = makecol(covMarginalizedNames);
-% 
-%             % unpack covariance map into nMixtures x 1 cell array
-%             nCov = length(covMarginalizedMap);
-%             s.covMarginalized = cell(nCov, 1);
-%             for iCov = 1:nCov
-%                 s.covMarginalized{iCov} = covMarginalizedMap(mat2str(attrSets{iCov}));
-%             end
-%             
             % compute the marginalized variance explained, i.e. the amount
             % of source variance marginalized according to dpca_cov, in each direction 
             nCov = numel(s.covMarginalized);
             s.latentMarginalized = nan(proj.nBasesProj, nCov);
             for iCov = 1:nCov
                 s.latentMarginalized(:, iCov) = ...
-                    diag(proj.coeff' * s.covMarginalized{iCov} * proj.coeff);
+                    diag(proj.coeff(proj.basisValid, :)' * s.covMarginalized{iCov}(proj.basisValid, proj.basisValid) * proj.coeff(proj.basisValid, :));
             end
         end
         

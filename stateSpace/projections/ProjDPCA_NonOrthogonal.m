@@ -4,18 +4,9 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
         K % if empty, keep all components. Otherwise, keep only first K components.
         lambda = 1e-6;
         
-        axisCombinations % see TrialDataUtilities.DPCA.dpca for dimListsToCombineList argument
-        
         makeOrthogonal = false;
     end
     
-    methods
-        function proj = set.axisCombinations(proj, v)
-            assert(iscell(v), 'Axis Combinations must be a cell of vectors');
-            proj.axisCombinations = v;
-        end
-    end
-
     methods
         function proj = ProjDPCA_NonOrthogonal(varargin)
             proj = proj@StateSpaceProjection();
@@ -26,9 +17,9 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
         end
 
         function coeff = computeProjectionCoefficients(proj, pset, varargin) 
-            NbyTAbyAttr = pset.buildNbyTAbyConditionAttributes();
+            NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true);
             if isempty(proj.K)
-                proj.K = 10;
+                proj.K = min(10, pset.nBasesValid);
             end
             
             % generate combinations to add together
@@ -39,11 +30,13 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
             % merge each covariate with each covariate + time mixture
             combinedParams = TrialDataUtilities.DPCA.dpca_generateTimeCombinedParams(dimIdx, ...
                 'combine', proj.axisCombinations, 'combineEachWithTime', true);
-            coeff = TrialDataUtilities.DPCA.dpca(NbyTAbyAttr, proj.K, 'combinedParams', combinedParams, 'lambda', 1e-6);
+            coeffValid = TrialDataUtilities.DPCA.dpca(NvbyTAbyAttr, proj.K, 'combinedParams', combinedParams, 'lambda', 1e-6);
             
             if proj.makeOrthogonal
-                coeff = orth(coeff);
+                coeffValid = orth(coeffValid);
             end
+            
+            coeff = TensorUtils.inflateMaskedTensor(coeffValid, 1, pset.basisValid);
         end
 
         function names = getBasisNames(proj, pset) %#ok<INUSD>
