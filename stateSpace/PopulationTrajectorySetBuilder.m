@@ -28,6 +28,8 @@ classdef PopulationTrajectorySetBuilder
         %% fBasisInfo
         basisNames
         basisUnits
+        basisValid
+        basisInvalidCause
         
         %% fDataSourceInfo
         dataSources
@@ -43,6 +45,8 @@ classdef PopulationTrajectorySetBuilder
         tMaxByTrial
         
         %% fTrialAvg
+        tMinValidByAlignBasisCondition
+        tMaxValidByAlignBasisCondition
         tMinForDataMean
         tMaxForDataMean
         dataMean
@@ -67,14 +71,15 @@ classdef PopulationTrajectorySetBuilder
 
         fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
         
-        fBasisInfo = {'basisNames', 'basisUnits'};
+        fBasisInfo = {'basisNames', 'basisUnits', 'basisValid', 'basisInvalidCause'};
         
         fDataSourceInfo = {'dataSources', 'basisDataSourceIdx', 'basisDataSourceChannelNames'};
         
         fSingleTrial = {'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
             'alignValidByTrial', 'tMinByTrial', 'tMaxByTrial'};
         
-        fTrialAvg = {'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
+        fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
+                'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
                 'dataNTrials', 'dataValid', ...
                 'alignSummaryData', 'basisAlignSummaryLookup'}
         
@@ -256,6 +261,35 @@ classdef PopulationTrajectorySetBuilder
             end
         end
 
+        function bld = copyTrialAveragedOnlyFromPopulationTrajectorySet(pset, fields)
+            % copy values from population trajectory set, all fields except
+            % single trial data
+            bld = PopulationTrajectorySetBuilder();
+            
+            if nargin < 2
+                fields = [...
+                    PopulationTrajectorySetBuilder.fSettings, ...
+                    PopulationTrajectorySetBuilder.fDescriptors, ...
+                    PopulationTrajectorySetBuilder.fBasisInfo, ...
+                    PopulationTrajectorySetBuilder.fTrialAvg ...
+                    PopulationTrajectorySetBuilder.fTrialAvgRandomized
+                    ]   ;
+            end
+            
+            for iF = 1:length(fields)
+                fld = fields{iF};
+                bld.(fld) = pset.(fld);
+            end
+        end
+        
+        function bld = copySettingsDescriptorsBasisInfoFromPopulationTrajectorySet(pset)
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
+                [ PopulationTrajectorySetBuilder.fSettings, ...
+                  PopulationTrajectorySetBuilder.fDescriptors, ...
+                  PopulationTrajectorySetBuilder.fBasisInfo, ...
+                  ]);
+        end
+        
         function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
             bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
                 [ PopulationTrajectorySetBuilder.fSettings, ...

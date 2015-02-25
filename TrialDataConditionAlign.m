@@ -1924,12 +1924,25 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', true, @islogical);
             p.parse(varargin{:});
-            minTrials = p.Results.minTrials;
+            
+            if isempty(p.Results.minTrials)
+                minTrials = 1;
+            else
+                minTrials = p.Results.minTrials;
+            end
+            
+            if isempty(p.Results.minTrialFraction)
+                minTrialFraction = 1;
+            else
+                minTrialFraction = p.Results.minTrialFraction;
+            end
             
             [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitName, ...
                 'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
@@ -1946,7 +1959,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(rateCell{iC})
                     [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials);
+                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
                 end
             end
         end
@@ -2171,11 +2184,12 @@ classdef TrialDataConditionAlign < TrialData
         function plotPSTH(td, unitName, varargin)
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial fraction to average
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
-            p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.addParameter('removeZeroSpikeTrials', true, @islogical);
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -2187,7 +2201,8 @@ classdef TrialDataConditionAlign < TrialData
             [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getSpikeRateFilteredMeanByGroup(unitName, 'minTrials', p.Results.minTrials, ...
+                    td.useAlign(iAlign).getSpikeRateFilteredMeanByGroup(unitName, ...
+                    'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
                     'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
             

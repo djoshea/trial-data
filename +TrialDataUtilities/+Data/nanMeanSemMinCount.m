@@ -1,4 +1,4 @@
-function [m, se, n, stdev] = nanMeanSemMinCount(x, dim, minCount)
+function [m, se, n, stdev] = nanMeanSemMinCount(x, dim, minCount, minRatio)
 % [mean, sem, count, stdev] = nanmeanMinCount(x,dim,minCount)
 % Computes mean value along dimension dim, ignoring NaNs and 
 % marking as Nan when the number of non-nan values is below minCount. Also
@@ -18,10 +18,15 @@ if ~exist('dim', 'var') || isempty(dim)
         dim = find(size(x) > 1, 1, 'first');
     end
 end
-    
+
 % count up non-NaNs along dim
 n = sum(~nans,dim);
 tooFew = n < minCount;
+
+if exist('minRatio', 'var')
+    minCountFromRatio = ceil(minRatio * size(x, dim));
+    tooFew = tooFew | n < minCountFromRatio;
+end
 
 % automatically inserts NaNs where too few trials
 nThresh = n;

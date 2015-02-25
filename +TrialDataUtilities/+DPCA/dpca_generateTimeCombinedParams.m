@@ -13,13 +13,17 @@ function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
     import(getPackageImportString);
     
     p = inputParser();
-    p.addParameter('combine', {}, @iscell);
+    p.addParameter('combine', {}, @(x) isempty(x) || iscell(x));
     p.addParameter('combineEachWithTime', true, @islogical);
     p.addParameter('dimNames', {}, @iscellstr);
     p.parse(varargin{:});
     
     dimListsToCombineList = p.Results.combine;
     
+    if isempty(dimListsToCombineList)
+        dimListsToCombineList = {};
+    end
+        
     if ~iscell(dimListsToCombineList)
         error('Dim Lists to combine must be cell of cells of dim indices');
     end
