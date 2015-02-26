@@ -1865,8 +1865,8 @@ classdef PopulationTrajectorySet
             % data, so we invalidate the averaged data whenever the
             % basisValid is updated
             basisMask = pset.basisValid;
-            tMinValidByAlignCondition = TensorUtils.squeezeDims(nanmax(pset.tMinValidByAlignBasisCondition(:, basisMask, :), [], 1), 1);
-            tMaxValidByAlignCondition = TensorUtils.squeezeDims(nanmin(pset.tMaxValidByAlignBasisCondition(:, basisMask, :), [], 1), 1);
+            tMinValidByAlignCondition = TensorUtils.squeezeDims(nanmax(pset.tMinValidByAlignBasisCondition(:, basisMask, :), [], 2), 2);
+            tMaxValidByAlignCondition = TensorUtils.squeezeDims(nanmin(pset.tMaxValidByAlignBasisCondition(:, basisMask, :), [], 2), 2);
             
             % for each align, compute the widest window valid for ANY
             % condition for ALL bases

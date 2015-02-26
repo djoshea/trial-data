@@ -3507,6 +3507,7 @@ classdef TrialDataConditionAlign < TrialData
             au.update();
             au.installCallbacks();
             hold(axh, 'off');
+            set(axh, 'SortMethod', 'childorder');
         end
     end
         

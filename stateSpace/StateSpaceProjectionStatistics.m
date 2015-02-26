@@ -21,34 +21,38 @@ classdef StateSpaceProjectionStatistics
     methods
         function plotExplained(proj, varargin)
             p = inputParser();
-            p.addParamValue('threshold', 90, @issclalar);
+            p.addParameter('threshold', 90, @issclalar);
             p.parse(varargin{:});
             threshold = p.Results.threshold;
             
+            axh = newplot;
+            
             cumExplained = cumsum(proj.explained) * 100;
-            cla;
-            plot(1:length(cumExplained), cumExplained, 'x--', ...
+            plot(axh, 1:length(cumExplained), cumExplained, 'x--', ...
                 'Color', [0.7 0.7 0.7], 'MarkerEdgeColor', 'r', ...
                 'LineWidth', 2);
             box off;
-            xlabel('Basis');
-            ylabel('Cumulative % variance explained')
+            xlabel(axh, 'Basis');
+            ylabel(axh, 'Cumulative % variance explained')
 
             if(cumExplained(end) >= threshold)
                 hold on
                 xl = get(gca, 'XLim');
-                plot(xl, [threshold threshold], '--', 'Color', 0.8*ones(3,1)); 
+                plot(axh, xl, [threshold threshold], '--', 'Color', 0.8*ones(3,1)); 
 
                 % find the first pc that explains threshold variance
                 indCross = find(cumExplained > threshold, 1, 'first');
                 if ~isempty(indCross)
-                    title(sprintf('%d bases explain %.1f%%  of variance', indCross, threshold));
+                    title(axh, sprintf('%d bases explain %.1f%%  of variance', indCross, threshold));
                 end
 
                 yl = get(gca, 'YLim');
                 yl(2) = 100;
-                ylim(yl);
+                ylim(axh, yl);
+                hold(axh, 'off');
             end
+            
+            au = AutoAxis.replace(axh);
         end
         
         function plotCovSource(proj, varargin)
@@ -56,6 +60,7 @@ classdef StateSpaceProjectionStatistics
             pmat(proj.covSource);
             box off;
             title('Source Covariance');
+            hold off;
         end
         
         function plotBasisMixtures(proj, varargin)
@@ -128,11 +133,10 @@ classdef StateSpaceProjectionStatistics
 
             au.update();
             au.installCallbacks();
-%             
-
+            
 %             legend(hPatch, nCov, proj.covMarginalizedNames, 'Location', 'NorthEastOutside');
 %             legend boxoff;
-            
+            hold off;
         end
     end
 end
