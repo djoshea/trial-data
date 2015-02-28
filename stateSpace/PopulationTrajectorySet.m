@@ -888,25 +888,15 @@ classdef PopulationTrajectorySet
         end
         
         function v = get.tvecDataMean(pset)
-            v = pset.odc.tvecDataMean;
-            if isempty(v)
-                % compute on-the-fly and cache
-                tvecDataMean = cellvec(pset.nAlign);
-                for iAlign = 1:pset.nAlign
-                    tvecDataMean{iAlign} = makecol(pset.tMinForDataMean(iAlign):pset.timeDelta:pset.tMaxForDataMean(iAlign));
-                end
-                pset.odc.tvecDataMean = tvecDataMean;
-                v = pset.odc.tvecDataMean;
+            % generate on the fly, no caching
+            v = cellvec(pset.nAlign);
+            for iAlign = 1:pset.nAlign
+                v{iAlign} = makecol(pset.tMinForDataMean(iAlign):pset.timeDelta:pset.tMaxForDataMean(iAlign));
             end
         end 
         
         function v = get.nTimeDataMean(pset)
-            v = pset.odc.nTimeDataMean;
-            if isempty(v)
-                % compute on-the-fly and cache
-                pset.odc.nTimeDataMean = makecol(cellfun(@numel, pset.tvecDataMean));
-                v = pset.odc.nTimeDataMean;
-            end
+            v = makecol(cellfun(@numel, pset.tvecDataMean));
         end 
         
         function pset = set.nTimeDataMean(pset, v)

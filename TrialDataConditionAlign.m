@@ -97,6 +97,8 @@ classdef TrialDataConditionAlign < TrialData
     
     % get / set accessors that read / write through to ODC
     methods
+        
+        
         function v = get.eventData(td)
             v = td.odc.eventData;            
             if isempty(v)
@@ -225,6 +227,30 @@ classdef TrialDataConditionAlign < TrialData
     
     % General utilites
     methods
+        function td = postAddNewTrials(td)
+            td.warnIfNoArgOut(nargout);
+            
+            td = td.reinitializeConditionAlign();
+            
+            td = postAddNewTrials@TrialData(td); % will call update valid
+        end
+        
+        function td = reinitializeConditionAlign(td)
+            td.warnIfNoArgOut(nargout);
+            
+            % flush event data, counts, align summary
+            td.odc = td.odc.copy();
+            td.odc.flush();
+            
+            % don't call update valid until both are updated
+            for i = 1:td.nAlign
+                td.alignInfoSet{i} = td.alignInfoSet{i}.applyToTrialData(td);
+            end
+            
+            % will call update valid
+            td = td.setConditionDescriptor(td.conditionInfo);
+        end
+        
          % synchronize valid between AlignInfo and ConditionINfo
          % shouldn't need to call this manually, but just in case
         function td = updateValid(td)
@@ -346,7 +372,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             if isempty(td.conditionInfo)
                 paramStruct = emptyStructArray(td.nTrials);
-                td.conditionInfo = ConditionInfo.fromStruct(paramStruct);
+                td.conditionInfo = ConditionInfo.fromStruct(paramStruct); 
             end
         end
 
@@ -389,6 +415,9 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             
             % manually accept a condition descriptor instance
+            if isa(cd, 'ConditionInfo')
+                cd = ConditionDescriptor.fromConditionDescriptor(cd);
+            end
             assert(isequal(class(cd), 'ConditionDescriptor'), 'Must be a ConditionDescriptor instance');
             
             % grab the param data to feed to the condition descriptor

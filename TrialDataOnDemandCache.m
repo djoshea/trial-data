@@ -6,7 +6,7 @@ classdef TrialDataOnDemandCache < handle & matlab.mixin.Copyable
     
     methods
         function flush(odc)
-            odc.valid
+            odc.valid = [];
         end
     end
     

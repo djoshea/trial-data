@@ -159,43 +159,59 @@ classdef TrialData
             td = td.addNewTrialsRaw(newData);
         end
 
-        function td = addTrialsFromTrialData(td, td2)
+        function td = addTrialsFromTrialData(td, varargin)
             td.warnIfNoArgOut(nargout);
             
             % add the channels
-            td = td.addChannels(td2.channelDescriptorsByName);
-
+            for i = 1:numel(varargin)
+                td = td.addChannels(varargin{i}.channelDescriptorsByName);
+            end
+            
             % add the data
-            td = td.addNewTrialsRaw(td2td2);
+            td = td.addNewTrialsRaw(varargin{:});
         end
 
-        function td = addNewTrialsRaw(td, dataOrTrialData, varargin)
+        function td = addNewTrialsRaw(td, varargin)
             td.warnIfNoArgOut(nargout);
             
-            if isa(dataOrTrialData, 'TrialData')
-                tdNew = dataOrTrialData;
-                newData = td.data;
-            else
-                tdNew = [];
-                newData = dataOrTrialData;
+            concatData = td.data;
+            concatValid = td.manualValid;
+            for i = 1:numel(varargin)
+                dataOrTrialData = varargin{i};
+                
+                if isa(dataOrTrialData, 'TrialData')
+                    tdNew = dataOrTrialData;
+                    newData = td.data;
+                else
+                    tdNew = [];
+                    newData = dataOrTrialData;
+                end
+
+                % validate new data against all channel descriptors (old + new)
+                debug('Validating new channel data...\n');
+                newData = td.validateData(newData, td.channelDescriptorsByName, 'addMissingFields', true);
+
+                % concatenate onto the old data
+                concatData = TrialDataUtilities.Data.structcat(concatData, newData); 
+
+                % concatenate the valid array
+                if isempty(tdNew)
+                    newValid = truevec(numel(newData));
+                else
+                    newValid = tdNew.manualValid;
+                    assert(numel(newValid) == numel(newData), 'manualValid must be same length as data');
+                end
+                concatValid = cat(1, concatValid, newValid);
             end
-
-            % validate new data against all channel descriptors (old + new)
-            debug('Validating new channel data...\n');
-            newData = td.validateData(newData, td.channelDescriptorsByName, 'addMissingFields', true);
-
-            % concatenate onto the old data
-            td.data = TrialDataUtilities.Data.structcat(td.data, newData); 
-
-            % concatenate the valid array
-            if isempty(tdNew)
-                newValid = truevec(numel(newData));
-            else
-                newValid = tdNew.manualValid;
-                assert(numel(newValid) == numel(newData), 'manualValid must be same length as data');
-            end
-            td.manualValid = cat(1, td.manualValid, newValid);
             
+            td.data = concatData;
+            td.manualValid = concatValid;
+            
+            td = td.postAddNewTrials(); % update valid here, also to allow TDCA to update itself before update valid since TDCA's override executes first
+        end
+        
+        function td = postAddNewTrials(td)
+            td.warnIfNoArgOut(nargout);
             td = td.updateValid();
         end
 
@@ -282,13 +298,13 @@ classdef TrialData
     methods(Static)
         function td = loadFast(location)
             % strip extension
-            [path, name] = fileparts(location);
-            location = fullfile(path, name);
+%             [path, name, ext] = fileparts(location);
+%             location = fullfile(path, name);
             
             if ~exist(location, 'dir')
                 error('Directory %s not found. Did you save with saveFast?', location);
             end
-            loaded = load(fullfile(path, 'td.mat'));
+            loaded = load(fullfile(location, 'td.mat'));
             td = loaded.td;
             
             % load elements of data
@@ -329,6 +345,16 @@ classdef TrialData
             end
             
             unmatched = p.Unmatched;
+        end
+        
+        function tdCombined = mergeTrialsFromMultipleTrialData(varargin)
+            if isempty(varargin)
+                error('Please provide at least 1 argument');
+            end
+            tdCombined = varargin{1};
+            if numel(varargin) > 1
+                tdCombined = tdCombined.addTrialsFromTrialData(varargin{2:end});
+            end
         end
     end
 
@@ -489,7 +515,7 @@ classdef TrialData
                 
         function td = updateValid(td)
             td.warnIfNoArgOut(nargout);
-            td.valid = [];
+            td.valid = td.manualValid;
         end
         
         function tf = hasChannel(td, name)
