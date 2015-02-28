@@ -1160,6 +1160,12 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td.alignInfoActive = td.alignInfoActive.setIntervalAppearance(varargin{:});
         end
+        
+        function td = clearMarksIntervals(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.clearMarksIntervals(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
 
         function ad = get.alignInfoActive(td)
             ad = td.alignInfoSet{td.alignInfoActiveIdx};

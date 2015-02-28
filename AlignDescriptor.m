@@ -838,14 +838,14 @@ classdef AlignDescriptor
             ad = ad.update();
         end
 
-        function clearMarksIntervals(ad)
+        function ad = clearMarksIntervals(ad)
             % remove all marks and intervals
             ad.warnIfNoArgOut(nargout);
             ad.markEvents = {};
             ad.markEventsIndex = [];
             ad.markOffsets = [];
             ad.markLabelsStored = {};
-            ad.markAppear
+            ad.markAppear= [];
             ad.markShowOnData = []; 
             ad.markShowOnAxis = [];
             ad.intervalEventsStart = {}; 
