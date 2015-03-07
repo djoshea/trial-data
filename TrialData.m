@@ -1576,7 +1576,7 @@ classdef TrialData
            str = sprintf('Time (%s)',  td.timeUnitName);
         end
         
-        function plotAnalogEachTrial(td, name, varargin) 
+        function plotAnalogRawEachTrial(td, name, varargin) 
             p = inputParser();
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.KeepUnmatched;
@@ -1584,7 +1584,7 @@ classdef TrialData
 
             axh = td.getRequestedPlotAxis(p.Unmatched);
 
-            [dataCell, timeCell] = td.getAnalog(name);     
+            [dataCell, timeCell] = td.getAnalogRaw(name);     
 
             dataCell = dataCell(td.valid);
             timeCell = timeCell(td.valid);

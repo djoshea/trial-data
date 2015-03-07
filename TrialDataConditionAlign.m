@@ -2990,6 +2990,10 @@ classdef TrialDataConditionAlign < TrialData
             au.installCallbacks();
             hold(axh, 'off');
         end
+              
+        function plotAnalogEachTrial(td, name, varargin) 
+            td.ungroup.plotAnalogGroupedEachTrial(name, varargin{:});
+        end
         
         function plotAnalogGroupedEachTrial(td, name, varargin) 
             % grab raw data (for marking) and grouped data (for plotting)
