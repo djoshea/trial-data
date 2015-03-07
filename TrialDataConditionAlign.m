@@ -187,7 +187,7 @@ classdef TrialDataConditionAlign < TrialData
             c.alignSummarySet = alignSummarySet;
         end
         
-        function valid = buildValid(td)
+        function valid = computeValid(td)
             % valid is the intersection of manualValid, conditionInfo valid,
             % and all AlignInfo valid
             cvalid = td.conditionInfo.computedValid;
@@ -261,7 +261,7 @@ classdef TrialDataConditionAlign < TrialData
                 td.manualValid = truevec(td.nTrials);
             end
 
-            valid = td.buildValid();
+            valid = td.computeValid();
 
             td.conditionInfo = td.conditionInfo.setInvalid(~valid);
             for iA = 1:td.nAlign
@@ -270,6 +270,8 @@ classdef TrialDataConditionAlign < TrialData
             
             % cause align summary to be recomputed
             td.alignSummarySet = [];
+            
+            td.valid = valid;
         end
         
         % print a short description
@@ -1731,7 +1733,7 @@ classdef TrialDataConditionAlign < TrialData
                 error('Must provide dataX and dataY');
             end
             
-            h = nan(nConditionsUsed, 1);
+            h = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nConditionsUsed);
             for iC = 1:nConditionsUsed
                 idxC = conditionIdx(iC);
                 args = app(idxC).getMarkerPlotArgs();
