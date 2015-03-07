@@ -1980,7 +1980,6 @@ classdef PopulationTrajectorySet
             c = pset.odc;
             c.dataMean = dataMean;
             c.dataSem = dataSem;
-            c.nTimeDataMean = nTimeByAlign;
             c.tMinForDataMean = tMinForDataMean;
             c.tMaxForDataMean = tMaxForDataMean;
         end
