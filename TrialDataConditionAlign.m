@@ -79,7 +79,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.rebuildOnDemandCache();
             td = td.initializeConditionInfo();
             td = td.initializeAlignInfo();
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
         
         function td = rebuildOnDemandCache(td)
@@ -97,8 +97,6 @@ classdef TrialDataConditionAlign < TrialData
     
     % get / set accessors that read / write through to ODC
     methods
-        
-        
         function v = get.eventData(td)
             v = td.odc.eventData;            
             if isempty(v)
@@ -187,7 +185,11 @@ classdef TrialDataConditionAlign < TrialData
             c.alignSummarySet = alignSummarySet;
         end
         
-        function valid = computeValid(td)
+        function buildValid(td)
+            % builds .valid and .invalidCause, no odc copy
+            % be very careful not to request .valid or .invalidCause here
+            % as this will lead to infinite recursion.
+            %
             % valid is the intersection of manualValid, conditionInfo valid,
             % and all AlignInfo valid
             cvalid = td.conditionInfo.computedValid;
@@ -201,9 +203,8 @@ classdef TrialDataConditionAlign < TrialData
             else
                 valid = cvalid & avalid;
             end
-        end
-        
-        function cause = buildInvalidCause(td)
+       
+  
             cause = cell(td.nTrials, 1);
             explained = false(td.nTrials, 1);
             
@@ -221,7 +222,13 @@ classdef TrialDataConditionAlign < TrialData
                     td.alignInfoSet{iA}.invalidCause(amask), 'UniformOutput', false);
             end
             
-            cause(td.valid) = {''};
+            cause(valid) = {''};
+            
+            % don't copy in build methods
+            c = td.odc;
+            c.valid = valid;
+            c.invalidCause = cause;
+            td.odc = c;
         end
     end
     
@@ -253,16 +260,18 @@ classdef TrialDataConditionAlign < TrialData
         
          % synchronize valid between AlignInfo and ConditionINfo
          % shouldn't need to call this manually, but just in case
-        function td = updateValid(td)
+        function td = invalidateValid(td)
             td.warnIfNoArgOut(nargout);
-            td = updateValid@TrialData(td);
+            % this will flush .valid and .invalidCause
+            td = invalidateValid@TrialData(td);
 
-            if isempty(td.manualValid)
-                td.manualValid = truevec(td.nTrials);
-            end
-
-            valid = td.computeValid();
-
+            % recompute valid using the conjunction condition info and
+            % align info (this happens inside buildValid, which will be
+            % called when we request .valid for the first time)
+            valid = td.valid;
+            
+            % coordinate the valid arrays of all condition info and align
+            % info instances
             td.conditionInfo = td.conditionInfo.setInvalid(~valid);
             for iA = 1:td.nAlign
                 td.alignInfoSet{iA} = td.alignInfoSet{iA}.setInvalid(~valid);
@@ -270,8 +279,6 @@ classdef TrialDataConditionAlign < TrialData
             
             % cause align summary to be recomputed
             td.alignSummarySet = [];
-            
-            td.valid = valid;
         end
         
         % print a short description
@@ -781,7 +788,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = postUpdateConditionInfo(td)
             td.warnIfNoArgOut(nargout);
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
         
         % filter trials that are valid based on ConditionInfo
@@ -931,7 +938,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = postUpdateAlignInfo(td)
             td.warnIfNoArgOut(nargout);
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
 
         function td = align(td, varargin)

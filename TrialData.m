@@ -34,11 +34,15 @@ classdef TrialData
     properties(Access=protected, Hidden)
         odc % TrialDataOnDemandCache instance
     end
-
-    % Convenience dependent properties
-    properties(Dependent) 
+    
+    % properties which are stored in odc, see get/set below
+    properties(Dependent)
         valid
         invalidCause % cellstr of explanations
+    end
+
+    % Convenience dependent properties
+    properties(Dependent)
         nTrials
         nTrialsValid
         nChannels
@@ -212,7 +216,7 @@ classdef TrialData
         
         function td = postAddNewTrials(td)
             td.warnIfNoArgOut(nargout);
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
 
         % performs a validation of all channel data against the specified channelDescriptors,
@@ -296,6 +300,17 @@ classdef TrialData
     end
     
     methods(Static)
+        function td = loadobj(s)
+            if ~isa(s, 'TrialData')
+                td = builtin('loadobj', s);
+            else
+                td = s;
+                if isempty(td.odc)
+                    td = td.rebuildOnDemandCache();
+                end
+            end
+        end
+           
         function td = loadFast(location)
             % strip extension
 %             [path, name, ext] = fileparts(location);
@@ -312,8 +327,6 @@ classdef TrialData
             
             td = td.rebuildOnDemandCache();
         end
-        
-        
 
         % general utility to send plots to the correct axis
         function [axh, unmatched] = getRequestedPlotAxis(varargin)
@@ -361,7 +374,7 @@ classdef TrialData
     % General utilities
     methods
         function printDescriptionShort(td)
-            if td.nTrialsValid == 0
+            if td.nTrialsValid < td.nTrials
                 tcprintf('inline', '{yellow}%s: {none}%d trials {bright red}(%d valid){none} with %d channels\n', ...
                 class(td), td.nTrials, td.nTrialsValid, td.nChannels);
             else
@@ -388,27 +401,59 @@ classdef TrialData
         end
     end
     
-    % Dependent property implementations
-    methods % get. accessors for above properties which simply refer to tdi.?
+    % get / set accessors that read / copy-then-write through to ODC
+    methods
         function v = get.valid(td)
-            if isempty(td.odc), v = td.buildValid(); return; end
             v = td.odc.valid;            
             if isempty(v)
-                td.odc.valid = td.buildValid();
+                td.buildValid();
                 v = td.odc.valid;
             end
         end
         
         function td = set.valid(td, v)
-            if isempty(td.odc), td = td.rebuildOnDemandCache(); end
             td.odc = td.odc.copy();
             td.odc.valid = v;
         end
         
-        function cause = get.invalidCause(td)
-            cause = td.buildInvalidCause();
+        function v = get.invalidCause(td)
+            v = td.odc.invalidCause;            
+            if isempty(v)
+                td.buildValid();
+                v = td.odc.invalidCause;
+            end
         end
         
+        function td = set.invalidCause(td, v)
+            td.odc = td.odc.copy();
+            td.odc.invalidCause = v;
+        end
+    end
+    
+    % builder methods for ODC: do not copy
+    methods(Access=protected)
+        function buildValid(td)
+            % builds .valid and .invalidCause
+            %
+            % compute the valid flag considering only trials marked as
+            % manually invalid to be invalid. This will be overriden in
+            % TDCA to consider the condition and align invalid as well
+            valid = td.getManualValid();
+            
+            cause = cell(td.nTrials, 1);
+            cause(~valid) = {'marked invalid manually'};
+            cause(valid) = {''};
+            
+            % override, don't write
+            c = td.odc;
+            c.valid = valid;
+            c.invalidCause = cause;
+            td.odc = c;
+        end
+    end
+    
+    % Dependent property implementations
+    methods % get. accessors for above properties which simply refer to tdi.?
         function nTrials = get.nTrials(td)
             nTrials = numel(td.data);
         end
@@ -438,7 +483,7 @@ classdef TrialData
             else
                 td.manualValid = td.manualValid(mask);
             end
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
         
         function td = selectValidTrials(td)
@@ -449,41 +494,28 @@ classdef TrialData
         function td = markInvalid(td, mask)
             td.warnIfNoArgOut(nargout);
             td.manualValid(mask) = false;
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
         
         function td = setInvalid(td, mask)
             td.manualValid = true(td.nTrials, 1);
             td.manualValid(mask) = false;
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
         
         function td = setAllValid(td)
             td.manualValid = true(td.nTrials, 1);
-            td = td.updateValid();
+            td = td.invalidateValid();
         end
     end
 
     methods(Access=protected) % Utility methods   
-        function valid = buildValid(td)
-            % compute the valid flag considering only trials marked as
-            % manually invalid to be invalid. This will be overriden in
-            % TDCA to consider the condition and align invalid as well
-            valid = td.getManualValid();
-        end
-        
         function valid = getManualValid(td)
             if isempty(td.manualValid)
                 valid = truevec(td.nTrials);
             else
                 valid = makecol(td.manualValid);
             end
-        end
-        
-        function cause = buildInvalidCause(td)
-            cause = cell(td.nTrials, 1);
-            cause(~td.valid) = {'marked invalid manually'};
-            cause(td.valid) = {''};
         end
         
         function warnIfNoArgOut(obj, nargOut)
@@ -513,9 +545,16 @@ classdef TrialData
 
     methods % Channel metadata access and manipulation
                 
-        function td = updateValid(td)
+        function td = invalidateValid(td)
             td.warnIfNoArgOut(nargout);
-            td.valid = td.manualValid;
+            
+            % copy and flush valid
+            td.odc = td.odc.copy();
+            td.odc.flushValid();
+            
+            if isempty(td.manualValid)
+                td.manualValid = truevec(td.nTrials);
+            end
         end
         
         function tf = hasChannel(td, name)
@@ -1569,6 +1608,8 @@ classdef TrialData
             
             xlabel(td.getTimeAxisLabel());
             ylabel(td.getAxisLabelForChannel(name));
+            
+            AutoAxis.replace(axh);
         end
     end
 end
