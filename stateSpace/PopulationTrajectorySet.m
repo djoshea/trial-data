@@ -2280,6 +2280,9 @@ classdef PopulationTrajectorySet
             end
             
             pset.odc = c;
+                
+            % force time windows to become updated
+            pset = pset.updateValid();
         end
         
         function [pset, mask] = filterBasesMissingTrialAverageForNonEmptyConditionAligns(pset)  
@@ -3562,4 +3565,83 @@ classdef PopulationTrajectorySet
         end
     end
 
+    
+    % Saving and loading piecemeal
+    methods
+        function saveFast(pset, location, varargin)
+            p = inputParser();
+            p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
+            p.parse(varargin{:});
+            
+            sources = pset.dataSources;
+            pset.dataSources = 'saved separately, use loadFast';
+            pset.odc = []; %#ok<MCHV2>
+            
+            mkdirRecursive(location);
+            savefast(fullfile(location, 'pset.mat'), 'pset');
+            
+            % save elements of sources
+            msg = sprintf('Saving PopulationTrajectorySet to %s', location);
+            if p.Results.recursive
+                TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, sources, 'message', msg, 'callbackFn', @saveCallback);
+            else
+                TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, sources, 'message', msg);
+            end
+            
+            function saveCallback(tdcaCell, location, i)
+                sub = fullfile(location, sprintf('source%06d', i));
+                tdcaCell{1}.saveFast(sub);
+            end
+        end
+    end
+    
+    methods(Static)
+        function pset = loadFast(location, varargin)
+            p = inputParser();
+            p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
+            p.parse(varargin{:});
+            
+            if ~exist(location, 'dir')
+                error('Directory %s not found. Did you save with saveFast?', location);
+            end
+            loaded = load(fullfile(location, 'pset.mat'));
+            pset = loaded.pset;
+            
+            % load elements of sources
+            msg = sprintf('Loading PopulationTrajectorySet from %s', location);
+            if p.Results.recursive
+                sources = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg, 'callbackFn', @loadCallback);
+            else
+                sources = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg);
+            end
+            pset.dataSources = sources;
+            
+            pset = pset.initialize();
+            
+            function tdcaCell = loadCallback(location, i)
+                % need to wrap in cell because of the way save/load array
+                % work
+                sub = fullfile(location, sprintf('source%06d', i));
+                tdcaCell = { TrialData.loadFast(sub) };
+            end
+        end
+    end
+    
+    % save / load wrappers for CacheCustomSaveLoad
+    methods
+        function tf = getUseCustomSaveLoad(pset, info)
+            tf = true;
+        end
+        
+        function token = saveCustomToLocation(pset, location)
+            pset.saveFast(location);
+            token = [];
+        end
+    end
+    
+    methods(Static)
+        function data = loadCustomFromLocation(location, token)
+            data = PopulationTrajectorySet.loadFast(location);
+        end
+    end
 end

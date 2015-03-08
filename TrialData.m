@@ -287,7 +287,7 @@ classdef TrialData
     methods
         function saveFast(td, location)
             % saves in a custom hdf5 format that allows partial loading
-            data = td.data; %#ok<PROP>
+            data = td.data;
             td.data = 'saved separately';
             td.odc = []; %#ok<MCHV2>
             
@@ -295,7 +295,8 @@ classdef TrialData
             savefast(fullfile(location, 'td.mat'), 'td');
             
             % save elements of data
-            TrialDataUtilities.Data.SaveStructArrayIndividualized.saveStructArray(location, data); %#ok<PROP>
+            msg = sprintf('Saving TrialData to %s', location);
+            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg); %#ok<PROP>
         end
     end
     
@@ -323,7 +324,8 @@ classdef TrialData
             td = loaded.td;
             
             % load elements of data
-            td.data = TrialDataUtilities.Data.SaveStructArrayIndividualized.loadStructArray(location);
+            msg = sprintf('Loading TrialData from %s', location);
+            td.data = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg);
             
             td = td.rebuildOnDemandCache();
         end
