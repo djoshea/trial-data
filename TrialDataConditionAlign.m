@@ -1749,8 +1749,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
                     args{:}, p.Results.plotOptions{:});
-                SaveFigure.setMarkerOpacity(h(iC), alpha, edgeAlpha);
-                
+
                 TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNamesShort{idxC});
             end
       
@@ -1768,6 +1767,11 @@ classdef TrialDataConditionAlign < TrialData
             axis(axh, 'tight');
             
             AutoAxis.updateIfInstalled(axh);
+                    
+            for iC = 1:numel(h)
+                % not sure why this needs to go last
+                SaveFigure.setMarkerOpacity(h(iC), alpha, edgeAlpha);
+            end
         end
         
         function plotParamVsParamMeanLinePlot(td, nameX, nameY, varargin)
@@ -2989,6 +2993,8 @@ classdef TrialDataConditionAlign < TrialData
             au.update();
             au.installCallbacks();
             hold(axh, 'off');
+            
+            set(axh, 'SortMethod', 'childorder'); % fix rendering issues
         end
               
         function plotAnalogEachTrial(td, name, varargin) 

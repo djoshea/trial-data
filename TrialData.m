@@ -693,6 +693,12 @@ classdef TrialData
             % don't remove special channels
             names = setdiff(names, td.listSpecialChannels());
             
+            % don't remove channels that don't exist
+            names = intersect(names, td.listChannels());
+            if isempty(names)
+                return;
+            end
+            
             % first hold onto the to-be-removed channel descriptors
             cds = cellvec(numel(names));
             for i = 1:numel(names)
@@ -1591,7 +1597,6 @@ classdef TrialData
             dataCell = dataCell(td.valid);
             timeCell = timeCell(td.valid);
 
-            cla(axh);
             hold(axh, 'on');
             
             for i = 1:td.nTrialsValid
@@ -1612,6 +1617,31 @@ classdef TrialData
             ylabel(td.getAxisLabelForChannel(name));
             
             AutoAxis.replace(axh);
+            
+            hold(axh, 'off');
+        end
+    end
+    
+    
+    % save / load wrappers for CacheCustomSaveLoad
+    properties
+        cacheWithSaveFast = false;
+    end
+    
+    methods
+        function tf = getUseCustomSaveLoad(td, info)
+            tf = td.cacheWithSaveFast;
+        end
+        
+        function token = saveCustomToLocation(td, location)
+            td.saveFast(location);
+            token = [];
+        end
+    end
+    
+    methods(Static)
+        function data = loadCustomFromLocation(location, token)
+            data = TrialData.loadFast(location);
         end
     end
 end

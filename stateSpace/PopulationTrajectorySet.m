@@ -1685,10 +1685,12 @@ classdef PopulationTrajectorySet
                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
                 end
             end
+            prog.finish();
                
             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
             
             for iBasis = 1:nBases
+                prog.update(iBasis);
                 for iAlign = 1:nAlign
                     if ~isSpikeChannel(iBasis)
                         % from TDCA.getAnalogAsMatrix
@@ -1726,7 +1728,6 @@ classdef PopulationTrajectorySet
 %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
 %                         'Time vector returned by TrialData has invalid limits');
                 end
-                prog.update(iBasis);
             end
             prog.finish();            
             
@@ -1789,10 +1790,17 @@ classdef PopulationTrajectorySet
             [tMinValidByAlignBasisCondition, tMaxValidByAlignBasisCondition] = ...
                 deal(nan(pset.nAlign, pset.nBases, pset.nConditions));
 
+            % do this first to force computation of data by trial at the beginning, 
+            % rather than having it happen on the first loop iteration
+            temp = pset.tMinByTrial; %#ok<NASGU>
+            temp = pset.dataNTrials; %#ok<NASGU>
+            
             prog = ProgressBar(pset.nBases, 'Computing trial-averaged time windows by basis/align/condition');
             
             for iBasis = 1:pset.nBases
                 for iAlign = 1:pset.nAlign
+                    prog.update(iBasis);
+                    
                     % note, this src will not be aligned to this iAlign,
                     % but this isn't necessary since we've already
                     % extracted the aligned data
@@ -1817,8 +1825,6 @@ classdef PopulationTrajectorySet
                         end
                     end
                 end
-
-                prog.update(iBasis);
             end
             prog.finish();
 
@@ -1968,7 +1974,7 @@ classdef PopulationTrajectorySet
                 basesMissingTrials = any(pset.dataNTrials(iAlign, pset.basisValid, conditionMaskWithTrials) == 0, 3)';
                 
                 if any(basesMissingTrials)
-                    warning('%d bases have no valid trials for at least one condition on alignment %d for which other bases have valid trials. Use invalidateBasesMissingTrialsOnNonEmptyConditions to mark these as invalid', ...
+                    warning('%d bases have no valid trials for at least one condition on alignment %d for which other bases have valid trials. Use .setBasesInvalidMissingTrialAverageForNonEmptyConditionAligns() to mark these as invalid', ...
                         nnz(basesMissingTrials), iAlign);
                 end
             end
@@ -2177,8 +2183,8 @@ classdef PopulationTrajectorySet
         function buildAlignSummaryAggregated(pset)
             % build the aggregated data across all bases too, for each alignment
             alignSummaryAggregated = cell(pset.nAlign, 1);
-            prog = ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
             alignSummaryData = pset.alignSummaryData;
+            prog = ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
             for iAlign = 1:pset.nAlign
                 prog.update(iAlign);
                 alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(:, iAlign));
@@ -2530,7 +2536,8 @@ classdef PopulationTrajectorySet
             hasTrialAverage = pset.alignBasisConditionsWithValidTrialAverage(:, pset.basisValid, :);
             
             % nBases x 1
-            basesMissingTrialAverages = squeeze(any(any(shouldHaveTrialAverage & ~hasTrialAverage, 3), 1));
+            basesValidMissingTrialAverages = makecol(TensorUtils.squeezeDims(any(any(shouldHaveTrialAverage & ~hasTrialAverage, 3), 1), [1 3]));
+            basesMissingTrialAverages = TensorUtils.inflateMaskedTensor(basesValidMissingTrialAverages, 1, pset.basisValid, false);
         end
     end
     
@@ -2556,41 +2563,48 @@ classdef PopulationTrajectorySet
 %         end
     end
 
-    methods % Simple statistics  
+    methods % Simple statistics, should be NaN for invalid bases
         function snrByBasis = computeSnrByBasis(pset, varargin)
             semCTAbyN = pset.buildCTAbyN('type', 'sem');
             noiseByBasis = nanmax(semCTAbyN, [], 1)';
             rangeByBasis = pset.computeRangeByBasis();
             
             snrByBasis = rangeByBasis ./ noiseByBasis;
+            snrByBasis(~pset.basisValid) = NaN;
         end
         
         function minByBasis = computeMinByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
             minByBasis = nanmin(CTAbyN, [], 1)';
+            minByBasis(~pset.basisValid) = NaN;
         end
         
         function maxByBasis = computeMaxByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
             maxByBasis = nanmax(CTAbyN, [], 1)';
+            maxByBasis(~pset.basisValid) = NaN;
         end
         
         function meanByBasis = computeMeanByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
             meanByBasis = nanmean(CTAbyN, 1)';
+            meanByBasis(~pset.basisValid) = NaN;
         end
         
         function varByBasis = computeVarByBasis(pset, varargin)
             varByBasis = nanvar(pset.buildCTAbyN(varargin{:}), 0, 1)';
+            varByBasis(~pset.basisValid) = NaN;
         end
         
         function stdByBasis = computeStdByBasis(pset, varargin)
             stdByBasis = nanstd(pset.buildCTAbyN(varargin{:}), 0, 1)';
+            stdByBasis(~pset.basisValid) = NaN;
         end
         
         function rangeByBasis = computeRangeByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
             rangeByBasis = nanmax(CTAbyN, [], 1)' - nanmin(CTAbyN, [], 1)';
+            rangeByBasis(~pset.basisValid) = NaN;
         end
   
 %         function [maxValues maxTimes] = getMaximumByBasisEachConditionEachAlign(pset, varargin)
