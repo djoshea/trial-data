@@ -965,10 +965,6 @@ classdef TrialData
             p.parse(name, times, varargin{:});
             %cd = p.Results.channelDescriptor;
             
-            if td.hasChannel(name)
-                warning('Overwriting existing channel with name %s', name);
-                td = td.dropChannels(name);
-            end
             assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
             times = makecol(times);
                 
@@ -1428,15 +1424,15 @@ classdef TrialData
 
             alreadyHasChannel = td.hasChannel(cd.name);
             if alreadyHasChannel
-                warning('Overwriting existing channel with name %s', name);
+                warning('Overwriting existing channel with name %s', cd.name);
                 td = td.dropChannels(cd.name);
                 
 %                 % check that existing channel matches
 %                 assert(isequaln(cd, td.channelDescriptorsByName.(cd.name)), ...
 %                     'ChannelDescriptor for channel %s does not match existing channel', cd.name);
-            else
-                td.channelDescriptorsByName.(cd.name) = cd;
             end
+            
+            td.channelDescriptorsByName.(cd.name) = cd;
             
             % touch each of the value fields to make sure they exist
             for iF = 1:cd.nFields
