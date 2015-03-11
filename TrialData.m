@@ -1428,9 +1428,12 @@ classdef TrialData
 
             alreadyHasChannel = td.hasChannel(cd.name);
             if alreadyHasChannel
-                % check that existing channel matches
-                assert(isequaln(cd, td.channelDescriptorsByName.(cd.name)), ...
-                    'ChannelDescriptor for channel %s does not match existing channel', cd.name);
+                warning('Overwriting existing channel with name %s', name);
+                td = td.dropChannels(cd.name);
+                
+%                 % check that existing channel matches
+%                 assert(isequaln(cd, td.channelDescriptorsByName.(cd.name)), ...
+%                     'ChannelDescriptor for channel %s does not match existing channel', cd.name);
             else
                 td.channelDescriptorsByName.(cd.name) = cd;
             end
