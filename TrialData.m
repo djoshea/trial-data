@@ -965,7 +965,10 @@ classdef TrialData
             p.parse(name, times, varargin{:});
             %cd = p.Results.channelDescriptor;
             
-            assert(~td.hasChannel(name), 'TrialData already has channel with name %s', name);
+            if td.hasChannel(name)
+                warning('Overwriting existing channel with name %s', name);
+                td = td.dropChannels(name);
+            end
             assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
             times = makecol(times);
                 
@@ -974,7 +977,7 @@ classdef TrialData
                 cd = EventChannelDescriptor.buildMultipleEvent(name, td.timeUnitName);
                 
                 % check contents
-                assert(all(cellfun(@(x) isvector(x) && isnumeric(x), times)), ...
+                assert(all(cellfun(@(x) isempty(x) || (isvector(x) && isnumeric(x)), times)), ...
                     'Cell elements must be numeric vector of event occurrence times');
             elseif isnumeric(times)
                 % single occurrence event
