@@ -1977,7 +1977,7 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
-            p.addParameter('removeZeroSpikeTrials', true, @islogical);
+            p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.parse(varargin{:});
             
             if isempty(p.Results.minTrials)
@@ -2237,7 +2237,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
-            p.addParameter('removeZeroSpikeTrials', true, @islogical);
+            p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});

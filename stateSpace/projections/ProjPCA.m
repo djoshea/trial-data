@@ -11,26 +11,28 @@ classdef ProjPCA < StateSpaceProjection
         end
         
         function pset = preparePsetForInference(proj, pset) 
-            pset = pset.meanSubtractBases('conditionIdx', proj.buildFromConditionIdx);
+            pset = pset.meanSubtractBases();
         end
     end
 
     methods
-        
-        function coeff = computeProjectionCoefficients(proj, pset, varargin)
+        function [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(proj, pset, varargin)
             % run pca on valid bases
-            CTAbyNvalid = pset.buildCTAbyN('conditionIdx', proj.buildFromConditionIdx, ...
-                'validBasesOnly', true);
+            CTAbyNvalid = pset.buildCTAbyN('validBasesOnly', true);
             
             idx = find(all(isnan(CTAbyNvalid), 1));
             if ~isempty(idx)
                 error('No valid trial average timepoints found for %d bases', numel(idx));
             end
             
+            ctaKeep = ~any(isnan(CTAbyNvalid), 2);
+            CTAbyNvalid = CTAbyNvalid(ctaKeep, :);
+            CTAbyNvalid = bsxfun(@minus, CTAbyNvalid, mean(CTAbyNvalid, 1));
+            
             if exist('pca', 'file') == 2
-                coeffValid = pca(CTAbyNvalid, 'Rows', 'complete');
+                [coeffValid] = pca(CTAbyNvalid, 'Rows', 'complete');
             else
-                coeffValid = princomp(CTAbyNvalid);
+                [coeffValid] = princomp(CTAbyNvalid);
             end
             
             % filter down to K output bases
@@ -44,6 +46,11 @@ classdef ProjPCA < StateSpaceProjection
             % multiplying or you'll get a NaN result
             coeff = zeros(pset.nBases, size(coeffValid, 2));
             coeff(pset.basisValid, :) = coeffValid;
+            
+            % now coeff is N by K, to make the decoderKbyN, we take the transpose
+            % the encoder is simply the transpose of the decoder for PCA
+            decoderKbyN = coeff';
+            encoderNbyK = coeff;
         end
 
         function names = getBasisNames(proj, pset) %#ok<INUSD>

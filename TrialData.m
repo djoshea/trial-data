@@ -339,7 +339,7 @@ classdef TrialData
             p = inputParser();
             p.addParameter('figh', [], @(x) isempty(x) || ishandle(x));
             p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
-            p.KeepUnmatched = false;
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
 
             if ~isempty(p.Results.axh)

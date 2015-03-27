@@ -28,6 +28,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         dataSem
         dataValid
         dataNTrials
+        trialLists
         tMinForDataMean
         tMaxForDataMean
         
@@ -38,18 +39,16 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
 
     methods
         function flush(odc)
+            odc.flushBasisInfo();
+            odc.flushDataByTrial();
+            odc.flushTrialAveragedData();
+            odc.flushAlignSummaryData();
+        end
+        
+        function flushBasisInfo(odc)
             odc.basisNames = {};
             odc.basisUnits = {};
             odc.basisValid = [];
-           
-            odc.dataByTrial = {};
-            odc.tMinForDataByTrial = {};
-            odc.tMaxForDataByTrial = {};
-            odc.tMinByTrial = {};
-            odc.tMaxByTrial = {};
-            odc.alignValidByTrial = {};
-            odc.flushTrialAveragedData();
-            odc.flushAlignSummaryData();
         end
         
         function flushValid(odc)
@@ -57,11 +56,21 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.basisInvalidCause = {};
         end
         
+        function flushDataByTrial(odc)
+            odc.dataByTrial = {};
+            odc.tMinForDataByTrial = {};
+            odc.tMaxForDataByTrial = {};
+            odc.tMinByTrial = {};
+            odc.tMaxByTrial = {};
+            odc.alignValidByTrial = {};
+        end
+        
         function flushTrialAveragedData(odc)
             odc.dataMean = {};
             odc.dataSem = {};
             odc.dataValid = {};
             odc.dataNTrials = {};
+            odc.trialLists = {};
             odc.tMinForDataMean = [];
             odc.tMaxForDataMean = [];
             odc.tMinValidByAlignBasisCondition = [];

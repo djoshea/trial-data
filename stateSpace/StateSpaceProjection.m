@@ -4,19 +4,22 @@ classdef StateSpaceProjection
 % fromPopulationTrajectorySet to compute the coefficients, in a manner determined
 % by subclasses
 
-    % settings which control how the StateSpaceProjection behaves
-    % These must be set before building from PopulationTrajectorySet
-    properties
-        axisCombinations % see TrialDataUtilities.DPCA.dpca for dimListsToCombineList argument
-    end
-
     properties(SetAccess=protected)
-        buildFromConditionIdx % if non-empty, build from selected conditions only
         initialized = false;
         translationNormalization % stored translation / normalization stored when building and used when projecting
-        coeff % N x K matrix of component weights; coeff(i,j) is weight for component j from input basis i 
         
-        basisValid % N x 1 logical vector indicating which bases were considered valid in the projection
+        % given an N x T matrix of data in the original basis, we project
+        % into the new basis using decoderKbyN * neural_NbyT which yields
+        % decoded_KbyT. We can then reconstruct the data in the original
+        % basis using reconstruction_NbyT = encoderNbyK * decodedKbyT, or
+        % reconstruction_NbyT = encoderNbyK * decoderKbyN * neural_NbyT 
+        decoderKbyN
+        encoderNbyK 
+        
+        buildStats % StateSpaceProjectionStatistics instance from build
+        
+        basisValid % N x 1 logical vector indicating which bases were considered valid in the projection (typically copied from the pset from which I am built)
+        basisInvalidCause % N x 1 cell str (typically copied from the pset from which I am built)
     end
 
     properties(Dependent)
@@ -27,33 +30,19 @@ classdef StateSpaceProjection
     % Simple dependent property getters
     methods
         function n = get.nBasesSource(proj)
-            if isempty(proj.coeff)
+            if isempty(proj.decoderKbyN)
                 n = NaN;
             else
-                n = size(proj.coeff, 1);
+                n = size(proj.decoderKbyN, 2);
             end
         end
 
         function n = get.nBasesProj(proj)
-            if isempty(proj.coeff)
+            if isempty(proj.decoderKbyN)
                 n = NaN;
             else
-                n = size(proj.coeff, 2);
+                n = size(proj.decoderKbyN, 1);
             end
-        end
-        
-        % we implement this as a method so that subclasses can disable this
-        % functionality if they don't support it
-        function proj = setBuildFromConditionIdx(proj, idx)
-            proj.warnIfNoArgOut(nargout);
-            proj.buildFromConditionIdx = idx;
-        end   
-    end
-    
-    methods
-        function proj = set.axisCombinations(proj, v)
-            assert(iscell(v), 'Axis Combinations must be a cell of vectors');
-            proj.axisCombinations = v;
         end
     end
     
@@ -62,7 +51,12 @@ classdef StateSpaceProjection
         names = getBasisNames(proj, pset, data)
 
         % compute the N * K matrix of basis coefficients for the projection
-        coeff = computeProjectionCoefficients(pset)
+        % given an N x T matrix of data in the original basis, we project
+        % into the new basis using decoderKbyN * neural_NbyT which yields
+        % decoded_KbyT. We can then reconstruct the data in the original
+        % basis using reconstruction_NbyT = encoderNbyK * decodedKbyT, or
+        % reconstruction_NbyT = encoderNbyK * decoderKbyN * neural_NbyT 
+        [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(pset)
     end
 
     methods
@@ -74,11 +68,9 @@ classdef StateSpaceProjection
 
             p = inputParser;
             p.addRequired('pset', @(x) isa(x, 'PopulationTrajectorySet'));
+            p.addParameter('axisCombinations', {}, @iscell);
+            p.addParameter('combineCovariatesWithTime',  true, @islogical);
             p.parse(pset, varargin{:});
-
-            if isempty(proj.buildFromConditionIdx)
-                proj.buildFromConditionIdx = truevec(pset.nConditions);
-            end
             
             % make any necessary transformations, particularly translation / normalization
             pset = proj.preparePsetForInference(pset);
@@ -87,31 +79,51 @@ classdef StateSpaceProjection
             proj.translationNormalization = pset.translationNormalization;
 
             % compute the coefficients for the projection
-            proj.coeff = proj.computeProjectionCoefficients(pset);
+            debug('Computing projection encoder and decoder coefficients\n');
+            [proj.decoderKbyN, proj.encoderNbyK] = proj.computeProjectionCoefficients(pset);
             
-            assert(size(proj.coeff, 1) == pset.nBases, 'Coefficient matrix returned by computeProjectionCoefficients must match pset.nBases along dim 1');
+            assert(size(proj.decoderKbyN, 2) == pset.nBases, 'Decoder matrix returned by computeProjectionCoefficients must match pset.nBases along dim 2');
+            assert(size(proj.encoderNbyK, 1) == pset.nBases, 'Encoder matrix returned by computeProjectionCoefficients must match pset.nBases along dim 1');
             
             % copy the basis valid mask
             proj.basisValid = pset.basisValid;
+            proj.basisInvalidCause = pset.basisInvalidCause;
+            
+            % set coeff to zero on invalid bases
+            proj.decoderKbyN(:, ~proj.basisValid) = 0;
+            proj.encoderNbyK(~proj.basisValid, :) = 0;
             
             % results will store statistics and useful quantities related to the
             % projection
-            stats = proj.computeProjectionStatistics(pset, true);
+            stats = StateSpaceProjectionStatistics.build(proj, pset, ...
+                'combineCovariatesWithTime', p.Results.combineCovariatesWithTime, ...
+                'axisCombinations', p.Results.axisCombinations);
+            proj.buildStats = stats;
 
             proj.initialized = true;
         end
 
-        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, applyTranslationNormalization)
-            if nargin < 3
-                applyTranslationNormalization = true;
-            end
+        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, varargin)
+            p = inputParser();
+            p.addParameter('applyTranslationNormalization', true, @islogical);
+            p.addParameter('combineCovariatesWithTime',  true, @islogical);
+            p.addParameter('axisCombinations', {}, @iscell);
+            p.parse(varargin{:});
             
             assert(pset.nBases == proj.nBasesSource, ...
                 'Number of bases must match in order to project');
 
+            % ensure proj-invalid bases are marked invalid
+            % this isn't strictly necessary but just in case
+            pset = pset.setBasesInvalid(~proj.basisValid, 'invalidated before state space projection');
+            
+            if any(proj.basisValid & ~pset.basisValid)
+                error('PopulationTrajectorySet has invalid bases not marked invalid in StateSpaceProjection. You should equalize the bases invalid to get consistent results');
+            end
+            
             % replace translation normalization
-            if applyTranslationNormalization
-                debug('Applying Translation/Normalization to data\n');
+            if p.Results.applyTranslationNormalization
+                debug('Applying translation/normalization associated with projection to data\n');
                 pset = pset.clearTranslationNormalization().applyTranslationNormalization(proj.translationNormalization);
             end
             
@@ -122,7 +134,6 @@ classdef StateSpaceProjection
             b.basisUnits = proj.getBasisUnits(pset); 
             
             % copy/compute trial averaged data 
-            
             b.tMinForDataMean = pset.tMinForDataMean;
             b.tMaxForDataMean = pset.tMaxForDataMean;
 
@@ -144,7 +155,7 @@ classdef StateSpaceProjection
                 % up the matrix multiply
                 mat(~proj.basisValid, :) = 0;
 
-                projMat = proj.coeff' * mat;
+                projMat = proj.decoderKbyN * mat;
                 b.dataMean{iAlign} = reshape(projMat, proj.nBasesProj, ...
                     pset.nConditions, pset.nTimeDataMean(iAlign));
 
@@ -153,7 +164,7 @@ classdef StateSpaceProjection
                 mat = reshape(pset.dataSem{iAlign}, pset.nBases, ...
                     pset.nConditions * pset.nTimeDataMean(iAlign));
                 mat(~proj.basisValid, :) = 0;
-                projMat = sqrt(abs(proj.coeff)' * (mat.^2));
+                projMat = sqrt(abs(proj.decoderKbyN) * (mat.^2));
                 b.dataSem{iAlign} = reshape(projMat, proj.nBasesProj, ...
                     pset.nConditions, pset.nTimeDataMean(iAlign));
             end
@@ -166,7 +177,7 @@ classdef StateSpaceProjection
                     mat = reshape(pset.dataMeanRandomized{iAlign}, pset.nBases, ...
                         pset.nConditions*pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
                     mat(~proj.basisValid, :) = 0;
-                    projMat = proj.coeff' * mat;
+                    projMat = proj.decoderKbyN * mat;
                     b.dataMeanRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
                         pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
 
@@ -183,12 +194,21 @@ classdef StateSpaceProjection
             b.basisAlignSummaryLookup = ones(pset.nBases, 1);
             
             psetProjected = b.buildManualWithTrialAveragedData();
-            stats = proj.computeProjectionStatistics(pset, false);
+            if nargout > 1
+                stats = StateSpaceProjectionStatistics.build(proj, pset, ...
+                    'combineCovariatesWithTime', p.Results.combineCovariatesWithTime, ...
+                    'axisCombinations', p.Results.axisCombinations);
+            end
         end
         
-        function [proj, psetProjected, statsBuild, statsProject] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
-            [proj, statsBuild] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
-            [psetProjected, statsProject] = proj.projectPopulationTrajectorySet(pset, false); % false --> don't apply translation normalization since we'll pull that from this pset to begin with
+        function [proj, psetProjected, stats] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
+            p = inputParser;
+            p.addParameter('axisCombinations', {}, @iscell);
+            p.addParameter('combineCovariatesWithTime',  true, @islogical);
+            p.parse(varargin{:});
+
+            [proj, stats] = proj.buildFromPopulationTrajectorySet(pset, p.Results);
+            psetProjected = proj.projectPopulationTrajectorySet(pset, 'applyTranslationNormalization', false, p.Results); % false --> don't apply translation normalization since we'll pull that from this pset to begin with
         end
     end
 
@@ -202,11 +222,12 @@ classdef StateSpaceProjection
     end
 
     methods
-        function proj = filterBases(proj, idx)
+        function proj = filterOutputBases(proj, idx)
             % select on output bases
             proj.warnIfNoArgOut(nargout);
             assert(proj.initialized, 'Call filterBases after building / initializing');
-            proj.coeff = proj.coeff(:, idx); % select on output bases
+            proj.decoderKbyN = proj.decoderKbyN(idx, :); % select on output bases
+            proj.encoderNbyK = proj.encoderNbyK(:, idx); % select on output bases
         end
         
         function names = getBasisUnits(proj, pset)  %#ok<INUSL>
@@ -224,86 +245,16 @@ classdef StateSpaceProjection
             % building the StateSpaceProjection. Subclasses may wish to override this method
             % to do mean-subtraction or add basis normalization, if necessary
 
-           % pset = pset.meanSubtractBases('conditionIdx', proj.buildFromConditionIdx);
-        end
-        
-        function s = computeProjectionStatistics(proj, pset, forBuild)
-            % for buildIndicates if we are computing statistics at the time
-            % of projection building, false indicates we are simply
-            % projecting a pset with already computed coefficients.
-            %
-            % we'll work with valid bases only and then inflate the results
-            % to the full size
-            
-            import TrialDataUtilities.DPCA.*;
-            
-            s = StateSpaceProjectionStatistics();
-            
-            % get the names and counts of source -> proj bases
-            s.basisNamesSource = pset.basisNames;
-            s.basisNamesProj = proj.getBasisNames(pset);
-            s.nBasesSource = proj.nBasesSource;
-            s.nBasesProj = proj.nBasesProj;
-
-            if forBuild
-                CTAbyNv = pset.buildCTAbyN('validBasesOnly', true, 'conditionIdx', proj.buildFromConditionIdx);
-            else
-                CTAbyNv = pset.buildCTAbyN('validBasesOnly', true);
-            end
-
-            s.covSource = TensorUtils.inflateMaskedTensor(nancov(CTAbyNv, 1), [1 2], proj.basisValid); 
-            s.corrSource = TensorUtils.inflateMaskedTensor(corrcoef(CTAbyNv, 'rows', 'complete'), [1 2], proj.basisValid);
-
-            % covSource is N*N, coeff is N*K, latent is K*1
-            s.latent = diag(proj.coeff(proj.basisValid, :)' * s.covSource(proj.basisValid, proj.basisValid) * proj.coeff(proj.basisValid, :));
-            s.explained = s.latent / trace(s.covSource(proj.basisValid, proj.basisValid));
-            
-            % Use dpca_covs_nanSafe to compute each covariance matrix for us
-            NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true);
-            
-            % filter for non-singular axes
-            nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
-            dimMask = nConditionsAlongAxis > 1;
-            dimIdx = find(dimMask);
-            
-            % merge each covariate with each covariate + time mixture
-            [combinedParams, s.covMarginalizedNames] = dpca_generateTimeCombinedParams(...
-                dimIdx, 'dimNames', pset.conditionDescriptor.axisNames(:), 'combineEachWithTime', true);
-            covMarginalizedValidCell = dpca_marginalizedCov(NvbyTAbyAttr, 'combinedParams', combinedParams);
-            s.covMarginalized = cellfun(@(x) TensorUtils.inflateMaskedTensor(x, [1 2], proj.basisValid), ...
-                covMarginalizedValidCell, 'UniformOutput', false);
-
-            % compute the marginalized variance explained, i.e. the amount
-            % of source variance marginalized according to dpca_cov, in each direction 
-            nCov = numel(s.covMarginalized);
-            s.latentMarginalized = nan(proj.nBasesProj, nCov);
-            for iCov = 1:nCov
-                s.latentMarginalized(:, iCov) = ...
-                    diag(proj.coeff(proj.basisValid, :)' * s.covMarginalized{iCov}(proj.basisValid, proj.basisValid) * proj.coeff(proj.basisValid, :));
-            end
-        end
-        
-        function proj = orthonormalize(proj)
-            proj.warnIfNoArgOut(nargout);
-            proj.coeff = orth(proj.coeff);
+           % pset = pset.meanSubtractBases();
         end
         
         function tf = testIsOrthogonal(proj)
             assert(proj.initialized, 'Call after building / initializing');
             
             thresh = 1e-10;
-            dp = proj.coeff' * proj.coeff;
+            dp = proj.decoderKbyN * proj.decoderKbyN';
             dp = abs(dp - diag(diag(dp)));
             tf = max(dp(:)) < thresh;
-        end
-    
-        function proj = set.coeff(proj, v)
-            %assert(isequal(size(proj.coeff), size(v)), 'Size of coeff must be [%d %d]', size(proj.coeff, 1), size(proj.coeff, 2));
-            proj.coeff = v;
-        end
-        
-        function proj = orthonormalizeOutputBases(proj, basisIdx)
-            proj.coeff(:, basisIdx) = orth(proj.coeff(:, basisIdx));
         end
     end
     

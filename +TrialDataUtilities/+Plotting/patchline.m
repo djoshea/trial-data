@@ -1,4 +1,4 @@
-function p = patchline(xs,ys,varargin)
+function hvec = patchline(xs,ys,varargin)
 % Plot lines as patches (efficiently)
 %
 % SYNTAX:

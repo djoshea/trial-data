@@ -1,21 +1,29 @@
 function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
-% builds combinedParams argument for dpca. dimListsToCombineList is a cell in
-% which each element contains a cell of vector indices. Each of these
-% elements indicates that each of the dims or dim combinations in the list
-% should be combined as a covariate by dpca. By default, time will be
-% automatically combined with each covariate, unless you specify parameter
-% 'combineEachWithTime', false, in which case you can use dim=0 to refer to time in the lists.
-% The input dimensions will be 1-indexed; DPCA expects time to be dim 1 and others to be later, 
-% this function will handle that offset for you. dimNames is optional, but
-% can generate names for each set of covariates provided to dpca, based on
-% the name of each dimension.
+% function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
+% builds combinedParams argument for dpca, which specifies the covariate and
+% covariate interactions to combine into f
+%
+% dims: 
+% 
+% 'combine': optional cell of cells, each element is a cell vector specifying
+%   the covariates or sets of interacting covariates to be defined. Each element of the
+%   inner cells is a covariate index. These indices should be 1-indexed, and 0 
+%   should be used to represent time
+%
+% 'combineEachWithTime': true (default) or false. If true, all
+%   covariates will be automatically combined with the time+covariate
+%   interaction. this is equivalent to adding to 'combine':
+%     { {1, {0 1}}, {2, {0 2}, ..., {nCov, {0 nCov} }
+%
+% 'covariateNames': nCov cellstr. optional, specifies the names for each
+%   covariate.
 
     import(getPackageImportString);
     
     p = inputParser();
     p.addParameter('combine', {}, @(x) isempty(x) || iscell(x));
     p.addParameter('combineEachWithTime', true, @islogical);
-    p.addParameter('dimNames', {}, @iscellstr);
+    p.addParameter('covariateNames', {}, @iscellstr);
     p.parse(varargin{:});
     
     dimListsToCombineList = p.Results.combine;
@@ -50,14 +58,14 @@ function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
     
     % generate names for each dim if not provided
     nDims = max(dims);
-    if isempty(p.Results.dimNames)
-        dimNames = arrayfun(@(i) sprintf('Axis %d', i), ...
+    if isempty(p.Results.covariateNames)
+        covariateNames = arrayfun(@(i) sprintf('Axis %d', i), ...
             1:nDims, 'UniformOutput', false);
     else
-        dimNames = p.Results.dimNames;
-        assert(numel(dimNames) >= nDims, 'Provided dimNames needs at least %d entries', nDims);
+        covariateNames = p.Results.covariateNames;
+        assert(numel(covariateNames) >= nDims, 'Provided covariateNames needs at least %d entries', nDims);
     end
-    dimNames = makecol(dimNames);
+    covariateNames = makecol(covariateNames);
     
     % add dim, time+dim combinations to the list 
     if p.Results.combineEachWithTime
@@ -94,7 +102,7 @@ function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
     end
     
     if nargout > 1
-        dimNames = [{'time'}; dimNames];
+        covariateNames = [{'time'}; covariateNames];
         names = cellvec(numel(fullList));
         for iF = 1:numel(fullList)
             pieceStr = cellvec(numel(fullList{iF}));
@@ -103,7 +111,7 @@ function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
                 if p.Results.combineEachWithTime && ~isequal(idx, 1) && ismember(1, idx)
                     pieceStr{iP} = '';
                 else
-                    pieceStr{iP} = strjoin(dimNames(idx), ' x ');
+                    pieceStr{iP} = strjoin(covariateNames(idx), ' x ');
                 end
             end
             pieceStr = pieceStr(~cellfun(@isempty, pieceStr));
