@@ -27,6 +27,7 @@ function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
     p.parse(varargin{:});
     
     dimListsToCombineList = p.Results.combine;
+    dims = makecol(dims);
     
     if isempty(dimListsToCombineList)
         dimListsToCombineList = {};
@@ -54,7 +55,7 @@ function [fullList, names] = dpca_generateTimeCombinedParams(dims, varargin)
     end
     uniqueDims = unique(cat(1, flattened{:}));
     
-    assert(all(ismember(uniqueDims, dims)), 'Some dims in lists not found in dims');
+    assert(all(ismember(uniqueDims, [0; dims])), 'Some dims in lists not found in dims');
     
     % generate names for each dim if not provided
     nDims = max(dims);

@@ -29,6 +29,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             nConditionsNew = b.conditionDescriptor.nConditions;
             
+            % adjust mean and sem to reflect difference between conditions
             [b.dataMean, b.dataSem] = cellvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
                 % N x TA x C1 x C2 x ...
@@ -47,18 +48,34 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 
                 dataSem = pset.buildNbyTAbyConditionAttributes('type', 'sem', 'alignIdx', iAlign);
                 
-                % use sqrt(sd1^2 / n1 + sd2^2 / n2) formula
-                % which equals sqrt(sem1^2 + sem2^2)
+                % use sd1+2 = sqrt(sd1^2 / n1 + sd2^2 / n2) formula
+                % which equals sem1+2 = sqrt(sem1^2 + sem2^2)
      
-                % add adjacent sem down the line
+                % add squares of sem down the line and take sqrt
                 mask1 = TensorUtils.maskByDimCellSelectAlongDimension(size(dataSem), aIdx+2, 1:(size(dataSem, aIdx+2)-1));
                 mask2 = TensorUtils.maskByDimCellSelectAlongDimension(size(dataSem), aIdx+2, 2:size(dataSem, aIdx+2));
                 
-                semTensor = dataSem(mask1{:}) + dataSem(mask2{:});
+                semTensor = sqrt(dataSem(mask1{:}).^2 + dataSem(mask2{:}).^2);
                 semReshape = reshape(semTensor, [pset.nBases, pset.nTimeDataMean(iAlign), nConditionsNew]);
                 
                 b.dataSem{iAlign} = permute(semReshape, [1 3 2]);
             end
+            
+            % update difference of trials scaled noise estimates so that we
+            % can compute noise variance floors when projecting. since the
+            % noise estimates are already scaled by 1/sqrt(2*nTrials), we
+            % simply add them together to get the new scaled estimate
+            scaledNoiseEstimate_NbyTAbyC = pset.dataDifferenceOfTrialsScaledNoiseEstimate;
+            scaledNoiseEstimate_NbyTAbyAttr = reshape(scaledNoiseEstimate_NbyTAbyC, [pset.nBases, sum(pset.nTimeDataMean), makerow(pset.conditionsSize)]);
+            
+            % subtract adjacent noiseEstimates down the line (adding would
+            % also be okay
+            mask1 = TensorUtils.maskByDimCellSelectAlongDimension(size(scaledNoiseEstimate_NbyTAbyAttr), aIdx+2, 1:(size(scaledNoiseEstimate_NbyTAbyAttr, aIdx+2)-1));
+            mask2 = TensorUtils.maskByDimCellSelectAlongDimension(size(scaledNoiseEstimate_NbyTAbyAttr), aIdx+2, 2:size(scaledNoiseEstimate_NbyTAbyAttr, aIdx+2));
+           
+            newScaledNoiseEstimate_NbyTAbyAttr = scaledNoiseEstimate_NbyTAbyAttr(mask1{:}) - scaledNoiseEstimate_NbyTAbyAttr(mask2{:});
+            b.dataDifferenceOfTrialsScaledNoiseEstimate = reshape(newScaledNoiseEstimate_NbyTAbyAttr, ...
+                [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew]);
             
             % diff randomized data if present, recompute intervals
             if ~isempty(pset.dataMeanRandomized)

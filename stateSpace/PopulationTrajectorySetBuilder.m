@@ -44,6 +44,7 @@ classdef PopulationTrajectorySetBuilder
         tMinByTrial
         tMaxByTrial
         
+        
         %% fTrialAvg
         tMinValidByAlignBasisCondition
         tMaxValidByAlignBasisCondition
@@ -56,6 +57,7 @@ classdef PopulationTrajectorySetBuilder
         dataValid
         alignSummaryData
         basisAlignSummaryLookup
+        dataDifferenceOfTrialsScaledNoiseEstimate
         
         %% fTrialAvgRandomized
         dataMeanRandomized
@@ -82,7 +84,8 @@ classdef PopulationTrajectorySetBuilder
         fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
                 'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
                 'dataNTrials', 'dataValid', ...
-                'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists'}
+                'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists', ...
+                'dataDifferenceOfTrialsScaledNoiseEstimate'}
         
         fTrialAvgRandomized = {'dataIntervalHigh', 'dataIntervalLow', 'dataMeanRandomized'};
     end

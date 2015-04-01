@@ -261,6 +261,14 @@ classdef PopulationTrajectorySet
         % numeric array containing the upper confidence interval value for
         % dataMean
         dataIntervalHigh
+        
+        % nBases x sum(nTimeDataMean) (aka TA) x nConditions numeric array
+        % containing randomized samples of differences of pairs of trials,
+        % scaled by 1/sqrt(2*nTrials). These serve as a sample from the
+        % centered distribution of the estimation noise on the dataMean
+        % traces. These are used by StateSpaceProjectionStatistics in
+        % estimating a noise floor
+        dataDifferenceOfTrialsScaledNoiseEstimate % built by buildDifferenceOfTrials
     end
     
     % generated on the fly on get.property. Best to retrieve this value
@@ -311,6 +319,7 @@ classdef PopulationTrajectorySet
         trialListsManual
         dataValidManual
         dataMeanRandomizedManual
+        dataDifferenceOfTrialsScaledNoiseEstimateManual
     end
     
     % Dependent properties which we compute on the fly rather than cache
@@ -1140,6 +1149,29 @@ classdef PopulationTrajectorySet
                 pset.odc.dataIntervalHigh = v;
             else
                 pset.dataIntervalHighManual = v;
+            end
+        end
+        
+        
+        
+        function v = get.dataDifferenceOfTrialsScaledNoiseEstimate(pset)
+            if ~pset.dataSourceManual
+                v = pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate;
+                if isempty(v)
+                    pset.buildDataNoiseEstimate();
+                    v = pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate;
+                end
+            else
+                v = pset.dataDifferenceOfTrialsScaledNoiseEstimateManual;
+            end
+        end
+        
+        function pset = set.dataDifferenceOfTrialsScaledNoiseEstimate(pset, v)
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate = v;
+            else
+                pset.dataDifferenceOfTrialsScaledNoiseEstimateManual = v;
             end
         end
         
@@ -2244,6 +2276,33 @@ classdef PopulationTrajectorySet
             c = pset.odc;
             c.alignSummaryAggregated = alignSummaryAggregated;
         end
+        
+        function buildDataNoiseEstimate(pset)
+            % builds .dataDifferenceOfTrialsScaledNoiseEstimate
+            
+            if ~pset.hasDataByTrial
+                return;
+            end
+            
+            % grab random pair of trials for each basis, each condition,
+            % concatenate aligns in time
+            NbyTAbyCby2 = pset.buildNbyTAbyCbyTrials('maxTrials', 2, 'chooseRandom', true);
+                
+            % grab trial counts
+            nTrials_NbyC = pset.buildTrialCountsNbyC();
+            
+            % diff be N x TA x C
+            dif_NbyTAbyC = diff(NbyTAbyCby2, 1, 4);
+
+            % scale appropriately each timeseries (running along dim 2) taking into account trial counts
+            nTrials_Nby1byC = permute(nTrials_NbyC, [1 3 2]);
+            
+            % N x TA x C
+            dif_NbyTAbyC = bsxfun(@rdivide, dif_NbyTAbyC, sqrt(2*nTrials_Nby1byC));
+
+            c = pset.odc;
+            c.dataDifferenceOfTrialsScaledNoiseEstimate = dif_NbyTAbyC;
+        end
     end
     
     methods % Filtering bases
@@ -2460,7 +2519,7 @@ classdef PopulationTrajectorySet
         end
     end
     
-    methods(Static)
+    methods(Static) % Static methods which take multiple psets as args 
         function [varargout] = equalizeBasesInvalid(varargin)
             assert(nargin > 1);
             assert(nargin == nargout, 'Number of input and output arguments must match');
@@ -3439,6 +3498,10 @@ classdef PopulationTrajectorySet
                 prog.update(iBasisIdx);
                 iBasis = basisIdx(iBasisIdx);
                 
+                if ~pset.basisValid(iBasis)
+                    continue;
+                end
+                
                 for iAlignIdx = 1:nAlign
                     iAlign = alignIdx(iAlignIdx);
                     
@@ -3507,8 +3570,12 @@ classdef PopulationTrajectorySet
              whichTrials_NbyAttr = reshape(whichTrials, [N makerow(condSize)]);
          end
 
-         function nTrials_NbyAttr = buildTrialCountsNbyConditionAttr(pset, varargin)
+         function nTrials_NbyC = buildTrialCountsNbyC(pset)
              nTrials_NbyC = permute(min(pset.dataNTrials, [], 1), [2 3 1]);
+         end
+         
+         function nTrials_NbyAttr = buildTrialCountsNbyConditionAttr(pset)
+             nTrials_NbyC = pset.buildTrialCountsNbyC();
              condSize = pset.conditionDescriptor.conditionsSize;
              nTrials_NbyAttr = reshape(nTrials_NbyC, [size(nTrials_NbyC, 1) makerow(condSize)]);
          end

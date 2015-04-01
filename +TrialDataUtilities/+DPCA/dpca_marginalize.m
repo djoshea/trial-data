@@ -60,7 +60,8 @@ options = struct('combinedParams', [],      ...
                  'ifFlat',         'no',    ...
                  'timeSplits',     [],      ...
                  'timeParameter',  [],      ...
-                 'notToSplit',     []);
+                 'notToSplit',     [],      ...
+                 'meanSubtract',   true);
 
 % read input parameters
 optionNames = fieldnames(options);
@@ -76,7 +77,9 @@ for pair = reshape(varargin,2,[])    % pair is {propName; propValue}
 end
 
 % mean zero
-X = bsxfun(@minus, X, nanmean(X(:,:),2));
+if options.meanSubtract % @djoshea making this optional
+    X = bsxfun(@minus, X, nanmean(X(:,:),2));
+end
 
 % all parameter combinations
 params = 2:length(size(X));
