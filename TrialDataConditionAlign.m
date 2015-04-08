@@ -583,6 +583,13 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
+        function td = removeAxis(td, attrList, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            td.conditionInfo = td.conditionInfo.removeAxis(attrList, varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
         function td = ungroup(td) 
             % this only undoes the grouping axes, NOT the value list
             % filtering. use reset condition info for that

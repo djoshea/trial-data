@@ -8,6 +8,7 @@ classdef PopulationTrajectorySetBuilder
     % when building 
     properties
         %% fSettings
+        dataUnits
         timeUnitName
         timeUnitsPerSecond
         timeDelta 
@@ -15,8 +16,6 @@ classdef PopulationTrajectorySetBuilder
         minTrialsForTrialAveraging
         minFractionTrialsForTrialAveraging
         includeOnlyTrialsValidAllAlignments
-        nRandomSamples
-        randomSeed
         dataIntervalQuantileHigh
         dataIntervalQuantileLow
 
@@ -24,6 +23,7 @@ classdef PopulationTrajectorySetBuilder
         alignDescriptorSet
         conditionDescriptor
         translationNormalization
+        conditionDescriptorRandomized
         
         %% fBasisInfo
         basisNames
@@ -44,7 +44,6 @@ classdef PopulationTrajectorySetBuilder
         tMinByTrial
         tMaxByTrial
         
-        
         %% fTrialAvg
         tMinValidByAlignBasisCondition
         tMaxValidByAlignBasisCondition
@@ -61,18 +60,19 @@ classdef PopulationTrajectorySetBuilder
         
         %% fTrialAvgRandomized
         dataMeanRandomized
-        dataIntervalHigh
-        dataIntervalLow
+        dataSemRandomized
+%         dataIntervalHigh
+%         dataIntervalLow
     end
     
     % Lists of fields within PopulationTrajectorySet to simplify the
     % copying and assert ~isempty checks below.
     properties(Constant)
-        fSettings = {'timeUnitName', 'timeUnitsPerSecond', 'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
+        fSettings = {'dataUnits', 'timeUnitName', 'timeUnitsPerSecond', 'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
             'minFractionTrialsForTrialAveraging', 'includeOnlyTrialsValidAllAlignments', ...
-            'nRandomSamples', 'randomSeed', 'dataIntervalQuantileLow', 'dataIntervalQuantileHigh'};
+            'dataIntervalQuantileLow', 'dataIntervalQuantileHigh'};
 
-        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
+        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization', 'conditionDescriptorRandomized'};
         
         fBasisInfo = {'basisNames', 'basisUnits', 'basisValid', 'basisInvalidCause'};
         
@@ -87,7 +87,7 @@ classdef PopulationTrajectorySetBuilder
                 'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists', ...
                 'dataDifferenceOfTrialsScaledNoiseEstimate'}
         
-        fTrialAvgRandomized = {'dataIntervalHigh', 'dataIntervalLow', 'dataMeanRandomized'};
+        fTrialAvgRandomized = {'dataMeanRandomized', 'dataSemRandomized'};
     end
         
     methods(Static)
@@ -103,6 +103,7 @@ classdef PopulationTrajectorySetBuilder
             pset.timeUnitName = tdca.timeUnitName;
             pset.timeUnitsPerSecond = tdca.timeUnitsPerSecond;
             pset.dataSources = {tdca};
+            pset.dataUnits = 'sp/s';
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
             
@@ -131,6 +132,7 @@ classdef PopulationTrajectorySetBuilder
             [keepUnits, keepSaveTags] = find(spikeCountBySaveTag > 0);
             
             pset = PopulationTrajectorySet();
+            pset.dataUnits = 'sp/s';
             pset.datasetName = td.datasetName;
             pset.timeUnitName = td.timeUnitName;
             pset.timeUnitsPerSecond = td.timeUnitsPerSecond;
@@ -168,7 +170,7 @@ classdef PopulationTrajectorySetBuilder
                     end
                 else
                     % use specified channel names
-                    basisDataSourceIdx(iBasis) = i; %#ok<AGROW,PROP>
+                    basisDataSourceIdx(iBasis) = i; %#ok<PROP>
                     basisDataSourceChannelNames{iBasis} = channelNames{i}; %#ok<PROP> 
                     iBasis = iBasis + 1;
                 end

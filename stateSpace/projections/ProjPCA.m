@@ -36,7 +36,7 @@ classdef ProjPCA < StateSpaceProjection
             end
             
             % filter down to K output bases
-            if ~isempty(proj.K)
+            if ~isempty(proj.K) && size(coeffValid, 2) > proj.K
                 coeffValid = coeffValid(:, 1:proj.K);
             end
             

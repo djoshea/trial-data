@@ -402,7 +402,7 @@ classdef ConditionDescriptor
                     randStr = [' ' randStr]; %#ok<AGROW>
                 end
                 if useColor
-                    desc{iX} = sprintf('{purple}%s {darkGray}(%d%s%s)', ...
+                    desc{iX} = sprintf('{purple}%s {darkGray}(%d%s{bright red}%s{darkGray})', ...
                         strjoin(attr, ' x '), nv, vlStr, randStr);
                 else
                     desc{iX} = sprintf('%s (%d%s%s)', ...
@@ -467,12 +467,26 @@ classdef ConditionDescriptor
             ci.assertHasAttribute(attr);
             
             ci = ci.removeAttributesFromAxes(attr);
+            
+            valueList = p.Results.valueList;
+            if ~isempty(valueList) && ~isstruct(valueList)
+                assert(numel(attr) == 1, 'Must specify valueList as struct for multi-attribute axes');
+                for iV = 1:numel(valueList)
+                    if iscell(valueList)
+                        val = valueList{iV};
+                    else
+                        val = valueList(iV);
+                    end
+                    valueStruct(iV).(attr{1}) = val; %#ok<AGROW>
+                end
+                valueList = valueStruct;
+            end
 
             % create a grouping axis
             idx = ci.nAxes + 1; 
             ci.axisAttributes{idx} = makecol(attr);
             ci.axisAttributes = makecol(ci.axisAttributes);
-            ci.axisValueListsManual{idx} = p.Results.valueList;
+            ci.axisValueListsManual{idx} = valueList;
             ci.axisRandomizeModes(idx) = ci.AxisOriginal;
             ci.axisRandomizeWithReplacement(idx) = false;
             ci.axisRandomizeResampleFromList{idx} = [];
@@ -493,6 +507,12 @@ classdef ConditionDescriptor
             ci.axisValueListsOccupiedOnly = ci.axisValueListsOccupiedOnly(mask);
             
             ci = ci.invalidateCache();
+        end
+        
+        function ci = removeAxis(ci, axisSpec)
+            aIdx = ci.axisLookupByAttributes(axisSpec);
+            mask = ~TensorUtils.vectorIndicesToMask(aIdx, ci.nAxes);
+            ci = ci.maskAxes(mask);
         end
 
         % wipe out existing axes and creates simple auto axes along each 
@@ -1084,7 +1104,7 @@ classdef ConditionDescriptor
             p.parse(varargin{:});
             
             ci.warnIfNoArgOut(nargout);
-            idx = ci.axisLookupByAttributes(axesSpec);
+            ci.axisLookupByAttributes(axesSpec);
             
             ci = ci.clearAppearanceModifications();
             % want list to be cell of cellstr

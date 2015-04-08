@@ -68,8 +68,7 @@ classdef StateSpaceProjection
 
             p = inputParser;
             p.addRequired('pset', @(x) isa(x, 'PopulationTrajectorySet'));
-            p.addParameter('axisCombinations', {}, @iscell);
-            p.addParameter('combineCovariatesWithTime',  true, @islogical);
+            p.KeepUnmatched = true;
             p.parse(pset, varargin{:});
             
             % make any necessary transformations, particularly translation / normalization
@@ -95,9 +94,7 @@ classdef StateSpaceProjection
             
             % results will store statistics and useful quantities related to the
             % projection
-            stats = StateSpaceProjectionStatistics.build(proj, pset, ...
-                'combineCovariatesWithTime', p.Results.combineCovariatesWithTime, ...
-                'axisCombinations', p.Results.axisCombinations);
+            stats = StateSpaceProjectionStatistics.build(proj, pset, p.Unmatched);
             proj.buildStats = stats;
 
             proj.initialized = true;
@@ -105,9 +102,9 @@ classdef StateSpaceProjection
 
         function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, varargin)
             p = inputParser();
+            p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical);
             p.addParameter('applyTranslationNormalization', true, @islogical);
-            p.addParameter('combineCovariatesWithTime',  true, @islogical);
-            p.addParameter('axisCombinations', {}, @iscell);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             assert(pset.nBases == proj.nBasesSource, ...
@@ -124,11 +121,15 @@ classdef StateSpaceProjection
             % replace translation normalization
             if p.Results.applyTranslationNormalization
                 debug('Applying translation/normalization associated with projection to data\n');
-                pset = pset.clearTranslationNormalization().applyTranslationNormalization(proj.translationNormalization);
+                if p.Results.clearBeforeApplyingTranslationNormalization
+                    pset = pset.clearTranslationNormalization();
+                end
+                pset = pset.applyTranslationNormalization(proj.translationNormalization);
             end
             
             % copy basic settings from pset 
             b = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(pset);
+            b.dataUnits = ''; % clear by default, since we're not necessarily willing to call them the same units anymore
 
             b.basisNames = proj.getBasisNames(pset);
             b.basisUnits = proj.getBasisUnits(pset); 
@@ -160,7 +161,7 @@ classdef StateSpaceProjection
                     pset.nConditions, pset.nTimeDataMean(iAlign));
 
                 % use sqrt(sd1^2 / n1 + sd2^2 / n2 + ...) formula
-                % which equals sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
+                % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
                 mat = reshape(pset.dataSem{iAlign}, pset.nBases, ...
                     pset.nConditions * pset.nTimeDataMean(iAlign));
                 mat(~proj.basisValid, :) = 0;
@@ -180,11 +181,20 @@ classdef StateSpaceProjection
                     projMat = proj.decoderKbyN * mat;
                     b.dataMeanRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
                         pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
+                    
+                    % use sqrt(sd1^2 / n1 + sd2^2 / n2 + ...) formula
+                    % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
+                    mat = reshape(pset.dataSemRandomized{iAlign}, pset.nBases, ...
+                        pset.nConditions * pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
+                    mat(~proj.basisValid, :) = 0;
+                    projMat = sqrt(abs(proj.decoderKbyN) * (mat.^2));
+                    b.dataSemRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
+                        pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
 
                     quantiles = quantile(b.dataMeanRandomized{iAlign}, ...
                         [pset.dataIntervalQuantileLow, pset.dataIntervalQuantileHigh], 4);
-                    b.dataIntervalQuantileLow{iAlign} = quantiles(:, :, :, 1);
-                    b.dataIntervalQuantileHigh{iAlign} = quantiles(:, :, :, 2);
+                    b.dataIntervalLow{iAlign} = quantiles(:, :, :, 1);
+                    b.dataIntervalHigh{iAlign} = quantiles(:, :, :, 2);
                 end
             end
 
@@ -195,20 +205,17 @@ classdef StateSpaceProjection
             
             psetProjected = b.buildManualWithTrialAveragedData();
             if nargout > 1
-                stats = StateSpaceProjectionStatistics.build(proj, pset, ...
-                    'combineCovariatesWithTime', p.Results.combineCovariatesWithTime, ...
-                    'axisCombinations', p.Results.axisCombinations);
+                stats = StateSpaceProjectionStatistics.build(proj, pset, p.Unmatched);
             end
         end
         
         function [proj, psetProjected, stats] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
             p = inputParser;
-            p.addParameter('axisCombinations', {}, @iscell);
-            p.addParameter('combineCovariatesWithTime',  true, @islogical);
+            p.KeepUnmatched = true; 
             p.parse(varargin{:});
 
-            [proj, stats] = proj.buildFromPopulationTrajectorySet(pset, p.Results);
-            psetProjected = proj.projectPopulationTrajectorySet(pset, 'applyTranslationNormalization', false, p.Results); % false --> don't apply translation normalization since we'll pull that from this pset to begin with
+            [proj, stats] = proj.buildFromPopulationTrajectorySet(pset, p.Unmatched);
+            psetProjected = proj.projectPopulationTrajectorySet(pset, 'applyTranslationNormalization', false, p.Unmatched); % false --> don't apply translation normalization since we'll pull that from this pset to begin with
         end
     end
 

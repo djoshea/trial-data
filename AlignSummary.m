@@ -440,6 +440,44 @@ classdef AlignSummary
            
         end
         
+        function as = aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, newConditionDescriptor)
+            % let aggregation handle the non-condition specific values
+            as = AlignSummary.buildByAggregation(alignSummarySet);
+            % update the condtion descriptor with the new version
+            as.conditionDescriptor = newConditionDescriptor;
+
+            as.nTrialsByCondition = cat(1, alignSummarySet.nTrialsByCondition);
+            as.startMinByCondition = cat(1, alignSummarySet.startMinByCondition);
+            as.startMaxByCondition = cat(1, alignSummarySet.startMaxByCondition);
+            as.startMeanByCondition = cat(1, alignSummarySet.startMeanByCondition);
+            
+            as.stopMinByCondition = cat(1, alignSummarySet.stopMinByCondition);
+            as.stopMaxByCondition = cat(1, alignSummarySet.stopMaxByCondition);
+            as.stopMeanByCondition = cat(1, alignSummarySet.stopMeanByCondition);
+            
+            for iMark = 1:as.alignDescriptor.nMarks
+                as.markMinByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMinByCondition{iMark});
+                as.markMaxByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMaxByCondition{iMark});
+                as.markMeanByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMeanByCondition{iMark});
+            end
+            
+            for iInterval = 1:as.alignDescriptor.nIntervals
+                as.intervalStartMinByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMinByCondition{iInterval});
+                as.intervalStartMaxByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMaxByCondition{iInterval});
+                as.intervalStartMeanByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMeanByCondition{iInterval});
+                
+                as.intervalStopMinByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMinByCondition{iInterval});
+                as.intervalStopMaxByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMaxByCondition{iInterval});
+                as.intervalStopMeanByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMeanByCondition{iInterval});
+            end
+            
+            function r = catWithin(set, accessFn)
+                dataCell = arrayfun(accessFn, set, 'UniformOutput', false);
+                r = cat(1, dataCell{:});
+            end
+            
+        end
+        
 %         function as = buildForSelectedConditions(aso, cmask)
 %             % build a new AlignSummary object by including only selected
 %             % conditions

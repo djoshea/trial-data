@@ -36,7 +36,6 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         dataDifferenceOfTrialsScaledNoiseEstimate
         
         % data mean randomized via resampling and high/low intervals
-        dataMeanRandomized
         dataIntervalHigh
         dataIntervalLow
     end
@@ -90,7 +89,6 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         end
 
         function flushRandomizedTrialAveragedData(odc)
-            odc.dataMeanRandomized = {};
             odc.dataIntervalHigh = {};
             odc.dataIntervalLow = {};
         end

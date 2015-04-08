@@ -43,6 +43,7 @@ classdef TrialData
 
     % Convenience dependent properties
     properties(Dependent)
+        ch % a struct which contains all channel names as fields, whose values are the channel names. This is a hack to facilitate tab completion instead of strings.
         nTrials
         nTrialsValid
         nChannels
@@ -456,6 +457,13 @@ classdef TrialData
     
     % Dependent property implementations
     methods % get. accessors for above properties which simply refer to tdi.?
+        function ch = get.ch(td)
+            names = fieldnames(td.channelDescriptorsByName);
+            for iCh = 1:numel(names)
+                ch.(names{iCh}) = names{iCh};
+            end
+        end
+        
         function nTrials = get.nTrials(td)
             nTrials = numel(td.data);
         end
