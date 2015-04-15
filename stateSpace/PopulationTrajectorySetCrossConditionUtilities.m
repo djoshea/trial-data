@@ -82,13 +82,13 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             assert(size(wNbyO, 2) == cOld, ...
                 'Weighting matrix must have same column count as number of existing conditions along axis (%d)', cOld);
             
-            cNew = size(wNbyO, 1);
+            cNewAlongAxis = size(wNbyO, 1);
             
             newNamesAlongAxis = p.Results.newNamesAlongAxis;
             if isempty(newNamesAlongAxis)
-                newNamesAlongAxis = arrayfun(@(i) sprintf('Condition Combination %d', i), 1:cNew, 'UniformOutput', false);
+                newNamesAlongAxis = arrayfun(@(i) sprintf('Condition Combination %d', i), 1:cNewAlongAxis, 'UniformOutput', false);
             end
-            assert(numel(newNamesAlongAxis) == cNew, 'newNamesAlongAxis must have numel == number of new conditions (%d)', cNew);
+            assert(numel(newNamesAlongAxis) == cNewAlongAxis, 'newNamesAlongAxis must have numel == number of new conditions (%d)', cNewAlongAxis);
             
             pset.warnIfAnyBasesMissingTrialAverageForNonEmptyConditionAligns();
             b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
@@ -97,7 +97,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % we're combining along, if the new size is 1
             newCD = pset.conditionDescriptor.setAxisValueList(axisName, newNamesAlongAxis);
             if p.Results.removeAxis
-                assert(cNew == 1, 'New condition count along axis must be 1 in order to removeAxis');
+                assert(cNewAlongAxis == 1, 'New condition count along axis must be 1 in order to removeAxis');
                 newCD = newCD.removeAxis(aIdx);
             end
             
@@ -109,6 +109,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             b.conditionDescriptor = newCD;
             
             nConditionsNew = b.conditionDescriptor.nConditions;
+%             conditionsSizeNew = b.conditionDescriptor.conditionsSize;
             
             % adjust mean and sem to reflect difference between conditions
             [b.dataMean, b.dataSem] = cellvec(pset.nAlign);
@@ -140,7 +141,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             % diff randomized data if present, recompute intervals
             if ~isempty(pset.dataMeanRandomized)
-                [b.dataMeanRandomized, b.dataSemRandomized, b.dataIntervalLow, b.dataIntervalHigh] = deal(cell(pset.nAlign, 1));
+                [b.dataMeanRandomized, b.dataSemRandomized] = deal(cell(pset.nAlign, 1));
                 for iAlign = 1:pset.nAlign
                     % dataMeanRandomized is N x C x TA x R (where R is number of random samples)
                     % randTensor is N x C1 x C2 x ... x TA x R
@@ -155,12 +156,6 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     % ensure invalid bases remain invalid
                     b.dataMeanRandomized{iAlign}(~pset.basisValid, :, :, :) = NaN;
                     
-                    % recompute quantiles
-                    quantiles = quantile(b.dataMeanRandomized{iAlign}, ...
-                        [pset.dataIntervalQuantileLow, pset.dataIntervalQuantileHigh], 4);
-                    b.dataIntervalLow{iAlign} = quantiles(:, :, :, 1);
-                    b.dataIntervalHigh{iAlign} = quantiles(:, :, :, 2);
-                    
                     % dataSemRandomized is N x C x TA x R (where R is number of random samples)
                     % randTensor is N x C1 x C2 x ... x TA x R
                     semTensor = reshape(pset.dataSemRandomized{iAlign}, ...
@@ -174,10 +169,61 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 end
             end
             
+            b.trialLists = {}; % no longer relevant
+            
+            % A x N x C
+            % for data valid, we need all input conditions to be valid for
+            % output conditions to be valid, so we change wNbyO such that
+            % the linear combination will be 1 iff all bases that
+            % contribute to that output are valid.
+            wNbyO_forValid = bsxfun(@rdivide, wNbyO ~= 0, sum(wNbyO ~= 0, 2));
+            [dataValidTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataValid, 3, pset.conditionsSize);
+            b.dataValid = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
+                dataValidTensor, aIdx+2, wNbyO_forValid) == 1, cdims);
+            
+            % sum trials from all included ocnditions
+            [dataNTrialsTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataNTrials, 3, pset.conditionsSize);
+            b.dataNTrials = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
+                dataNTrialsTensor, aIdx+2, wNbyO ~= 0), cdims);
+
+            % shrink the time windows over all considered conditions
+            [tMinValidOld, cdims] = TensorUtils.reshapeDimsInPlace(pset.tMinValidByAlignBasisCondition, 3, pset.conditionsSize);
+            tMinValidCellByNew = arrayfun(@(iNew) max(TensorUtils.selectAlongDimension(tMinValidOld, aIdx+2, wNbyO(iNew, :) ~= 0), [], aIdx+2), ...
+                1:cNewAlongAxis, 'UniformOutput', false);
+            tMinValidNew = cat(aIdx+2, tMinValidCellByNew{:});
+            b.tMinValidByAlignBasisCondition = TensorUtils.flattenDimsInPlace(tMinValidNew, cdims);
+            
+            [tMaxValidOld, cdims] = TensorUtils.reshapeDimsInPlace(pset.tMaxValidByAlignBasisCondition, 3, pset.conditionsSize);
+            tMaxValidCellByNew = arrayfun(@(iNew) min(TensorUtils.selectAlongDimension(tMaxValidOld, aIdx+2, wNbyO(iNew, :) ~= 0), [], aIdx+2), ...
+                1:cNewAlongAxis, 'UniformOutput', false);
+            tMaxValidNew = cat(aIdx+2, tMaxValidCellByNew{:});
+            b.tMaxValidByAlignBasisCondition = TensorUtils.flattenDimsInPlace(tMaxValidNew, cdims);
+            
+            cIndsTensor = TensorUtils.containingLinearInds(pset.conditionDescriptor.conditionsSize);
+            setsAlongAxis = arrayfun(@(iNew) find(wNbyO(iNew, :)), 1:cNewAlongAxis, 'UniformOutput', false);
+            conditionIdxSetsTensor = TensorUtils.selectSetsAlongDimension(cIndsTensor, aIdx, setsAlongAxis);
+            
+            prog = ProgressBar(pset.nBases, 'Collecting conditions within AlignSummary data');
+            for iBasis = 1:pset.nBases
+                prog.update(iBasis);
+                for iAlign = 1:pset.nAlign
+                    b.alignSummaryData{iBasis, iAlign} = b.alignSummaryData{iBasis, iAlign}.combineSetsOfConditions(...
+                        b.conditionDescriptor, conditionIdxSetsTensor(:));
+                end
+            end
+            prog.finish();
+            
             psetReweighted = b.buildManualWithTrialAveragedData();
         end
         
-        function psetCat = concatenateAlongNewConditionAxis(psetCell, axisName, axisValueList)
+        function psetCat = concatenateAlongNewConditionAxis(psetCell, axisName, axisValueList, varargin)
+            p = inputParser();
+            p.addParameter('aggregateMarks', true, @islogical);
+            p.addParameter('aggregateIntervals', true, @islogical);
+            p.addParameter('conditionAppearanceFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            
+            p.parse(varargin{:});
+            
             pset = psetCell{1};
             
             b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
@@ -185,11 +231,24 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             cd = pset.conditionDescriptor;
             cd = cd.addAttribute(axisName, 'valueList', axisValueList);
             cd = cd.addAxis(axisName, 'valueList', axisValueList);
+            
+            % update the condition appearance fn if specified
+            if ~ismember('conditionAppearanceFn', p.UsingDefaults) % we dont just check isempty b/c the user may or may not want to set it to empty
+                cd.appearanceFn = p.Results.conditionAppearanceFn;
+            end
+            
             b.conditionDescriptor = cd;
             cAxis = cd.nAxes;
             
             cSize = pset.conditionsSize;
             cSize(end+1) = 1;
+            
+            if ~p.Results.aggregateMarks
+                b.alignDescriptorSet = cellfun(@(ad) ad.clearMarks(), b.alignDescriptorSet, 'UniformOutput', false);
+            end
+            if ~p.Results.aggregateIntervals
+                b.alignDescriptorSet = cellfun(@(ad) ad.clearIntervals(), b.alignDescriptorSet, 'UniformOutput', false);
+            end
             
             if ~isempty(pset.conditionDescriptorRandomized)
                 cdRand = pset.conditionDescriptorRandomized;
@@ -225,7 +284,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     for iP = numel(psetCell):-1:1
                         alignSummarySet(iP) = psetCell{iP}.alignSummaryData{iBasis, iAlign};
                     end
-                    b.alignSummaryData{iBasis, iAlign} = AlignSummary.aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, cd);
+                    b.alignSummaryData{iBasis, iAlign} = ...
+                        AlignSummary.aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, cd, ...
+                        'aggregateMarks', p.Results.aggregateMarks, 'aggregateIntervals', p.Results.aggregateIntervals);
                 end
             end
             prog.finish();
@@ -246,7 +307,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 tensorCell = cellfun(accessFn, objCell, 'UniformOutput', false);
                 
                 % reshape to make conditions a tensor rather than flat
-                sz = size(tensorCell{1});
+                sz = TensorUtils.sizeNDims(tensorCell{1}, conditionDim);
                 newSz = [sz(1:conditionDim-1), conditionsSize, sz(conditionDim+1:end)];
                 tensorCell = cellfun(@(x) reshape(x, newSz), tensorCell, 'UniformOutput', false);
                 

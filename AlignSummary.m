@@ -252,10 +252,15 @@ classdef AlignSummary
             end
         end
         
-        function as = buildByAggregation(alignSummarySet)
+        function as = buildByAggregation(alignSummarySet, varargin)
             % build a new AlignSummary object by aggregating over multiple
             % AlignSummary objects, shifting error ranges and means as
             % appropriate
+            
+            p = inputParser();
+            p.addParameter('aggregateMarks', true, @islogical);
+            p.addParameter('aggregateIntervals', true, @islogical);
+            p.parse(varargin{:});
             
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
@@ -265,6 +270,13 @@ classdef AlignSummary
             
             as = AlignSummary();
             as.alignDescriptor = set(1).alignDescriptor;
+            
+            if ~p.Results.aggregateMarks
+                as.alignDescriptor = as.alignDescriptor.clearMarks();
+            end
+            if ~p.Results.aggregateIntervals
+                as.alignDescriptor = as.alignDescriptor.clearIntervals();
+            end
             as.conditionDescriptor = set(1).conditionDescriptor;
             
             % TODO could check that all alignDescriptors and
@@ -279,20 +291,29 @@ classdef AlignSummary
             [as.stopMin, as.stopMax, as.stopMean] = ...
                 aggregateSingleEventStats([set.stopMin], [set.stopMax], [set.stopMean], aggNTrials);
             
-            % markMax is nMarks x 1, cat(2, set.markMax) is nMarks x
-            % nSummary cell arrays. Contents are nOccurrences x 1 vectors
-            [as.markMax, as.markMin, as.markMean] = aggregateMultipleEventStats(...
-                cat(2, set.markMax), cat(2, set.markMin), ...
-                cat(2, set.markMean), aggNTrials);
+            if p.Results.aggregateMarks
+                % markMax is nMarks x 1, cat(2, set.markMax) is nMarks x
+                % nSummary cell arrays. Contents are nOccurrences x 1 vectors
+                [as.markMax, as.markMin, as.markMean] = aggregateMultipleEventStats(...
+                    cat(2, set.markMax), cat(2, set.markMin), ...
+                    cat(2, set.markMean), aggNTrials);
+            else
+                [as.markMax, as.markMin, as.markMean] = deal({});
+            end
             
-            [as.intervalStartMax, as.intervalStartMin, as.intervalStartMean] = aggregateMultipleEventStats(...
-                cat(2, set.intervalStartMax), cat(2, set.intervalStartMin), ...
-                cat(2, set.intervalStartMean), aggNTrials);
+            if p.Results.aggregateIntervals
+                [as.intervalStartMax, as.intervalStartMin, as.intervalStartMean] = aggregateMultipleEventStats(...
+                    cat(2, set.intervalStartMax), cat(2, set.intervalStartMin), ...
+                    cat(2, set.intervalStartMean), aggNTrials);
+
+                [as.intervalStopMax, as.intervalStopMin, as.intervalStopMean] = aggregateMultipleEventStats(...
+                    cat(2, set.intervalStopMax), cat(2, set.intervalStopMin), ...
+                    cat(2, set.intervalStopMean), aggNTrials);
+            else
+                [as.intervalStartMax, as.intervalStartMin, as.intervalStartMean] = deal({});
+                [as.intervalStopMax, as.intervalStopMin, as.intervalStopMean] = deal({});
+            end
             
-            [as.intervalStopMax, as.intervalStopMin, as.intervalStopMean] = aggregateMultipleEventStats(...
-                cat(2, set.intervalStopMax), cat(2, set.intervalStopMin), ...
-                cat(2, set.intervalStopMean), aggNTrials);
-    
             % nConditions x nSummary matrix of trial counts for doing
             % proper re-weighting
             nTrialsByConditionMat = cat(2, [set.nTrialsByCondition]);
@@ -311,22 +332,31 @@ classdef AlignSummary
                 cat(2, set.stopMaxByCondition), cat(2, set.stopMeanByCondition), ...
                 nTrialsByConditionMat);
             
-            % args are nDistinctEvents (e.g. nMarks, nIntervals) x
-            % nSummary cells with nCondition x nOccurrence matrices inside
-            [as.markMaxByCondition, as.markMinByCondition, as.markMeanByCondition] = ...
-                aggregateMultipleEventStatsByCondition(cat(2, set.markMaxByCondition), ...
-                cat(2, set.markMinByCondition), cat(2, set.markMeanByCondition), ...
-                nTrialsByConditionMat);
-            
-            [as.intervalStartMaxByCondition, as.intervalStartMinByCondition, as.intervalStartMeanByCondition] = ...
-                aggregateMultipleEventStatsByCondition(cat(2, set.intervalStartMaxByCondition), ...
-                cat(2, set.intervalStartMinByCondition), cat(2, set.intervalStartMeanByCondition), ...
-                nTrialsByConditionMat);
-            
-            [as.intervalStopMaxByCondition, as.intervalStopMinByCondition, as.intervalStopMeanByCondition] = ...
-                aggregateMultipleEventStatsByCondition(cat(2, set.intervalStopMaxByCondition), ...
-                cat(2, set.intervalStopMinByCondition), cat(2, set.intervalStopMeanByCondition), ...
-                nTrialsByConditionMat);
+            if p.Results.aggregateMarks
+                % args are nDistinctEvents (e.g. nMarks, nIntervals) x
+                % nSummary cells with nCondition x nOccurrence matrices inside
+                [as.markMaxByCondition, as.markMinByCondition, as.markMeanByCondition] = ...
+                    aggregateMultipleEventStatsByCondition(cat(2, set.markMaxByCondition), ...
+                    cat(2, set.markMinByCondition), cat(2, set.markMeanByCondition), ...
+                    nTrialsByConditionMat);
+            else
+                [as.markMaxByCondition, as.markMinByCondition, as.markMeanByCondition] = deal({});
+            end
+                
+            if p.Results.aggregateIntervals
+                [as.intervalStartMaxByCondition, as.intervalStartMinByCondition, as.intervalStartMeanByCondition] = ...
+                    aggregateMultipleEventStatsByCondition(cat(2, set.intervalStartMaxByCondition), ...
+                    cat(2, set.intervalStartMinByCondition), cat(2, set.intervalStartMeanByCondition), ...
+                    nTrialsByConditionMat);
+
+                [as.intervalStopMaxByCondition, as.intervalStopMinByCondition, as.intervalStopMeanByCondition] = ...
+                    aggregateMultipleEventStatsByCondition(cat(2, set.intervalStopMaxByCondition), ...
+                    cat(2, set.intervalStopMinByCondition), cat(2, set.intervalStopMeanByCondition), ...
+                    nTrialsByConditionMat);
+            else
+                [as.intervalStartMaxByCondition, as.intervalStartMinByCondition, as.intervalStartMeanByCondition] = deal({});
+                [as.intervalStopMaxByCondition, as.intervalStopMinByCondition, as.intervalStopMeanByCondition] = deal({});
+            end
             
             as = as.initialize();
             
@@ -440,9 +470,14 @@ classdef AlignSummary
            
         end
         
-        function as = aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, newConditionDescriptor)
+        function as = aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, newConditionDescriptor, varargin)
+            p = inputParser();
+            p.addParameter('aggregateMarks', true, @islogical);
+            p.addParameter('aggregateIntervals', true, @islogical);
+            p.parse(varargin{:});
+            
             % let aggregation handle the non-condition specific values
-            as = AlignSummary.buildByAggregation(alignSummarySet);
+            as = AlignSummary.buildByAggregation(alignSummarySet, p.Results);
             % update the condtion descriptor with the new version
             as.conditionDescriptor = newConditionDescriptor;
 
@@ -455,27 +490,30 @@ classdef AlignSummary
             as.stopMaxByCondition = cat(1, alignSummarySet.stopMaxByCondition);
             as.stopMeanByCondition = cat(1, alignSummarySet.stopMeanByCondition);
             
-            for iMark = 1:as.alignDescriptor.nMarks
-                as.markMinByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMinByCondition{iMark});
-                as.markMaxByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMaxByCondition{iMark});
-                as.markMeanByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMeanByCondition{iMark});
+            if p.Results.aggregateMarks
+                for iMark = 1:as.alignDescriptor.nMarks
+                    as.markMinByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMinByCondition{iMark});
+                    as.markMaxByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMaxByCondition{iMark});
+                    as.markMeanByCondition{iMark} = catWithin(alignSummarySet, @(a) a.markMeanByCondition{iMark});
+                end
             end
-            
-            for iInterval = 1:as.alignDescriptor.nIntervals
-                as.intervalStartMinByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMinByCondition{iInterval});
-                as.intervalStartMaxByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMaxByCondition{iInterval});
-                as.intervalStartMeanByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMeanByCondition{iInterval});
-                
-                as.intervalStopMinByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMinByCondition{iInterval});
-                as.intervalStopMaxByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMaxByCondition{iInterval});
-                as.intervalStopMeanByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMeanByCondition{iInterval});
+
+            if p.Results.aggregateIntervals
+                for iInterval = 1:as.alignDescriptor.nIntervals
+                    as.intervalStartMinByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMinByCondition{iInterval});
+                    as.intervalStartMaxByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMaxByCondition{iInterval});
+                    as.intervalStartMeanByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMeanByCondition{iInterval});
+
+                    as.intervalStopMinByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMinByCondition{iInterval});
+                    as.intervalStopMaxByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMaxByCondition{iInterval});
+                    as.intervalStopMeanByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStopMeanByCondition{iInterval});
+                end
             end
             
             function r = catWithin(set, accessFn)
                 dataCell = arrayfun(accessFn, set, 'UniformOutput', false);
                 r = cat(1, dataCell{:});
             end
-            
         end
         
 %         function as = buildForSelectedConditions(aso, cmask)
@@ -579,6 +617,45 @@ classdef AlignSummary
 %                 end
 %             end
 %         end
+    end
+    
+    methods    
+        function as = combineSetsOfConditions(as, newConditionDescriptor, conditionIdxCell)
+            % recombine conditions, for each entry of conditionIdxCell,
+            % collect stats across the condition indices inside
+            as.conditionDescriptor = newConditionDescriptor;
+            
+            wmean = @(v, w) sum(v.*w) ./ sum(w);
+           
+            as.startMinByCondition = cellfun(@(idx) min(as.startMinByCondition(idx)), conditionIdxCell);
+            as.startMaxByCondition = cellfun(@(idx) max(as.startMaxByCondition(idx)), conditionIdxCell);
+            as.startMeanByCondition = cellfun(@(idx) wmean(as.startMeanByCondition(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+            
+            as.stopMinByCondition = cellfun(@(idx) min(as.stopMinByCondition(idx)), conditionIdxCell);
+            as.stopMaxByCondition = cellfun(@(idx) max(as.stopMaxByCondition(idx)), conditionIdxCell);
+            as.stopMeanByCondition = cellfun(@(idx) wmean(as.stopMeanByCondition(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+            
+            for iMark = 1:as.alignDescriptor.nMarks
+                as.markMinByCondition{iMark} = cellfun(@(idx) min(as.markMinByCondition{iMark}(idx)), conditionIdxCell);
+                as.markMaxByCondition{iMark} = cellfun(@(idx) max(as.markMaxByCondition{iMark}(idx)), conditionIdxCell);
+                as.markMeanByCondition{iMark} = cellfun(@(idx) wmean(as.markMeanByCondition{iMark}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+            end
+
+            for iInterval = 1:as.alignDescriptor.nIntervals
+                as.intervalStartMinByCondition{iInterval} = cellfun(@(idx) min(as.intervalStartMinByCondition{iInterval}(idx)), conditionIdxCell);
+                as.intervalStartMaxByCondition{iInterval} = cellfun(@(idx) max(as.intervalStartMaxByCondition{iInterval}(idx)), conditionIdxCell);
+                as.intervalStartMeanByCondition{iInterval} = cellfun(@(idx) wmean(as.intervalStartMeanByCondition{iInterval}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+
+                as.intervalStopMinByCondition{iInterval} = cellfun(@(idx) min(as.intervalStopMinByCondition{iInterval}(idx)), conditionIdxCell);
+                as.intervalStopMaxByCondition{iInterval} = cellfun(@(idx) max(as.intervalStopMaxByCondition{iInterval}(idx)), conditionIdxCell);
+                as.intervalStopMeanByCondition{iInterval} = cellfun(@(idx) wmean(as.intervalStopMeanByCondition{iInterval}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+            end
+            
+            % must do this last as above calculations depend on nTrials
+            % field
+            as.nTrialsByCondition = cellfun(@(idx) sum(as.nTrialsByCondition(idx)), conditionIdxCell);
+            
+        end
     end
 
     methods(Access=protected) % Builds internal properties at construction time

@@ -291,6 +291,10 @@ classdef PopulationTrajectorySet
         
         % nAlign x nBases cell of time vectors for each .dataByTrial matrix
         tvecDataByTrial
+           
+        % nAlign x nBases x nConditions numeric of number of non-nan
+        % timepoints in each data mean
+        nTimeValidByAlignBasisCondition
         
         % is dataByTrial empty?
         hasDataByTrial
@@ -946,6 +950,10 @@ classdef PopulationTrajectorySet
                 v{iAlign} = makecol(pset.tMinForDataMean(iAlign):pset.timeDelta:pset.tMaxForDataMean(iAlign));
             end
         end 
+        
+        function v = get.nTimeValidByAlignBasisCondition(pset)
+            v = (pset.tMaxValidByAlignBasisCondition - pset.tMinValidByAlignBasisCondition) / pset.timeDelta + 1;
+        end
         
         function v = get.nTimeDataMean(pset)
             v = makecol(cellfun(@numel, pset.tvecDataMean));
@@ -1900,6 +1908,9 @@ classdef PopulationTrajectorySet
             prog = ProgressBar(pset.nBases, 'Computing trial-averaged time windows by basis/align/condition');
             
             for iBasis = 1:pset.nBases
+                if ~pset.basisValid(iBasis);
+                    continue;
+                end
                 for iAlign = 1:pset.nAlign
                     prog.update(iBasis);
                     
@@ -1918,7 +1929,7 @@ classdef PopulationTrajectorySet
                     for iCondition = 1:pset.nConditions
                         nTrialsThis = pset.dataNTrials(iAlign, iBasis, iCondition);
                         trialCountThresh = max(pset.minTrialsForTrialAveraging, ...
-                            pset.minFractionTrialsForTrialAveraging*numel(nTrialsThis));
+                            ceil(pset.minFractionTrialsForTrialAveraging*nTrialsThis));
                         if nTrialsThis >= trialCountThresh
                             tMinSorted = sort(removenan(tMinByTrialGrouped{iCondition}), 1, 'ascend');
                             tMinValidByAlignBasisCondition(iAlign, iBasis, iCondition) = tMinSorted(trialCountThresh);
@@ -2093,7 +2104,7 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
-            [pset.dataMeanRandomized, pset.dataSemRandomized, pset.conditionDescriptorRandomized] = pset.computeDataMeanRandomizedResampleTrialsWithinConditions(varargin{:});
+            [pset.dataMeanRandomized, pset.dataSemRandomized, pset.conditionDescriptorRandomized] = pset.computeDataMeanResampleTrialsWithinConditions(varargin{:});
         end    
         
         function [dataMeanRandomized, dataSemRandomized, cd] = computeDataMeanResampleTrialsWithinConditions(pset, varargin)
@@ -2660,9 +2671,13 @@ classdef PopulationTrajectorySet
     
     methods(Static) % Static methods which take multiple psets as args 
         function [varargout] = equalizeBasesInvalid(varargin)
-            assert(nargin > 1);
             assert(nargin == nargout, 'Number of input and output arguments must match');
             N = nargin;
+            
+            if N == 1
+                varargout{1} = varargin{1};
+                return;
+            end
             
             nBasesVec = cellfun(@(pset) pset.nBases, varargin);
             assert(numel(unique(nBasesVec)) == 1, 'All inputs must have the same nBases');
@@ -3123,6 +3138,13 @@ classdef PopulationTrajectorySet
                 all(inRange(x, [1 pset.nBases])));
             p.addParameter('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nConditions])));
+            
+            % change the y size of each basis to fit a band of height
+            % 'scaling' below. if false, neither normalize nor scaling do
+            % anything. this is best used when a single basis is being
+            % plotted
+            p.addParameter('scaleBases', true, @islogical);
+            
             % plot each basis at it's original scale or normalized to fit
             % the bands
             p.addParameter('normalize', true, @islogical);
@@ -3130,7 +3152,8 @@ classdef PopulationTrajectorySet
             % band with y-height scaling
             p.addParameter('scaling', 0.8, @isscalar);
             
-            p.addParameter('showScaleBars', true, @islogical);
+            p.addParameter('showVerticalScaleBars', true, @islogical);
+            p.addParameter('showBasisLabels', true, @islogical);
             
             % usually plot first basis at top, last basis at bottom
             p.addParameter('reverse', false, @islogical);
@@ -3176,6 +3199,7 @@ classdef PopulationTrajectorySet
             conditionIdx = p.Results.conditionIdx;
             nConditionsPlot = numel(conditionIdx);
             
+            scaleBases = p.Results.scaleBases;
             scaling = p.Results.scaling;
             normalize = p.Results.normalize;
             reverse = p.Results.reverse;
@@ -3220,37 +3244,43 @@ classdef PopulationTrajectorySet
                 end
             end
             
-            if normalize
-                % each basis will be independently scaled to [0 1]
-                if p.Results.showSem
-                    % include sem in limits
-                    offsets = nanmin(data - dataSem, [], 2);
-                    norms = nanmax(data + dataSem, [], 2) - offsets;
+            if p.Results.scaleBases
+                if normalize
+                    % each basis will be independently scaled to [0 1]
+                    if p.Results.showSem
+                        % include sem in limits
+                        offsets = nanmin(data - dataSem, [], 2);
+                        norms = nanmax(data + dataSem, [], 2) - offsets;
+                    else
+                        offsets = nanmin(data, [], 2); % N x 1
+                        norms = nanmax(data, [], 2) - offsets;
+                    end
                 else
-                    offsets = nanmin(data, [], 2); % N x 1
-                    norms = nanmax(data, [], 2) - offsets;
+                    % data will collectively be scaled to [0 1], but the same
+                    % transformation will apply to all bases 
+                    if p.Results.showSem
+                        % include sem in limits
+                        offsets = nanmin(data - dataSem, [], 2); % N x 1
+
+                        %offsets = repmat(m, nBasesPlot, 1);
+                        ranges = nanmax(data + dataSem, [], 2) - nanmin(data - dataSem, [], 2);
+                        norms = repmat(nanmax(ranges), nBasesPlot, 1);
+                    else
+                        offsets = nanmin(data, [], 2); % N x 1
+
+                        %offsets = repmat(m, nBasesPlot, 1);
+                        ranges = nanmax(data, [], 2) - nanmin(data, [], 2);
+                        norms = repmat(nanmax(ranges), nBasesPlot, 1);
+                    end
                 end
+                            
+                % apply scaling directly to norms since norms are computed
+                % for unit scaling above
+                norms = norms / scaling;
             else
-                % data will collectively be scaled to [0 1], but the same
-                % transformation will apply to all bases 
-                if p.Results.showSem
-                    % include sem in limits
-                    offsets = nanmin(data - dataSem, [], 2); % N x 1
-
-                    %offsets = repmat(m, nBasesPlot, 1);
-                    ranges = nanmax(data + dataSem, [], 2) - nanmin(data - dataSem, [], 2);
-                    norms = repmat(nanmax(ranges), nBasesPlot, 1);
-                else
-                    offsets = nanmin(data, [], 2); % N x 1
-
-                    %offsets = repmat(m, nBasesPlot, 1);
-                    ranges = nanmax(data, [], 2) - nanmin(data, [], 2);
-                    norms = repmat(nanmax(ranges), nBasesPlot, 1);
-                end
+                offsets = zerosvec(nBasesPlot);
+                norms = onesvec(nBasesPlot);
             end
-            
-            % apply scaling directly to norms
-            norms = norms / scaling;
             
             app = pset.conditionDescriptor.appearances;
             
@@ -3291,7 +3321,7 @@ classdef PopulationTrajectorySet
                 
                 % uniformly scale and separate data vertically
                 data = data + yOffset;
-                data = bsxfun(@plus, data, (nBasesPlot:-1:1)');
+                data = bsxfun(@plus, data, (nBasesPlot-1:-1:0)');
                 
                 if reverse
                     data = flipud(data);
@@ -3358,14 +3388,20 @@ classdef PopulationTrajectorySet
             end
             
             box off;
-            ylim([0.9, nBasesPlot+1.1]);
+            if scaleBases
+                ylim([-0.1, nBasesPlot+0.1]);
+            end
             xlim([min(pset.tvecDataMean{alignIdx(1)}) tOffsetCurrent]);
             
             % setup auto axis
             au = AutoAxis();
-            yloc = yOffset + (nBasesPlot:-1:1)' + 0.5;
-            ylabel = pset.basisNames(basisIdx);
-            au.addTicklessLabels('y', 'tick', yloc, 'tickLabel', ylabel);   
+            
+            if p.Results.showBasisLabels
+                yloc = yOffset + (nBasesPlot-1:-1:0)' + 0.5;
+                ylabel = pset.basisNames(basisIdx);
+                au.addTicklessLabels('y', 'tick', yloc, 'tickLabel', ylabel);   
+            end
+            au.yUnits = pset.dataUnits;
             
             switch p.Results.timeAxisStyle
                 case 'tickBridge'
@@ -3397,8 +3433,10 @@ classdef PopulationTrajectorySet
             
             % add scale bars to right side of axis
             au.yUnits = pset.dataUnits;
-            if p.Results.showScaleBars
-                if ~p.Results.normalize
+            if p.Results.showVerticalScaleBars
+                if ~scaleBases
+                    au.addAutoScaleBar('y');
+                elseif ~normalize
                     % all data scaled by same amount, show one scale bar at
                     % bottom whose length is roughly half the dynamic range of
                     % half the range of the highest-amplitude channel.
@@ -3424,7 +3462,7 @@ classdef PopulationTrajectorySet
                         end
                         if ~isnan(offsets(iBasis))
                             au.addScaleBar('y', 'length', plottedValue, 'manualLabel', label, ...
-                                'manualPositionAlongAxis', numel(basisIdx) - iBasis + 1);
+                                'manualPositionAlongAxis', numel(basisIdx) - iBasis);
                         end
                     end
                     
@@ -3444,6 +3482,16 @@ classdef PopulationTrajectorySet
             set(axh, 'SortMethod', 'childorder');
         end
 
+        function plotSingleBasis(pset, basisIdx, varargin)
+            assert(isscalar(basisIdx));
+            pset.plotBases('basisIdx', basisIdx, 'showSem', true, ...
+                'showVerticalScaleBars', false, 'showBasisLabels', false, 'scaleBases', false, varargin{:});
+            au = AutoAxis(gca);
+            au.ylabel('spikes/s');
+            au.addAutoAxisY();
+            au.update();
+        end
+        
         function plotStateSpace(pset, varargin)
             % plot a 2d or 3d basis1 x basis2 x basis3 trajectory plot
             p = inputParser;
