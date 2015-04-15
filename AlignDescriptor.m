@@ -838,16 +838,10 @@ classdef AlignDescriptor
             ad = ad.update();
         end
 
-        function ad = clearMarksIntervals(ad)
+        function ad = clearIntervals(ad)
             % remove all marks and intervals
             ad.warnIfNoArgOut(nargout);
-            ad.markEvents = {};
-            ad.markEventsIndex = [];
-            ad.markOffsets = [];
-            ad.markLabelsStored = {};
-            ad.markAppear= [];
-            ad.markShowOnData = []; 
-            ad.markShowOnAxis = [];
+            
             ad.intervalEventsStart = {}; 
             ad.intervalEventsStop = {}; 
             ad.intervalEventsIndexStart = [];
@@ -860,8 +854,27 @@ classdef AlignDescriptor
             ad.intervalShowOnData = [];
             ad.intervalShowOnAxis = [];
 
+            ad = ad.postUpdateInterval();
+        end
+        
+        function ad = clearMarks(ad)
+            % remove all marks and intervals
+            ad.warnIfNoArgOut(nargout);
+            ad.markEvents = {};
+            ad.markEventsIndex = [];
+            ad.markOffsets = [];
+            ad.markLabelsStored = {};
+            ad.markAppear= [];
+            ad.markShowOnData = []; 
+            ad.markShowOnAxis = [];
+            
             ad = ad.postUpdateMark();
-            ad = ad.postUpdateInterval(); %#ok<NASGU>
+        end
+        
+        function ad = clearMarksIntervals(ad)
+            ad.warnIfNoArgOut(nargout);
+            ad = ad.clearMarks();
+            ad = ad.clearIntervals();
         end
        
         function ad = lag(ad, tDelay)
