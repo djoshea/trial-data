@@ -346,7 +346,11 @@ classdef PopulationTrajectorySet
         % true means all trials correspond one-to-one with each other
         % false means trials were not simultaneous, implying that only
         % trial-averages should be compared
-        simultaneous = false;
+        simultaneous
+        
+        nTrials % only valid when simultaneous is true
+        
+        nTrialsValid % only valid when simultaneous is true
         
         % number of data sources used across all bases
         nDataSources
@@ -539,10 +543,15 @@ classdef PopulationTrajectorySet
            else
                dataSourceStr = sprintf('%d data sources', pset.nDataSources);
            end
-            tcprintf('inline', '{yellow}%s: {bright white}%d bases (%d valid), %d conditions, %d alignments, %s\n', ...
+            tcprintf('inline', '{yellow}%s: {bright white}%d bases {red}(%d valid){bright white}, %d conditions, %d alignments, %s\n', ...
                 class(pset), pset.nBases, pset.nBasesValid, pset.nConditions, pset.nAlign, dataSourceStr);
-            tcprintf('inline', '{yellow}Dataset: {none}%s\n\n', pset.datasetName);
+            tcprintf('inline', '{yellow}Dataset: {none}%s\n', pset.datasetName);
             
+            if pset.simultaneous
+                tcprintf('inline', '{yellow}Simultaneous: {none}%d trials {red}(%d valid)\n', pset.nTrials, pset.nTrialsValid);
+            else
+                fprintf('\n');
+            end
             pset.conditionDescriptor.printDescription();
             for i = 1:pset.nAlign
                 pset.alignDescriptorSet{i}.printDescription();
@@ -564,13 +573,13 @@ classdef PopulationTrajectorySet
     % values that depend on the value of the property being set.
     methods
         function pset = set.spikeFilter(pset, v)
-            % spikeFilter invalidates everything
+            % changing spikeFilter invalidates everything
             pset.spikeFilter = v;
             pset = pset.invalidateCache();
         end
         
         function pset = set.timeDelta(pset, v)
-            % timeDelta invalidates everything
+            % changing timeDelta invalidates everything
             pset.timeDelta = v;
             pset = pset.invalidateCache();
         end
@@ -2701,6 +2710,26 @@ classdef PopulationTrajectorySet
     end
 
     methods % Compute on-the-fly Dependent properties
+        function tf = get.simultaneous(pset)
+            tf = pset.nDataSources == 1;
+        end
+        
+        function n = get.nTrials(pset)
+            if ~pset.simultaneous
+                n = NaN;
+            else
+                n = pset.dataSources{1}.nTrials;
+            end
+        end
+        
+        function n = get.nTrialsValid(pset)
+            if ~pset.simultaneous
+                n = NaN;
+            else
+                n = pset.dataSources{1}.nTrialsValid;
+            end
+        end
+        
         function n = get.nDataSources(pset)
             n = numel(pset.dataSources);
         end
@@ -3895,6 +3924,47 @@ classdef PopulationTrajectorySet
 %         
     end
 
+    methods % Single trial
+        function assertSingleTrialData(pset)
+            assert(pset.simultaneous && ~pset.dataSourceManual, 'This method may only be called on simultaneously collected data sets, i.e. where there is only one data source');
+        end
+        
+        function [NbyTAbyR, tvec, avec, cvec] = buildNbyTAbyTrials(pset, varargin)
+            p = inputParser();
+            p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
+            p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
+            p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
+            p.addParameter('validBasesOnly', false, @islogical);
+            p.addParameter('validTrialsOnly', false, @islogical);
+            p.parse(varargin{:});
+            
+            alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
+            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
+            if p.Results.validBasesOnly
+                mask = pset.basisValid(basisIdx);
+                basisIdx = basisIdx(mask);
+            end
+            conditionIdx =  TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
+            
+            % dataByTrial is nBases x nAlign, insides are R x T_a
+            % concatenate time over alignments
+            [tvec, avec] = TensorUtils.catWhich(1, pset.tvecDataByTrial{1, :});
+            RbyTA_eachBasis = TensorUtils.catInnerDimOverOuterDim(pset.dataByTrial(basisIdx, alignIdx), 2, 2);
+            RbyTAbyN = cat(3, RbyTA_eachBasis{:});
+            NbyTAbyR = permute(RbyTAbyN, [3 2 1]);
+            
+            cvec = pset.dataSources{1}.conditionIdx;
+            rmask = ismember(cvec, conditionIdx);
+            
+            if p.Results.validTrialsOnly
+                rmask = rmask & pset.dataSources{1}.valid;
+            end
+            
+            cvec = cvec(rmask);
+            NbyTAbyR = NbyTAbyR(:, :, rmask);  
+        end
+    end
+    
     methods % Comparative statistics
         function [distByFromAlign, timeVecByFromAlign] = getDistanceBetween(pset, cFromList, cToList, varargin)
             % dist: length(fromAlign) cell of T x length(cFromList) distance traces as columns

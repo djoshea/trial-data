@@ -270,6 +270,7 @@ classdef AlignSummary
             
             as = AlignSummary();
             as.alignDescriptor = set(1).alignDescriptor;
+            as.timeUnitName = set(1).timeUnitName;
             
             if ~p.Results.aggregateMarks
                 as.alignDescriptor = as.alignDescriptor.clearMarks();
@@ -364,7 +365,7 @@ classdef AlignSummary
                     maxData, minData, meanData, nTrialsData)
                 minNew = nanmin(minData);
                 maxNew = nanmax(maxData);
-                meanNew = nansum(makecol(meanData) .* makecol(nTrialsData)) / sum(nTrialsData);
+                meanNew = weightedMean(makecol(meanData), makecol(nTrialsData), 1);
             end
             
             function [maxNew, minNew, meanNew] = aggregateSingleEventStatsByCondition(...
@@ -387,7 +388,6 @@ classdef AlignSummary
                 % max/min/meanNew are nDistinctEvents cells of nOccurrences
                 % vectors
                 nDistinctEvents = size(maxData, 1);
-                nSummary = size(maxData, 2);
                 nOccurrences = cellfun(@numel, maxData);
                 maxOccurrencesByEvent = max(nOccurrences, [], 2);
                 
@@ -410,8 +410,8 @@ classdef AlignSummary
                     
                     % note that we use nanmean to compute the weighted sum
                     % because nansum returns 0 when all are NaN
-                    meanNew{iEv} = nanmean(bsxfun(@times, meanMat, makerow(nTrialsData)), 2) / ...
-                        sum(nTrialsData / nSummary);
+                    
+                    meanNew{iEv} = weightedMean(meanMat, makerow(nTrialsData), 2);
                 end
             end
             
@@ -463,9 +463,17 @@ classdef AlignSummary
                     % 
                     % note that we use nanmean to compute the weighted sum
                     % because nansum returns 0 when all are NaN
-                    meanNew{iEv} = bsxfun(@rdivide, nanmean(bsxfun(@times, meanMat, nTrialsReshaped), 3), ...
-                        nTrialsTotalByCondition / nSummary);
+                    meanNew{iEv} = weightedMean(meanMat, nTrialsReshaped, 3);
                 end
+
+            end
+                       
+            function wMean = weightedMean(vals, w, dim)
+                wVals = bsxfun(@times, vals, w);
+
+                wNonNaN = bsxfun(@times, ~isnan(vals), w);
+
+                wMean = nansum(wVals, dim) ./ sum(wNonNaN, dim);
             end
            
         end
@@ -989,7 +997,7 @@ classdef AlignSummary
             p.addParameter('tMax', Inf, @isscalar);
             p.addParameter('alpha', 1, @isscalar);
             p.addParameter('markAlpha', 1, @isscalar);
-            p.addParameter('markSize', 5, @isscalar);
+            p.addParameter('markSize', 8, @isscalar);
             p.addParameter('intervalAlpha', 1, @isscalar);
             p.addParameter('showInLegend', true, @islogical);
             p.addParameter('useTranslucentMark3d', true, @islogical);

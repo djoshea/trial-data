@@ -205,7 +205,7 @@ classdef AlignDescriptor
         end
 
         function tf = get.isMarkZero(ad)
-            tf = strcmp(ad.zeroEvent, ad.markEvents) & isequal(ad.markEventsIndex, ad.stopEventIndex) & ...
+            tf = strcmp(ad.zeroEvent, ad.markEvents) & cellfun(@(x) strcmp(x, ':') || isequal(x, ad.zeroEventIndex), ad.markEventsIndex) & ...
                 ad.markOffsets == ad.zeroOffset;
         end
         
@@ -970,10 +970,10 @@ classdef AlignDescriptor
     methods(Access=protected) % Utility methods
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~ishandle(obj)
-                message = sprintf('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.', ...
                     class(obj));
-                expr = sprintf('debug(''%s'')', message);
-                evalin('caller', expr); 
+%                 expr = sprintf('debug(''%s'')', message);
+%                 evalin('caller', expr); 
             end
         end
     end
@@ -1341,12 +1341,24 @@ classdef AlignDescriptor
             end
         end
         
-        function printDescription(ad)
+        function printDescription(ad, varargin)
+            p = inputParser();
+            p.addParameter('active', false, @islogical);
+            p.parse(varargin{:});
+            
             if ~ad.nameDefault
-                tcprintf('inline', '{yellow}%s: {white}%s\n', class(ad), ad.name);
+                if p.Results.active
+                    tcprintf('inline', '{yellow}%s: {white}%s {red}(active)\n', class(ad), ad.name);
+                else
+                    tcprintf('inline', '{yellow}%s: {white}%s\n', class(ad), ad.name);
+                end
             else
                 % name will just match desc, so don't print it twice
-                tcprintf('inline', '{yellow}%s:\n', class(ad));
+                if p.Results.active
+                    tcprintf('inline', '{yellow}%s: {red}(active)\n', class(ad));
+                else
+                    tcprintf('inline', '{yellow}%s:\n', class(ad));
+                end
             end
             
             tcprintf('inline', '  {bright blue}Start {purple}%s {darkGray}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
@@ -1367,7 +1379,7 @@ classdef AlignDescriptor
                 tcprintf('inline', '  {bright blue}Truncate before {purple}%s\n', ad.truncateBeforeUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.truncateAfterEvents);
-                tcprintf('inline', '  {bright blue}Truncate after {purple}%s%+.0f\n', ad.truncateAfterUnabbreviatedLabels{i});
+                tcprintf('inline', '  {bright blue}Truncate after {purple}%s\n', ad.truncateAfterUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.invalidateEvents);
                 tcprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});

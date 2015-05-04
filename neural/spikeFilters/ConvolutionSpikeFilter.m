@@ -23,6 +23,17 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         % have acausal elements if indZero > 0
         [filt, indZero] = getFilter(sf);
     end
+    
+    methods
+        function plotFilter(sf)
+            [filt, indZero] = sf.getFilter();
+            filt = filt ./ sum(filt);
+            tvec = (1:numel(filt))' - indZero;
+            plot(tvec, filt, '-.', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+            xlabel('Time (ms)');
+            ylabel('Filter');
+        end
+    end
 
     methods(Access=protected)
         % return the time window of preceding spike data in ms required to estimate

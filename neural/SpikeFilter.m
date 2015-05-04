@@ -65,8 +65,12 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
             if isempty(subclassStr)
                 str = sprintf('%s %s', causalStr, classname);
             else
-                str = sprintf('%s %s(%s)', causalStr, classname, subclassStr);
+                str = sprintf('%s %s (%s)', causalStr, classname, subclassStr);
             end
+        end
+        
+        function str = char(sf)
+            str = sf.getDescription();
         end
     end
 
@@ -82,16 +86,15 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
             % filters each trial individually and then embeds each filtered
             % trace in a nTrials x nTime matrix, where missing samples are left as NaN
             % before and after each trial. tvec is the time vector that
-            % indicates time along the columns.
-            import TrialDataUtilities.Data.embedTimeseriesInMatrix;
+            % indicates time along the columns.=
             p = inputParser;
-            p.addParamValue('timeDelta', 1, @isscalar);
+            p.addParameter('timeDelta', 1, @isscalar);
             p.parse(varargin{:});
             
             [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
             
             % convert to matrix
-            [rates, tvec] = embedTimeseriesInMatrix(rateCell, timeCell, ...
+            [rates, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(rateCell, timeCell, ...
                 'timeDelta', p.Results.timeDelta, ...
                 'fixDuplicateTimes', false);
         end

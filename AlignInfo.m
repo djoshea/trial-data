@@ -401,8 +401,9 @@ classdef AlignInfo < AlignDescriptor
             
             if strcmp(n, 'end')
                 % TODO implement 'end-1' type index
-                inds = sub2ind(size(timesMat), (1:ad.nTrials)', counts);
+                inds = sub2ind(size(timesMat), (1:ad.nTrials)', max(1, counts));
                 times = timesMat(inds);
+                times(counts < 1) = NaN;
             else
                 if ischar(n)
                     n = str2double(n);

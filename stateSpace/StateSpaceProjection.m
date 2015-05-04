@@ -172,7 +172,7 @@ classdef StateSpaceProjection
           
             % project randomized data, recompute intervals
             if ~isempty(pset.dataMeanRandomized)
-                [b.dataMeanRandomized, b.dataIntervalLow, b.dataIntervalHigh] = deal(cell(pset.nAlign, 1));
+                [b.dataMeanRandomized] = deal(cell(pset.nAlign, 1));
                 for iAlign = 1:pset.nAlign
                     % mat is N x CTS, coeff is N x K, where S is nRandomSamples 
                     mat = reshape(pset.dataMeanRandomized{iAlign}, pset.nBases, ...
@@ -191,10 +191,10 @@ classdef StateSpaceProjection
                     b.dataSemRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
                         pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
 
-                    quantiles = quantile(b.dataMeanRandomized{iAlign}, ...
-                        [pset.dataIntervalQuantileLow, pset.dataIntervalQuantileHigh], 4);
-                    b.dataIntervalLow{iAlign} = quantiles(:, :, :, 1);
-                    b.dataIntervalHigh{iAlign} = quantiles(:, :, :, 2);
+%                     quantiles = quantile(b.dataMeanRandomized{iAlign}, ...
+%                         [pset.dataIntervalQuantileLow, pset.dataIntervalQuantileHigh], 4);
+%                     b.dataIntervalLow{iAlign} = quantiles(:, :, :, 1);
+%                     b.dataIntervalHigh{iAlign} = quantiles(:, :, :, 2);
                 end
             end
 

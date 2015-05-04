@@ -35,6 +35,8 @@ classdef ConditionDescriptor
         axisRandomizeModesAsStrings
         
         conditionsAsLinearInds % linear index corresponding to each condition if flattened 
+        
+        conditionColors % A x 3 cell of colors
     end
 
     properties
@@ -636,6 +638,10 @@ classdef ConditionDescriptor
 
         function n = get.nConditions(ci)
             n = prod(ci.conditionsSize);
+        end
+        
+        function cmap = get.conditionColors(ci)
+            cmap = cat(1, ci.appearances.Color);
         end
 
         % lookup axis idx by attribute char or cellstr, or cell of attribute cellstr
@@ -2117,7 +2123,7 @@ classdef ConditionDescriptor
             a = repmat(AppearanceSpec(), ci.conditionsSize);
 
             if nConditions == 1
-                cmap = [0.3 0.3 1];
+                cmap = [0.2 0.2 0.2];
             else
                 if nConditions > 256
                     cmap = jet(nConditions);
@@ -2129,6 +2135,20 @@ classdef ConditionDescriptor
             for iC = 1:nConditions
                 a(iC).Color = cmap(iC, :);
             end
+        end
+        
+        function addColoredLabels(ci, varargin)
+            p = inputParser();
+            p.addParameter('axh', gca, @ishandle);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            axh = p.Results.axh;
+
+            au = AutoAxis(axh);
+            strCell = ci.namesShort;
+            cmap = ci.conditionColors;
+            au.addColoredLabels(strCell, cmap, p.Unmatched);
+            au.update();
         end
     end
     
