@@ -1331,6 +1331,26 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
+        function td = addSpikeChannel(td, unitStr, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addOptional('spikes', {}, @isvector);
+            p.addParameter('waveforms', [], @iscell);
+            p.addParameter('waveformsField', sprintf('%s_waveforms', unitStr), @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            cd = SpikeChannelDescriptor.buildFromUnitName(unitStr);
+            if ~isempty(p.Results.waveforms)
+                cd.waveformsField = p.Results.waveformsField;
+                td = td.addChannel(cd, {p.Results.spikes, p.Results.waveforms});
+            else
+                td = td.addChannel(cd, {p.Results.spikes});
+            end
+            
+        end
+        
         function td = selectSpikeChannels(td, names)
             td.warnIfNoArgOut(nargout);
             full = td.listSpikeChannels();

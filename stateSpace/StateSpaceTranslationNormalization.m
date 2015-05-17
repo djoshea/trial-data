@@ -2,20 +2,20 @@ classdef StateSpaceTranslationNormalization
 % This class stores the offsets and multipliers which can be applied to a
 % PopulationTrajectorySet. This constitutes a normalization (subtraction off
 % of each basis) followed by a normalization (multiplication of each basis
-% by a scalar).
+% by a scalar)
 
     properties(SetAccess=protected)
         % nBases x 1 numeric vector of offsets to ADD to each basis
         translationByBasis
         
         % string description of the translation (e.g. 'mean-subtracted')
-        translationDescription
+        translationDescription = '';
         
         % nBases x 1 numeric vector of offsets to ADD to each basis
         normalizationByBasis
         
         % string description of the normalization (e.g. 'variance-normalized')
-        normalizationDescription
+        normalizationDescription = '';
     end
     
     properties(Dependent)
@@ -138,6 +138,35 @@ classdef StateSpaceTranslationNormalization
                 end
             end
         end
+        
+        function inv = getInverse(obj)
+            obj.warnIfNoArgOut(nargout);
+            % in the inverse, the order of translation, then normalization
+            % persists, so we must derive the inverse as follows.
+            % 
+            % the forward transformation looks like y = f(x) = (x-t) / n.
+            % the inverse transform looks like:
+            % x = f'(y) 
+            %   = (y-ti) / ni 
+            %   = ((x-t)/n - ti) / ni
+            %   = (x/n - t/n - ti) / ni
+            % Letting ti = -t/n and ni = 1/n, we have:
+            %   = (x/n - t/n - (-t/n)) / (1/n)
+            %   = (x/n) * n
+            %   = x
+                        
+            inv = StateSpaceTranslationNormalization(); 
+            inv.translationByBasis = -obj.translationByBasis ./ obj.normalizationByBasis;
+            inv.normalizationByBasis = obj.normalizationByBasis.^(-1);
+        
+            % string description of the normalization (e.g. 'variance-normalized')
+            if ~isempty(obj.translationDescription)
+                inv.translationDescription = ['invert ' obj.translationDescription];
+            end
+            if ~isempty(obj.normalizationDescription)
+                inv.normalizationDescription = ['invert ' obj.normalizationDescription];
+            end
+        end
     end
         
     methods(Static)
@@ -152,6 +181,11 @@ classdef StateSpaceTranslationNormalization
         function obj = buildIdentityForPopulationTrajectorySet(pset)
             obj = StateSpaceTranslationNormalization.buildManual(...
                 zeros(pset.nBases, 1), ones(pset.nBases, 1));
+        end
+        
+        function obj = buildIdentityManual(nBases)
+            obj = StateSpaceTranslationNormalization.buildManual(...
+                zeros(nBases, 1), ones(nBases, 1));
         end
         
         function obj = buildManual(varargin)

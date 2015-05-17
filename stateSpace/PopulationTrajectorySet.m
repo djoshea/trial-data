@@ -437,10 +437,10 @@ classdef PopulationTrajectorySet
                 pset = pset.applyConditionDescriptor();
             end
             
-            if isempty(pset.translationNormalization) || pset.translationNormalization.nBases ~= pset.nBases
-                pset.translationNormalization = ...
-                    StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
-            end
+%             if isempty(pset.translationNormalization) || pset.translationNormalization.nBases ~= pset.nBases
+%                 pset.translationNormalization = ...
+%                     StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
+%             end
             
             if isempty(pset.timeDelta)
                 pset.timeDelta = 1;
@@ -1494,7 +1494,7 @@ classdef PopulationTrajectorySet
                 % for manual data, we apply this now to all data stored
                 % manually since it will not be regenerated later
                 if ~isempty(pset.dataByTrial)
-                    pset.dataByTrial = pset.dataByTrial;
+                    pset.dataByTrial = trNorm.applyTranslationNormalizationToData(pset.dataByTrial);
                 end
                 if ~isempty(pset.dataMean)
                     pset.dataMean = cellApplyToDataFn(pset.dataMean);
@@ -1515,7 +1515,7 @@ classdef PopulationTrajectorySet
                 % otherwise, we can defer until the buildData* methods
                 % apply the translation / normalization
                 if ~isempty(pset.odc.dataByTrial)
-                    pset.dataByTrial = pset.dataByTrial;
+                    pset.dataByTrial = trNorm.applyTranslationNormalizationToData(pset.dataByTrial);
                 end
                 if ~isempty(pset.odc.dataMean)
                     pset.dataMean = cellApplyToDataFn(pset.dataMean);

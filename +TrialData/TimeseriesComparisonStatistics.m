@@ -98,7 +98,7 @@ classdef TimeseriesComparisonStatistics
             
             % will be T x size(other condition axes)
             [pValTensor, tvec] = TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime(...
-                tdca, 'alpha', p.Results.alpha, p.Unmatched);
+                tdca, p.Unmatched);
             if isempty(tvec)
                 error('tvec parameter must be provided if data passed in as parameter');
             end

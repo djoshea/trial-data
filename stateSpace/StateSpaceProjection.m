@@ -4,22 +4,42 @@ classdef StateSpaceProjection
 % fromPopulationTrajectorySet to compute the coefficients, in a manner determined
 % by subclasses
 
-    properties(SetAccess=protected)
+    properties
         initialized = false;
-        translationNormalization % stored translation / normalization stored when building and used when projecting
+        translationNormalization % stored translation / normalization stored when building and used BEFORE projecting
         
-        % given an N x T matrix of data in the original basis, we project
+        % used AFTER projecting, to transform the output bases, mainly used
+        % when inverting a projection
+        translationNormalizationPostProject
+        
+        % given an nBasesSource x T matrix of data in the original basis, we project
         % into the new basis using decoderKbyN * neural_NbyT which yields
         % decoded_KbyT. We can then reconstruct the data in the original
         % basis using reconstruction_NbyT = encoderNbyK * decodedKbyT, or
         % reconstruction_NbyT = encoderNbyK * decoderKbyN * neural_NbyT 
         decoderKbyN
-        encoderNbyK 
+        encoderNbyK
         
         buildStats % StateSpaceProjectionStatistics instance from build
         
-        basisValid % N x 1 logical vector indicating which bases were considered valid in the projection (typically copied from the pset from which I am built)
-        basisInvalidCause % N x 1 cell str (typically copied from the pset from which I am built)
+        basisValid % nBasesSource x 1 logical vector indicating which bases were considered valid in the projection (typically copied from the pset from which I am built)
+        basisInvalidCause % nBasesSource x 1 cell str (typically copied from the pset from which I am built)
+        
+        % nBasesProj x 1 logical vector indicating which OUTPUT bases will be considered valid
+        % this is mostly useful when building inverses, so that you get the
+        % original basis valid mask back when inverting a projection
+        basisValidProj 
+        basisInvalidCauseProj
+        
+        basisNamesSource % nBasesSource x 1 cellstr of basis names from the pset I was built off
+        dataUnitsSource = '';
+        
+        % nBasesProj x 1 cell of basis names, optional, that I will pick for the basis names of the projected 
+        % output. If set, this will override the method "getBasisNames"
+        % which typically picks these names based on the input pset.
+        % this is primarily used for inverse projections, when we want to
+        % restore the basis names of the pset this projection was built off 
+        basisNamesProj
     end
 
     properties(Dependent)
@@ -44,12 +64,57 @@ classdef StateSpaceProjection
                 n = size(proj.decoderKbyN, 1);
             end
         end
+        
+        function v = get.basisValid(proj)
+            if isempty(proj.basisValid)
+                if ~isnan(proj.nBasesSource)
+                    v = truevec(proj.nBasesSource);
+                else
+                    v = [];
+                end 
+            else
+                v = proj.basisValid;
+            end
+        end
+        
+        function v = get.basisValidProj(proj)
+            if isempty(proj.basisValidProj)
+                if ~isnan(proj.nBasesProj)
+                    v = truevec(proj.nBasesProj);
+                else
+                    v = [];
+                end
+            else
+                v = proj.basisValidProj;
+            end
+        end
+        
+        function v = get.basisInvalidCauseProj(proj)
+            if isempty(proj.basisInvalidCauseProj)
+                if ~isnan(proj.nBasesProj)
+                    v = cellstrvec(proj.nBasesProj);
+                else
+                    v = [];
+                end
+            else
+                v = proj.basisInvalidCauseProj;
+            end
+        end
+        
+        function v = get.basisInvalidCause(proj)
+            if isempty(proj.basisInvalidCause)
+                if ~isnan(proj.nBasesSource)
+                    v = cellstrvec(proj.nBasesSource);
+                else
+                    v = [];
+                end
+            else
+                v = proj.basisInvalidCause;
+            end
+        end
     end
     
     methods(Abstract)
-        % return a list of basis names for the new basis
-        names = getBasisNames(proj, pset, data)
-
         % compute the N * K matrix of basis coefficients for the projection
         % given an N x T matrix of data in the original basis, we project
         % into the new basis using decoderKbyN * neural_NbyT which yields
@@ -58,9 +123,22 @@ classdef StateSpaceProjection
         % reconstruction_NbyT = encoderNbyK * decoderKbyN * neural_NbyT 
         [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(pset)
     end
+    
+    % Methods most classes may wish to override
+    methods
+        % return a nBasesProj x 1 cell str: list of basis names for the new basis  
+        function names = getBasisNames(proj, pset) %#ok<INUSD>
+            if ~isempty(proj.basisNamesProj)
+                names = proj.basisNamesProj;
+            else
+                names = arrayfun(@(i) sprintf('Basis %d', i), ...
+                        (1:proj.nBasesProj)', 'UniformOutput', false);
+            end
+        end
+    end
 
     methods
-        function [proj, stats] = buildFromPopulationTrajectorySet(proj, pset, varargin)
+        function [proj, stats, psetPrepared] = buildFromPopulationTrajectorySet(proj, pset, varargin)
             % build this projection matrix based on an existing PopulationTrajectorySet
             % defers to calculateProjectionMatrix for the actual basis computation
             
@@ -68,11 +146,13 @@ classdef StateSpaceProjection
 
             p = inputParser;
             p.addRequired('pset', @(x) isa(x, 'PopulationTrajectorySet'));
+            p.addParameter('computeStatistics', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(pset, varargin{:});
             
             % make any necessary transformations, particularly translation / normalization
             pset = proj.preparePsetForInference(pset);
+            psetPrepared = pset;
 
             % extract the translation normalization that will be applied before projection
             proj.translationNormalization = pset.translationNormalization;
@@ -87,6 +167,8 @@ classdef StateSpaceProjection
             % copy the basis valid mask
             proj.basisValid = pset.basisValid;
             proj.basisInvalidCause = pset.basisInvalidCause;
+            proj.basisNamesSource = pset.basisNames;
+            proj.dataUnitsSource = pset.dataUnits;
             
             % set coeff to zero on invalid bases
             proj.decoderKbyN(:, ~proj.basisValid) = 0;
@@ -94,8 +176,13 @@ classdef StateSpaceProjection
             
             % results will store statistics and useful quantities related to the
             % projection
-            stats = StateSpaceProjectionStatistics.build(proj, pset, p.Unmatched);
-            proj.buildStats = stats;
+            if p.Results.computeStatistics
+                stats = StateSpaceProjectionStatistics.build(proj, pset, p.Unmatched);
+                proj.buildStats = stats;
+            else
+                stats = [];
+                proj.buildStats = [];
+            end
 
             proj.initialized = true;
         end
@@ -104,6 +191,7 @@ classdef StateSpaceProjection
             p = inputParser();
             p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical);
             p.addParameter('applyTranslationNormalization', true, @islogical);
+            p.addParameter('applyTranslationNormalizationPostProject', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -119,7 +207,7 @@ classdef StateSpaceProjection
             end
             
             % replace translation normalization
-            if p.Results.applyTranslationNormalization
+            if p.Results.applyTranslationNormalization && ~isempty(proj.translationNormalization)
                 debug('Applying translation/normalization associated with projection to data\n');
                 if p.Results.clearBeforeApplyingTranslationNormalization
                     pset = pset.clearTranslationNormalization();
@@ -131,7 +219,11 @@ classdef StateSpaceProjection
             b = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(pset);
             b.dataUnits = ''; % clear by default, since we're not necessarily willing to call them the same units anymore
 
-            b.basisNames = proj.getBasisNames(pset);
+            if ~isempty(proj.basisNamesProj)
+                b.basisNames = proj.basisNamesProj;
+            else
+                b.basisNames = proj.getBasisNames(pset);
+            end
             b.basisUnits = proj.getBasisUnits(pset); 
             
             % copy/compute trial averaged data 
@@ -204,9 +296,49 @@ classdef StateSpaceProjection
             b.basisAlignSummaryLookup = ones(pset.nBases, 1);
             
             psetProjected = b.buildManualWithTrialAveragedData();
+            
+            if p.Results.applyTranslationNormalizationPostProject && ~isempty(proj.translationNormalizationPostProject)
+                psetProjected = psetProjected.applyTranslationNormalization(proj.translationNormalizationPostProject);
+            end
+
+            % mark output bases invalid if requested
+            if ~isempty(proj.basisValidProj)
+                psetProjected = psetProjected.setBasesInvalid(~proj.basisValidProj, proj.basisInvalidCauseProj(~proj.basisValidProj));
+            end
+            
             if nargout > 1
                 stats = StateSpaceProjectionStatistics.build(proj, pset, p.Unmatched);
             end
+        end
+        
+        function iproj = getInverse(proj, varargin)
+            p = inputParser();
+%             p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical);
+%             p.addParameter('applyTranslationNormalization', true, @islogical);
+%             p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            iproj = ProjManual();
+            iproj.decoderKbyN = proj.encoderNbyK;
+            iproj.encoderNbyK = proj.decoderKbyN;
+            iproj.basisNamesProj = proj.basisNamesSource; % restore the basis names of the source pset when projecting back into the source bases
+            iproj.basisNamesSource = proj.basisNamesProj;
+            % the inverse projection will invert the post project
+            % trans/norm before inverting the projection itself
+            if ~isempty(proj.translationNormalizationPostProject)
+                iproj.translationNormalization = proj.translationNormalizationPostProject.getInverse();
+            end
+            
+            % and then after projecting, it will invert the original
+            % translation normalization, so that the original data is
+            % returned
+            if ~isempty(proj.translationNormalization)
+                iproj.translationNormalizationPostProject = proj.translationNormalization.getInverse();
+            end
+            iproj.basisValidProj = proj.basisValid;
+            iproj.basisValid = proj.basisValidProj;
+            iproj.basisInvalidCauseProj = proj.basisInvalidCause;
+            iproj.basisInvalidCause = proj.basisInvalidCauseProj;
         end
         
         function [proj, psetProjected, stats] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
@@ -214,8 +346,14 @@ classdef StateSpaceProjection
             p.KeepUnmatched = true; 
             p.parse(varargin{:});
 
-            [proj, stats] = proj.buildFromPopulationTrajectorySet(pset, p.Unmatched);
-            psetProjected = proj.projectPopulationTrajectorySet(pset, 'applyTranslationNormalization', false, p.Unmatched); % false --> don't apply translation normalization since we'll pull that from this pset to begin with
+            if nargout < 3
+                % runs much faster when stats not requested, though note
+                % that this will leave .buildStats empty
+                [proj, ~, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, 'computeStatistics', false, p.Unmatched);
+            else
+                [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, p.Unmatched);
+            end
+            psetProjected = proj.projectPopulationTrajectorySet(psetPrepared, 'applyTranslationNormalization', false, p.Unmatched);
         end
     end
 
