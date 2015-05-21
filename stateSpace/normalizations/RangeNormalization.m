@@ -9,7 +9,7 @@ classdef RangeNormalization < StateSpaceTranslationNormalization
 
             obj = StateSpaceTranslationNormalization.buildManual(...
                 'translationByBasis', -minByBasis, 'translationByBasis', 'min-subtract', ...
-                'normalizationDescription', rangeByBasis, 'normalizationByBasis', 'range-normalized');
+                'normalizationDescription', rangeByBasis.^(-1), 'normalizationByBasis', 'range-normalized');
         end
     end
     

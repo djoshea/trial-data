@@ -613,6 +613,7 @@ classdef StateSpaceProjectionStatistics
             % restore original input shape
             N = size(decoderKbyN,2);
             K = size(decoderKbyN,1);
+            maxNK = max(K, N);
 
             assert(size(NbyTAbyAttr, 1) == N, 'Shape of decoder must be K by N');
             assert(size(encoderNbyK, 1) == N, 'Shape of encoder must be N by K');
@@ -797,7 +798,10 @@ classdef StateSpaceProjectionStatistics
                 % drop additional timepoints here, then we'll have less total variance
                 % to explain and need to correct for this. #todo
                 nanMaskT = any(isnan(noiseNxT_all), 1);
-                if any(nanMaskT(:))
+                if all(nanMaskT(:))
+                    warning('Single trial data has NaN values at all timepoints where trial-averaged data did not (%d / %d time points). Noise variance will not be computed.\n', nnz(nanMaskT), numel(nanMaskT));
+                    noiseNxT_all_nonNan = noiseNxT_all(:, ~nanMaskT);
+                elseif any(nanMaskT(:))
                     debug('Single trial data has NaN values at timepoints where trial-averaged data did not (%d / %d time points). Noise variance will be normalized accordingly.\n', nnz(nanMaskT), numel(nanMaskT));
                     noiseNxT_all_nonNan = noiseNxT_all(:, ~nanMaskT);
                 else
@@ -817,18 +821,25 @@ classdef StateSpaceProjectionStatistics
                 % Noise variance, all timepoints
                 %%%%%%
                 
-                 % total noise variance
-                s.totalNoiseVar_allTimepoints = sum(noiseNxT_all_nonNan(:).^2) * noiseVarMultiplier_allTimepoints;
+                if ~all(nanMaskT(:))
+                     % total noise variance
+                    s.totalNoiseVar_allTimepoints = sum(noiseNxT_all_nonNan(:).^2) * noiseVarMultiplier_allTimepoints;
 
-                % total signal variance
-                s.totalSignalVar_allTimepoints = max(0, s.totalVar_allTimepoints - s.totalNoiseVar_allTimepoints);
+                    % total signal variance
+                    s.totalSignalVar_allTimepoints = max(0, s.totalVar_allTimepoints - s.totalNoiseVar_allTimepoints);
 
-                % PCA explained signal variance
-                if p.Results.verbose, debug('Computing noise SVD\n'); end
-                Snoise_all = svd(noiseNxT_all_nonNan', 0) * noiseVarMultiplier_allTimepoints;
-                if K >= N % account for too many output bases
-                    Snoise_all = cat(1, Snoise_all, zerosvec(K-N));
+                    % PCA explained signal variance
+                    if p.Results.verbose, debug('Computing noise SVD\n'); end
+                    Snoise_all = svd(noiseNxT_all_nonNan', 0) * noiseVarMultiplier_allTimepoints;
+                    if K >= N % account for too many output bases
+                        Snoise_all = cat(1, Snoise_all, zerosvec(K-N));
+                    end
+                else
+                    s.totalNoiseVar_allTimepoints = NaN;
+                    s.totalSignalVar_allTimepoints = NaN;
+                    Snoise_all = nanvec(maxNK);
                 end
+                
                 pcaSignal = Spca_all(1:K).^2 - Snoise_all(1:K).^2;
                 s.pca_cumulativeSignalVarByBasis_allTimepoints = min(s.totalSignalVar_allTimepoints, cumsum(pcaSignal'));
                 s.pca_cumulativeSignalVarByBasis_allTimepoints = TensorUtils.makeNonDecreasing(s.pca_cumulativeSignalVarByBasis_allTimepoints);
@@ -849,12 +860,17 @@ classdef StateSpaceProjectionStatistics
                 
                 % compute fraction of total signal var
                 s.cumulativeFractionSignalVarByBasis_allTimepoints = s.cumulativeSignalVarByBasis_allTimepoints / s.totalSignalVar_allTimepoints;
-
+                if s.totalSignalVar_allTimepoints == 0
+                    % otherwise will be nan
+                    s.cumulativeFractionSignalVarByBasis_allTimepoints = 0 * s.cumulativeSignalVarByBasis_allTimepoints;
+                    s.pca_cumulativeFractionSignalVarByBasis_allTimepoints = 0 * s.cumulativeSignalVarByBasis_allTimepoints;
+                end
                 %%%%%%%%%%
                 % Noise variance, shared timepoints
                 %%%%%%%%%%
 
                 if any(sharedTimepoints_tensor_keepMaskT)
+                    % noiseTensor is NbyTAbyAttr
                     % filter in time to match dataTensor_shared and hopefully remove all NaNs 
                     % in shared timepoints
                     noiseTensor_shared = TensorUtils.selectAlongDimension(noiseTensor, 2, ...
@@ -869,30 +885,45 @@ classdef StateSpaceProjectionStatistics
                     % drop additional timepoints here, then we'll have less total variance
                     % to explain and need to correct for this. #todo
                     nanMaskT = TensorUtils.anyMultiDim(isnan(noiseTensor_shared), [1 3:ndims(noiseTensor_shared)]);
-                    if any(nanMaskT)
+                    if all(nanMaskT)
+                        warning('Single trial data has NaN values at all shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will not be computed.\n', nnz(nanMaskT), numel(nanMaskT));
+                        noiseTensor_shared_nonNaN = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
+                    elseif any(nanMaskT)
                         debug('Single trial data has NaN values at shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will be normalized accordingly.\n', nnz(nanMaskT), numel(nanMaskT));
                         noiseTensor_shared_nonNaN = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
                     else
                         noiseTensor_shared_nonNaN = noiseTensor_shared;
                     end
                     noiseVarMultiplier_sharedTimepoints = numel(nanMaskT) / nnz(~nanMaskT);
+%%%% TODO
+                    if ~all(nanMaskT)
+                        s.totalNoiseVar_sharedTimepoints = sum(noiseTensor_shared_nonNaN(:).^2) * noiseVarMultiplier_sharedTimepoints;
 
-                    s.totalNoiseVar_sharedTimepoints = sum(noiseTensor_shared_nonNaN(:).^2) * noiseVarMultiplier_sharedTimepoints;
-
-                    % ensure signal var is nonnegative using max(0, ...) and
-                    % update the noise var to match if necessary
-                    s.totalSignalVar_sharedTimepoints = max(0, s.totalVar_sharedTimepoints - s.totalNoiseVar_sharedTimepoints);
-                    s.totalNoiseVar_sharedTimepoints =  s.totalVar_sharedTimepoints - s.totalSignalVar_sharedTimepoints;
-
+                        % ensure signal var is nonnegative using max(0, ...) and
+                        % update the noise var to match if necessary
+                        s.totalSignalVar_sharedTimepoints = max(0, s.totalVar_sharedTimepoints - s.totalNoiseVar_sharedTimepoints);
+                        s.totalNoiseVar_sharedTimepoints =  s.totalVar_sharedTimepoints - s.totalSignalVar_sharedTimepoints;
+                    else
+                        s.totalSignalVar_sharedTimepoints = NaN;
+                        s.totalNoiseVar_sharedTimepoints = NaN;
+                    end
+                    
                     % PCA explained signal variance
                     if p.Results.verbose, debug('Computing noise SVD shared timepoints\n'); end
-                    noiseNxT_shared = noiseTensor_shared_nonNaN(:, :);
-                    [~, Dnoise_shared, Vnoise_shared] = svd(noiseNxT_shared', 0);
-                    Snoise_shared = diag(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
-                    if K >= N
-                        Snoise_shared = cat(1, Snoise_shared, zerosvec(K-N));
-                        Vnoise_shared = cat(2, Vnoise_shared, zeros(size(Vnoise_shared, 1), K-N));
+                    if ~isempty(noiseTensor_shared_nonNaN)
+                        noiseNxT_shared = noiseTensor_shared_nonNaN(:, :);
+                        [~, Dnoise_shared, Vnoise_shared] = svd(noiseNxT_shared', 0);
+                        Snoise_shared = diag(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
+                        if K >= N
+                            Snoise_shared = cat(1, Snoise_shared, zerosvec(K-N));
+                            Vnoise_shared = cat(2, Vnoise_shared, zeros(size(Vnoise_shared, 1), K-N));
+                        end
+                    else
+                        % not possible to compute noise
+                        Snoise_shared = nanvec(maxNK);
+                        Vnoise_shared = nan(maxNK, maxNK);
                     end
+                        
                     pcaSignal = Sshared(1:K).^2 - Snoise_shared(1:K).^2;
                     s.pca_cumulativeSignalVarByBasis_sharedTimepoints = min(s.totalSignalVar_sharedTimepoints, cumsum(pcaSignal'));
                     s.pca_cumulativeSignalVarByBasis_sharedTimepoints = TensorUtils.makeNonDecreasing(s.pca_cumulativeSignalVarByBasis_sharedTimepoints);
@@ -917,6 +948,11 @@ classdef StateSpaceProjectionStatistics
                     % compute fraction of total signal variance
                     s.cumulativeFractionSignalVarByBasis_sharedTimepoints = s.cumulativeSignalVarByBasis_sharedTimepoints / s.totalSignalVar_sharedTimepoints;
 
+                    if s.totalSignalVar_sharedTimepoints == 0 % otherwise will be NaN
+                        s.cumulativeFractionSignalVarByBasis_sharedTimepoints = 0 * s.cumulativeSignalVarByBasis_sharedTimepoints;
+                        s.pca_cumulativeFractionSignalVarByBasis_sharedTimepoints = 0 * s.cumulativeSignalVarByBasis_sharedTimepoints;
+                    end
+                    
                     %%%%%%%%%%
                     % marginalized signal variance
                     %%%%%%%%%%
@@ -1117,8 +1153,6 @@ classdef StateSpaceProjectionStatistics
             % axisMask: logical vector masking axes to marginalize over,
             %   Must match length of axisAttributeSets, e.g. [true; true]
             %
-            % OUTPUTS:
-            %
             % 'axesCombineSpecificMarginalizations': a list of marginalization
             %   combinations to apply.
             %
@@ -1127,8 +1161,10 @@ classdef StateSpaceProjectionStatistics
             %   will be applied to prevent the marginalization from ever distinguishing
             %   variance due to one axis in the list from the others.
             %
-            % 'combineAllAxesPureWithTime': logical scalar or logical vector,
-            %   indicating which 
+            % 'combineAxesWithTime': logical scalar or logical vector or
+            %   cell list of axis specs, indicating which axes should be
+            %   combined with pure time (e.g. axis and axis+time will be
+            %   combined)
             %
             % 'axisNames': nCov cellstr. optional, specifies the names for each
             %   covariate. should match length of axisAttributeSets, i.e.
@@ -1142,7 +1178,7 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('axesIgnore', {}, @(x) true);
             p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
             p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
-            p.addParameter('combineAxesWithTime', true, @islogical);
+            p.addParameter('combineAxesWithTime', true, @(x) islogical(x) || iscell(x));
             p.addParameter('axisNames', {}, @iscellstr);
             p.parse(varargin{:});
 
@@ -1169,7 +1205,7 @@ classdef StateSpaceProjectionStatistics
                 'axesCombineAllMarginalizations must be a list of list of axisSpecs, see help');
 
             combineAxesWithTime = p.Results.combineAxesWithTime;
-            assert(islogical(combineAxesWithTime), 'combineAxesWithTime must be logical');
+            assert(islogical(combineAxesWithTime) || isListOfAxisSpecs(combineAxesWithTime), 'combineAxesWithTime must be logical or list of axisSpecs, see help');
 
             % translate axisSpec cellstrs into numeric axis numbers (one of the numbers in dims)
             function axisIndex = doAxisLookup(axisSpec)
@@ -1244,7 +1280,9 @@ classdef StateSpaceProjectionStatistics
             covariateNames = makecol(covariateNames);
 
             % add dim, time+dim combinations to the list 
-            combineAxesWithTime = p.Results.combineAxesWithTime;
+            if iscell(combineAxesWithTime)
+                combineAxesWithTime = doAxisLookupMultiple(combineAxesWithTime);
+            end
             if isscalar(combineAxesWithTime)
                 combineAxesWithTime = repmat(combineAxesWithTime, numel(dims), 1);
             end

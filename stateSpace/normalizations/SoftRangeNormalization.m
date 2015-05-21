@@ -1,5 +1,5 @@
 classdef SoftRangeNormalization < StateSpaceTranslationNormalization
-    % normalize by range + K
+    % multiply each basis by 1/(range + K)
     
     methods(Access=protected) % don't call constructor, use factory methods
         function obj = SoftRangeNormalization()
@@ -13,7 +13,7 @@ classdef SoftRangeNormalization < StateSpaceTranslationNormalization
             rangeByBasis = pset.computeRangeByBasis();
             minByBasis = pset.computeMinByBasis();
             
-            normalization = rangeByBasis + K;
+            normalization = (rangeByBasis + K) .^ (-1);
             
 %             % don't touch bases whose range is less than M
 %             rangeByBasis(maskLow) = 1;

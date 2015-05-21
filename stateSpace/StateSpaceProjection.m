@@ -375,6 +375,11 @@ classdef StateSpaceProjection
             proj.encoderNbyK = proj.encoderNbyK(:, idx); % select on output bases
         end
         
+        function proj = truncateOutputBases(proj, K)
+            proj.warnIfNoArgOut(nargout);
+            proj = proj.filterOutputBases(1:K);
+        end
+        
         function names = getBasisUnits(proj, pset)  %#ok<INUSL>
             names = repmat({''}, pset.nBases, 1);
         end

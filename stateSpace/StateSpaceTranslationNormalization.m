@@ -11,7 +11,7 @@ classdef StateSpaceTranslationNormalization
         % string description of the translation (e.g. 'mean-subtracted')
         translationDescription = '';
         
-        % nBases x 1 numeric vector of offsets to ADD to each basis
+        % nBases x 1 numeric vector of offsets to MULTIPLY to each basis
         normalizationByBasis
         
         % string description of the normalization (e.g. 'variance-normalized')
@@ -147,16 +147,16 @@ classdef StateSpaceTranslationNormalization
             % the forward transformation looks like y = f(x) = (x-t) / n.
             % the inverse transform looks like:
             % x = f'(y) 
-            %   = (y-ti) / ni 
-            %   = ((x-t)/n - ti) / ni
-            %   = (x/n - t/n - ti) / ni
-            % Letting ti = -t/n and ni = 1/n, we have:
-            %   = (x/n - t/n - (-t/n)) / (1/n)
-            %   = (x/n) * n
+            %   = (y-ti) * ni 
+            %   = ((x-t)*n - ti) * ni
+            %   = (x*n - t*n - ti) * ni
+            % Letting ti = -t*n and ni = 1/n, we have:
+            %   = (x*n - t*n - (-t*n)) * (1/n)
+            %   = (x*n) / n
             %   = x
                         
             inv = StateSpaceTranslationNormalization(); 
-            inv.translationByBasis = -obj.translationByBasis ./ obj.normalizationByBasis;
+            inv.translationByBasis = -obj.translationByBasis .* obj.normalizationByBasis;
             inv.normalizationByBasis = obj.normalizationByBasis.^(-1);
         
             % string description of the normalization (e.g. 'variance-normalized')
@@ -256,7 +256,7 @@ classdef StateSpaceTranslationNormalization
             
             if iscell(data)
                 normCell = num2cell(repmat(obj.normalizationByBasis, sz));
-                newData = cellfun(@(x, norm) x ./ norm, data, ...
+                newData = cellfun(@(x, norm) x .* norm, data, ...
                     normCell, 'UniformOutput', false);
             else
                 newData = bsxfun(@rdivide, data, obj.normalizationByBasis);
@@ -302,7 +302,7 @@ classdef StateSpaceTranslationNormalization
             
             if iscell(data)
                 normCell = num2cell(repmat(obj.normalizationByBasis, sz));
-                newData = cellfun(@(x, norm) x .* norm, data, ...
+                newData = cellfun(@(x, norm) x ./ norm, data, ...
                     normCell, 'UniformOutput', false);
             else
                 newData = bsxfun(@times, data, obj.normalizationByBasis);
