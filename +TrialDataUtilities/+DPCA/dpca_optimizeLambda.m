@@ -1,6 +1,5 @@
 function [optimalLambda, optimalLambdas] = dpca_optimizeLambda(Xfull, ...
-    Xtrial, numOfTrials, varargin)
-import(getPackageImportString);
+    XrandomTrials, numOfTrials, varargin)
 % optimalLambda = dpca_optimizeLambda(X, Xtrial, numOfTrials, ...)
 % computes optimal regularization parameter. X is the data array. Xtrial 
 % is an array storing single trials. It has one extra dimension as compared 
@@ -54,9 +53,11 @@ import(getPackageImportString);
 %                        'neuronwise' - reconstruction error on the test
 %                                       data computed per neuron
 
+import(getPackageImportString);
+
 % default input parameters
 options = struct('numComps',       25,                  ...   
-                 'lambdas',        1e-07 * 1.5.^[0:25], ...
+                 'lambdas',        1e-07 * 1.5.^(0:25), ...
                  'numRep',         10,                  ...
                  'display',        'yes',               ...
                  'combinedParams', [],                  ...
@@ -76,25 +77,32 @@ for pair = reshape(varargin,2,[])    % pair is {propName; propValue}
 	end
 end
 
+assert(size(XrandomTrials, ndims(XrandomTrials)) >= options.numRep, ...
+    'Number of random trials provided must be greater than or equal to numRep');
+
 tic
 Xsum = bsxfun(@times, Xfull, numOfTrials);
 %Xsum = nansum(Xtrial,5);
 
+
+prog = ProgressBar(options.numRep, 'Optimizating lambda');
 for rep = 1:options.numRep
-    fprintf(['Repetition #' num2str(rep) ' out of ' num2str(options.numRep)])
+    prog.update(rep);
+    %fprintf(['Repetition #' num2str(rep) ' out of ' num2str(options.numRep)])
     
-    Xtest = dpca_getTestTrials(Xtrial, numOfTrials);
+%     Xtest = TrialDataUtilities.DPCA.dpca_getTestTrials(Xtrial, numOfTrials);
+    Xtest = TensorUtils.selectAlongDimension(XrandomTrials, ndims(XrandomTrials), rep);
     Xtrain = bsxfun(@times, Xsum - Xtest, 1./(numOfTrials-1));
     
     XtestCen = bsxfun(@minus, Xtest, mean(Xtest(:,:),2));
-    XtestMargs = dpca_marginalize(XtestCen, 'combinedParams', options.combinedParams, ...
+    XtestMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtestCen, 'combinedParams', options.combinedParams, ...
                     'ifFlat', 'yes');
     for i=1:length(XtestMargs)
         margTestVar(i) = sum(XtestMargs{i}(:).^2);
     end
     
     XtrainCen = bsxfun(@minus, Xtrain, mean(Xtrain(:,:),2));
-    XtrainMargs = dpca_marginalize(XtrainCen, 'combinedParams', options.combinedParams, ...
+    XtrainMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtrainCen, 'combinedParams', options.combinedParams, ...
                     'ifFlat', 'yes');
     for i=1:length(XtrainMargs)
         margTrainVar(i) = sum(XtrainMargs{i}(:).^2);
@@ -106,10 +114,11 @@ for rep = 1:options.numRep
         margVar_toNormalize = margTrainVar;
     end
 
+    progInner = ProgressBar(length(options.lambdas), 'Testing lambda values');
     for l = 1:length(options.lambdas)
-        fprintf('.')
+        progInner.update(l);
         
-        [W,V,whichMarg] = dpca(Xtrain, options.numComps, ...
+        [W,V,whichMarg] = TrialDataUtilities.DPCA.dpca(Xtrain, options.numComps, ...
             'combinedParams', options.combinedParams, ...
             'lambda', options.lambdas(l));
         
@@ -144,8 +153,10 @@ for rep = 1:options.numRep
         
         errors(l,rep) = cumError / sum(margVar_toNormalize);
     end
-    fprintf('\n')
+    progInner.finish();
+%     fprintf('\n')
 end
+prog.finish();
 
 timeTaken = toc;
 
@@ -207,5 +218,8 @@ if strcmp(options.display, 'yes')
     set(gca,'XTickLabel', xtickLabels)
     
     plot(xlim, [1 1], 'k')
-    axis([log(options.lambdas(1)) log(options.lambdas(end)) 0 1.2])
+    if numel(options.lambdas) > 1
+        xlim([log(options.lambdas(1)) log(options.lambdas(end))]);
+    end
+    ylim([0 1.2]);
 end

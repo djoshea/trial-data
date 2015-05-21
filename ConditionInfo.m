@@ -444,9 +444,12 @@ classdef ConditionInfo < ConditionDescriptor
         end
         
         function valueList = computeAutoListForAttribute(ci, attrIdx)
+            % use tolerance to ensure we don't split up conditions due to
+            % floating point imprecision
+            
             vals = ci.getAttributeValues(attrIdx);
             if ci.attributeNumeric(attrIdx)
-                valueList = unique(removenan(vals));
+                valueList = TrialDataUtilities.Data.uniquetol(removenan(vals));
                 % include NaN in the list if one is found
                 if any(isnan(vals))
                     valueList(end+1) = NaN;
@@ -455,9 +458,9 @@ classdef ConditionInfo < ConditionDescriptor
                 % include empty values in the list if found
 %                 emptyMask = cellfun(@isempty, vals);
 %                 vals = vals(~emptyMask);
-                valueList = unique(vals);
+                valueList = TrialDataUtilities.Data.uniquetol(vals);
             else
-                valueList = uniqueCell(vals);
+                valueList = TrialDataUtilities.Data.uniqueCellTol(vals);
             end
         end             
         
@@ -606,7 +609,7 @@ classdef ConditionInfo < ConditionDescriptor
                                 end
                             end
                             
-                            matchesThis = ismember(attrVals, valsThis);
+                            matchesThis = TrialDataUtilities.Data.ismembertol(attrVals, valsThis);
                             mask(:, iV) = mask(:, iV) & matchesThis;
                             
                             whichField(isnan(whichField(:, iV)) & ~matchesThis) = iF;
@@ -887,7 +890,10 @@ classdef ConditionInfo < ConditionDescriptor
 
                 % check the returned size and field names
                 assert(numel(valueStructRequestAs) == ci.nTrials, 'Number of elements returned by getAttributeFn must match nTrials');
-                assert(all(isfield(valueStructRequestAs, requestAs)), 'Number of elements returned by getAttributeFn must match nTrials');
+                if ~all(isfield(valueStructRequestAs, requestAs))
+                    missingFields = requestAs(~isfield(valueStructRequestAs, requestAs));
+                    error('TrialData missing fields required by ConditionInfo: %s', strjoin(missingFields, ', '));
+                end
 
                 % translate back into attribute names
                 valueStruct = mvfield(valueStructRequestAs, requestAs, attrNames);

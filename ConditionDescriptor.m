@@ -1350,11 +1350,12 @@ classdef ConditionDescriptor
                 requestAs = name;
             end
 
-            if ci.hasAttribute(name)
-                error('ConditionDescriptor already has attribute %s', name);
+            [tf, iAttr] = ci.hasAttribute(name);
+            if tf
+%                 warning('ConditionDescriptor already has attribute %s', name);
+            else
+                iAttr = ci.nAttributes + 1;
             end
-            
-            iAttr = ci.nAttributes + 1;
             ci.attributeNames{iAttr} = name;
             ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList); 
             ci.attributeRequestAs{iAttr} = requestAs;
@@ -2228,7 +2229,7 @@ classdef ConditionDescriptor
     methods(Access=protected) % Utility methods
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~isa(obj, 'handle')
-                warning('WARNING: %s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.', ...
                     class(obj));
             end
         end
