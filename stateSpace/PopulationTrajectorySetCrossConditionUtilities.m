@@ -45,6 +45,40 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, p.Unmatched);
         end
         
+        function psetDiff = subtractOneConditionFromOthersAlongAxis(pset, axisName, conditionToSubtract, varargin)
+            % more parameters available in applyLinearCombinationAlongConditionAxis
+            p = inputParser();
+            p.addParameter('newNamesAlongAxis', {}, @iscellstr);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
+            
+            nAlongAxis = pset.conditionsSize(aIdx);
+            
+            idxKeep = setdiff(1:nAlongAxis, conditionToSubtract);
+            
+            % generate new names from differences
+            if isempty(p.Results.newNamesAlongAxis)
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueList = valueLists{aIdx}(idxKeep);
+                valueSubtract = valueLists{aIdx}{conditionToSubtract};
+                
+                newNamesAlongAxis = cellfun(@(v) [v ' - ' valueSubtract], valueList, ...
+                    'UniformOutput', false);
+            else
+                newNamesAlongAxis = p.Results.newNamesAlongAxis;
+            end
+            
+            % generate differencing matrix
+            mat = eye(nAlongAxis);
+            mat(:, conditionToSubtract) = -1;
+            wNbyO = mat(idxKeep, :);
+            
+            psetDiff = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
+                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, p.Unmatched);
+        end
+        
         function psetMean = computeMeanAlongAxis(pset, axisName, varargin)
             % more parameters available in applyLinearCombinationAlongConditionAxis
             p = inputParser();
@@ -203,11 +237,11 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             setsAlongAxis = arrayfun(@(iNew) find(wNbyO(iNew, :)), 1:cNewAlongAxis, 'UniformOutput', false);
             conditionIdxSetsTensor = TensorUtils.selectSetsAlongDimension(cIndsTensor, aIdx, setsAlongAxis);
             
-            prog = ProgressBar(pset.nBases, 'Collecting conditions within AlignSummary data');
-            for iBasis = 1:pset.nBases
-                prog.update(iBasis);
+            prog = ProgressBar(pset.nDataSources, 'Collecting conditions within AlignSummary data');
+            for iSource = 1:pset.nDataSources
+                prog.update(iSource);
                 for iAlign = 1:pset.nAlign
-                    b.alignSummaryData{iBasis, iAlign} = b.alignSummaryData{iBasis, iAlign}.combineSetsOfConditions(...
+                    b.alignSummaryData{iSource, iAlign} = b.alignSummaryData{iSource, iAlign}.combineSetsOfConditions(...
                         b.conditionDescriptor, conditionIdxSetsTensor(:));
                 end
             end

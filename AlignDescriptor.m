@@ -122,6 +122,7 @@ classdef AlignDescriptor
         TRUNCATE = 'truncate';
         INVALIDATE = 'invalidate';
         IGNORE = 'ignore';
+        AUTO = '<auto>';
     end
 
     properties(Dependent, Hidden)
@@ -296,7 +297,7 @@ classdef AlignDescriptor
             
             markLabels = cell(length(ad.markLabelsStored), 1);
             for iMark = 1:length(ad.markLabelsStored)
-                if ~isempty(ad.markLabelsStored{iMark})
+                if ~strcmp(ad.markLabelsStored{iMark}, AlignDescriptor.AUTO)
                     % manual label
                     markLabels{iMark} = ad.markLabelsStored{iMark};
                 elseif ad.isMarkFixedTime(iMark) && ad.omitRedundantLabel
@@ -323,7 +324,7 @@ classdef AlignDescriptor
             
             intervalLabels = cell(length(ad.intervalLabelsStored), 1);
             for i = 1:nIntervals
-                if ~isempty(ad.intervalLabelsStored{i})
+                if ~strcmp(ad.intervalLabelsStored{i}, AlignDescriptor.AUTO)
                     % manual label
                     intervalLabels{i} = ad.intervalLabelsStored{i};
                 else
@@ -595,15 +596,15 @@ classdef AlignDescriptor
             p.addParameter('offsetStop', 0, @isscalar);
             p.addParameter('indexStart', ':', @(x) ischar(x) || isscalar(x));
             p.addParameter('indexStop', ':', @(x) ischar(x) || isscalar(x));
-            p.addParameter('as', '', @ischar);
+            p.addParameter('as', AlignDescriptor.AUTO, @ischar);
             p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
             %p.addParameter('conditionMatch', struct(), @(x) isstruct(x) && isscalar(x));
             p.parse(varargin{:});
-            as = p.Results.as;
             %conditionMatch = p.Results.conditionMatch;
+            as = p.Results.as;
 
             % try inferring offsets, indexes from provided strings, then
             % overwrite with provided params
@@ -676,7 +677,7 @@ classdef AlignDescriptor
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
             p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
-            p.addParameter('as', '', @ischar);
+            p.addParameter('as', AlignDescriptor.AUTO, @ischar);
             p.addParameter('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
             p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.addParameter('showOnData', true, @islogical);
@@ -717,13 +718,7 @@ classdef AlignDescriptor
             ad.markShowOnData = makecol(ad.markShowOnData);
             ad.markShowOnAxis(iMark) = p.Results.showOnAxis;
             ad.markShowOnAxis = makecol(ad.markShowOnAxis);
-            
-            if ~isempty(p.Results.as)
-                % store manual label
-                ad.markLabelsStored{iMark,1} = p.Results.as;
-            else
-                ad.markLabelsStored{iMark,1} = '';
-            end
+            ad.markLabelsStored{iMark,1} = p.Results.as;
 
             ad = ad.postUpdateMark();
         end

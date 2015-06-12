@@ -43,6 +43,7 @@ classdef TrialDataConditionAlign < TrialData
         conditionNames
         conditionNamesShort
         conditionNamesMultiline
+        conditionNamesMultilineShort
         conditionAppearances
         conditionColors
         conditionsSize
@@ -883,6 +884,10 @@ classdef TrialDataConditionAlign < TrialData
         
         function v = get.conditionNamesMultiline(td)
             v = td.conditionInfo.namesMultiline;
+        end
+        
+        function v = get.conditionNamesMultilineShort(td)
+            v = td.conditionInfo.namesMultilineShort;
         end
 
         function v = get.conditionAppearances(td)
@@ -2240,20 +2245,18 @@ classdef TrialDataConditionAlign < TrialData
             [axh, unmatched] = td.getRequestedPlotAxis(p.Unmatched);
             
             [wavesCell, waveTvec] = td.getSpikeWaveforms(unitName, unmatched);
-            wavesMat = cat(1, wavesCell{:});
+            wavesMat = cat(1, wavesCell{:})';
+            % wavesmat is T x nSpikes;
             
             maxSamples = p.Results.maxToPlot;
-            if maxSamples < size(wavesMat, 1)
+            if maxSamples < size(wavesMat, 2)
                 s = RandStream('mt19937ar','Seed',1);
-                idx = randsample(s, size(wavesMat, 1), maxSamples);
-                wavesMat = wavesMat(idx, :);
+                idx = randsample(s, size(wavesMat, 2), maxSamples);
+                wavesMat = wavesMat(:, idx);
             end
             
-            h = nanvec(size(wavesMat, 1));
-            for i = 1:size(wavesMat, 1)
-                h(i) = TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat(i, :), ...
-                    'Parent', axh, 'EdgeColor', p.Results.color, 'EdgeAlpha', p.Results.alpha);
-            end
+            h = TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat, ...
+                'Parent', axh, 'EdgeColor', p.Results.color, 'EdgeAlpha', p.Results.alpha);
             
             ht = title(sprintf('Spike Waveforms for %s', unitName));
             set(ht, 'Interpreter', 'none');
@@ -2387,6 +2390,8 @@ classdef TrialDataConditionAlign < TrialData
             
             % make room for labels using AutoAxis
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
+            
+            p.addParameter('useShortLabels', false, @islogical);
            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -2544,7 +2549,11 @@ classdef TrialDataConditionAlign < TrialData
             
             % setup y axis condition labels
             colors = cat(1, td.conditionAppearances(conditionIdx).Color);
-            conditionNames = td.conditionNamesMultiline(conditionIdx);
+            if p.Results.useShortLabels
+                conditionNames = td.conditionNamesShort(conditionIdx); % todo change this to multiline?
+            else
+                conditionNames = td.conditionNamesMultiline(conditionIdx);
+            end
             
             % only include conditions with at least 1 trial
             mask = trialCounts(conditionIdx) > 0;
@@ -3562,7 +3571,7 @@ classdef TrialDataConditionAlign < TrialData
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
                         end
                         if p.Results.alpha < 1
-                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat + yOffset, ...
+                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
                         else

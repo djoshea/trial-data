@@ -8,6 +8,7 @@ function hLine = drawTickRaster(timesCell, varargin)
     p.addParamValue('yOffset', 0, @isscalar);
     p.addParamValue('rowHeight', 1, @isscalar);
     p.addParamValue('tickHeight', 0.99, @isscalar);
+    p.addParameter('alpha', 1, @isscalar);
     
     p.parse(varargin{:});
     
@@ -34,6 +35,9 @@ function hLine = drawTickRaster(timesCell, varargin)
     if ~isempty(X)
         hLine = plot(X(:), Y(:), 'Parent', p.Results.axh, 'Color', p.Results.color, ...
             'LineWidth', p.Results.lineWidth);
+        if p.Results.alpha < 1
+            SaveFigure.setLineOpacity(hLine, p.Results.alpha);
+        end
     else
         hLine = NaN;
     end

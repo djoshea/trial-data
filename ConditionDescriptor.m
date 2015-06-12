@@ -131,6 +131,7 @@ classdef ConditionDescriptor
         names % A-dimensional cellstr array with names of each condition 
         namesShort 
         namesMultiline % A-dimension cellstr array with names of each condition separated into multiple lines via \n
+        namesMultilineShort % A-dimension cellstr array with names of each condition separated into multiple lines via \n
         
         attributeValueLists % A x 1 cell array of values allowed for this attribute
                            % here just computed from attributeValueListManual, but in ConditionInfo
@@ -1086,6 +1087,7 @@ classdef ConditionDescriptor
             ci.appearanceColorByAttributesCmap = [];
             ci.appearanceColorByAxesList = [];
             ci.appearanceColorByAxesCmap = [];
+            ci = ci.invalidateAppearanceInfo();
         end
         
         function ci = colorByAttributes(ci, attributes, varargin)
@@ -1118,6 +1120,7 @@ classdef ConditionDescriptor
             if iscellstr(axesSpec), axesSpec = {axesSpec}; end
             ci.appearanceColorByAxesList = axesSpec;
             ci.appearanceColorByAxesCmap = p.Results.cmapFn; 
+            ci = ci.invalidateAppearanceInfo();
         end
         
         function appear = applyAppearanceModifications(ci, appear)
@@ -1688,6 +1691,10 @@ classdef ConditionDescriptor
             end
         end 
         
+        function v = get.namesMultilineShort(ci)
+            v = ci.buildNamesMultilineShort();
+        end
+        
         function ci = set.namesMultiline(ci, v)
             ci.odc = ci.odc.copy();
             ci.odc.namesMultiline = v;
@@ -1972,6 +1979,21 @@ classdef ConditionDescriptor
                     fn = @ConditionDescriptor.defaultNameFn;
                 end
                 names = fn(ci, 'multiline', false, 'shortNames', true);
+                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
+                    'nameFn must return cellstr with same size as .conditions');
+            else
+                names = {};
+            end
+        end
+        
+        function names = buildNamesMultilineShort(ci)
+            % pass along values(i) and the subscripts of that condition in case useful 
+            if ci.nConditions > 0
+                fn = ci.nameFn;
+                if isempty(fn)
+                    fn = @ConditionDescriptor.defaultNameFn;
+                end
+                names = fn(ci, 'multiline', true, 'shortNames', true);
                 assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
                     'nameFn must return cellstr with same size as .conditions');
             else

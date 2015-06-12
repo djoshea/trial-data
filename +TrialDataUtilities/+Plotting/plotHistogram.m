@@ -62,9 +62,22 @@ if ~isempty(p.Results.fillColor) && ~strcmp(p.Results.fillColor, 'none')
 end
 
 if ~isempty(p.Results.color) && ~strcmp(p.Results.color, 'none')
-    h.line = stairs(xPts, yPts, '-', 'LineWidth', p.Results.lineWidth, ...
+%     h.line = stairs(xPts, yPts, '-', 'LineWidth', p.Results.lineWidth, ...
+%         'Color', p.Results.color, ...
+%         'Parent', axh);
+
+    [n,nc] = size(yPts);
+    ndx = [1:n;1:n];
+    y2 = yPts(ndx(1:2*n-1),:);
+    if size(xPts,2)==1,
+        x2 = xPts(ndx(2:2*n),ones(1,nc));
+    else
+        x2 = xPts(ndx(2:2*n),:);
+    end
+    h.line = plot(x2, y2, '-', 'LineWidth', p.Results.lineWidth, ...
         'Color', p.Results.color, ...
         'Parent', axh);
+    
     SaveFigure.setLineOpacity(h.line, p.Results.lineAlpha);
 end
 

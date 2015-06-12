@@ -159,7 +159,7 @@ classdef PopulationTrajectorySet
     properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)
         % Alignment summary statistics by basis by align
         
-        % nAlignSummary x nAlign cell containing AlignSummary instances for each
+        % nDataSources x nAlign cell containing AlignSummary instances for each
         % basis. built by buildAlignSummary
         alignSummaryData
         
@@ -3220,6 +3220,10 @@ classdef PopulationTrajectorySet
 %             end
 %         end
 
+        function addConditionLabels(pset, varargin)
+            pset.conditionDescriptor.addColoredLabels(varargin{:});
+        end
+
         function plotBases(pset, varargin)
             % plot bases one above the next 
             p = inputParser;
@@ -3499,7 +3503,11 @@ classdef PopulationTrajectorySet
                 case 'tickBridge'
                     for iAlign = 1:nAlignUsed
                         idxAlign = alignIdx(iAlign);
-                        as = pset.alignSummaryAggregated{idxAlign};
+                        if numel(basisIdx) == 1
+                            as = pset.alignSummaryData{pset.basisDataSourceIdx(basisIdx), idxAlign};
+                        else
+                            as = pset.alignSummaryAggregated{idxAlign};
+                        end
                         tvec = pset.tvecDataMean{idxAlign};
                         offset = tAlignZero(iAlign);
                         
@@ -3511,7 +3519,11 @@ classdef PopulationTrajectorySet
                 case 'marker'
                     for iAlign = 1:nAlignUsed
                         idxAlign = alignIdx(iAlign);
-                        as = pset.alignSummaryAggregated{idxAlign};
+                        if numel(basisIdx) == 1 && ~isempty(pset.basisDataSourceIdx)
+                            as = pset.alignSummaryData{pset.basisDataSourceIdx(basisIdx), idxAlign};
+                        else
+                            as = pset.alignSummaryAggregated{idxAlign};
+                        end
                         tvec = pset.tvecDataMean{idxAlign};
                         offset = tAlignZero(iAlign);
                         

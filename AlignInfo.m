@@ -942,16 +942,18 @@ classdef AlignInfo < AlignDescriptor
             end
             zero = ad.timeInfoValid.zero;
             
+            beforeStartMask = bsxfun(@le, rawTimesMatrix, start);
+            afterStopMask = bsxfun(@ge, rawTimesMatrix, stop);
             if beforeStartReplaceStart
-                mask = rawTimesMatrix < start;
+                mask = beforeStartMask;
                 rawTimesMatrix(mask) = repmat(start(mask), 1, size(rawTimesMatrix, 2));
             end
             if afterStopReplaceStop
-                mask = rawTimesMatrix > stop;
+                mask = afterStopMask;
                 rawTimesMatrix(mask) = repmat(stop(mask), 1, size(rawTimesMatrix, 2));
             end
                
-            rawTimesMask = bsxfun(@ge, rawTimesMatrix, start) & bsxfun(@le, rawTimesMatrix, stop);
+            rawTimesMask = ~beforeStartMask & ~afterStopMask;
             alignedTimes = bsxfun(@minus, rawTimesMatrix, zero);  
 
             rawTimesMask(~ad.valid, :) = false;
@@ -1291,7 +1293,7 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals wider than they really are to be more readily visible 
             
             p.addParameter('markAsTicks', true, @islogical);
-            p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markAlpha', 0.5, @isscalar);
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParameter('showInLegend', true, @islogical);

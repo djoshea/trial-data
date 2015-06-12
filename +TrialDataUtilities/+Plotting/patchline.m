@@ -7,6 +7,9 @@ function hvec = patchline(xs,ys,varargin)
 %     patchline(xs,ys,zs,'PropertyName',propertyvalue,...)
 %     p = patchline(...)
 %
+%  xs is x vector or matrix, ys is vector or matrix, each column will be
+%  one trace
+%
 % PROPERTIES: 
 %     Accepts all parameter-values accepted by PATCH.
 % 
@@ -92,7 +95,9 @@ function hvec = patchline(xs,ys,varargin)
 [zs,PVs] = parseInputs(varargin{:});
 p = inputParser;
 p.addParamValue('Parent', gca, @ishandle);
+p.addParamValue('LineWidth', 1, @isscalar);
 p.KeepUnmatched = true;
+p.CaseSensitive = false;
 p.parse(PVs{:});
 
 if rem(numel(PVs),2) ~= 0
@@ -103,15 +108,15 @@ end
 nTraces = size(ys, 2);
 hvec = nanvec(nTraces);
 if isvector(xs)
-    xs = repmat(xs, 1, nTraces);
+    xs = repmat(makecol(xs), 1, nTraces);
 end
 
 for i = 1:nTraces
     % Facecolor = 'k' is (essentially) ignored here, but syntactically necessary
     if isempty(zs)
-        hvec(i) = patch([xs(:, i);NaN],[ys(:, i); NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent);
+        hvec(i) = patch([xs(:, i);NaN],[ys(:, i); NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent, 'LineWidth', p.Results.LineWidth);
     else
-        hvec(i) = patch([xs(:, i);NaN],[ys(:, i);NaN],[zs(:, i); NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent);
+        hvec(i) = patch([xs(:, i);NaN],[ys(:, i);NaN],[zs(:, i); NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent, 'LineWidth', p.Results.LineWidth);
     end
 end
     
