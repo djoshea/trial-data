@@ -458,7 +458,7 @@ classdef ConditionInfo < ConditionDescriptor
                 % include empty values in the list if found
 %                 emptyMask = cellfun(@isempty, vals);
 %                 vals = vals(~emptyMask);
-                valueList = TrialDataUtilities.Data.uniquetol(vals);
+                valueList = unique(vals);
             else
                 valueList = TrialDataUtilities.Data.uniqueCellTol(vals);
             end
