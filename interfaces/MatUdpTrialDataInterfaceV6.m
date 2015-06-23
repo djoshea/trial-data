@@ -55,15 +55,20 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         % Describe the channels present in the dataset 
         % channelDescriptors: scalar struct. fields are channel names, values are ChannelDescriptor 
         function channelDescriptors = getChannelDescriptors(tdi, varargin)
-            channelDescriptors = tdi.getChannelDescriptorsForTrials(tdi.trials, tdi.meta, false);
+            channelDescriptors = tdi.getChannelDescriptorsForTrials(tdi.trials, tdi.meta, false, varargin{:});
         end
 
-        function channelDescriptors = getChannelDescriptorsForTrials(tdi, trials, meta, newOnly)
+        function channelDescriptors = getChannelDescriptorsForTrials(tdi, trials, meta, newOnly, varargin)
             % remove special fields
 %             maskSpecial = ismember({fieldInfo.name}, ...
 %                 {'subject', 'protocol', 'protocolVersion', 'trialId', 'duration', ...
 %                  'saveTag', 'tsStartWallclock', 'tsStopWallclock', ...
 %                  'tUnits', 'version', 'time'});
+            p = inputParser();
+            p.addParamValue('suppressWarnings', false, @islogical);
+            p.parse(varargin{:});
+            suppressWarnings = p.Results.suppressWarnings; 
+
             iChannel = 1;
             groups = meta(1).groups;
             signals = meta(1).signals;
@@ -99,11 +104,21 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     iSignal = iSignal + 1;
                     prog.update(iSignal);
                     name = group.signalNames{iS};
+                    
+                    % this is a bug with meta building in the data logger
+                    % as of version 6. this field is used internally to add
+                    % offsets to the analo gsignal, but it won't actually
+                    % be present in the trials struct
+                    if strcmpi(group.type, 'analog') && ~isempty(strfind(name, '_timestampOffsets'))
+                        continue;
+                    end
 
                     if ~strcmpi(group.type, 'event')
                         % event fields won't have an entry in signals table
                         if ~isfield(signals, name)
-                            warning('Could not find signal %s', name);
+                            if ~suppressWarnings
+                                warning('Could not find signal %s', name);
+                            end
                             continue;
                         end
                         signalInfo = signals.(name);
@@ -179,7 +194,6 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     channelDescriptors(iChannel) = cd;
                     iChannel = iChannel + 1;
                 end
-
                 prog.finish();
 
                 if newOnly
@@ -228,7 +242,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         end
 
         function channelData = getChannelDataForTrials(tdi, trials, channelDescriptors, varargin) %#ok<INUSD>
-            debug('Converting / repairing channel data...\n');
+            %debug('Converting / repairing channel data...\n');
             channelData = rmfield(trials, intersect(fieldnames(trials), {'spikeUnits', 'spikeChannels', 'spikeData_time', 'spikeWaveforms'}));
             
             % rename special channels

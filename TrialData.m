@@ -53,13 +53,23 @@ classdef TrialData
     % Initializing and building
     methods
         function td = TrialData(varargin)
+            p = inputParser();
+            p.addOptional('buildFrom', [], @(x) isa(x, 'TrialData') || isa(x, 'TrialDataInterface'));
+%             p.addParamValue('quiet', false, @islogical); % completely silent output
+            p.addParamValue('suppressWarnings', false, @islogical); % don't warn about any minor issues
+            p.parse(varargin{:});
+%             quiet = p.Results.quiet;
+            suppressWarnings = p.Results.suppressWarnings;
+            
             td = td.rebuildOnDemandCache();
 
             if ~isempty(varargin)
-                if isa(varargin{1}, 'TrialData')
-                    td = td.initializeFromTrialData(varargin{1});
-                elseif isa(varargin{1}, 'TrialDataInterface')
-                    td = td.initializeFromTrialDataInterface(varargin{:});
+                if isa(p.Results.buildFrom, 'TrialData')
+                    td = td.initializeFromTrialData(p.Results.buildFrom, ...
+                        'suppressWarnings', suppressWarnings);
+                elseif isa(p.Results.buildFrom, 'TrialDataInterface')
+                    td = td.initializeFromTrialDataInterface(p.Results.buildFrom, ...
+                        'suppressWarnings', suppressWarnings);
                 else
                     error('Unknown initializer');
                 end
@@ -71,7 +81,7 @@ classdef TrialData
             td.odc = TrialDataOnDemandCache(); 
         end
 
-        function td = initializeFromTrialData(td, tdOther)
+        function td = initializeFromTrialData(td, tdOther, varargin)
             % this is used by subclasses, so can't copy to output
             meta = ?TrialData;
             props = meta.PropertyList;
@@ -93,8 +103,10 @@ classdef TrialData
             
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
+            p.addParamValue('suppressWarnings', false, @islogical);
             p.parse(varargin{:});
             tdi = p.Results.trialDataInterface;
+            suppressWarnings = p.Results.suppressWarnings; 
             
             % copy over basic details from the TrialDataInterface
             td.trialDataInterfaceClass = class(tdi);
@@ -106,7 +118,7 @@ classdef TrialData
             % request channel descriptors for both special params and regular channels
             specialParams = makecol(tdi.getSpecialParamChannelDescriptors());
             specialNames = {specialParams.name};
-            regularChannels = makecol(tdi.getChannelDescriptors());
+            regularChannels = makecol(tdi.getChannelDescriptors('suppressWarnings', p.Results.suppressWarnings));
             regularNames = {regularChannels.name};
 
             % check for reserved channel names
@@ -131,8 +143,7 @@ classdef TrialData
             end
             
             % validate and replace missing values
-            data = td.validateData(data, td.channelDescriptorsByName);
-
+            data = td.validateData(data, td.channelDescriptorsByName, 'suppressWarnings', p.Results.suppressWarnings);
             td.data = data;
 
             td.manualValid = truevec(td.nTrials);
@@ -145,6 +156,7 @@ classdef TrialData
 
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
+            p.addParamValue('suppressWarnings', false, @islogical);
             p.parse(varargin{:});
             tdi = p.Results.trialDataInterface;
 
@@ -155,13 +167,15 @@ classdef TrialData
 
             % request channel descriptors for both special params and regular channels
             newChannels = makecol(tdi.getNewChannelDescriptors());
+            maskRemove = ismember({newChannels.name}, td.listChannels());
+            newChannels = newChannels(~maskRemove);
             td = td.addChannels(newChannels);
 
             % request all channel data at once
             newData = tdi.getNewChannelData(td.getChannelDescriptorArray());
 
             % defer to addNewTrials
-            td = td.addNewTrialsRaw(newData);
+            td = td.addNewTrialsRaw(newData, 'suppressWarnings', p.Results.suppressWarnings);
         end
 
         function td = addTrialsFromTrialData(td, varargin)
@@ -176,38 +190,39 @@ classdef TrialData
             td = td.addNewTrialsRaw(varargin{:});
         end
 
-        function td = addNewTrialsRaw(td, varargin)
+        function td = addNewTrialsRaw(td, dataOrTrialData, varargin)
             td.warnIfNoArgOut(nargout);
+            p = inputParser();
+            p.addParamValue('suppressWarnings', false, @islogical);
+            p.parse(varargin{:});
             
             concatData = td.data;
             concatValid = td.manualValid;
-            for i = 1:numel(varargin)
-                dataOrTrialData = varargin{i};
-                
-                if isa(dataOrTrialData, 'TrialData')
-                    tdNew = dataOrTrialData;
-                    newData = td.data;
-                else
-                    tdNew = [];
-                    newData = dataOrTrialData;
-                end
 
-                % validate new data against all channel descriptors (old + new)
-                debug('Validating new channel data...\n');
-                newData = td.validateData(newData, td.channelDescriptorsByName, 'addMissingFields', true);
-
-                % concatenate onto the old data
-                concatData = TrialDataUtilities.Data.structcat(concatData, newData); 
-
-                % concatenate the valid array
-                if isempty(tdNew)
-                    newValid = truevec(numel(newData));
-                else
-                    newValid = tdNew.manualValid;
-                    assert(numel(newValid) == numel(newData), 'manualValid must be same length as data');
-                end
-                concatValid = cat(1, concatValid, newValid);
+            if isa(dataOrTrialData, 'TrialData')
+                tdNew = dataOrTrialData;
+                newData = td.data;
+            else
+                tdNew = [];
+                newData = dataOrTrialData;
             end
+
+            % validate new data against all channel descriptors (old + new)
+            %debug('Validating new channel data...\n');
+            newData = td.validateData(newData, td.channelDescriptorsByName, 'addMissingFields', true, ...
+                'suppressWarnings', p.Results.suppressWarnings);
+
+            % concatenate onto the old data
+            concatData = TrialDataUtilities.Data.structcat(concatData, newData); 
+
+            % concatenate the valid array
+            if isempty(tdNew)
+                newValid = truevec(numel(newData));
+            else
+                newValid = tdNew.manualValid;
+                assert(numel(newValid) == numel(newData), 'manualValid must be same length as data');
+            end
+            concatValid = cat(1, concatValid, newValid);
             
             td.data = concatData;
             td.manualValid = concatValid;
@@ -225,7 +240,9 @@ classdef TrialData
         function data = validateData(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
             p = inputParser();
             p.addParameter('addMissingFields', false, @islogical); % if true, don't complain about missing channels, just add the missing fields
+            p.addParamValue('suppressWarnings', false, @islogical); % don't warn about any minor issues
             p.parse(varargin{:});
+            suppressWarnings = p.Results.suppressWarnings;
 
             names = fieldnames(channelDescriptorsByName);
             nChannels = numel(names);
@@ -247,14 +264,16 @@ classdef TrialData
                 
                 if ~ok(iChannel)
                     data = chd.addMissingFields(data);
-                    if ~chd.required
-                        % fill in missing values for optional channels but
-                        % issue a warning
-                        tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
-                            chd.describe(), strjoin(missing{iChannel}, ', '));
-                    else
-                        tcprintf('inline', '{yellow}Warning: {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
-                            chd.describe(), strjoin(missing{iChannel}, ', '));
+                    if ~suppressWarnings
+                        if ~chd.required
+                            % fill in missing values for optional channels but
+                            % issue a warning
+                            tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
+                                chd.describe(), strjoin(missing{iChannel}, ', '));
+                        else
+                            tcprintf('inline', '{yellow}Warning: {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
+                                chd.describe(), strjoin(missing{iChannel}, ', '));
+                        end
                     end
                     if p.Results.addMissingFields || ~chd.required
                         ok(iChannel) = true; % mark as okay since not required
@@ -280,7 +299,6 @@ classdef TrialData
                 data = chd.convertDataToMemoryClass(data);
             end
             prog.finish();
-
         end
     end
     
