@@ -122,7 +122,7 @@ classdef TrialData
             %nChannels = numel(channelDescriptors);
 
             % request all channel data at once
-            data = tdi.getChannelData(channelDescriptors);  %#ok<PROP>
+            data = tdi.getChannelData(channelDescriptors);
 
             % build channelDescriptorByName
             td.channelDescriptorsByName = struct();
@@ -131,9 +131,9 @@ classdef TrialData
             end
             
             % validate and replace missing values
-            data = td.validateData(data, td.channelDescriptorsByName); %#ok<PROP>
+            data = td.validateData(data, td.channelDescriptorsByName);
 
-            td.data = data; %#ok<PROP>
+            td.data = data;
 
             td.manualValid = truevec(td.nTrials);
             td.initialized = true;
@@ -297,7 +297,7 @@ classdef TrialData
             
             % save elements of data
             msg = sprintf('Saving TrialData to %s', location);
-            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg); %#ok<PROP>
+            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg);
         end
     end
     
@@ -1157,11 +1157,11 @@ classdef TrialData
             p.addRequired('name', @ischar);
             p.addOptional('values', @isvector);
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            p.addParamValue('like', '', @ischar);
             p.parse(name, varargin{:});
             
             name = p.Results.name;
             values = p.Results.values;
-            cd = p.Results.channelDescriptor;
 
 %             if td.hasChannel(name)
 %                 warning('Overwriting existing param channel with name %s', name);
@@ -1170,9 +1170,17 @@ classdef TrialData
                 assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
             end
             
-            if isempty(cd)
+            if ~isempty(p.Results.channelDescriptor)
+                % use manually specified
+                cd = p.Results.channelDescriptor;
+            elseif ~isempty(p.Results.like)
+                % copy from another channel
+                cd = td.channelDescriptorsByName.(p.Results.like);
+            else
+                % auto infer from data
                 cd = ParamChannelDescriptor.buildFromValues(name, values);
             end
+            cd.name = name;
 
             td = td.addChannel(cd, {values});
         end
@@ -1310,6 +1318,40 @@ classdef TrialData
             end  
             td = td.setChannelData(name, {vals}, varargin{:});
         end
+        
+        function values = getParamNBack(td, name, n)
+            % values = getParamNBack(td, name, n)
+            % retrieves the value of a parameter on the trial n trials
+            % before each one. So values(j) is the value of the param on
+            % trial j-n. values(1:n) will be the invalid value (NaN or
+            % empty)
+            valuesCurrent = td.getParam(name);
+            
+            cd = td.channelDescriptorsByName.(name);
+            filler = cd.vectorWithMissingValue(n);
+            values = cat(1, filler, valuesCurrent(1:(td.nTrials-n)));
+            
+            % flush values on currently invalid trials
+            values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
+        end
+        
+        function td = addParamNBack(td, name, n, varargin)
+            p = inputParser;
+            p.addParamValue('as', '', @ischar); % new channel name
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            cd = td.channelDescriptorsByName.(name);
+            
+            if isempty(p.Results.as)
+                as = [name sprintf('_%dback', n)];
+            else
+                as = p.Results.as;
+            end
+            
+            values = td.getParamNBack(name, n);
+            td = td.addParam(as, 'like', name, 'values', values);
+        end
     end
 
     methods % Spike channel methods
@@ -1376,6 +1418,7 @@ classdef TrialData
             
         function counts = getSpikeCounts(td, unitName)
             counts = cellfun(@numel, td.getSpikeTimes(unitName));
+            counts = td.replaceInvalidMaskWithValue(counts, NaN);
         end
         
         function rates = getSpikeMeanRate(td, unitName)
@@ -1659,7 +1702,7 @@ classdef TrialData
     end
     
     methods
-        function tf = getUseCustomSaveLoad(td, info)
+        function tf = getUseCustomSaveLoad(td, info) %#ok<INUSD>
             tf = td.cacheWithSaveFast;
         end
         
@@ -1670,7 +1713,7 @@ classdef TrialData
     end
     
     methods(Static)
-        function data = loadCustomFromLocation(location, token)
+        function data = loadCustomFromLocation(location, token) %#ok<INUSD>
             data = TrialData.loadFast(location);
         end
     end

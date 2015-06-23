@@ -2215,8 +2215,13 @@ classdef TrialDataConditionAlign < TrialData
         function [spikeCounts, markCounts] = getMarkAlignedSpikeCounts(td, unitName, markIdx, window)
             [timesCell, markCounts] = td.getMarkAlignedSpikeTimes(unitName, markIdx, window);
             spikeCounts = cellfun(@numel, timesCell);
+            % NaN out spike counts for marks that didn't occur on a given trial
             for iTrial = 1:td.nTrials
-                spikeCounts(iTrial, markCounts(iTrial)+1:end) = NaN;
+                if isnan(markCounts(iTrial))
+                    spikeCounts(iTrial, :) = NaN;
+                else
+                    spikeCounts(iTrial, markCounts(iTrial)+1:end) = NaN;
+                end
             end
         end
         

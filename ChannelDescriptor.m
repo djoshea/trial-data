@@ -3,6 +3,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 % directly, or use inferAttributesFromData
     
     properties
+        name = ''; % short name, must be valid field name
+
         groupName = ''; % name of group to which this channel belongs 
 
         description = ''; % extended description 
@@ -17,8 +19,6 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     % set by factory builder methods or inferAttributesFromData
     % EACH OF THE FOLLOWING PROPERTIES MUST HAVE THE SAME SIZE (nFields x 1)
     properties(SetAccess=protected)
-        name = ''; % short name, must be valid field name
-
         % one of the element type Constants defined below
         elementTypeByField = [];
 
@@ -271,6 +271,18 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 end
             end
         end 
+        
+        function vec = vectorWithMissingValue(cd, n, fieldnum)
+            if nargin < 3
+                fieldnum = 1;
+            end
+            missing = cd.missingValueByField{fieldnum};
+            if cd.collectAsCellByField(fieldnum)
+                vec = repmat({missing}, n, 1);
+            else
+                vec = repmat(missing, n, 1);
+            end
+        end
     end
     
     methods(Static) % Utility methods
