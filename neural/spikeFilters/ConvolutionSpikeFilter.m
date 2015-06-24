@@ -3,6 +3,15 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
 
+    properties
+        % bin width that spikes will be binned into before filtering.
+        % this is different from the sampling rate of the filtered firing
+        % rate, which is determined by the time delta parameter passed
+        % into .filterSpikeTrains by the caller
+        binWidthMs = 1;
+        binAlignmentMode = SpikeBinAlignmentMode.Causal;
+    end
+
     properties(Dependent)
         filter % cache the filter here so as to avoid recomputation
         indZero
@@ -40,13 +49,13 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         % the rate at any particular time 
         function t = getPreWindow(sf)
             filtSize = length(sf.filter);
-            t = filtSize - sf.indZero;
+            t = (filtSize - sf.indZero) * sf.binWidthMs;
         end
 
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
         function t = getPostWindow(sf)
-            t = sf.indZero - 1; 
+            t = (sf.indZero - 1) * sf.binWidthMs; 
         end
 
         % spikeCell is nTrains x 1 cell array of time points which will include 
@@ -63,26 +72,27 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             filt = sf.filter;
             filt = filt ./ sum(filt);
             
-            nPre = sf.preWindow;
-            nPost = sf.postWindow;
+            tPadPre = sf.preWindow;
+            tPadPost = sf.postWindow;
 
             tMinByTrial = floor(tWindowByTrial(:, 1));
             tMaxByTrial = floor(tWindowByTrial(:, 2));
-
+            
+            % get time vector for bins including pre and post padding to accomodate filter
+            % this depends on both the bin width and the bin alignment mode
+            [~, tbinsForHistcByTrial] = SpikeBinAlignmentMode.generateMultipleBinnedTimeVectors(...
+                    tMinByTrial-tPadPre, tMaxByTrial+tPadPost, sf.binWidthMs, sf.binAlignmentMode);
+                
+            % timeCell contains time vector without padding bins
+            timeCell = SpikeBinAlignmentMode.generateMultipleBinnedTimeVectors(...
+                tMinByTrial, tMaxByTrial, sf.binWidthMs, sf.binAlignmentMode);
+            
             % filter via valid convolution, which automatically removes the padding
             nTrials = length(spikeCell);
             rateCell = cellvec(nTrials);
-            timeCell = cellvec(nTrials);
-            
             for i = 1:nTrials
-                % get time vector including pre and post padding to accomodate filter
-                tvecPad = tMinByTrial(i)-nPre:tMaxByTrial(i)+nPost+1;
-                
-                % timeCell contains time vector without padding
-                timeCell{i} = (tMinByTrial(i):tMaxByTrial(i))';
-                
                 if ~isempty(spikeCell{i})
-                    countsPad = histc(spikeCell{i}, tvecPad);
+                    countsPad = histc(spikeCell{i}, tbinsForHistcByTrial{i});
                     rateCell{i} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec);
                 else
                     rateCell{i} = zeros(size(timeCell{i}));
@@ -90,5 +100,5 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             end
         end
     end
-
+    
 end

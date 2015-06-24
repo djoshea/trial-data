@@ -10,7 +10,7 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
         isCausal
     end
 
-    methods(Abstract, Access=protected)
+    methods(Abstract, Access=protected) 
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
         t = getPreWindow(sf)

@@ -479,6 +479,13 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.colorByAxes(varargin{:});
         end
+        
+        function setAxisColorOrderToConditionColors(td, axh)
+            if nargin < 2
+                axh = gca;
+            end
+            set(axh, 'ColorOrder', td.conditionColors, 'ColorOrderIndex', 1);
+        end
 
         function td = selectTrials(td, mask)
             % Apply a logical mask or index selection to the list of trials
@@ -1942,10 +1949,174 @@ classdef TrialDataConditionAlign < TrialData
             timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, includePadding);
         end
         
+        %%%%%%% 
+        % Binned spike counts
+        %%%%%%% 
+        
+        function [countsMat, tvec, hasSpikes] = getSpikeBinnedCounts(td, unitName, varargin)
+            % countsMat is nTrials x T, tvec is T x 1, hasSpikes is nTrials x 1
+            p = inputParser;
+            p.addParameter('binWidthMs', 1, @isscalar);
+            p.addParameter('binAlignmentMode', SpikeBinAlignmentMode.Causal, @(x) isa(x, 'SpikeBinAlignmentMode'));
+            p.parse(varargin{:});
+            binWidth = p.Results.binWidthMs;
+            binAlignmentMode = p.Results.binAlignmentMode;
+            
+            spikeCell = td.getSpikeTimes(unitName, false);
+            
+            % provide an indication as to which trials have spikes
+            hasSpikes = ~cellfun(@isempty, spikeCell);
+            valid = td.valid;
+            
+            % convert to .zero relative times since that's what spikeCell
+            % will be in (when called in this class)
+            timeInfo = td.alignInfoActive.timeInfo;
+            tMinByTrial = [timeInfo.start] - [timeInfo.zero];
+            tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
+            
+            [tvec, tbinsForHistc, tbinsValidMat] = SpikeBinAlignmentMode.generateCommonBinnedTimeVector(...
+                tMinByTrial, tMaxByTrial, binWidth, binAlignmentMode);
+            
+            % use hist c to bin the spike counts
+            nTrials = length(spikeCell);
+            countsMat = nan(nTrials, numel(tvec));
+            for iTrial = 1:nTrials
+                if valid(iTrial)
+                    if ~isempty(spikeCell{iTrial})
+                        temp = histc(spikeCell{iTrial}, tbinsForHistc);
+                        countsMat(iTrial, :) = temp(1:end-1);
+                    else
+                        countsMat(iTrial, :) = zeros(1, numel(tvec));
+                    end
+                    
+                    % mark NaN bins not valid on that trial
+                    countsMat(iTrial, ~tbinsValidMat(iTrial, :)) = NaN;
+                end
+                
+            end
+        end
+        
+        function [countsMat, tvec, hasSpikes, alignVec] = getSpikeBinnedCountsEachAlign(td, unitName, varargin)
+            countsCell = cellvec(td.nAlign);
+            tvecCell = cellvec(td.nAlign);
+            hasSpikesMat = nan(td.nTrials, td.nAlign);
+            for iA = 1:td.nAlign
+                 [countsCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA)] =  td.useAlign(iA).getSpikeBinnedCounts(unitName. varargin{:});
+            end
+            
+            [countsMat, alignVec] = TensorUtils.catWhich(2, countsCell{:});
+            tvec = cat(1, tvecCell{:});
+            hasSpikes = any(hasSpikesMat, 2);
+        end
+                 
+        function [countsGrouped, tvec, hasSpikesGrouped] = getSpikeBinnedCountsGrouped(td, unitName, varargin)
+            [countsMat, tvec, hasSpikes] = td.getSpikeBinnedCounts(unitName, varargin{:});
+            countsGrouped = td.groupElements(countsMat);
+            hasSpikesGrouped = td.groupElements(hasSpikes);
+        end
+        
+        function [countsGrouped, tvec, hasSpikesGrouped, alignVec] = getSpikeBinnedCountsGroupedEachAlign(td, unitName, varargin)
+            [countsMat, tvec, hasSpikes, alignVec] = td.getSpikeBinnedCountsEachAlign(unitName, varargin{:});
+            countsGrouped = td.groupElements(countsMat);
+            hasSpikesGrouped = td.groupElements(hasSpikes);
+        end
+        
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
+                getSpikeBinnedCountsMeanByGroup(td, varargin)
+            % *Mat will be nConditions x T matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addRequired('unitName', @ischar);
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            unitName = p.Results.unitName;
+            
+            if isempty(p.Results.minTrials)
+                minTrials = 1;
+            else
+                minTrials = p.Results.minTrials;
+            end
+            
+            if isempty(p.Results.minTrialFraction)
+                minTrialFraction = 0;
+            else
+                minTrialFraction = p.Results.minTrialFraction;
+            end
+            
+            [countsGrouped, tvec, hasSpikesGrouped] = td.getSpikeBinnedCountsGrouped(unitName, p.Unmatched);
+            
+            % remove trials from each group that have no spikes
+            if p.Results.removeZeroSpikeTrials
+                for iC = 1:td.nConditions
+                    countsGrouped{iC} = countsGrouped{iC}(hasSpikesGrouped{iC}, :);
+                end
+            end
+            
+            % comute the means
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            for iC = 1:td.nConditions
+                if ~isempty(countsGrouped{iC})
+                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
+                        nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
+                end
+            end
+        end
+             
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
+                getSpikeBinnedCountsMeanByGroupEachAlign(td, varargin)
+            % *Mat will be nConditions x T matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addRequired('unitName', @ischar);
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            unitName = p.Results.unitName;
+            
+            if isempty(p.Results.minTrials)
+                minTrials = 1;
+            else
+                minTrials = p.Results.minTrials;
+            end
+            
+            if isempty(p.Results.minTrialFraction)
+                minTrialFraction = 0;
+            else
+                minTrialFraction = p.Results.minTrialFraction;
+            end
+            
+            [countsGrouped, tvec, hasSpikesGrouped] = td.getSpikeBinnedCountsGroupedEachAlign(unitName, p.Unmatched);
+            
+            % remove trials from each group that have no spikes
+            if p.Results.removeZeroSpikeTrials
+                for iC = 1:td.nConditions
+                    countsGrouped{iC} = countsGrouped{iC}(hasSpikesGrouped{iC}, :);
+                end
+            end
+            
+            % comute the means
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            for iC = 1:td.nConditions
+                if ~isempty(countsGrouped{iC})
+                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
+                        nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
+                end
+            end
+        end
+        
+        
+        %%%%%%% 
+        % Filtered spike rates
+        %%%%%%% 
+        
         function [rateCell, timeCell, hasSpikes] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
             p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
-            p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -2037,10 +2208,11 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
-                getSpikeRateFilteredMeanByGroup(td, unitName, varargin)
+                getSpikeRateFilteredMeanByGroup(td, varargin)
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
+            p.addRequired('unitName', @ischar);
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             
@@ -2048,6 +2220,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.parse(varargin{:});
+            unitName = p.Results.unitName;
             
             if isempty(p.Results.minTrials)
                 minTrials = 1;
@@ -2086,12 +2259,24 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', true, @islogical);
             p.parse(varargin{:});
-            minTrials = p.Results.minTrials;
+            
+            if isempty(p.Results.minTrials)
+                minTrials = 1;
+            else
+                minTrials = p.Results.minTrials;
+            end
+            
+            if isempty(p.Results.minTrialFraction)
+                minTrialFraction = 0;
+            else
+                minTrialFraction = p.Results.minTrialFraction;
+            end
             
             [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
                 'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
@@ -2108,7 +2293,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(rateCell{iC})
                     [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials);
+                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
                 end
             end
         end
