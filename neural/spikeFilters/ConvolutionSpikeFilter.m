@@ -93,7 +93,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             for i = 1:nTrials
                 if ~isempty(spikeCell{i})
                     countsPad = histc(spikeCell{i}, tbinsForHistcByTrial{i});
-                    rateCell{i} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec);
+                    rateCell{i} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
                 else
                     rateCell{i} = zeros(size(timeCell{i}));
                 end
