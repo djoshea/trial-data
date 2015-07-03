@@ -1,4 +1,4 @@
-classdef SpikeFilter < handle & matlab.mixin.Copyable
+classdef SpikeFilter % < handle & matlab.mixin.Copyable
 % SpikeFilters take spike trains and provide rate estimates
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
@@ -36,7 +36,13 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
         % do not include the classname as this will be added automatically
         function str = subclassGetDescription(sf) %#ok<MANU>
             str = '';
-        end 
+        end
+        
+        function checkTimeDeltaOkay(sf, timeDelta) %#ok<INUSD>
+            % if the timeDelta used is not okay, subclass should throw an
+            % error
+            return;
+        end
     end
 
     methods % Dependent properties
@@ -90,6 +96,10 @@ classdef SpikeFilter < handle & matlab.mixin.Copyable
             p = inputParser;
             p.addParameter('timeDelta', 1, @isscalar);
             p.parse(varargin{:});
+            
+            % give the subclass a chance to complain about the chosen time
+            % delta
+            sf.checkTimeDeltaOkay(p.Results.timeDelta);
             
             [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
             

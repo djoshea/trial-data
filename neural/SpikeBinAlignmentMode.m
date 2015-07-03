@@ -16,6 +16,10 @@ classdef SpikeBinAlignmentMode < int32
                     offsetStart = 0;
             end
         end
+        
+        function offsetStop = getBinStopOffsetForBinWidth(mode, binWidth)
+            offsetStop = mode.getBinStartOffsetForBinWidth(binWidth) + binWidth;
+        end
     end
     
     methods(Static)
@@ -59,17 +63,24 @@ classdef SpikeBinAlignmentMode < int32
                 if isnan(nPre(i)) || isnan(nPost(i))
                     continue;
                 end
+                
                 tvecRaw = (-nPre(i) : nPost(i))' * binWidth + binOffset;
-            
+                if isempty(tvecRaw)
+                    continue;
+                end
+                
                 % we'll now filter tvecRaw for bins that fall entirely within
                 % start : stop. tvecRaw will specify the start of the bin
-                tvecRaw = tvecRaw(tvecRaw >= starts(i) & tvecRaw+binWidth <= stops(i));
-
+                tvecRaw = tvecRaw(tvecRaw+binOffset >= starts(i) & tvecRaw+binWidth+binOffset <= stops(i));
+                if isempty(tvecRaw)
+                    continue;
+                end
+                
                 % remove the offset from the time labels
-                tvecLabelCell{i} = tvecRaw - binOffset;
-            
+                tvecLabelCell{i} = tvecRaw;
+
                 % add the end of the last bin onto the histc bins
-                tbinsForHistcCell{i} = cat(1, tvecRaw, tvecRaw(end) + binWidth);
+                tbinsForHistcCell{i} = cat(1, tvecRaw+binOffset, tvecRaw(end) + binOffset + binWidth);
             end
         end
     end

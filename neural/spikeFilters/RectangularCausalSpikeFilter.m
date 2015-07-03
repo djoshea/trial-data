@@ -22,7 +22,7 @@ classdef RectangularCausalSpikeFilter < ConvolutionSpikeFilter
         % filter used for convolution, as an impulse response which may 
         % have acausal elements if indZero > 1
         function [filt, indZero] = getFilter(sf)
-            filt = onesvec(sf.widthMs);
+            filt = onesvec(floor(sf.widthMs / sf.binWidthMs));
             indZero = 1; % this makes it causal
         end
     end

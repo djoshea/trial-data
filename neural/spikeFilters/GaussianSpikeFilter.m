@@ -4,7 +4,7 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
 % they require in order to estimate the rate at a given time point
 
     properties
-        % the std deviation of the gaussian around the peak
+        % the std deviation of the gaussian around the peak in ms
         sigma
         
         % the center of the Gaussian will be located this many ms into the
@@ -21,7 +21,7 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
     methods
         function sf = GaussianSpikeFilter(varargin)
             p = inputParser;
-            p.addParamValue('sigma', 20, @isscalar);
+            p.addParamValue('sigma', 20, @isscalar); % in ms
             % center the peak of the Gaussian impulse this many ms in the future
             p.addParamValue('delayPeak', 0, @isscalar);
             p.addParamValue('truncateFuture', Inf, @isscalar);
@@ -42,8 +42,9 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
             % we care about 3 sigma in the future from the delayPeak 
             % unless we're truncating beyond a certain point in the future
             % regardless we must overlap with 0
-            tMin = min(0, max(ceil(-sigmaMultiple*sf.sigma + 1/2) + sf.delayPeak, -sf.truncateFuture));
-                
+%             tMin = min(0, max(ceil(-sigmaMultiple*sf.sigma + 1/2) + sf.delayPeak, -sf.truncateFuture));
+            tMin = min(0, max(ceil(-sigmaMultiple*sf.sigma) + sf.delayPeak, -sf.truncateFuture));
+
             % past is positive time
             % we care about 3 sigma in the past from the delayPeak
             % unless we're truncating beyond a certain point in the past
@@ -51,7 +52,7 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
             tMax = max(0, min(floor(sigmaMultiple*sf.sigma) + sf.delayPeak, sf.truncatePast));
 
             % compute the gaussian
-            t = tMin:tMax;
+            t = TrialDataUtilities.Data.linspaceIntercept(tMin, sf.binWidthMs, tMax, 0);
             filt = exp(-(t-sf.delayPeak).^2 / (2*sf.sigma^2));
             filt(t < -sf.truncateFuture | t > sf.truncatePast) = 0;
 
