@@ -93,15 +93,10 @@ classdef AlignSummary
         % latest occurrence time of the start of each occurrence of that interval 
         % (relative to the zero event)
         intervalStartMaxByCondition
-       
         intervalStartMinByCondition
-        
         intervalStartMeanByCondition
-        
         intervalStopMaxByCondition
-        
         intervalStopMinByCondition
-        
         intervalStopMeanByCondition
     
         % these are build by initialize() 
@@ -426,7 +421,7 @@ classdef AlignSummary
                 % nConditions x nOccurrence matrices inside
                 
                 nDistinctEvents = size(maxData, 1);
-                nSummary = size(maxData, 2);
+                %nSummary = size(maxData, 2);
                 
                 % nMarks x nSummary
                 nOccurrences = cellfun(@(x) size(x, 2), maxData);
@@ -435,7 +430,7 @@ classdef AlignSummary
                 
                 % nConditions x 1 x nSummary
                 nTrialsReshaped = permute(nTrialsData, [1 3 2]);
-                nTrialsTotalByCondition = sum(nTrialsData, 2);
+                %nTrialsTotalByCondition = sum(nTrialsData, 2);
                 
                 [maxNew, minNew, meanNew] = deal(cell(nDistinctEvents, 1));
                 
@@ -634,7 +629,16 @@ classdef AlignSummary
             as.conditionDescriptor = newConditionDescriptor;
             
             wmean = @(v, w) sum(v.*w) ./ sum(w);
-           
+            function m = nanWeightedMean(mat, w)
+                m = nan(1, size(mat, 2));
+                for c = 1:size(mat, 2)
+                    mask = ~isnan(w) & ~isnan(mat(:, c));
+                    m(c) = w(mask)' * mat(mask, c) ./ sum(w(mask));
+                end
+            end
+                    
+%             wmean = @(v, w) w'*v ./ sum(w); % assumes w is column vector
+            
             as.startMinByCondition = cellfun(@(idx) min(as.startMinByCondition(idx)), conditionIdxCell);
             as.startMaxByCondition = cellfun(@(idx) max(as.startMaxByCondition(idx)), conditionIdxCell);
             as.startMeanByCondition = cellfun(@(idx) wmean(as.startMeanByCondition(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
@@ -644,19 +648,22 @@ classdef AlignSummary
             as.stopMeanByCondition = cellfun(@(idx) wmean(as.stopMeanByCondition(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
             
             for iMark = 1:as.alignDescriptor.nMarks
-                as.markMinByCondition{iMark} = cellfun(@(idx) min(as.markMinByCondition{iMark}(idx)), conditionIdxCell);
-                as.markMaxByCondition{iMark} = cellfun(@(idx) max(as.markMaxByCondition{iMark}(idx)), conditionIdxCell);
-                as.markMeanByCondition{iMark} = cellfun(@(idx) wmean(as.markMeanByCondition{iMark}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+                as.markMinByCondition{iMark} = cellfun(@(idx) nanmin(as.markMinByCondition{iMark}(idx)), conditionIdxCell);
+                as.markMaxByCondition{iMark} = cellfun(@(idx) nanmax(as.markMaxByCondition{iMark}(idx)), conditionIdxCell);
+                as.markMeanByCondition{iMark} = cellfun(@(idx) nanWeightedMean(as.markMeanByCondition{iMark}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
             end
 
             for iInterval = 1:as.alignDescriptor.nIntervals
-                as.intervalStartMinByCondition{iInterval} = cellfun(@(idx) min(as.intervalStartMinByCondition{iInterval}(idx)), conditionIdxCell);
-                as.intervalStartMaxByCondition{iInterval} = cellfun(@(idx) max(as.intervalStartMaxByCondition{iInterval}(idx)), conditionIdxCell);
-                as.intervalStartMeanByCondition{iInterval} = cellfun(@(idx) wmean(as.intervalStartMeanByCondition{iInterval}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+                % these fields are nConditions x nOcurrences
+                as.intervalStartMinByCondition{iInterval} = TensorUtils.mapCatToTensor(@(idx) nanmin(as.intervalStartMinByCondition{iInterval}(idx, :), [], 1), conditionIdxCell);
+                as.intervalStartMaxByCondition{iInterval} = TensorUtils.mapCatToTensor(@(idx) nanmax(as.intervalStartMaxByCondition{iInterval}(idx, :), [], 1), conditionIdxCell);
+                as.intervalStartMeanByCondition{iInterval} = TensorUtils.mapCatToTensor(@(idx) ...
+                    nanWeightedMean(as.intervalStartMeanByCondition{iInterval}(idx, :), as.nTrialsByCondition(idx)), conditionIdxCell);
 
-                as.intervalStopMinByCondition{iInterval} = cellfun(@(idx) min(as.intervalStopMinByCondition{iInterval}(idx)), conditionIdxCell);
-                as.intervalStopMaxByCondition{iInterval} = cellfun(@(idx) max(as.intervalStopMaxByCondition{iInterval}(idx)), conditionIdxCell);
-                as.intervalStopMeanByCondition{iInterval} = cellfun(@(idx) wmean(as.intervalStopMeanByCondition{iInterval}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+                as.intervalStopMinByCondition{iInterval} = TensorUtils.mapCatToTensor(@(idx) nanmin(as.intervalStopMinByCondition{iInterval}(idx, :), [], 1), conditionIdxCell);
+                as.intervalStopMaxByCondition{iInterval} = TensorUtils.mapCatToTensor(@(idx) nanmax(as.intervalStopMaxByCondition{iInterval}(idx, :), [], 1), conditionIdxCell);
+                as.intervalStopMeanByCondition{iInterval} = TensorUtils.mapCatToTensor(@(idx) ...
+                    nanWeightedMean(as.intervalStopMeanByCondition{iInterval}(idx, :), as.nTrialsByCondition(idx)), conditionIdxCell);
             end
             
             % must do this last as above calculations depend on nTrials
