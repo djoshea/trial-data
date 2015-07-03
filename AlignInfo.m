@@ -947,10 +947,12 @@ classdef AlignInfo < AlignDescriptor
             if beforeStartReplaceStart
                 mask = beforeStartMask;
                 rawTimesMatrix(mask) = repmat(start(mask), 1, size(rawTimesMatrix, 2));
+                beforeStartMask(:) = false;
             end
             if afterStopReplaceStop
                 mask = afterStopMask;
                 rawTimesMatrix(mask) = repmat(stop(mask), 1, size(rawTimesMatrix, 2));
+                afterStopMask(:) = false;
             end
                
             rawTimesMask = ~beforeStartMask & ~afterStopMask;

@@ -987,6 +987,20 @@ classdef TrialDataConditionAlign < TrialData
             td = td.applyAlignInfoSet();
         end
         
+        function td = setAlignDescriptor(td, ad)
+            td.warnIfNoArgOut(nargout);
+            td = td.align(ad);
+        end
+        
+        function td = setAlignDescriptorSet(td, adSet)
+            td.warnIfNoArgOut(nargout);
+            td = td.align(adSet{1});
+            for iA = 2:numel(adSet)
+                td = td.addAlign(adSet{iA});
+            end
+            td = td.useAlign(1);
+        end
+        
         function td = addAlign(td, varargin)
             % whereas align replaces the existing align descriptor set,
             % this appends an align descriptor
@@ -1953,7 +1967,7 @@ classdef TrialDataConditionAlign < TrialData
         % Binned spike counts
         %%%%%%% 
         
-        function [countsMat, tvec, hasSpikes] = getSpikeBinnedCounts(td, unitName, varargin)
+        function [countsMat, tvec, hasSpikes, tBinEdges] = getSpikeBinnedCounts(td, unitName, varargin)
             % countsMat is nTrials x T, tvec is T x 1, hasSpikes is nTrials x 1
             p = inputParser;
             p.addParameter('binWidthMs', 1, @isscalar);
@@ -1992,16 +2006,18 @@ classdef TrialDataConditionAlign < TrialData
                     % mark NaN bins not valid on that trial
                     countsMat(iTrial, ~tbinsValidMat(iTrial, :)) = NaN;
                 end
-                
             end
+            
+            tBinEdges = tbinsForHistc;
         end
         
-        function [countsMat, tvec, hasSpikes, alignVec] = getSpikeBinnedCountsEachAlign(td, unitName, varargin)
+        function [countsMat, tvec, hasSpikes, tBinEdgesCell, alignVec] = getSpikeBinnedCountsEachAlign(td, unitName, varargin)
             countsCell = cellvec(td.nAlign);
             tvecCell = cellvec(td.nAlign);
             hasSpikesMat = nan(td.nTrials, td.nAlign);
+            tBinEdgesCell = cellvec(td.nAlign);
             for iA = 1:td.nAlign
-                 [countsCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA)] =  td.useAlign(iA).getSpikeBinnedCounts(unitName. varargin{:});
+                 [countsCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA), tBinEdgesCell{iA}] =  td.useAlign(iA).getSpikeBinnedCounts(unitName. varargin{:});
             end
             
             [countsMat, alignVec] = TensorUtils.catWhich(2, countsCell{:});
@@ -2009,19 +2025,19 @@ classdef TrialDataConditionAlign < TrialData
             hasSpikes = any(hasSpikesMat, 2);
         end
                  
-        function [countsGrouped, tvec, hasSpikesGrouped] = getSpikeBinnedCountsGrouped(td, unitName, varargin)
-            [countsMat, tvec, hasSpikes] = td.getSpikeBinnedCounts(unitName, varargin{:});
+        function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = getSpikeBinnedCountsGrouped(td, unitName, varargin)
+            [countsMat, tvec, hasSpikes, tBinEdges] = td.getSpikeBinnedCounts(unitName, varargin{:});
             countsGrouped = td.groupElements(countsMat);
             hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
-        function [countsGrouped, tvec, hasSpikesGrouped, alignVec] = getSpikeBinnedCountsGroupedEachAlign(td, unitName, varargin)
-            [countsMat, tvec, hasSpikes, alignVec] = td.getSpikeBinnedCountsEachAlign(unitName, varargin{:});
+        function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges, alignVec] = getSpikeBinnedCountsGroupedEachAlign(td, unitName, varargin)
+            [countsMat, tvec, hasSpikes, tBinEdges, alignVec] = td.getSpikeBinnedCountsEachAlign(unitName, varargin{:});
             countsGrouped = td.groupElements(countsMat);
             hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
-        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat, tBinEdges] = ...
                 getSpikeBinnedCountsMeanByGroup(td, varargin)
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
@@ -2046,7 +2062,7 @@ classdef TrialDataConditionAlign < TrialData
                 minTrialFraction = p.Results.minTrialFraction;
             end
             
-            [countsGrouped, tvec, hasSpikesGrouped] = td.getSpikeBinnedCountsGrouped(unitName, p.Unmatched);
+            [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = td.getSpikeBinnedCountsGrouped(unitName, p.Unmatched);
             
             % remove trials from each group that have no spikes
             if p.Results.removeZeroSpikeTrials
@@ -2109,6 +2125,22 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
+        function plotSpikeBinBoundaries(td, unitName, varargin)
+            p = inputParser;
+            p.addParameter('binWidthMs', 1, @isscalar);
+            p.addParameter('binAlignmentMode', SpikeBinAlignmentMode.Causal, @(x) isa(x, 'SpikeBinAlignmentMode'));
+            p.parse(varargin{:});
+            binWidth = p.Results.binWidthMs;
+            binAlignmentMode = p.Results.binAlignmentMode;
+            
+            [~, ~, ~, tBinEdges] = td.getSpikeBinnedCounts(unitName, ...
+                'binWidthMs', binWidth, 'binAlignmentMode', binAlignmentMode);
+            
+            td.plotRaster(unitName);
+            hold on;
+            TrialDataUtilities.Plotting.verticalLine(tBinEdges, 'Color', grey(0.5));
+            hold off;
+        end
         
         %%%%%%% 
         % Filtered spike rates
@@ -2520,9 +2552,10 @@ classdef TrialDataConditionAlign < TrialData
                     'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
             
-                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
-                    TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
+                [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
+                    TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}', meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
+                tvecCell{iAlign} = tvecTemp';
             end
             
             switch p.Results.errorType

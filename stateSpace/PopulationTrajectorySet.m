@@ -56,10 +56,6 @@ classdef PopulationTrajectorySet
         % with this spacing
         timeDelta
         
-        % SpikeFilter instance to use when converting spiking units to
-        % firing rate channels
-        spikeFilter
-        
         % The following parameters affect trial-averaging:
         
         % The minimum number of trials over which to compute a trial
@@ -72,12 +68,6 @@ classdef PopulationTrajectorySet
         % in that condition. This parameter determines the valid time
         % windows for trial-averaged data (e.g. dataMean)
         minFractionTrialsForTrialAveraging 
-        
-        % When multiple alignDescriptors are used to align the data, some
-        % trials may be valid only for some alignments and not others.
-        % Setting this flag to true ensures that only trials which are
-        % valid for ALL alignments will be considered 
-        includeOnlyTrialsValidAllAlignments
         
         % quantile of trial data to use for dataIntervalLow
         dataIntervalQuantileLow
@@ -107,6 +97,10 @@ classdef PopulationTrajectorySet
         % or applied manually to dataByTrial (if non-empty) and dataMean
         % (if non-empty) for dataSourceManual = false
         translationNormalization
+        
+        % SpikeFilter instance to use when converting spiking units to
+        % firing rate channels
+        spikeFilter
     end
     
     % randomized data we don't want to clear with the ODC because it's so
@@ -218,10 +212,23 @@ classdef PopulationTrajectorySet
         % Below are for finding time windows to use for trial averaging
         % which occurs just before
         
-        % nAlign x 1 cell with nBases x nConditions matrix containing the start and stop times for
-        % which sufficient trials exist to compute a trial-average for
+        % nAlign x nBases x nConditions matrices containing the start and stop times for
+        % which sufficient trials exist to compute a trial-average for each
+        % align, basis, and condition
         tMinValidByAlignBasisCondition
         tMaxValidByAlignBasisCondition
+        
+        % nConditions x 1 logical vector indicating whether the condition
+        % has trial average data for EVERY basis on ALL aligns
+        conditionHasValidTrialAverageAllAlignsBases
+        
+        % nAlign x nConditions matrix containing the start and stop times
+        % for which sufficient trials exist to compute a trial-average for 
+        % ALL valid bases, on each align and condition. only Conditions for
+        % which conditionHasValidTrialAverageAllAlignsBases is true are
+        % considered. Only bases which are valid are considered
+        tMinValidAllBasesByAlignCondition
+        tMaxValidAllBasesByAlignCondition
  
         %% BELOW ARE FOR TRIAL-AVERAGED DATA WITHIN CONDITION
         
@@ -460,11 +467,7 @@ classdef PopulationTrajectorySet
             end
             
             if isempty(pset.minFractionTrialsForTrialAveraging)
-                pset.minFractionTrialsForTrialAveraging = 1; % default to using all trials
-            end
-            
-            if isempty(pset.includeOnlyTrialsValidAllAlignments)
-                pset.includeOnlyTrialsValidAllAlignments = false;
+                pset.minFractionTrialsForTrialAveraging = 0; % default to requiring only 1 trials
             end
             
             if isempty(pset.dataIntervalQuantileLow)
@@ -554,9 +557,13 @@ classdef PopulationTrajectorySet
             
             if pset.simultaneous
                 tcprintf('inline', '{yellow}Simultaneous: {none}%d trials {red}(%d valid)\n', pset.nTrials, pset.nTrialsValid);
-            else
-                fprintf('\n');
             end
+            tcprintf('inline', '{yellow}Trial Averaging: {none}at least %d and %g%% of trials for average\n', ...
+                pset.minTrialsForTrialAveraging, pset.minFractionTrialsForTrialAveraging*100);
+            tcprintf('inline', '{yellow}Time Delta: {none}%g ms, {yellow}Spike Filter: {none}%s\n', ...
+                pset.timeDelta, pset.spikeFilter.getDescription);
+            
+            fprintf('\n');
             pset.conditionDescriptor.printDescription();
             for i = 1:pset.nAlign
                 pset.alignDescriptorSet{i}.printDescription();
@@ -577,10 +584,13 @@ classdef PopulationTrajectorySet
     % behavior of the PTS. They automatically invalidate downstream cached
     % values that depend on the value of the property being set.
     methods
-        function pset = set.spikeFilter(pset, v)
-            % changing spikeFilter invalidates everything
-            pset.spikeFilter = v;
+        function pset = setSpikeFilter(pset, f)
+            % changing spikeFilter invalidates everything and we reapply
+            % all alignDescriptors to get the padding right
+            pset.warnIfNoArgOut(nargout);
+            pset.spikeFilter = f;
             pset = pset.invalidateCache();
+            pset = pset.setAlignDescriptorSet(pset.alignDescriptorSet);
         end
         
         function pset = set.timeDelta(pset, v)
@@ -599,13 +609,6 @@ classdef PopulationTrajectorySet
             % only affects trial averaging
             pset.minFractionTrialsForTrialAveraging = v;
             pset = pset.invalidateTrialAveragedData();
-        end
-        
-        function pset = set.includeOnlyTrialsValidAllAlignments(pset, v)
-            % only affects trial averaging
-            pset.includeOnlyTrialsValidAllAlignments = v;
-            pset = pset.invalidateTrialAveragedData();
-
         end
         
         function pset = set.dataIntervalQuantileLow(pset, v)
@@ -954,6 +957,38 @@ classdef PopulationTrajectorySet
                 pset.odc.tMaxValidByAlignBasisCondition = v;
             else
                 pset.tMaxValidByAlignBasisConditionManual = v;
+            end
+        end
+        
+        function v = get.conditionHasValidTrialAverageAllAlignsBases(pset)
+            hasAvg = pset.tMinValidByAlignBasisCondition <= pset.tMaxValidByAlignBasisCondition;
+            v = makecol(TensorUtils.allMultiDim(hasAvg(:, pset.basisValid, :), [1 2]));
+        end
+        
+        function v = get.tMinValidAllBasesByAlignCondition(pset)
+            % generate on the fly, no caching
+            % only consider conditions that have the potential to
+            % contribute data to the trial averages on all bases
+            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            
+            if ~any(cMask)
+                v = nan(pset.nAlign, pset.nConditions);
+            else
+                v = nanmax(pset.tMinValidByAlignBasisCondition(:, pset.basisValid, cMask), [], 2);
+                % but then reexpand this to have the full complement of
+                % conditions, using NaNs for non-contributing conditions
+                v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
+            end
+        end
+        
+        function v = get.tMaxValidAllBasesByAlignCondition(pset)
+            % generate on the fly, no caching
+            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            if ~any(cMask)
+                v = nan(pset.nAlign, pset.nConditions);
+            else
+                v = nanmin(pset.tMaxValidByAlignBasisCondition(:, pset.basisValid, cMask), [], 2);
+                v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
             end
         end
         
@@ -1926,7 +1961,7 @@ classdef PopulationTrajectorySet
             c.trialLists = trialLists;
             c.dataNTrials = dataNTrials;
             c.dataValid = dataValid;
-        end 
+        end
         
         function buildTimeWindowsByAlignBasisCondition(pset)
             % computes and stores tMin/MaxValidByBasisAlignCondition, the
@@ -2025,24 +2060,35 @@ classdef PopulationTrajectorySet
             % nanmin/nanmax here, since a NaN for a valid basis here means
             % that the basis has no trials for this condition, so the
             % condition should not be included in the trial average
-            basisMask = pset.basisValid;
-            
-            conditionsWithTrialsAllBasesAligns = squeeze(all(all(pset.dataNTrials(:, basisMask, :), 1), 2));
-            
-            tMinValidByAlignCondition = TensorUtils.squeezeDims(max(pset.tMinValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
-            tMaxValidByAlignCondition = TensorUtils.squeezeDims(min(pset.tMaxValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
+%             basisMask = pset.basisValid;
+%             
+%             conditionsWithTrialsAllBasesAligns = squeeze(all(all(pset.dataNTrials(:, basisMask, :), 1), 2));
+%             if ~any(conditionsWithTrialsAllBasesAligns)
+%                 error('No conditions have trial averages for all bases on all aligns. Try lowering minTrialsForTrialAveraging or minFractionTrialsForTrialAveraging?');
+%             end
+%             
+%             tMinValidByAlignCondition = TensorUtils.squeezeDims(max(pset.tMinValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
+%             tMaxValidByAlignCondition = TensorUtils.squeezeDims(min(pset.tMaxValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
             
             % for each align, compute the widest window valid for ANY
             % condition for ALL bases
-            tMinForDataMean = makecol(nanmin(tMinValidByAlignCondition, [], 2));
-            tMaxForDataMean = makecol(nanmax(tMaxValidByAlignCondition, [], 2));
+            tMinForDataMean = makecol(nanmin(pset.tMinValidAllBasesByAlignCondition, [], 2));
+            tMaxForDataMean = makecol(nanmax(pset.tMaxValidAllBasesByAlignCondition, [], 2));
             
-            % number of time points for each alignment
-            nTimeByAlign = arrayfun(@(mn, mx) numel(mn:pset.timeDelta:mx), ...
-                tMinForDataMean, tMaxForDataMean);
-                  
+            nTimeByAlign = nanvec(pset.nAlign);
+            for iAlign = 1:pset.nAlign
+                % realign time vector to run through t=0 with increments of timeDelta
+                tempVec = TrialDataUtilities.Data.linspaceIntercept(tMinForDataMean(iAlign), pset.timeDelta, tMaxForDataMean(iAlign), 0);
+                tMinForDataMean(iAlign) = min(tempVec);
+                tMaxForDataMean(iAlign) = max(tempVec);
+            
+                % number of time points for each alignment
+                nTimeByAlign(iAlign) = numel(tempVec);
+            end
+            
             assert(pset.nBasesValid > 0, 'No valid bases found to compute trial-averaged data. Check .basisValid and .basisInvalidCause');
-            assert(all(tMinForDataMean <= tMaxForDataMean), 'No time window is valid across all bases. Try using .setBasesInvalidMissingTrialsOnNonEmptyConditions');
+            assert(~isempty(tMinForDataMean) && ~isempty(tMaxForDataMean) && all(tMinForDataMean <= tMaxForDataMean), ...
+                'No time window is valid across all bases. Try using .setBasesInvalidMissingTrialsOnNonEmptyConditions()');
             
             % now that we've determined the time window, we can compute the
             % trial average using data from these windows
@@ -2053,6 +2099,7 @@ classdef PopulationTrajectorySet
             end
            
             % copy temp values for for slicing
+            conditionHasValidTrialAverageAllAlignsBases = pset.conditionHasValidTrialAverageAllAlignsBases;
             dataByTrial = pset.dataByTrial;
             tMinForDataByTrial = pset.tMinForDataByTrial;
             tMaxForDataByTrial = pset.tMaxForDataByTrial;
@@ -2111,7 +2158,7 @@ classdef PopulationTrajectorySet
                         'UniformOutput', false);
                     
                     for iCondition = 1:pset.nConditions
-                        if ~conditionsWithTrialsAllBasesAligns(iCondition), continue, end
+                        if ~conditionHasValidTrialAverageAllAlignsBases(iCondition), continue, end
                         mat = byCondition{iCondition};
                         nTrials = size(mat, 1);
                         if nTrials == 0, continue, end;
