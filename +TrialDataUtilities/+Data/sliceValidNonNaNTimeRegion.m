@@ -20,11 +20,11 @@ if all(isCell)
 elseif all(~isCell)
     useCell = false;
     
-    isvec = cellfun(@isvector, varargin);
+    isvec = cellfun(@isrow, varargin);
     n = cellfun(@(x) size(x, 1), varargin);
     t = cellfun(@(x) size(x, 2), varargin);
     nel = cellfun(@numel, varargin);
-    t(isvec) = nel(isvec);
+    %t(isvec) = nel(isvec);
     
     if any(~isvec)
         assert(all(n(isvec) == max(n(isvec))), 'All matrix inputs must have same numrows');
@@ -73,16 +73,16 @@ else
     % find the valid window
     keepmask = true(nTime, 1);
     for iArg = 1:nArg
-        if isvec(iArg)
-            keepmask = keepmask & makecol(~isnan(varargin{iArg}));
-        else
+%         if isvec(iArg)
+%             keepmask = keepmask & makecol(~isnan(varargin{iArg}));
+%         else
             if ndims(varargin{iArg}) == 3
                 validPortion = all(~isnan(varargin{iArg}), 3);
             else
                 validPortion = ~isnan(varargin{iArg});
             end
             keepmask = keepmask & any(validPortion, 1)';
-        end
+%         end
     end
     
     i1 = find(keepmask, 1, 'first');
