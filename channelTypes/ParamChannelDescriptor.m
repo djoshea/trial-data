@@ -80,6 +80,12 @@ classdef ParamChannelDescriptor < ChannelDescriptor
     end
     
     methods(Static)
+        function cd = buildLike(cdTemplate, name)
+            cd = cdTemplate;
+            cd.name = name;
+            cd.dataFields{1} = name;
+        end
+        
         function cd = buildStringParam(name)
             cd = ParamChannelDescriptor(name);
             cd.originalDataClassByField = {'char'};

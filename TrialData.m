@@ -1193,7 +1193,7 @@ classdef TrialData
                 cd = p.Results.channelDescriptor;
             elseif ~isempty(p.Results.like)
                 % copy from another channel
-                cd = td.channelDescriptorsByName.(p.Results.like);
+                cd = ParamChannelDescriptor.buildLike(td.channelDescriptorsByName.(p.Results.like), name);
             else
                 % auto infer from data
                 cd = ParamChannelDescriptor.buildFromValues(name, values);
