@@ -106,7 +106,6 @@ classdef TrialData
             p.addParamValue('suppressWarnings', false, @islogical);
             p.parse(varargin{:});
             tdi = p.Results.trialDataInterface;
-            suppressWarnings = p.Results.suppressWarnings; 
             
             % copy over basic details from the TrialDataInterface
             td.trialDataInterfaceClass = class(tdi);
@@ -408,10 +407,11 @@ classdef TrialData
         end
         
         function printChannelInfo(td)
-            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(td.listAnalogChannels(), ', '));
+            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(td.listNonLFPAnalogChannels(), ', '));
             tcprintf('inline', '{yellow}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
             tcprintf('inline', '{yellow}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
             tcprintf('inline', '{yellow}Spike: {none}%s\n', strjoin(td.listSpikeChannels(), ', '));
+            tcprintf('inline', '{yellow}LFP: {none}%s\n', strjoin(td.listLFPChannels(), ', '));
         end
 
         function disp(td)
@@ -536,6 +536,15 @@ classdef TrialData
             td = td.invalidateValid();
         end
     end
+    
+    methods
+        function warnIfNoArgOut(obj, nargOut)
+            if nargOut == 0 && ~isa(obj, 'handle')
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect', ...
+                    class(obj));
+            end
+        end
+    end
 
     methods(Access=protected) % Utility methods   
         function valid = getManualValid(td)
@@ -543,13 +552,6 @@ classdef TrialData
                 valid = truevec(td.nTrials);
             else
                 valid = makecol(td.manualValid);
-            end
-        end
-        
-        function warnIfNoArgOut(obj, nargOut)
-            if nargOut == 0 && ~isa(obj, 'handle')
-                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect', ...
-                    class(obj));
             end
         end
         
@@ -622,6 +624,15 @@ classdef TrialData
             td.channelDescriptorsByName.(name) = td.getChannelDescriptor(name).setPrimaryUnits(units);
         end
         
+        function td = setChannelMeta(td, name, meta)
+            td.warnIfNoArgOut(nargout);
+            td.channelDescriptorsByName.(name).meta = meta;
+        end
+        
+        function meta = getChannelMeta(td, name)
+            meta = td.channelDescriptorsByName.(name).meta;
+        end
+        
         function names = listChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             names = {channelDescriptors.name}';
@@ -654,7 +665,9 @@ classdef TrialData
         end
         
         function cds = getChannelDescriptorArray(td)
-            fields = fieldnames(td.channelDescriptorsByName);
+            % this sort operation is what puts channel names in order
+            % during display, don't remove
+            fields = sort(fieldnames(td.channelDescriptorsByName));
             if isempty(fields)
                 cds = [];
             else
@@ -703,6 +716,11 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             removeNames = setdiff(td.listChannels(), names);
             td = td.dropChannels(removeNames);
+        end
+        
+        function td = dropChannel(td, name)
+            td.warnIfNoArgOut(nargout);
+            td = td.dropChannels(name);
         end
         
         function td = dropChannels(td, names)
@@ -766,10 +784,14 @@ classdef TrialData
         function td = addAnalog(td, name, varargin)
             p = inputParser();
             p.addOptional('values', {}, @(x) iscell(x) || ismatrix(x));
-            p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x));
+            p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x)); % char or time cell
+            p.addParameter('timeField', '', @ischar);
             p.addParameter('units', '', @ischar);
+            p.addParameter('isLFP', false, @islogical); % shortcut for making LFP channels since they're identical
             p.addParameter('isAligned', true, @islogical);
             p.addParameter('clearForInvalid', false, @islogical);
+            p.addParameter('scaleFromLims', [], @isvector);
+            p.addParameter('scaleToLims', [], @isvector);
             p.parse(varargin{:});
             times = p.Results.times;
             values = p.Results.values;
@@ -777,38 +799,71 @@ classdef TrialData
 
             td.warnIfNoArgOut(nargout);
             
+            if ischar(times)
+                % allow specifying char in times as well as timeField
+                timeField = times;
+                times = [];
+            else
+                timeField = p.Results.timeField;
+            end
+            
             % times can either be a field/channel name, or it can be raw
             % time values
-            if ischar(times)
-                if td.hasChannel(times)
-                    % treat times as analog channel name
-                    % share that existing channel's time field 
-                    cd = td.channelDescriptorsByName.(times);
-                    assert(isa(cd, 'AnalogChannelDescriptor'), ...
-                        'Channel %s is not an analog channel', times);
-                    timeField = cd.timeField;
-                    times = {td.data.(timeField)};
-                    
-                elseif isfield(td.data, times)
-                    % use directly specified time field in .data
-                    timeField = times;
-                    times = {td.data.(timeField)};
+            if isempty(times)
+                % reference another time field or another analog channels
+                % time field
+                if ~isempty(timeField)
+                    if td.hasChannel(timeField)
+                        % treat timeField as analog channel name
+                        % share that existing channel's time field 
+                        cd = td.channelDescriptorsByName.(timeField);
+                        assert(isa(cd, 'AnalogChannelDescriptor'), ...
+                            'Channel %s is not an analog channel', timeField);
+                        timeField = cd.timeField;
+                        times = {td.data.(timeField)};
+
+                    elseif isfield(td.data, timeField)
+                        % use directly specified time field in .data
+                        times = {td.data.(timeField)};
+                    else
+                        % timeField not found
+                        error('%s is not a channel or data field name', timeField);
+                    end
                     
                 else
-                    error('%s is not a channel or data field name', times);
+                    error('Time vector or cell of vectors must be passed in when not referencing an existing timeField');
                 end
-                %times = [];
-
-            elseif iscell(times) || isnumeric(times)
-                % pass specified times along directly as cell
-                % and generate unique time field name
-                timeField = matlab.lang.makeUniqueStrings(sprintf('%s_time', name), fieldnames(td.data));
             else
-                error('Times must be channel/field name or cell array');
+                % times were provided, we'll set the field value
+                
+                if isempty(timeField)
+                    % generate unique time field name
+                    timeField = matlab.lang.makeUniqueStrings(sprintf('%s_time', name), fieldnames(td.data));
+                else
+                    % check that we're not overwriting another channel's
+                    % time field
+                    if isfield(td.data, timeField)
+                        otherChannels = setdiff(td.getChannelsReferencingFields(timeField), name);
+                        if ~isempty(otherChannels)
+                            error('Analog channel time field %s conflicts with existing channel(s) %s. If you meant to reference their timeField, specify ''timeField'' parameter and leave times argument empty', ...
+                                name, strjoin(otherChannels, ','));
+                        end
+                    end
+                end
             end
                 
             % build a channel descriptor for the data
-            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units);
+            if p.Results.isLFP
+                cd = LFPChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName);
+            else
+                cd = AnalogChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName);
+            end
+            if ~isempty(values)
+                cd = cd.inferAttributesFromData(values, times);
+            end
+            
+            cd.scaleFromLims = p.Results.scaleFromLims;
+            cd.scaleToLims = p.Results.scaleToLims;
             
             % AnalogChannelDescriptor declares data fields as data, times
             td = td.addChannel(cd);
@@ -817,6 +872,12 @@ classdef TrialData
                 td = td.setAnalog(name, values, times, ...
                     'clearForInvalid', p.Results.clearForInvalid, 'isAligned', p.Results.isAligned);
             end
+        end
+        
+        function td = addLFP(td, name, varargin)
+            % see addAnalog, same signature
+            td.warnIfNoArgOut(nargout);
+            td = td.addAnalog(name, varargin{:}, 'isLFP', true);
         end
         
         function td = setAnalog(td, name, values, varargin)
@@ -828,7 +889,7 @@ classdef TrialData
             p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            times = p.Results.times;
+            times = makecol(p.Results.times);
             
             % check the values and convert to nTrials cellvec
             if ismatrix(values) && isnumeric(values)
@@ -892,6 +953,20 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
+        function names = listNonLFPAnalogChannels(td)
+            names = setdiff(td.listAnalogChannels(), td.listLFPChannels());
+        end
+        
+        function names = listLFPChannels(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            if isempty(channelDescriptors)
+                names = {};
+                return;
+            end
+            mask = arrayfun(@(cd) isa(cd, 'LFPChannelDescriptor'), channelDescriptors);
+            names = {channelDescriptors(mask).name}';
+        end
+        
         function td = selectAnalogChannels(td, names)
             td.warnIfNoArgOut(nargout);
             full = td.listAnalogChannels();
@@ -931,6 +1006,9 @@ classdef TrialData
                 end
                 data{i} = makecol(data{i});
             end
+            
+            % do scaling and convert to double
+            data = cd.convertDataCellOnAccess(1, data);
         end
         
         % same as raw, except empty out invalid trials
@@ -1151,19 +1229,24 @@ classdef TrialData
         end
         
         function td = setEvent(td, name, times, varargin)
+            p = inputParser();
+            p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.parse(varargin{:});
+            
             td.warnIfNoArgOut(nargout);
             
-            % add the zero offset to the time vector for each trial
-            % this is mostly for TDCA, so that alignments info is
-            % preserved
-            offsets = td.getTimeOffsetsFromZeroEachTrial();
-            if iscell(times)
-                times = cellfun(@plus, makecol(times), num2cell(offsets), 'UniformOutput', false);
-            else
-                times = makecol(times) + offsets;
+            if p.Results.isAligned
+                % add the zero offset to the time vector for each trial
+                % this is mostly for TDCA, so that alignments info is
+                % preserved
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+                if iscell(times)
+                    times = cellfun(@plus, makecol(times), num2cell(offsets), 'UniformOutput', false);
+                else
+                    times = makecol(times) + offsets;
+                end
             end
             td = td.setChannelData(name, {times}, varargin{:});
-            
         end
     end
     
@@ -1359,7 +1442,7 @@ classdef TrialData
             p.parse(varargin{:});
             
             td.warnIfNoArgOut(nargout);
-            cd = td.channelDescriptorsByName.(name);
+            %cd = td.channelDescriptorsByName.(name);
             
             if isempty(p.Results.as)
                 as = [name sprintf('_%dback', n)];
@@ -1403,21 +1486,57 @@ classdef TrialData
             
             cd = SpikeChannelDescriptor.buildFromUnitName(unitStr);
             if ~isempty(p.Results.waveforms)
-                cd.waveformsField = p.Results.waveformsField;
+                cd = cd.addWaveformsField(p.Results.waveformsField);
                 td = td.addChannel(cd, {p.Results.spikes, p.Results.waveforms});
             else
                 td = td.addChannel(cd, {p.Results.spikes});
             end
+        end
+
+        function td = setSpikeChannel(td, name, times, varargin)
+            p = inputParser();
+            p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('waveforms', [], @iscell);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            
+            if p.Results.isAligned
+                % add the zero offset to the time vector for each trial
+                % this is mostly for TDCA, so that alignments info is
+                % preserved
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+                if iscell(times)
+                    times = cellfun(@plus, makecol(times), num2cell(offsets), 'UniformOutput', false);
+                else
+                    times = makecol(times) + offsets;
+                end
+            end
+            
+            if ~isempty(p.Results.waveforms)
+                td = td.setChannelData(name, {times, p.Results.waveforms}, p.Unmatched);
+            else
+                if td.hasSpikeWaveforms(name)
+                    % no waveforms provided, check that number of spikes
+                    % isn't changing
+                    nSpikesProvided = cellfun(@numel, times);
+                    nSpikesWave = cellfun(@(w) size(w, 2), td.getRawSpikeWaveforms(chName));
+                    assert(all(isequaln(nSpikesProvided, nSpikesWave), 'Number of spikes cannot change unless waveforms are also provided'));
+                end
+                
+                td = td.setChannelData(name, {times}, p.Unmatched);
+            end
             
         end
-        
-        function td = selectSpikeChannels(td, names)
-            td.warnIfNoArgOut(nargout);
-            full = td.listSpikeChannels();
-            assert(all(ismember(names, full)), 'Missing spike channels %s', ...
-                strjoin(setdiff(names, full), ', ')); 
-            td = td.dropChannels(setdiff(full, names));
-        end
+%         
+%         function td = selectSpikeChannels(td, names)
+%             td.warnIfNoArgOut(nargout);
+%             full = td.listSpikeChannels();
+%             assert(all(ismember(names, full)), 'Missing spike channels %s', ...
+%                 strjoin(setdiff(names, full), ', ')); 
+%             td = td.dropChannels(setdiff(full, names));
+%         end
         
         function timesCell = getRawSpikeTimes(td, unitName)
             name = unitName;
@@ -1445,11 +1564,20 @@ classdef TrialData
             rates = counts ./ durations * td.timeUnitsPerSecond;
         end
         
-         function [wavesCell, waveTvec, timesCell] = getRawSpikeWaveforms(td, unitName)
+        function tf = hasSpikeWaveforms(td, unitName)
+            if ~td.hasSpikeChannel(unitName)
+                tf = false;
+                return;
+            end
+            wavefield = td.channelDescriptorsByName.(unitName).waveformsField;
+            tf = ~isempty(wavefield);
+        end
+        
+        function [wavesCell, waveTvec, timesCell] = getRawSpikeWaveforms(td, unitName)
             wavefield = td.channelDescriptorsByName.(unitName).waveformsField;
             assert(~isempty(wavefield), 'Unit %s does not have waveforms', unitName);
             wavesCell = {td.data.(wavefield)}';
-            waveTvec = td.channelDescriptorsByName.(unitName).waveformsTvec;
+            waveTvec = td.channelDescriptorsByName.(unitName).waveformsTime;
             timesCell = td.getRawSpikeTimes(unitName);
         end
         
@@ -1504,7 +1632,7 @@ classdef TrialData
            % p.addParameter('ignoreOverwriteChannel', false, @islogical);
             p.addParameter('updateValidOnly', true, @islogical);
             p.parse(varargin{:});
-            valueCell = p.Results.valueCell;
+            valueCell = makecol(p.Results.valueCell);
             
             td.warnIfNoArgOut(nargout);
             
@@ -1536,10 +1664,49 @@ classdef TrialData
                 % clear on fields where no values provided and it's not shared, 
                 % set on fields where values are provided
                 nonEmptyMask = ~cellfun(@isempty, valueCell);
-                td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask && ~cd.isShareableByField);
+                td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask & ~cd.isShareableByField);
                 td = td.setChannelData(cd.name, valueCell, 'fieldMask', nonEmptyMask, ...
                     'updateValidOnly', p.Results.updateValidOnly);
             end
+        end
+        
+        function td = renameChannel(td, oldName, newName)
+            % rename channel name to newName
+            % if channel name's primary data field is also name, rename
+            % that field too to newName
+            td.warnIfNoArgOut(nargout); 
+
+            % update channel descriptor directly
+            [cd, dataFieldRenameMap] = td.channelDescriptorsByName.(oldName).rename(newName);            
+            td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, oldName);
+            td.channelDescriptorsByName.(newName) = cd;
+            
+            % then rename channel fields
+            flds = fieldnames(dataFieldRenameMap);
+            for iF = 1:numel(flds)
+                oldField = flds{iF};
+                newField = dataFieldRenameMap.(oldField);
+                td = td.renameDataField(oldField, newField, oldName);
+            end
+        end
+        
+        function td = renameDataField(td, field, newFieldName, ignoreChannelList)
+           % rename field number fieldIdx of channel name to newFieldName
+           % if that field is shared by a channel not in ignoreChannelList, make a copy
+           td.warnIfNoArgOut(nargout); 
+           
+           if nargin < 4
+               ignoreChannelList = {};
+           end
+
+           otherChannels = setdiff(td.getChannelsReferencingFields(field), ignoreChannelList);
+           if ~isempty(otherChannels)
+               % being used by other channels, make a copy
+               td.data = copyStructField(td.data, td.data, field, newFieldName);
+           else
+               % move field and delete old one
+               td.data = mvfield(td.data, field, newFieldName);
+           end
         end
         
         function td = copyRenameSharedChannelFields(td, name, fieldMask)
@@ -1707,7 +1874,7 @@ classdef TrialData
             xlabel(td.getTimeAxisLabel());
             ylabel(td.getAxisLabelForChannel(name));
             
-            AutoAxis.replace(axh);
+%             AutoAxis.replace(axh);
             
             hold(axh, 'off');
         end
