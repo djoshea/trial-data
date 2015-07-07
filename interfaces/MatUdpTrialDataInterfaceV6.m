@@ -1,5 +1,9 @@
 classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
-% like V3, but uses millisecond timestamps as doubles
+    properties         
+        includeWaveforms = false;
+    end
+    
+    % like V3, but uses millisecond timestamps as doubles
     properties(SetAccess=protected)
         trials % original struct array over trials
         meta % meta data merged over all trials
@@ -9,8 +13,6 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         channelUnits % col 1 is channel, col 2 is units
         unitFieldNames
         waveFieldNames
-        
-        includeWaveforms = false;
 
         % these are used for streaming mode, where new trials, possibly with new channels are loaded in dynamically
         newR
@@ -182,12 +184,12 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     end
 
                     cd = SpikeChannelDescriptor(unitName);
-                    wavefield = sprintf('%s_waveforms', unitName);
                     unitFieldNames{iU} = unitName;
-                    waveFieldNames{iU} = wavefield;
-                    if isfield(tdi.trials, wavefield) && false
-                        cd.waveformsField = wavefield;
-                        cd.waveformsTvec = (-10:21)' / 30;
+                        
+                    if tdi.includeWaveforms && isfield(tdi.trials, 'spikeWaveforms')
+                        wavefield = sprintf('%s_waveforms', unitName);
+                        waveFieldNames{iU} = wavefield;
+                        cd = cd.addWaveformsField(wavefield, 'time', (-10:21)' / 30);
                     end
 
                     maskKeep(iU) = true;
