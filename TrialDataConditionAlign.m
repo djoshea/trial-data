@@ -2850,7 +2850,7 @@ classdef TrialDataConditionAlign < TrialData
             % compute start/stop of each alignment
             [mins, maxs] = deal(nanvec(nAlign));
             for iAlign = 1:nAlign
-                if iscell(tvecCell{iAlign})
+                if iscell(tvecCell{iAlign}) && ~isempty(tvecCell{iAlign})
                     mins(iAlign) = nanmin(cellfun(@nanminNanEmpty, tvecCell{iAlign}));
                     maxs(iAlign) = nanmax(cellfun(@nanmaxNanEmpty, tvecCell{iAlign}));
                 elseif isempty(tvecCell{iAlign})
