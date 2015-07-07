@@ -1,0 +1,3 @@
+classdef LFPChannelDescriptor < AnalogChannelDescriptor
+     
+end

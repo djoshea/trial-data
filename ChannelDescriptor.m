@@ -1,16 +1,18 @@
 classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 % Use the factory builder methods in subclasses rather than constructing
-% directly, or use inferAttributesFromData
+% directly
     
     properties
-        name = ''; % short name, must be valid field name
-
-        groupName = ''; % name of group to which this channel belongs 
-
         description = ''; % extended description 
 
         meta % anything you'd like
+    end
 
+    properties(SetAccess=protected)
+        name = ''; % short name, must be valid field name
+
+        groupName = ''; % name of group to which this channel belongs 
+        
         special = false; % whether this channel is a "special" identifier channel used by TrialData
         
         required = true; % whether data for this channel is required or not
@@ -28,6 +30,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         % string describing units of each field
         unitsByField = {}
         
+        % original class() of each field, used to maintain the same type in memory .memoryClassByFIeld
         originalDataClassByField = {};
     end
     
@@ -44,6 +47,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     
     properties(Dependent)
         nFields
+        
+        % nFields x 1 arrays or cells
         collectAsCellByField 
         missingValueByField
         isBooleanByField
@@ -57,11 +62,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         % are not affected. See getIsShareableByField for implementation
         isShareableByField
         
-         % in memory data class of each field (or empty if unknown / mixed)
-        dataClassByField % cell array specifying data class to convert each 
+         % data class of each field as accessed
+        accessClassByField % cell array specifying data class to convert each 
+        
+        % data class of each field as stored in .data
+        memoryClassByField
         
         % persistent storage data class of each field (or empty if unknown / mixed)
-        storageDataClassByField
+        storageClassByField
         
         % these are shortcuts to the first element of the properties above
         % since the first data field is considered the primary data field
@@ -77,21 +85,36 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         % channel name
         str = describe(cdesc);
         
-        % build a channel descriptor from the data
-        cd = inferAttributesFromData(cd, dataCell);
+        % update internal properties so as to handle specific data types in
+        % vararargin{1}, varargin{2}, ... varargin{nDataFields}
+        cd = inferAttributesFromData(cd, varargin);
     end
     
-    methods % Dependent property definitions
-        function n = get.nFields(cd)
-            n = numel(cd.elementTypeByField);
+    methods(Access=protected) % Constructor
+        function cd = ChannelDescriptor(varargin)
+            p = inputParser();
+            p.addOptional('name', '', @ischar);
+            p.parse(varargin{:});
+
+            cd.name = p.Results.name;
         end
-        
-        function vals = get.missingValueByField(cd)
-            missingVals = {false, NaN, [], [], '', {}, []};
-            vals = missingVals(cd.elementTypeByField);
+    end
+    
+    methods
+        function data = convertDataCellOnAccess(cd, fieldIdx, data)
+            % when data is accessed by TrialData, this is one additional
+            % chance to cast or adjust the data stored in .data. This
+            % default implementation casts from the memory class to the
+            % access class on demand
+            memClass = cd.memoryClassByField{fieldIdx};
+            accClass = cd.accessClassByField{fieldIdx};
+            if ~strcmp(memClass, accClass)
+                data = cellfun(@(a) cast(a, accClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
+            end
         end
-        
-        function c = get.dataClassByField(cd)
+                
+        function c = getAccessClassByField(cd)
+            % implements get.accessClassByField
             c = cellvec(cd.nFields);
             for iF = 1:cd.nFields
                 switch cd.elementTypeByField(iF)
@@ -107,14 +130,40 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
         end
         
-        function c = get.storageDataClassByField(cd)
+        function c = getMemoryClassByField(cd)
+            % implements get.memoryClassByField, differs in that numeric
+            % types default to their original data class
+            c = cellvec(cd.nFields);
+            for iF = 1:cd.nFields
+                switch cd.elementTypeByField(iF)
+                    case cd.BOOLEAN
+                        c{iF} = 'logical';
+                    case {cd.SCALAR, cd.VECTOR, cd.NUMERIC, cd.DATENUM}
+                        if ~isempty(cd.originalDataClassByField{iF})
+                            c{iF} = cd.originalDataClassByField{iF};
+                        else
+                            c{iF} = 'double';
+                        end
+                    case cd.STRING
+                        c{iF} = 'char';
+                    otherwise
+                        c{iF} = '';
+                end
+            end
+        end
+        
+        function c = getStorageClassByField(cd)
             c = cellvec(cd.nFields);
             for iF = 1:cd.nFields
                 switch cd.elementTypeByField(iF)
                     case cd.BOOLEAN
                         c{iF} = 'logical';
                     case {cd.SCALAR, cd.VECTOR, cd.NUMERIC}
-                        c{iF} = cd.originalDataClassByField{iF};
+                        if ~isempty(cd.originalDataClassByField{iF})
+                            c{iF} = cd.originalDataClassByField{iF};
+                        else
+                            c{iF} = 'double';
+                        end
                     case cd.DATENUM
                         c{iF} = 'double';
                     case cd.STRING
@@ -126,53 +175,6 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 end
             end
         end
-        
-        function tf = get.collectAsCellByField(cd)
-            tf = ~cd.isScalarByField;
-        end
-        
-        function tf = get.isStringByField(cd)
-            tf = cd.elementTypeByField == cd.STRING;
-        end
-        
-        function tf = get.isScalarByField(cd) % returns true for boolean and scalar
-            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]);
-        end
-        
-        function tf = get.isBooleanByField(cd)
-            tf = cd.elementTypeByField == cd.BOOLEAN;
-        end
-        
-        function tf = get.isShareableByField(cd)
-            % defer to overrideable function
-            tf = cd.getIsShareableByField();
-        end
-        
-        function u = get.unitsPrimary(cd)
-            if isempty(cd.unitsByField)
-                u = '';
-            else
-                u = cd.unitsByField{1};
-            end
-        end
-        
-        function f = get.dataFieldPrimary(cd)
-            if isempty(cd.dataFields)
-                f = '';
-            else
-                f = cd.dataFields{1};
-            end
-        end
-    end
-
-    methods % Constructor
-        function cd = ChannelDescriptor(varargin)
-            p = inputParser();
-            p.addOptional('name', '', @ischar);
-            p.parse(varargin{:});
-
-            cd.name = p.Results.name;
-        end
 
         function str = getAxisLabelPrimary(cd)
             if isempty(cd.unitsByField{1})
@@ -182,18 +184,28 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
         end
         
+        function [cd, dataFieldRenameStruct] = rename(cd, newName)
+            % renames the channel and any fields within
+            % dataFieldRenameStruct indicates which .data fields will need
+            % to be renamed, as dataFieldRenameStruct.oldName = newName
+            cd.warnIfNoArgOut(nargout);
+            oldName = cd.name;
+            cd.name = newName;
+            
+            if strcmp(cd.dataFields{1}, oldName)
+                dataFieldRenameStruct.(oldName) = newName;
+                cd.dataFields{1} = newName;
+            end
+        end
+        
         function cd = renameDataField(cd, iF, newName)
+            cd.warnIfNoArgOut(nargout);
             cd.dataFields{iF} = newName;
         end
         
         function cd = setPrimaryUnits(cd, unitName)
             assert(ischar(unitName));
             cd.unitsByField{1} = unitName;
-        end
-        
-        function tf = getIsShareableByField(cd)
-            tf = true(cd.nFields, 1);
-            tf(1) = false;
         end
 
         % look at the data struct and check that the correct data fields
@@ -242,7 +254,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 end
                 
                 if cd.elementTypeByField(iF) == cd.VECTOR
-                   % manually convert to logical
+                   % manually convert to column
                     for i = 1:numel(data)
                         data(i).(fld) = makecol(data(i).(fld));
                     end
@@ -254,8 +266,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             % change the storage class type of the data to the in-memory
             % class
             for iF = 1:cd.nFields
-                from = cd.storageDataClassByField{iF};
-                to = cd.dataClassByField{iF};
+                from = cd.storageClassByField{iF};
+                to = cd.memoryClassByField{iF};
                 if ~isempty(from) && ~isempty(to) && ~strcmp(from, to)
                     data = structConvertFieldValues(data, to, cd.dataFields{iF});
                 end
@@ -264,8 +276,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         
         function data = convertDataToStorageClass(cd, data)
             for iF = 1:cd.nFields
-                to = cd.storageDataClassByField{iF};
-                from = cd.dataClassByField{iF};
+                to = cd.storageClassByField{iF};
+                from = cd.memoryClassByField{iF};
                 if ~isempty(from) && ~isempty(to) && ~strcmp(from, to)
                     data = structConvertFieldValues(data, to, cd.dataFields{iF});
                 end
@@ -284,8 +296,88 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
         end
     end
+
+    methods(Sealed)
+        function warnIfNoArgOut(obj, nargOut)
+            if nargOut == 0 && ~isa(obj, 'handle')
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect', ...
+                    class(obj));
+            end
+        end
+    end
+    
+    % Dependent property definitions, some refer out to getProperty methods
+    % of the same name to give subclasses an opportunity to redefine their
+    % implementation
+    methods 
+        function n = get.nFields(cd)
+            n = numel(cd.dataFields);
+        end
+        
+        function tf = getIsShareableByField(cd)
+            tf = true(cd.nFields, 1);
+            tf(1) = false;
+        end
+        
+        function vals = get.missingValueByField(cd)
+            missingVals = {false, NaN, [], [], '', {}, []};
+            vals = missingVals(cd.elementTypeByField);
+        end
+        
+        function c = get.accessClassByField(cd)
+            % defer to method to make it overrideable in subclasses
+            c = cd.getAccessClassByField();
+        end
+        
+        function c = get.memoryClassByField(cd)
+            % defer to method to make it overrideable in subclasses
+            c = cd.getMemoryClassByField();
+        end
+        
+        function c = get.storageClassByField(cd)
+            c = cd.getStorageClassByField();
+        end
+        
+        function tf = get.collectAsCellByField(cd)
+            tf = ~cd.isScalarByField;
+        end
+        
+        function tf = get.isStringByField(cd)
+            tf = cd.elementTypeByField == cd.STRING;
+        end
+        
+        function tf = get.isScalarByField(cd) % returns true for boolean and scalar
+            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]);
+        end
+        
+        function tf = get.isBooleanByField(cd)
+            tf = cd.elementTypeByField == cd.BOOLEAN;
+        end
+        
+        function tf = get.isShareableByField(cd)
+            % defer to overrideable function
+            tf = cd.getIsShareableByField();
+        end
+        
+        function u = get.unitsPrimary(cd)
+            if isempty(cd.unitsByField)
+                u = '';
+            else
+                u = cd.unitsByField{1};
+            end
+        end
+        
+        function f = get.dataFieldPrimary(cd)
+            if isempty(cd.dataFields)
+                f = '';
+            else
+                f = cd.dataFields{1};
+            end
+        end
+    end
     
     methods(Static) % Utility methods
+        
         function cls = getCellElementClass(dataCell)
             if isempty(dataCell)
                 cls = 'double';

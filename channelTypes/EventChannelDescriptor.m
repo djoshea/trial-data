@@ -1,12 +1,14 @@
 classdef EventChannelDescriptor < ChannelDescriptor
-    methods
+    methods(Access=protected)
         function cd = EventChannelDescriptor(varargin)
             cd = cd@ChannelDescriptor(varargin{:});
             cd.dataFields = {cd.name};
             cd.originalDataClassByField = {'double'};
             cd.elementTypeByField = cd.VECTOR;
         end
-        
+    end
+    
+    methods    
         function type = getType(~)
             type = 'event';
         end
@@ -16,7 +18,7 @@ classdef EventChannelDescriptor < ChannelDescriptor
         end
 
         function cd = inferAttributesFromData(cd, dataCell)
-            assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
+            cd.warnIfNoArgOut(nargout);
             cd.originalDataClassByField = {ChannelDescriptor.getCellElementClass(dataCell)};
         end
     end

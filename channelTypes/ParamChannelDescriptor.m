@@ -1,6 +1,6 @@
 classdef ParamChannelDescriptor < ChannelDescriptor
     
-    methods
+    methods(Access=protected)
         function cd = ParamChannelDescriptor(varargin)
             cd = cd@ChannelDescriptor(varargin{:});
             cd.dataFields = {cd.name};
@@ -8,7 +8,9 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
         end
-        
+    end
+    
+    methods
         function type = getType(~)
             type = 'param';
         end
@@ -23,7 +25,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
 
         function cd = inferAttributesFromData(cd, varargin)
             % THIS ASSUMES THAT DATACELL IS HOMOGENOUS
-            assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
+            cd.warnIfNoArgOut(nargout);
             
             if isempty(varargin)
                 error('Must provide at least 1 data cell');

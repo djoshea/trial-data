@@ -1,10 +1,12 @@
 classdef SpikeChannelDescriptor < ChannelDescriptor
     properties
-        waveformsField = '';
-        waveformsTvec = []; % common time vector to be shared for ALL waveforms for this channel
-        waveformsUnits = 'mV';
+        waveformsTime = []; % common time vector to be shared for ALL waveforms for this channel
         quality = NaN;
         sortMode = NaN;
+    end
+    
+    properties(SetAccess=protected)
+        waveformsField = '';
     end
     
     properties(Dependent)
@@ -20,7 +22,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         SORT_MANUAL = 3;
     end
 
-    methods
+    methods(Access=protected)
         function cd = SpikeChannelDescriptor(name)
             cd = cd@ChannelDescriptor(name); 
             cd.dataFields = {cd.name};
@@ -28,6 +30,41 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
         end
+    end
+    
+    methods
+        function cd = addWaveformsField(cd, waveField, varargin)
+            p = inputParser;
+            p.addParamValue('time', [], @isvector);
+            p.parse(varargin{:});
+            
+            if nargin < 2 || isempty(waveField)
+                waveField = sprintf('%s_waveforms', cd.name);
+            end
+            
+            cd.warnIfNoArgOut(nargout);
+            cd.dataFields = {cd.name; waveField};
+            cd.waveformsField = waveField;
+            cd.elementTypeByField = [cd.VECTOR; cd.NUMERIC];
+            cd.originalDataClassByField = {'', ''};
+            cd.unitsByField = {'', 'mV'};
+            cd.waveformsTime = p.Results.time;
+        end
+        
+        function [cd, dataFieldRenameStruct] = rename(cd, newName)
+            cd.warnIfNoArgOut(nargout);
+            % also rename _waveforms field if it matches
+            oldName = cd.name;
+            [cd, dataFieldRenameStruct] = rename@ChannelDescriptor(cd, newName);
+            if ~isempty(cd.waveformsField)
+                oldWave = cd.waveformsField;
+                if strcmp(oldWave, sprintf('%s_waveforms', oldName))
+                    newWave = sprintf('%s_waveforms', newName);
+                    dataFieldRenameStruct.(oldWave) = newWave;    
+                    cd.dataFields{2} = newWave;
+                end
+            end
+        end 
         
         function u = get.unitStr(cd)
             if isempty(cd.name)
