@@ -257,7 +257,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 if cd.elementTypeByField(iF) == cd.BOOLEAN
                     % manually convert to logical
                     for i = 1:numel(data)
-                        data(i).(fld) = logical(data(i).(fld));
+                        if ~isnan(data(i).(fld))
+                            data(i).(fld) = logical(data(i).(fld));
+                        else
+                            data(i).(fld) = false;
+                        end
                     end
                 end
                 
