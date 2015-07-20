@@ -10,12 +10,14 @@ classdef TrialData
     % Metadata
     properties
         datasetName = ''; % string describing entire collection of trials dataset
-
-        datasetMeta % arbitrary, user determined 
     end
 
     % Internal data storage
     properties(SetAccess=protected)
+        trialDataVersion = 20150716; % used for backwards compatibility
+        
+        datasetMeta = struct(); % arbitrary, user determined data, use setMetaByKey and getMetaByKey to access
+
         data = struct([]);  % standardized format nTrials x 1 struct with all trial data  
 
         initialized = false; % has initialize() been called yet?
@@ -299,6 +301,25 @@ classdef TrialData
             end
             prog.finish();
         end
+        
+        function v = getMetaByKey(td, key)
+            if isstruct(td.datasetMeta) && isfield(td.datasetMeta, key)
+                v = td.datasetMeta.(key);
+            else
+                v = [];
+            end
+        end
+        
+        function td = setMetaByKey(td, key, value)
+            td.warnIfNoArgOut(nargout);
+            assert(ischar(key), 'Key must be string');
+            
+            if ~isstruct(td.datasetMeta)
+                td.datasetMeta = struct(key, value);
+            else
+                td.datasetMeta.(key) = value;
+            end
+        end
     end
     
     % Faster saving
@@ -535,6 +556,11 @@ classdef TrialData
             td.manualValid = true(td.nTrials, 1);
             td = td.invalidateValid();
         end
+        
+        function td = reset(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.setAllValid();
+        end
     end
     
     methods
@@ -675,6 +701,7 @@ classdef TrialData
                     cds(iF) = td.channelDescriptorsByName.(fields{iF}); %#ok<AGROW>
                 end
             end
+            cds = makecol(cds);
         end
         
         % channels may reference common data fields in .data to prevent
@@ -1481,16 +1508,31 @@ classdef TrialData
             p.addOptional('spikes', {}, @isvector);
             p.addParameter('waveforms', [], @iscell);
             p.addParameter('waveformsField', sprintf('%s_waveforms', unitStr), @ischar);
+            p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
+            p.addParameter('sortQuality', NaN, @isscalar); % numeric scalar metric of sort quality
+            p.addParameter('sortMethod', '', @ischar);
+            p.addParameter('sortQualityEachTrial', [], @isvector);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            cd = SpikeChannelDescriptor.buildFromUnitName(unitStr);
+            cd = SpikeChannelDescriptor.build(unitStr);
+            cd.sortQuality = p.Results.sortQuality;
+            cd.sortMethod = p.Results.sortMethod;
+            
+            channelData = {p.Results.spikes};
+            
             if ~isempty(p.Results.waveforms)
-                cd = cd.addWaveformsField(p.Results.waveformsField);
-                td = td.addChannel(cd, {p.Results.spikes, p.Results.waveforms});
-            else
-                td = td.addChannel(cd, {p.Results.spikes});
+                cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime);
+                channelData{end+1} = p.Results.waveforms;
             end
+            
+            if ~isempty(p.Results.sortQualityEachTrial)
+                assert(numel(p.Results.sortQualityEachTrial) == td.nTrials);
+                cd = cd.addSortQualityEachTrialField();
+                channelData{end+1} = p.Results.sortQualityEachTrial;
+            end
+            
+            td = td.addChannel(cd, channelData);
         end
 
         function td = setSpikeChannel(td, name, times, varargin)
@@ -1574,9 +1616,12 @@ classdef TrialData
         end
         
         function [wavesCell, waveTvec, timesCell] = getRawSpikeWaveforms(td, unitName)
-            wavefield = td.channelDescriptorsByName.(unitName).waveformsField;
+            cd = td.channelDescriptorsByName.(unitName);
+            wavefield = cd.waveformsField;
             assert(~isempty(wavefield), 'Unit %s does not have waveforms', unitName);
             wavesCell = {td.data.(wavefield)}';
+            % scale to appropriate units
+            wavesCell = cd.scaleWaveforms(wavesCell);
             waveTvec = td.channelDescriptorsByName.(unitName).waveformsTime;
             timesCell = td.getRawSpikeTimes(unitName);
         end
@@ -1637,8 +1682,11 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             
             % check for overwrite if requested
-            assert(isa(cd, 'ChannelDescriptor'), 'Argument cd must be ChannelDescriptor');
-
+            assert(isa(cd, 'ChannelDescriptor'), 'Argument cd must be ChannelDescriptor');  
+            
+            % give the channelDescriptor a chance to initialize itself
+            cd = cd.initialize();
+            
             alreadyHasChannel = td.hasChannel(cd.name);
             if alreadyHasChannel
                 warning('Overwriting existing channel with name %s', cd.name);
@@ -1648,7 +1696,7 @@ classdef TrialData
 %                 assert(isequaln(cd, td.channelDescriptorsByName.(cd.name)), ...
 %                     'ChannelDescriptor for channel %s does not match existing channel', cd.name);
             end
-            
+
             td.channelDescriptorsByName.(cd.name) = cd;
             
             % touch each of the value fields to make sure they exist

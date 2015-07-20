@@ -844,6 +844,14 @@ classdef AlignInfo < AlignDescriptor
             ad.assertApplied();
             zero = makecol([ad.timeInfoValid.zero]);
        end
+       
+       function [startRel, stopRel, zeroRel] = getStartStopZeroRelativeToTrialStartByTrial(ad)
+           ad.assertApplied();
+           
+           startRel = makecol([ad.timeInfoValid.start]) - makecol(ad.timeInfoValid.trialStart);
+           stopRel = makecol([ad.timeInfoValid.stop]) - makecol(ad.timeInfoValid.trialStart);
+           zeroRel = makecol([ad.timeInfoValid.zero]) - makecol(ad.timeInfoValid.trialStart);
+       end
     end
     
     methods % Trial validity

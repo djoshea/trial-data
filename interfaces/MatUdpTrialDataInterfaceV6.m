@@ -183,13 +183,15 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                         continue;
                     end
 
-                    cd = SpikeChannelDescriptor(unitName);
+                    cd = SpikeChannelDescriptor.build(unitName);
                     unitFieldNames{iU} = unitName;
                         
+                    % note that this assumes a homogenous scale factor of 250 (or divide by 0.25 to get uV) 
                     if tdi.includeWaveforms && isfield(tdi.trials, 'spikeWaveforms')
                         wavefield = sprintf('%s_waveforms', unitName);
                         waveFieldNames{iU} = wavefield;
-                        cd = cd.addWaveformsField(wavefield, 'time', (-10:21)' / 30);
+                        cd = cd.addWaveformsField(wavefield, 'time', (-10:21)' / 30, ...
+                            'scaleFromLims', [-32768 32767], 'scaleToLims', [-32768 32767] / 0.25);
                     end
 
                     maskKeep(iU) = true;
@@ -269,7 +271,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     channelData(iT).(fld) = trials(iT).spikeData_time(mask);
                     if tdi.includeWaveforms
                         wfld = tdi.waveFieldNames{iU};
-                        channelData(iT).(wfld) = trials(iT).spikeWaveforms(:, mask) / 4; % over 4 is because I forgot to normalize the voltages
+                        channelData(iT).(wfld) = trials(iT).spikeWaveforms(:, mask)' / 4; % over 4 is because I forgot to normalize the voltages
                     end
                 end
             end

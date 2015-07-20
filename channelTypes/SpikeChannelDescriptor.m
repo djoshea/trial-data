@@ -1,54 +1,114 @@
 classdef SpikeChannelDescriptor < ChannelDescriptor
+    properties(Dependent)
+        hasWaveforms
+        hasSortQualityEachTrial
+        array
+        electrode
+        unit
+    end
+    
     properties
+        waveformsField = '';
+        waveformsUnits = []
+        waveformsScaleFromLims = [];
+        waveformsScaleToLims = [];
+        waveformsOriginalDataClass = '';
         waveformsTime = []; % common time vector to be shared for ALL waveforms for this channel
-        quality = NaN;
-        sortMode = NaN;
+        
+        sortQuality = NaN; % numeric scalar metric of sort quality
+        sortMethod = '';
+        
+        sortQualityEachTrialField = '';
     end
     
     properties(SetAccess=protected)
-        waveformsField = '';
-    end
-    
-    properties(Dependent)
-        hasWaveforms
-        unitStr
-        unit
-        electrode
-    end
-    
-    properties(Constant)
-        SORT_THRESHOLD = 1;
-        SORT_ONLINE = 2;
-        SORT_MANUAL = 3;
+        arrayManual = '';
+        electrodeManual = [];
+        unitManual = [];
     end
 
     methods(Access=protected)
         function cd = SpikeChannelDescriptor(name)
             cd = cd@ChannelDescriptor(name); 
-            cd.dataFields = {cd.name};
-            cd.elementTypeByField = cd.VECTOR;
-            cd.originalDataClassByField = {''};
-            cd.unitsByField = {''};
+            
+            cd = cd.initialize();
         end
     end
     
     methods
+        function cd = initialize(cd) 
+            cd.dataFields = {cd.name};
+            cd.elementTypeByField = cd.VECTOR;
+            cd.originalDataClassByField = {''};
+            cd.unitsByField = {''};
+               
+            if cd.hasWaveforms
+                cd.dataFields{end+1} = cd.waveformsField;
+                cd.elementTypeByField(end+1) = cd.NUMERIC;
+                cd.originalDataClassByField{end+1} = cd.waveformsOriginalDataClass;
+                cd.unitsByField{end+1} = cd.waveformsUnits;
+            end
+            
+            if cd.hasSortQualityEachTrial
+                cd.dataFields{end+1} = cd.sortQualityEachTrialField;
+                cd.elementTypeByField(end+1) = cd.NUMERIC;
+                cd.originalDataClassByField{end+1} = 'double';
+                cd.unitsByField{end+1} = '';
+            end
+        end
+        
+        function cd = setArrayElectrodeUnit(cd, array, electrode, unit)
+            cd.warnIfNoArgOut(nargout);
+            assert(ischar('array'));
+            assert(isnumeric(electrode));
+            assert(isnumeric(unit));
+            cd.electrodeManual = electrode;
+            cd.arrayManual = array;
+            cd.unitManual = unit;
+        end
+        
         function cd = addWaveformsField(cd, waveField, varargin)
             p = inputParser;
             p.addParamValue('time', [], @isvector);
+            p.addParamValue('units', 'uV', @ischar);
+            p.addParamValue('scaleFromLims', [], @isvector);
+            p.addParamValue('scaleToLims', [], @isvector);
+            p.addParamValue('dataClass', '', @ischar);
             p.parse(varargin{:});
             
             if nargin < 2 || isempty(waveField)
                 waveField = sprintf('%s_waveforms', cd.name);
             end
-            
-            cd.warnIfNoArgOut(nargout);
-            cd.dataFields = {cd.name; waveField};
+
             cd.waveformsField = waveField;
-            cd.elementTypeByField = [cd.VECTOR; cd.NUMERIC];
-            cd.originalDataClassByField = {'', ''};
-            cd.unitsByField = {'', 'mV'};
             cd.waveformsTime = p.Results.time;
+            cd.waveformsOriginalDataClass = p.Results.dataClass;
+            cd.waveformsScaleFromLims = p.Results.scaleFromLims;
+            cd.waveformsScaleToLims = p.Results.scaleToLims;
+            cd = cd.initialize();
+        end
+        
+         function cd = addSortQualityEachTrialField(cd, field)
+            cd.warnIfNoArgOut(nargout);
+            if nargin < 2 || isempty(field)
+                field = sprintf('%s_sortQualityByTrial', cd.name);
+            end
+            cd.sortQualityEachTrialField = field;
+            cd = cd.initialize();
+        end
+        
+        function waveData = scaleWaveforms(cd, waveData)
+            % waveData is either matrix or cell of matrices
+            fromDelta = cd.waveformsScaleFromLims(2) - cd.waveformsScaleFromLims(1);
+            toDelta = cd.waveformsScaleToLims(2) - cd.waveformsScaleToLims(1);
+            dtype = cd.accessClassByField{2};
+            % convert to dtype and scale
+            scaleFn = @(x) (cast(x, dtype) - cd.waveformsScaleFromLims(1)) / fromDelta * toDelta + cd.waveformsScaleToLims(1);
+            if iscell(waveData)
+                waveData = cellfun(scaleFn, waveData, 'UniformOutput', false);
+            else
+                waveData = scaleFn(waveData);
+            end
         end
         
         function [cd, dataFieldRenameStruct] = rename(cd, newName)
@@ -66,24 +126,36 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
         end 
         
-        function u = get.unitStr(cd)
-            if isempty(cd.name)
-                u = '';
+        function a = get.array(cd)
+            if isempty(cd.arrayManual)
+                [a, ~, ~] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
             else
-                u = SpikeChannelDescriptor.convertChannelNameToUnitName(cd.name);
+                a = cd.arrayManual;
             end
         end
         
         function e = get.electrode(cd)
-            [e, ~] = SpikeChannelDescriptor.convertChannelNameToElectrodeUnit(cd.name);
+            if isempty(cd.electrodeManual) || isnan(cd.electrodeManual)
+                [~, e, ~] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
+            else
+                e = cd.electrodeManual;
+            end
+        end
+        
+        function u = get.unit(cd)
+            if isempty(cd.unitManual) || isnan(cd.unitManual)
+                [~, ~, u] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
+            else
+                u = cd.unitManual;
+            end
         end
         
         function tf = get.hasWaveforms(cd)
             tf = ~isempty(cd.waveformsField);
         end
         
-        function u = get.unit(cd)
-            [~, u] = SpikeChannelDescriptor.convertChannelNameToElectrodeUnit(cd.name);
+        function tf = get.hasSortQualityEachTrial(cd)
+            tf = ~isempty(cd.sortQualityEachTrialField);
         end
         
         function type = getType(~)
@@ -92,13 +164,6 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
 
         function str = describe(cd)
             str = sprintf('Unit %s', cd.name);  
-        end
-
-        function dataFields = getDataFields(cd)
-            dataFields = {cd.name};
-            if ~isempty(cd.waveformsField)
-                dataFields{end+1} = cd.waveformsField;
-            end
         end
 
         function cd = inferAttributesFromData(cd, varargin)
@@ -112,12 +177,18 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
     end
     
     methods(Static)
+        function cd = build(name)
+            cd = SpikeChannelDescriptor(name);
+        end
+        
         function cd = buildFromUnitName(name)
+            % attempt to parse the unit name into array electrode# and
+            % unit# 
             cd = SpikeChannelDescriptor(name);
         end
 
-        function cd = buildFromUnitStr(unitName)
-            name = SpikeChannelDescriptor.convertUnitNameToChannelName(unitName);
+        function cd = buildFromArrayElectrodeDotUnit(electrodeDotUnit)
+            name = SpikeChannelDescriptor.convertUnitNameToChannelName(electrodeDotUnit);
             cd = SpikeChannelDescriptor(name);
         end
             
@@ -125,33 +196,19 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             fld = ['unit', strrep(unitStr, '.', '_')];
         end
         
-        function [unitStr, valid] = convertChannelNameToUnitName(ch)
-            info = regexp(ch, 'unit(?<channel>\d+)_(?<unit>\d+)', 'names', 'once');
-            if isempty(info)
-                unitStr = '';
-                valid = false;
-                %error('Could not parse channel name %s as unit', ch);
+        function [array, electrode, unit] = parseArrayElectrodeUnit(unitName)
+            tokens = regexp(unitName, '(?<array>\w*)(?<electrode>\d+)[_+](?<unit>\d+)', 'names', 'once');
+            if isempty(tokens)
+                array = '';
+                electrode = NaN;
+                unit = NaN;
             else
-                if isempty(info.unit)
-                    unitStr = sprintf('%s', info.channel);
-                else
-                    unitStr = sprintf('%s.%s', info.channel, info.unit);
-                end
-                valid = true;
+                array = tokens.array;
+                electrode =str2double(tokens.electrode);
+                unit = str2double(tokens.unit);
             end
         end
-        
-        function [electrode, unit] = convertUnitNameToElectrodeUnit(unitName)
-            tokens = regexp(unitName, '(?<electrode>\d+)\.(?<unit>\d+)', 'names');
-            electrode =str2double(tokens.electrode);
-            unit = str2double(tokens.unit);
-        end
-        
-                
-        function [electrode, unit] = convertChannelNameToElectrodeUnit(ch)
-            unitName = SpikeChannelDescriptor.convertChannelNameToUnitName(ch);
-            [electrode, unit] = SpikeChannelDescriptor.convertUnitNameToElectrodeUnit(unitName);
-        end
+ 
     end
 
 end

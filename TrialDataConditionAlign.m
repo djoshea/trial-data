@@ -368,7 +368,7 @@ classdef TrialDataConditionAlign < TrialData
         function names = listConditionInfoCompatibleParamChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && ...
-                (cd.isScalarByField{1} || cd.isStringByField{1}), ...
+                (cd.isScalarByField(1) || cd.isStringByField(1)), ...
                 channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
@@ -1252,6 +1252,13 @@ classdef TrialDataConditionAlign < TrialData
 
             tMinByTrial(~td.valid) = NaN;
             tMaxByTrial(~td.valid) = NaN;
+        end
+        
+        function [tStartRelByTrial, tStopRelByTrial, tZeroRelByTrial] = getTimeStartStopZeroRelativeToTrialStartEachTrial(td)
+            [tStartRelByTrial, tStopRelByTrial, tZeroRelByTrial] = td.alignInfoActive.getStartStopZeroRelativeToTrialStartByTrial();
+            tStartRelByTrial(~td.valid) = NaN;
+            tStopRelByTrial(~td.valid) = NaN;
+            tZeroRelByTrial(~td.valid) = NaN;
         end
         
         function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrialEachAlign(td)

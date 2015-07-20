@@ -10,7 +10,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
     properties(SetAccess=protected)
         name = ''; % short name, must be valid field name
-
+    end
+    
+    properties(SetAccess=?TrialDataInterface)
         groupName = ''; % name of group to which this channel belongs 
         
         special = false; % whether this channel is a "special" identifier channel used by TrialData
@@ -101,6 +103,12 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     end
     
     methods
+        function cd = initialize(cd)
+            % gives the class a chance to reinitialize itself after the
+            % user makes changes
+            cd.warnIfNoArgOut(nargout);
+        end
+        
         function data = convertDataCellOnAccess(cd, fieldIdx, data)
             % when data is accessed by TrialData, this is one additional
             % chance to cast or adjust the data stored in .data. This
