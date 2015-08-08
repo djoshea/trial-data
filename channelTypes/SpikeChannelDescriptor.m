@@ -121,7 +121,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 if strcmp(oldWave, sprintf('%s_waveforms', oldName))
                     newWave = sprintf('%s_waveforms', newName);
                     dataFieldRenameStruct.(oldWave) = newWave;    
-                    cd.dataFields{2} = newWave;
+                    cd.waveformsField = newWave;
+                    cd = cd.initialize();
                 end
             end
         end 
@@ -197,7 +198,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         end
         
         function [array, electrode, unit] = parseArrayElectrodeUnit(unitName)
-            tokens = regexp(unitName, '(?<array>\w*)(?<electrode>\d+)[_+](?<unit>\d+)', 'names', 'once');
+            tokens = regexp(unitName, '(?<array>[A-Za-z_]*)(?<electrode>\d+)[_+](?<unit>\d+)', 'names', 'once');
             if isempty(tokens)
                 array = '';
                 electrode = NaN;
