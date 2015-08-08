@@ -153,7 +153,7 @@ classdef PopulationTrajectorySet
     properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)
         % Alignment summary statistics by basis by align
         
-        % nDataSources x nAlign cell containing AlignSummary instances for each
+        % nAlignSummaryData (originally nDataSources) x nAlign cell containing AlignSummary instances for each
         % basis. built by buildAlignSummary
         alignSummaryData
         
@@ -384,6 +384,8 @@ classdef PopulationTrajectorySet
         conditionNames % condition names pulled from conditionDescriptor
         
         dataIntervalQuantilesAsString % dataIntervalQuantileLow/High summarized as a string
+        
+        nAlignSummaryData % number of unique alignSummaryData instances (for each align)
     end
     
     properties
@@ -2879,6 +2881,15 @@ classdef PopulationTrajectorySet
         function as = lookupAlignSummaryDataForBasis(pset, basisIdx)
             asIdx = pset.basisAlignSummaryLookup(basisIdx);
             as = pset.alignSummaryData(asIdx, :);
+        end
+        
+        function as = lookupAlignSummaryDataForBasisAlign(pset, basisIdx, alignIdx)
+            asIdx = pset.basisAlignSummaryLookup(basisIdx);
+            as = pset.alignSummaryData{asIdx, alignIdx};
+        end
+        
+        function n = get.nAlignSummaryData(pset)
+            n = size(pset.alignSummaryData, 1);
         end
         
         function conditions = get.conditions(pset)
