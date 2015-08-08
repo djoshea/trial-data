@@ -4,7 +4,7 @@ classdef StateSpaceProjection
 % fromPopulationTrajectorySet to compute the coefficients, in a manner determined
 % by subclasses
 
-    properties
+    properties(SetAccess=protected)
         initialized = false;
         translationNormalization % stored translation / normalization stored when building and used BEFORE projecting
         
@@ -46,7 +46,57 @@ classdef StateSpaceProjection
         nBasesSource
         nBasesProj
     end
+    
+    methods(Abstract, Static)
+        % this abstract static method is basically a way of getting around matlab's lack
+        % of support for the factory builder pattern. Define this method
+        % like this so that buildFromPopulationTrajectorySet() below can do
+        % the heavy lifting.
+        % methods(Static)
+        %     function [proj, stats, psetPrepared] = createFrom(pset, varargin)
+        %         proj = YOURSUBCLASSNAME() you can send in varargin{:} if there are options > );
+        %         [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
+        %     end
+        
+        %     function [proj, psetProjected, stats] = createFromAndProject(pset, varargin)
+        %         proj = YOURSUBCLASSNAME() you can send in varargin{:} if there are options > );
+        %         [proj, psetProjected, stats] = proj.buildFromAndProjectPopulationTrajectorySet(pset, varargin{:})
+        %     end
+        % end
+        %
+        [proj, stats, psetPrepared] = createFrom(pset, varargin);
+        
+        [proj, psetProjected, stats] = createFromAndProject(pset, varargin)
+    end
+            
 
+    methods(Abstract)
+        % compute the N * K matrix of basis coefficients for the projection
+        % given an N x T matrix of data in the original basis, we project
+        % into the new basis using decoderKbyN * neural_NbyT which yields
+        % decoded_KbyT. We can then reconstruct the data in the original
+        % basis using reconstruction_NbyT = encoderNbyK * decodedKbyT, or
+        % reconstruction_NbyT = encoderNbyK * decoderKbyN * neural_NbyT 
+        % 
+        % optional params:
+        % 'nBasesProj': number of bases to project into, if requested by
+        %     user
+        [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(pset, varargin)
+    end  
+    
+    % Methods most classes may wish to override
+    methods
+        % return a nBasesProj x 1 cell str: list of basis names for the new basis  
+        function names = getBasisNames(proj, pset) %#ok<INUSD>
+            if ~isempty(proj.basisNamesProj)
+                names = proj.basisNamesProj;
+            else
+                names = arrayfun(@(i) sprintf('Basis %d', i), ...
+                        (1:proj.nBasesProj)', 'UniformOutput', false);
+            end
+        end
+    end
+    
     % Simple dependent property getters
     methods
         function n = get.nBasesSource(proj)
@@ -113,29 +163,6 @@ classdef StateSpaceProjection
             end
         end
     end
-    
-    methods(Abstract)
-        % compute the N * K matrix of basis coefficients for the projection
-        % given an N x T matrix of data in the original basis, we project
-        % into the new basis using decoderKbyN * neural_NbyT which yields
-        % decoded_KbyT. We can then reconstruct the data in the original
-        % basis using reconstruction_NbyT = encoderNbyK * decodedKbyT, or
-        % reconstruction_NbyT = encoderNbyK * decoderKbyN * neural_NbyT 
-        [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(pset)
-    end
-    
-    % Methods most classes may wish to override
-    methods
-        % return a nBasesProj x 1 cell str: list of basis names for the new basis  
-        function names = getBasisNames(proj, pset) %#ok<INUSD>
-            if ~isempty(proj.basisNamesProj)
-                names = proj.basisNamesProj;
-            else
-                names = arrayfun(@(i) sprintf('Basis %d', i), ...
-                        (1:proj.nBasesProj)', 'UniformOutput', false);
-            end
-        end
-    end
 
     methods
         function [proj, stats, psetPrepared] = buildFromPopulationTrajectorySet(proj, pset, varargin)
@@ -147,6 +174,7 @@ classdef StateSpaceProjection
             p = inputParser;
             p.addRequired('pset', @(x) isa(x, 'PopulationTrajectorySet'));
             p.addParameter('computeStatistics', true, @islogical);
+            p.addParameter('nBasesProj', NaN, @isscalar);
             p.KeepUnmatched = true;
             p.parse(pset, varargin{:});
             
@@ -159,7 +187,7 @@ classdef StateSpaceProjection
 
             % compute the coefficients for the projection
             debug('Computing projection encoder and decoder coefficients\n');
-            [proj.decoderKbyN, proj.encoderNbyK] = proj.computeProjectionCoefficients(pset);
+            [proj.decoderKbyN, proj.encoderNbyK] = proj.computeProjectionCoefficients(pset, 'nBasesProj', p.Results.nBasesProj);
             
             assert(size(proj.decoderKbyN, 2) == pset.nBases, 'Decoder matrix returned by computeProjectionCoefficients must match pset.nBases along dim 2');
             assert(size(proj.encoderNbyK, 1) == pset.nBases, 'Encoder matrix returned by computeProjectionCoefficients must match pset.nBases along dim 1');
@@ -189,9 +217,9 @@ classdef StateSpaceProjection
 
         function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, varargin)
             p = inputParser();
-            p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical);
-            p.addParameter('applyTranslationNormalization', true, @islogical);
-            p.addParameter('applyTranslationNormalizationPostProject', true, @islogical);
+            p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical); % clear existing pset trnorm first
+            p.addParameter('applyTranslationNormalization', true, @islogical); % apply proj.trNorm to pset before projecting
+            p.addParameter('applyTranslationNormalizationPostProject', true, @islogical); % apply the post projection trNorm, mainly used for inverse projections
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -295,6 +323,9 @@ classdef StateSpaceProjection
             b.alignSummaryData = pset.alignSummaryAggregated';
             b.basisAlignSummaryLookup = ones(pset.nBases, 1);
             
+            % ensure there is no translation normalization by default
+            b.translationNormalization = [];
+            
             psetProjected = b.buildManualWithTrialAveragedData();
             
             if p.Results.applyTranslationNormalizationPostProject && ~isempty(proj.translationNormalizationPostProject)
@@ -311,6 +342,11 @@ classdef StateSpaceProjection
             end
         end
         
+        function projManual = getAsManual(proj)
+            proj.warnIfNoArgOut(nargout);
+            projManual = ProjManual.copyFromProjection(proj);
+        end
+        
         function iproj = getInverse(proj, varargin)
             p = inputParser();
 %             p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical);
@@ -318,7 +354,7 @@ classdef StateSpaceProjection
 %             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            iproj = ProjManual();
+            iproj = proj.getAsManual();
             iproj.decoderKbyN = proj.encoderNbyK;
             iproj.encoderNbyK = proj.decoderKbyN;
             iproj.basisNamesProj = proj.basisNamesSource; % restore the basis names of the source pset when projecting back into the source bases
@@ -355,30 +391,22 @@ classdef StateSpaceProjection
             end
             psetProjected = proj.projectPopulationTrajectorySet(psetPrepared, 'applyTranslationNormalization', false, p.Unmatched);
         end
-    end
-
-    methods(Access=protected, Sealed)
-        function warnIfNoArgOut(obj, nargOut)
-            if nargOut == 0 && ~ishandle(obj)
-                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
-                    class(obj));
-            end
-        end
-    end
-
-    methods
-        function proj = filterOutputBases(proj, idx)
-            % select on output bases
-            proj.warnIfNoArgOut(nargout);
-            assert(proj.initialized, 'Call filterBases after building / initializing');
-            proj.decoderKbyN = proj.decoderKbyN(idx, :); % select on output bases
-            proj.encoderNbyK = proj.encoderNbyK(:, idx); % select on output bases
-        end
         
-        function proj = truncateOutputBases(proj, K)
-            proj.warnIfNoArgOut(nargout);
-            proj = proj.filterOutputBases(1:K);
-        end
+        function [psetInOut, statsIn] = projectInAndOut(proj, pset, varargin)
+            p = inputParser();
+            p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+           
+            % project into PC space, then back out to denoise
+            if nargout > 1 % only compute stats if they're requested
+                [psetIn, statsIn] = proj.projectPopulationTrajectorySet(pset, p.Results);
+            else
+                psetIn = proj.projectPopulationTrajectorySet(pset, p.Results);
+            end
+            iproj = proj.getInverse();
+            psetInOut = iproj.projectPopulationTrajectorySet(psetIn);
+        end  
         
         function names = getBasisUnits(proj, pset)  %#ok<INUSL>
             names = repmat({''}, pset.nBases, 1);
@@ -406,6 +434,61 @@ classdef StateSpaceProjection
             dp = abs(dp - diag(diag(dp)));
             tf = max(dp(:)) < thresh;
         end
+    end
+    
+    
+    methods(Access=protected, Sealed)
+        function warnIfNoArgOut(obj, nargOut)
+            if nargOut == 0 && ~ishandle(obj)
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.\\n', ...
+                    class(obj));
+            end
+        end
+    end
+    
+    % transformations that return ProjManual copy
+    methods
+        function proj = filterOutputBases(proj, idx)
+            % select on output bases
+            proj.warnIfNoArgOut(nargout);
+            proj = proj.getAsManual();
+            proj.decoderKbyN = proj.decoderKbyN(idx, :); % select on output bases
+            proj.encoderNbyK = proj.encoderNbyK(:, idx); % select on output bases
+            proj.basisValidProj = proj.basisValidProj(idx);
+            proj.basisInvalidCauseProj = proj.basisInvalidCauseProj(idx);
+            proj.basisNamesProj = proj.basisNamesProj(idx);
+        end
+        
+        function proj = truncateOutputBases(proj, K)
+            proj.warnIfNoArgOut(nargout);
+            proj = proj.getAsManual();
+            proj = proj.filterOutputBases(1:K);
+        end
+        
+        function proj = reorderOutputBases(proj, idx)
+            proj.warnIfNoArgOut(nargout);
+            assert(numel(idx) == proj.nBasesProj, 'Number of output bases must not change, use filterOutputBases instead');
+            proj = proj.filterOutputBases(idx);
+        end
+
+        function proj = orthonormalize(proj)
+            proj.warnIfNoArgOut(nargout);
+            proj = proj.getAsManual();
+            proj = proj.orthonormalize();
+        end
+        
+        function proj = orthogonalize(proj)
+            proj.warnIfNoArgOut(nargout);
+            proj = proj.getAsManual();
+            proj = proj.orthogonalize();
+        end
+        
+        function proj = normalize(proj)
+            proj.warnIfNoArgOut(nargout);
+            proj = proj.getAsManual();
+            proj = proj.normalize();
+        end
+        
     end
     
 end

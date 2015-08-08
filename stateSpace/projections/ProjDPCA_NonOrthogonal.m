@@ -1,8 +1,6 @@
 classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
 
     properties
-        K = 20; % if empty, keep all components. Otherwise, keep only first K components.
-        
         lambda = [];
         optimizeLambda = true;
         maxTrialsForOptimizeLambda = 50;
@@ -47,6 +45,18 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
         
         marginalizationNames
     end
+    
+    methods(Static)
+        function [proj, stats, psetPrepared] = createFrom(pset, varargin)
+            proj = ProjDPCA_NonOrthogonal();
+            [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
+        end
+
+        function [proj, psetProjected, stats] = createFromAndProject(pset, varargin)
+            proj = ProjDPCA_NonOrthogonal();
+            [proj, psetProjected, stats] = proj.buildFromAndProjectPopulationTrajectorySet(pset, varargin{:});
+        end
+    end
 
     methods
         function proj = ProjDPCA_NonOrthogonal(varargin)
@@ -60,9 +70,10 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
 
     methods
         function [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(proj, pset, varargin)
-            if isempty(proj.K)
-                proj.K = min(20, pset.nBasesValid);
-            end
+            p = inputParser;
+            p.addParamValue('nBasesProj', min(20, pset.nBasesValid), @isscalar);
+            p.parse(varargin{:});
+            K = p.Results.nBasesProj;
             
             % filter for non-singular axes
             nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
@@ -124,7 +135,7 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
             end
             
             % run dpca
-            [decoderNvbyK, encoderNvbyK, whichMarg] = TrialDataUtilities.DPCA.dpca(NvbyAttrbyTA, proj.K, ...
+            [decoderNvbyK, encoderNvbyK, whichMarg] = TrialDataUtilities.DPCA.dpca(NvbyAttrbyTA, K, ...
                 'combinedParams', proj.combinedParams, ...
                 'lambda', proj.lambda);
             
