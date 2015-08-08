@@ -206,8 +206,12 @@ classdef AlignDescriptor
         end
 
         function tf = get.isMarkZero(ad)
-            tf = strcmp(ad.zeroEvent, ad.markEvents) & cellfun(@(x) strcmp(x, ':') || isequal(x, ad.zeroEventIndex), ad.markEventsIndex) & ...
-                ad.markOffsets == ad.zeroOffset;
+            if isempty(ad.nMarks)
+                tf = false;
+            else
+                tf = strcmp(ad.zeroEvent, ad.markEvents) & cellfun(@(x) strcmp(x, ':') || isequal(x, ad.zeroEventIndex), ad.markEventsIndex) & ...
+                    ad.markOffsets == ad.zeroOffset;
+            end
         end
         
         function tf = get.isStartStopEqual(ad)
