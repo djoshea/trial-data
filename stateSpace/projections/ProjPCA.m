@@ -1,22 +1,34 @@
 classdef ProjPCA < StateSpaceProjection
 
-    properties
-        K % if empty, keep all components. Otherwise, keep only first K components.
-    end
-
     methods
         function proj = ProjPCA(varargin)
             proj = proj@StateSpaceProjection(varargin{:}); 
-            proj.K = [];
         end
         
         function pset = preparePsetForInference(proj, pset) 
             pset = pset.meanSubtractBases();
         end
     end
+    
+    methods(Static)
+        function [proj, stats, psetPrepared] = createFrom(pset, varargin)
+            proj = ProjPCA();
+            [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
+        end
+
+        function [proj, psetProjected, stats] = createFromAndProject(pset, varargin)
+            proj = ProjPCA();
+            [proj, psetProjected, stats] = proj.buildFromAndProjectPopulationTrajectorySet(pset, varargin{:});
+        end
+    end
 
     methods
         function [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(proj, pset, varargin)
+            p = inputParser;
+            p.addParamValue('nBasesProj', NaN, @isscalar);
+            p.parse(varargin{:});
+            K = p.Results.nBasesProj;
+            
             % run pca on valid bases
             CTAbyNvalid = pset.buildCTAbyN('validBasesOnly', true);
             
@@ -35,9 +47,9 @@ classdef ProjPCA < StateSpaceProjection
                 [coeffValid] = princomp(CTAbyNvalid);
             end
             
-            % filter down to K output bases
-            if ~isempty(proj.K) && size(coeffValid, 2) > proj.K
-                coeffValid = coeffValid(:, 1:proj.K);
+            % filter down to K output bases, unless K is too small
+            if ~isnan(K) && size(coeffValid, 2) > K
+                coeffValid = coeffValid(:, 1:K);
             end
             
             % make coefficients for invalid bases 0 so that multiply

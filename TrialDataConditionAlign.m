@@ -2938,7 +2938,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
-            p.KeepUnmatched;
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             axh = td.getRequestedPlotAxis(p.Unmatched);

@@ -8,11 +8,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         meta % anything you'd like
     end
 
-    properties(SetAccess=protected)
+    properties(SetAccess={?TrialDataInterface,?TrialData})
         name = ''; % short name, must be valid field name
     end
     
-    properties(SetAccess=?TrialDataInterface)
+    properties(SetAccess={?TrialDataInterface,?TrialData})
         groupName = ''; % name of group to which this channel belongs 
         
         special = false; % whether this channel is a "special" identifier channel used by TrialData

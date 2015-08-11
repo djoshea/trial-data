@@ -881,13 +881,13 @@ classdef TrialData
                 
             % build a channel descriptor for the data
             if p.Results.isLFP
-                cd = LFPChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName);
+                cd = LFPChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName, values, ties);
             else
-                cd = AnalogChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName);
+                cd = AnalogChannelDescriptor.buildVectorAnalogFromValues(name, timeField, units, td.timeUnitName, values, times);
             end
-            if ~isempty(values)
-                cd = cd.inferAttributesFromData(values, times);
-            end
+%             if ~isempty(values)
+%                 cd = cd.inferAttributesFromData(values, times);
+%             end
             
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;

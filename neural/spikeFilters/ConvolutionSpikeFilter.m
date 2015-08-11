@@ -9,7 +9,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         % rate, which is determined by the time delta parameter passed
         % into .filterSpikeTrains by the caller
         binWidthMs = 1;
-        binAlignmentMode = SpikeBinAlignmentMode.Causal;
+        binAlignmentMode = SpikeBinAlignmentMode.Acausal;
     end
 
     properties(Dependent)
@@ -34,6 +34,16 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     end
     
     methods
+        function sf = ConvolutionSpikeFilter(varargin)
+            p = inputParser;
+            p.addParamValue('binWidthMs', 1, @isscalar);
+            p.addParamValue('binAlignmentMode', SpikeBinAlignmentMode.Acausal, @(x) isa(x, 'SpikeBinAlignmentMode'));
+            p.parse(varargin{:});
+
+            sf.binWidthMs = p.Results.binWidthMs;
+            sf.binAlignmentMode = p.Results.binAlignmentMode;
+        end
+        
         function plotFilter(sf)
             [filt, indZero] = sf.getFilter();
             filt = filt ./ sum(filt);
@@ -62,6 +72,10 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % the right of zero, as well as the extra ms needed for the t=0
             % bin
             t = (sf.indZero - 1)*sf.binWidthMs + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs); 
+        end
+        
+        function tf = getIsCausal(sf) % allows subclasses to override
+            tf = sf.getPreWindow() >= 0 && sf.binAlignmentMode == SpikeBinAlignmentMode.Causal;
         end
 
         % spikeCell is nTrains x 1 cell array of time points which will include 

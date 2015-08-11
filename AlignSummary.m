@@ -503,6 +503,8 @@ classdef AlignSummary
 
             if p.Results.aggregateIntervals
                 for iInterval = 1:as.alignDescriptor.nIntervals
+                    % these entries .intervalStartMinByCondition are all
+                    % nConditions x nOccurrences. nOccurrences may vary.
                     as.intervalStartMinByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMinByCondition{iInterval});
                     as.intervalStartMaxByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMaxByCondition{iInterval});
                     as.intervalStartMeanByCondition{iInterval} = catWithin(alignSummarySet, @(a) a.intervalStartMeanByCondition{iInterval});
@@ -515,7 +517,15 @@ classdef AlignSummary
             
             function r = catWithin(set, accessFn)
                 dataCell = arrayfun(accessFn, set, 'UniformOutput', false);
-                r = cat(1, dataCell{:});
+                % need to handle the case where nOccurrences differ
+                nOccurBySet = cellfun(@(x) size(x, 2), dataCell);
+                maxOccur = max(nOccurBySet);
+                nConditions = size(dataCell{1}, 1);
+                paddedCell = cell(size(dataCell));
+                for i = 1:numel(dataCell)
+                    paddedCell{i} = cat(2, dataCell{i}, nan(nConditions, maxOccur-nOccurBySet(i)));
+                end
+                r = cat(1, paddedCell{:});
             end
         end
         

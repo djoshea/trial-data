@@ -1,7 +1,7 @@
 classdef PopulationTrajectorySetCrossConditionUtilities
    
+    % combining / weighting along condition axes
     methods(Static)
-        
         function psetDiff = computeDifferenceAlongAxis(pset, axisName, varargin)
             % more parameters available in applyLinearCombinationAlongConditionAxis
             p = inputParser();
@@ -237,8 +237,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             setsAlongAxis = arrayfun(@(iNew) find(wNbyO(iNew, :)), 1:cNewAlongAxis, 'UniformOutput', false);
             conditionIdxSetsTensor = TensorUtils.selectSetsAlongDimension(cIndsTensor, aIdx, setsAlongAxis);
             
-            prog = ProgressBar(pset.nDataSources, 'Collecting conditions within AlignSummary data');
-            for iSource = 1:pset.nDataSources
+            prog = ProgressBar(pset.nAlignSummaryData, 'Collecting conditions within AlignSummary data');
+            for iSource = 1:pset.nAlignSummaryData
                 prog.update(iSource);
                 for iAlign = 1:pset.nAlign
                     b.alignSummaryData{iSource, iAlign} = b.alignSummaryData{iSource, iAlign}.combineSetsOfConditions(...
@@ -250,6 +250,10 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             psetReweighted = b.buildManualWithTrialAveragedData();
         end
         
+    end
+    
+    % concatenating along a condition axis
+    methods(Static)
         function psetCat = concatenateAlongNewConditionAxis(psetCell, axisName, axisValueList, varargin)
             p = inputParser();
             p.addParameter('aggregateMarks', true, @islogical);
@@ -309,14 +313,16 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % N x T x C
             b.dataDifferenceOfTrialsScaledNoiseEstimate = catConditionsFlat(psetCell, @(p) p.dataDifferenceOfTrialsScaledNoiseEstimate, 3, cSize, cAxis);
         
+            % adjust alignSummaryData
             % N x A
             temp = pset.alignSummaryData; %#ok<NASGU> % request up front to trigger computation before progress bar
             prog = ProgressBar(pset.nBases, 'Aggregating AlignSummary by basis');
             for iBasis = 1:pset.nBases
                 prog.update(iBasis);
                 for iAlign = 1:pset.nAlign
+                    clear alignSummarySet;
                     for iP = numel(psetCell):-1:1
-                        alignSummarySet(iP) = psetCell{iP}.alignSummaryData{iBasis, iAlign};
+                        alignSummarySet(iP) = psetCell{iP}.lookupAlignSummaryDataForBasisAlign(iBasis, iAlign);
                     end
                     b.alignSummaryData{iBasis, iAlign} = ...
                         AlignSummary.aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, cd, ...
