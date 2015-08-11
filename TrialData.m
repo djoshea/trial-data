@@ -1308,7 +1308,7 @@ classdef TrialData
                 % auto infer from data
                 cd = ParamChannelDescriptor.buildFromValues(name, values);
             end
-            cd.name = name;
+            cd = cd.rename(name);
 
             td = td.addChannel(cd, {values});
         end
