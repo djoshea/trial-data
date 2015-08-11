@@ -10,11 +10,7 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
     
     methods
         function sf = NonOverlappingSpikeBinFilter(varargin)
-            p = inputParser;
-            p.addOptional('binWidthMs', 1, @isscalar);
-            p.parse(varargin{:});
-
-            sf.binWidthMs = p.Results.binWidthMs;
+            sf = sf@ConvolutionSpikeFilter(varargin{:});
         end
         
         % filter used for convolution, as an impulse response which may 

@@ -43,6 +43,10 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             % error
             return;
         end
+        
+        function tf = getIsCausal(sf) % allows subclasses to override
+            tf = sf.getPreWindow() >= 0;
+        end
     end
 
     methods % Dependent properties
@@ -55,7 +59,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         end
 
         function tf = get.isCausal(sf)
-            tf = sf.getPreWindow() >= 0;
+            tf = sf.getIsCausal();
         end
         
         function str = getDescription(sf)
