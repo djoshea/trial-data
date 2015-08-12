@@ -973,7 +973,7 @@ classdef AlignInfo < AlignDescriptor
         % use the alignment to shift the times in rawTimesCell to be zero relative
         % and filter by time window determined by getTimeInfo for each trial
         % if includePadding is true, will additional times found in the padWindow, see .setPadWindow
-        function [alignedTimes, rawTimesMask] = getAlignedTimesCell(ad, rawTimesCell, includePadding, varargin)
+        function [alignedTimes, rawTimesMask] = getAlignedTimesCell(ad, rawTimesCell, varargin)
             p = inputParser();
             p.addOptional('includePadding', false, @islogical);
             p.addParameter('singleTimepointTolerance', NaN, @isscalar);
