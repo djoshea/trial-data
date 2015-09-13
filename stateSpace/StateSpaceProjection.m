@@ -45,6 +45,9 @@ classdef StateSpaceProjection
     properties(Dependent)
         nBasesSource
         nBasesProj
+        
+        decoderKbyNValid
+        encoderNbyKValid
     end
     
     methods(Abstract, Static)
@@ -81,7 +84,7 @@ classdef StateSpaceProjection
         % optional params:
         % 'nBasesProj': number of bases to project into, if requested by
         %     user
-        [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(pset, varargin)
+        [decoderKbyN, encoderNbyK, proj] = computeProjectionCoefficients(proj, pset, varargin)
     end  
     
     % Methods most classes may wish to override
@@ -113,6 +116,14 @@ classdef StateSpaceProjection
             else
                 n = size(proj.decoderKbyN, 1);
             end
+        end
+        
+        function d = get.decoderKbyNValid(proj)
+            d = proj.decoderKbyN(proj.basisValidProj, proj.basisValid);
+        end
+        
+        function d = get.encoderNbyKValid(proj)
+            d = proj.encoderNbyK(proj.basisValid, proj.basisValidProj);
         end
         
         function v = get.basisValid(proj)
@@ -174,7 +185,8 @@ classdef StateSpaceProjection
             p = inputParser;
             p.addRequired('pset', @(x) isa(x, 'PopulationTrajectorySet'));
             p.addParameter('computeStatistics', true, @islogical);
-            p.addParameter('nBasesProj', NaN, @isscalar);
+            p.addParameter('meanSubtractForStatistics', true, @islogical); % mean subtract data when computing statistics, this makes sense to turn off if the data is already measured relative to some meaningful baseline
+            p.addParameter('nBasesProj', NaN, @isscalar); % this is optional for both the caller to provide and the projection to obey
             p.KeepUnmatched = true;
             p.parse(pset, varargin{:});
             
@@ -187,7 +199,11 @@ classdef StateSpaceProjection
 
             % compute the coefficients for the projection
             debug('Computing projection encoder and decoder coefficients\n');
-            [proj.decoderKbyN, proj.encoderNbyK] = proj.computeProjectionCoefficients(pset, 'nBasesProj', p.Results.nBasesProj);
+            [decoderKbyN, encoderNbyK, proj] = proj.computeProjectionCoefficients(pset, 'nBasesProj', p.Results.nBasesProj);
+            % don't put these in the line above b/c assignment to proj will
+            % override it
+            proj.decoderKbyN = decoderKbyN;
+            proj.encoderNbyK = encoderNbyK;
             
             assert(size(proj.decoderKbyN, 2) == pset.nBases, 'Decoder matrix returned by computeProjectionCoefficients must match pset.nBases along dim 2');
             assert(size(proj.encoderNbyK, 1) == pset.nBases, 'Encoder matrix returned by computeProjectionCoefficients must match pset.nBases along dim 1');
@@ -197,6 +213,7 @@ classdef StateSpaceProjection
             proj.basisInvalidCause = pset.basisInvalidCause;
             proj.basisNamesSource = pset.basisNames;
             proj.dataUnitsSource = pset.dataUnits;
+            proj.basisNamesProj = proj.getBasisNames(pset);
             
             % set coeff to zero on invalid bases
             proj.decoderKbyN(:, ~proj.basisValid) = 0;
@@ -205,7 +222,7 @@ classdef StateSpaceProjection
             % results will store statistics and useful quantities related to the
             % projection
             if p.Results.computeStatistics
-                stats = StateSpaceProjectionStatistics.build(proj, pset, p.Unmatched);
+                stats = StateSpaceProjectionStatistics.build(proj, pset, 'meanSubtract', p.Results.meanSubtractForStatistics, p.Unmatched);
                 proj.buildStats = stats;
             else
                 stats = [];
@@ -220,6 +237,7 @@ classdef StateSpaceProjection
             p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical); % clear existing pset trnorm first
             p.addParameter('applyTranslationNormalization', true, @islogical); % apply proj.trNorm to pset before projecting
             p.addParameter('applyTranslationNormalizationPostProject', true, @islogical); % apply the post projection trNorm, mainly used for inverse projections
+            p.addParameter('meanSubtractForStatistics', true, @islogical); % mean subtract data when computing statistics, this makes sense to turn off if the data is already measured relative to some meaningful baseline
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -252,6 +270,7 @@ classdef StateSpaceProjection
             else
                 b.basisNames = proj.getBasisNames(pset);
             end
+            
             b.basisUnits = proj.getBasisUnits(pset); 
             
             % copy/compute trial averaged data 
@@ -338,7 +357,7 @@ classdef StateSpaceProjection
             end
             
             if nargout > 1
-                stats = StateSpaceProjectionStatistics.build(proj, pset, p.Unmatched);
+                stats = StateSpaceProjectionStatistics.build(proj, pset, 'meanSubtract', p.Results.meanSubtractForStatistics, p.Unmatched);
             end
         end
         
@@ -363,6 +382,8 @@ classdef StateSpaceProjection
             % trans/norm before inverting the projection itself
             if ~isempty(proj.translationNormalizationPostProject)
                 iproj.translationNormalization = proj.translationNormalizationPostProject.getInverse();
+            else
+                iproj.translationNormalization = [];
             end
             
             % and then after projecting, it will invert the original
@@ -370,6 +391,8 @@ classdef StateSpaceProjection
             % returned
             if ~isempty(proj.translationNormalization)
                 iproj.translationNormalizationPostProject = proj.translationNormalization.getInverse();
+            else
+                iproj.translationNormalizationPostProject = [];
             end
             iproj.basisValidProj = proj.basisValid;
             iproj.basisValid = proj.basisValidProj;

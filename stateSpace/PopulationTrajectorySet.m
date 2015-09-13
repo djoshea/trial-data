@@ -373,11 +373,15 @@ classdef PopulationTrajectorySet
 
         nConditions % number of conditions in conditionDescriptor
         
+        nAxes % conditionDescriptor.nAxes
+        
         nAlign % number of alignments in alignDescriptorSet
         
         conditions % shortcut to conditionDescriptor.conditions
         
         conditionsSize % pass-thru to .conditionDescriptor
+        
+        conditionsSizeNoExpand
         
         alignNames % names pulled from the alignDescriptors
 
@@ -386,9 +390,7 @@ classdef PopulationTrajectorySet
         dataIntervalQuantilesAsString % dataIntervalQuantileLow/High summarized as a string
         
         nAlignSummaryData % number of unique alignSummaryData instances (for each align)
-    end
-    
-    properties
+
         % nAlign x nCondition logical indicating which condition/alignments
         % have any trials for any bases
         alignConditionsWithTrials 
@@ -409,13 +411,14 @@ classdef PopulationTrajectorySet
         basesMissingTrialAverageForNonEmptyConditionAligns
     end
    
-    % Constructor, initialization, cache invalidation
+    % Constructor
     methods
         function pset = PopulationTrajectorySet()
             pset = pset.initialize();
         end
     end
     
+    % loadobj custom loading
     methods(Static)
         function pset = loadobj(pset)
             pset = builtin('loadobj', pset);
@@ -426,11 +429,108 @@ classdef PopulationTrajectorySet
         end
     end
     
+    % saveobj custom saving
     methods
         function pset = saveobj(pset)
 
         end
+    end
+    
+    % Saving and loading piecemeal
+    methods
+        function saveFast(pset, location, varargin)
+            p = inputParser();
+            p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
+            p.parse(varargin{:});
+            
+            sources = pset.dataSources;
+            
+            if ~pset.dataSourceManual
+                pset.dataSources = 'saved separately, use loadFast';
+            end
+            
+            % comment this out to not clear this to save the alignment we've done
+            pset.odc = [];
+
+            mkdirRecursive(location);
+            savefast(fullfile(location, 'pset.mat'), 'pset');
+
+            % save elements of sources
+            if ~pset.dataSourceManual
+                msg = sprintf('Saving PopulationTrajectorySet to %s', location);
+                if p.Results.recursive
+                    TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, sources, 'message', msg, 'callbackFn', @saveCallback);
+                else
+                    TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, sources, 'message', msg);
+                end
+            end
+            
+            function saveCallback(tdcaCell, location, i)
+                sub = fullfile(location, sprintf('source%06d', i));
+                tdcaCell{1}.saveFast(sub);
+            end
+        end
+    end
+    
+    % loadFast
+    methods(Static)
+        function pset = loadFast(location, varargin)
+            p = inputParser();
+            p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
+            p.parse(varargin{:});
+            
+            if ~exist(location, 'dir')
+                error('Directory %s not found. Did you save with saveFast?', location);
+            end
+            loaded = load(fullfile(location, 'pset.mat'));
+            pset = loaded.pset;
+            
+            % load elements of sources
+            if ~pset.dataSourceManual
+                msg = sprintf('Loading PopulationTrajectorySet from %s', location);
+                if p.Results.recursive
+                    sources = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg, 'callbackFn', @loadCallback);
+                else
+                    sources = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg);
+                end
+                pset.dataSources = sources;
+            end
+            
+            pset = pset.initialize();
+            
+            function tdcaCell = loadCallback(location, i)
+                % need to wrap in cell because of the way save/load array
+                % work
+                sub = fullfile(location, sprintf('source%06d', i));
+                tdcaCell = { TrialData.loadFast(sub) };
+            end
+        end
+    end
+    
+    % save / load wrappers for CacheCustomSaveLoad
+    methods
+        function tf = getUseCustomSaveLoad(pset, info) %#ok<INUSD>
+            % use save custom only if I have data sources that could be
+            % saved separately. If I only carry pre-extracted data, we'll
+            % save as one entity using the normal save process
+            tf = ~pset.dataSourceManual;
+        end
         
+        function token = saveCustomToLocation(pset, location)
+            pset.saveFast(location);
+            token = [];
+        end
+    end
+    
+    % load for CacheCustomSaveLoad
+    methods(Static)
+        function data = loadCustomFromLocation(location, token) %#ok<INUSD>
+            data = PopulationTrajectorySet.loadFast(location);
+        end
+    end
+    
+    % initialization, cache invalidation
+    methods
         function pset = initialize(pset)
             pset.warnIfNoArgOut(nargout);
             
@@ -1268,6 +1368,12 @@ classdef PopulationTrajectorySet
             
             assert(cd.allAxisValueListsManual, 'ConditionDescriptor must have manual axis value lists. Use .setAxisValueList or .fixValueListsByApplyingToTrialData');
             
+            if pset.dataSourceManual
+                assert(pset.conditionDescriptor.nConditions == cd.nConditions, ...
+                    'Pset has manual data source, conditionDescriptor can only be replaced so as to preserve nConditions');
+                warning('Replacing ConditionDescriptor for PopulationTrajectorySet with manual data source. This will only change the labeling of conditions, not the extracted data');
+            end
+            
             pset.conditionDescriptor = cd.getConditionDescriptor();
             
             pset = pset.applyConditionDescriptor();
@@ -1292,10 +1398,12 @@ classdef PopulationTrajectorySet
         end
     end
     
-    % methods which directly update the align descriptor set of this pset
+    % alignment: methods which directly update the align descriptor set of this pset
     methods
         function pset = setAlignDescriptorSet(pset, adSet)
             pset.warnIfNoArgOut(nargout);
+            
+            assert(~pset.dataSourceManual, 'PopulationTrajectorySets with manual data source cannot be realigned'); 
             
             if ~iscell(adSet)
                 adSet = {adSet};
@@ -1345,6 +1453,90 @@ classdef PopulationTrajectorySet
             
             % changing alignments invalidates everything
             pset = pset.invalidateCache();
+        end
+    end
+    
+    % manual time reslicing: converts to manual data source pset and
+    % selects along time axis
+    methods
+        function psetManual = getAsManual(pset)
+            if pset.dataSourceManual
+                psetManual = pset;
+            else
+                psetManual = PopulationTrajectorySetBuilder.convertToManualWithSingleTrialData(pset);
+            end
+        end
+        
+        function psetSliced = manualSliceTimeWindow(pset, tMinByAlign, tMaxByAlign)
+            % convert to a manual pset, then manually slice timepoints 
+            % TODO adjust alignSummary data to reflect the slicing?
+            assert(numel(tMinByAlign) == pset.nAlign, 'tMinByAlign must be vector with length nAlign');
+            assert(numel(tMaxByAlign) == pset.nAlign, 'tMaxByAlign must be vector with length nAlign');
+
+            pb = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset);
+
+            % manually alter the align descriptors to truncate around zero
+            for iAlign = 1:pset.nAlign
+              pb.alignDescriptorSet{iAlign} = pb.alignDescriptorSet{iAlign}.windowAroundZero(...
+                tMinByAlign(iAlign), tMaxByAlign(iAlign));
+            end
+
+            if pset.hasDataByTrial
+              prog = ProgressBar(pset.nBases, 'Slicing dataByTrial');
+              for iBasis = 1:pset.nBases
+                prog.update(iBasis);
+                for iAlign = 1:pset.nAlign
+
+                  % slice data by trial
+                  tvec = pset.tvecDataByTrial{iBasis, iAlign};
+                  tmask = tvec >= tMinByAlign(iAlign) & tvec <= tMaxByAlign(iAlign);
+                  tvecNew = tvec(tmask);
+                  pb.tMinForDataByTrial(iBasis, iAlign) = tvecNew(1);
+                  pb.tMaxForDataByTrial(iBasis, iAlign) = tvecNew(end);
+                  pb.dataByTrial{iBasis, iAlign} = pb.dataByTrial{iBasis, iAlign}(:, tmask);
+
+                  % also adjust the tMinByTrial and tMaxByTrial
+                  pb.tMinByTrial{iBasis, iAlign} = max(tMinByAlign(iAlign), ...
+                    pb.tMinByTrial{iBasis, iAlign});
+                  pb.tMaxByTrial{iBasis, iAlign} = min(tMaxByAlign(iAlign), ...
+                    pb.tMaxByTrial{iBasis, iAlign});
+                end
+              end
+              prog.finish();
+            end
+
+            % adjust time stats for data mean
+            for iAlign = 1:pset.nAlign
+              pb.tMinValidByAlignBasisCondition(iAlign, :, :) = max(tMinByAlign(iAlign), ...
+              pb.tMinValidByAlignBasisCondition(iAlign, :, :));
+              pb.tMaxValidByAlignBasisCondition(iAlign, :, :) = min(tMaxByAlign(iAlign), ...
+              pb.tMaxValidByAlignBasisCondition(iAlign, :, :));
+
+              pb.tMinForDataMean(iAlign) = max(tMinByAlign(iAlign), pb.tMinForDataMean(iAlign));
+              pb.tMaxForDataMean(iAlign) = min(tMaxByAlign(iAlign), pb.tMaxForDataMean(iAlign));
+            end
+
+            % slice dataByMean
+            tmaskByAlign = cellvec(pset.nAlign);
+            for iAlign = 1:pset.nAlign
+              % build masks used below to slice dataMean
+              tvec = pset.tvecDataMean{iAlign};
+              tmaskByAlign{iAlign} = tvec >= tMinByAlign(iAlign) & tvec <= tMaxByAlign(iAlign);
+
+              pb.dataMean{iAlign} = pb.dataMean{iAlign}(:, :, tmask);
+              pb.dataSem{iAlign} = pb.dataSem{iAlign}(:, :, tmask);
+
+              if pset.hasDataRandomized
+                pb.dataMeanRandomized{iAlign} = pb.dataMeanRandomized{iAlign}(:, :, tmask, :);
+                pb.dataSemRandomized{iAlign} = pb.dataSemRandomized{iAlign}(:, :, tmask, :);
+              end
+            end
+
+            % slice dataDifferenceOfTrialsScaledNoiseEstimate
+            tmaskCombined = cat(1, tmaskByAlign{:});
+            pb.dataDifferenceOfTrialsScaledNoiseEstimate = pb.dataDifferenceOfTrialsScaledNoiseEstimate(:, tmaskCombined, :);
+
+            psetSliced = pb.buildManualWithSingleTrialData();
         end
     end
     
@@ -2076,6 +2268,10 @@ classdef PopulationTrajectorySet
             % condition for ALL bases
             tMinForDataMean = makecol(nanmin(pset.tMinValidAllBasesByAlignCondition, [], 2));
             tMaxForDataMean = makecol(nanmax(pset.tMaxValidAllBasesByAlignCondition, [], 2));
+            
+            if any(isnan(tMinForDataMean)) || any(isnan(tMaxForDataMean))
+                error('No valid time window is valid across all bases across all conditions for some alignment');
+            end
             
             nTimeByAlign = nanvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
@@ -2878,6 +3074,22 @@ classdef PopulationTrajectorySet
             end
         end
         
+        function sz = get.conditionsSizeNoExpand(pset)
+            if isempty(pset.conditionDescriptor)
+                sz = 0;
+            else
+                sz = pset.conditionDescriptor.conditionsSizeNoExpand;
+            end
+        end
+        
+        function n = get.nAxes(pset)
+            if isempty(pset.conditionDescriptor)
+                n = 0;
+            else
+                n = pset.conditionDescriptor.nAxes;
+            end
+        end     
+        
         function as = lookupAlignSummaryDataForBasis(pset, basisIdx)
             asIdx = pset.basisAlignSummaryLookup(basisIdx);
             as = pset.alignSummaryData(asIdx, :);
@@ -3288,8 +3500,9 @@ classdef PopulationTrajectorySet
             p.addParameter('dataRandomIndex', [], @(x) isempty(x) || isscalar(x));
             
             p.addParameter('alignIdx', 1:pset.nAlign, @isnumeric);            
-            p.addParameter('basisIdx', 1:min(pset.nBases, 20), @(x) isvector(x) && ...
-                all(inRange(x, [1 pset.nBases])));
+            p.addParameter('basisIdx', [], @(x) isempty(x) || (isvector(x) && ...
+                all(inRange(x, [1 pset.nBases]))));
+            p.addParameter('validBasesOnly', true, @islogical);
             p.addParameter('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
                 all(inRange(x, [1 pset.nConditions])));
             
@@ -3348,7 +3561,21 @@ classdef PopulationTrajectorySet
             wasHolding = ishold(axh);
             hold(axh, 'on');
             
-            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
+            if p.Results.validBasesOnly
+                if isempty(p.Results.basisIdx)
+                    basisIdx = find(pset.basisValid, 20, 'first');
+                else
+                    basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
+                    eachValid = pset.basisValid(basisIdx);
+                    basisIdx = basisIdx(eachValid);
+                end
+            else
+                if isempty(p.Results.basisIdx);
+                    basisIdx = 1:min(pset.nBases, 20);
+                else
+                    basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
+                end
+            end
             nBasesPlot = numel(basisIdx);
             conditionIdx = p.Results.conditionIdx;
             nConditionsPlot = numel(conditionIdx);
@@ -3668,7 +3895,11 @@ classdef PopulationTrajectorySet
             p.addParameter('markSize', 10, @isscalar);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', true, @islogical);
+            p.addParameter('markShowOnData', true, @islogical);
+            p.addParameter('intervalShowOnData', false, @islogical);
+            p.addParameter('intervalAlpha', 1, @isscalar);
             
+            p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
             p.parse(varargin{:});
             
             axh = newplot;
@@ -3745,7 +3976,11 @@ classdef PopulationTrajectorySet
                 dataForDraw = permute(data(basisIdx, conditionIdx, :), [3 1 2]);
                 as.drawOnDataByCondition(tvec, dataForDraw, ...
                     'conditionIdx', conditionIdx, 'markAlpha', p.Results.markAlpha, ...
+                    'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
                     'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
+                    'alpha', p.Results.alpha, ...
+                    'intervalAlpha', p.Results.intervalAlpha, ...
+                    'showRanges', p.Results.showRangesOnData, ...
                     'markSize', p.Results.markSize); 
             end
 
@@ -4010,6 +4245,25 @@ classdef PopulationTrajectorySet
          end
          
          % added primarily for dpca-type noise floor
+         function [NbyTAbyAttrbyR, nTrials_NbyAttr, tvec, avec, whichTrials_NbyAttr] = buildNbyTAbyConditionAttributesbyTrials(pset, varargin)
+             [NbyTAbyCbyR, nTrialsTensor, tvec, avec, whichTrials] = pset.buildNbyTAbyCbyTrials(varargin{:});
+             N = size(NbyTAbyCbyR, 1);
+             TA = size(NbyTAbyCbyR, 2);
+             R = size(NbyTAbyCbyR, 4);
+             condSize = makerow(pset.conditionDescriptor.conditionsSize);
+             if pset.conditionDescriptor.nAxes == 1
+                 condSize = condSize(1);
+             end
+             
+             assert(prod(condSize) == size(NbyTAbyCbyR, 3), 'Sub-selecting conditionIdx not supported');
+             
+             NbyTAbyAttrbyR = reshape(NbyTAbyCbyR, [N TA condSize R]);
+             
+             % N x C --> N by condSize
+             nTrials_NbyAttr = reshape(nTrialsTensor, [N condSize]);
+             whichTrials_NbyAttr = reshape(whichTrials, [N condSize]);
+         end
+         
          function [NbyTAbyRbyAttr, nTrials_NbyAttr, tvec, avec, whichTrials_NbyAttr] = buildNbyTAbyTrialsbyConditionAttributes(pset, varargin)
              [NbyTAbyCbyR, nTrialsTensor, tvec, avec, whichTrials] = pset.buildNbyTAbyCbyTrials(varargin{:});
              N = size(NbyTAbyCbyR, 1);
@@ -4315,95 +4569,4 @@ classdef PopulationTrajectorySet
         end
     end
 
-    
-    % Saving and loading piecemeal
-    methods
-        function saveFast(pset, location, varargin)
-            p = inputParser();
-            p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
-            p.parse(varargin{:});
-            
-            sources = pset.dataSources;
-            
-            if ~pset.dataSourceManual
-                pset.dataSources = 'saved separately, use loadFast';
-            end
-            
-            % comment this out to not clear this to save the alignment we've done
-            pset.odc = [];
-
-            mkdirRecursive(location);
-            savefast(fullfile(location, 'pset.mat'), 'pset');
-
-            % save elements of sources
-            if ~pset.dataSourceManual
-                msg = sprintf('Saving PopulationTrajectorySet to %s', location);
-                if p.Results.recursive
-                    TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, sources, 'message', msg, 'callbackFn', @saveCallback);
-                else
-                    TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, sources, 'message', msg);
-                end
-            end
-            
-            function saveCallback(tdcaCell, location, i)
-                sub = fullfile(location, sprintf('source%06d', i));
-                tdcaCell{1}.saveFast(sub);
-            end
-        end
-    end
-    
-    methods(Static)
-        function pset = loadFast(location, varargin)
-            p = inputParser();
-            p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
-            p.parse(varargin{:});
-            
-            if ~exist(location, 'dir')
-                error('Directory %s not found. Did you save with saveFast?', location);
-            end
-            loaded = load(fullfile(location, 'pset.mat'));
-            pset = loaded.pset;
-            
-            % load elements of sources
-            if ~pset.dataSourceManual
-                msg = sprintf('Loading PopulationTrajectorySet from %s', location);
-                if p.Results.recursive
-                    sources = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg, 'callbackFn', @loadCallback);
-                else
-                    sources = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg);
-                end
-                pset.dataSources = sources;
-            end
-            
-            pset = pset.initialize();
-            
-            function tdcaCell = loadCallback(location, i)
-                % need to wrap in cell because of the way save/load array
-                % work
-                sub = fullfile(location, sprintf('source%06d', i));
-                tdcaCell = { TrialData.loadFast(sub) };
-            end
-        end
-    end
-    
-    % save / load wrappers for CacheCustomSaveLoad
-    methods
-        function tf = getUseCustomSaveLoad(pset, info) %#ok<INUSD>
-            % use save custom only if I have data sources that could be
-            % saved separately. If I only carry pre-extracted data, we'll
-            % save as one entity using the normal save process
-            tf = ~pset.dataSourceManual;
-        end
-        
-        function token = saveCustomToLocation(pset, location)
-            pset.saveFast(location);
-            token = [];
-        end
-    end
-    
-    methods(Static)
-        function data = loadCustomFromLocation(location, token) %#ok<INUSD>
-            data = PopulationTrajectorySet.loadFast(location);
-        end
-    end
 end

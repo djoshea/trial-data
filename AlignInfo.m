@@ -1328,6 +1328,8 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParameter('showInLegend', true, @islogical);
+            
+            p.addParameter('shadeStartStopInterval', false, @islogical);
             p.parse(varargin{:});
 
             axh = p.Results.axh;
@@ -1342,6 +1344,21 @@ classdef AlignInfo < AlignDescriptor
             N = numel(trialIdx);
             assert(N == size(startByTrial, 1), 'numel(startByTrial) must match nTrials');
             assert(N == size(stopByTrial, 1), 'numel(startByTrial) must match nTrials');
+            
+            % optionally shade start:stop interval to visualize valid data
+            % region
+            if p.Results.shadeStartStopInterval
+                % must be row vectors because expects nOccurrences x
+                % nTrials
+                h = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, startByTrial', stopByTrial', ...
+                    AppearanceSpec('Color', [0.5 0.5 0.5]), p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', 0);
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, 'Valid time region');
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+            end
             
             % plot intervals
             hIntervals = cell(ad.nIntervals, 1);

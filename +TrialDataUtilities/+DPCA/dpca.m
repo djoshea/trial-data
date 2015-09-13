@@ -1,4 +1,4 @@
-function [W, V, whichMarg] = dpca(Xfull, numComps, varargin)
+function [W, V, whichMarg, Xmargs, XwhichMarg] = dpca(Xfull, varargin)
 import(getPackageImportString);
 % [W, V, whichMarg] = dpca(X, numComp, ...) performs dPCA on the data in X
 % and returns decoder matrix W and encoder matrix V. X is a multi-dimensional
@@ -49,7 +49,9 @@ import(getPackageImportString);
 %                     marginalizations will be split.
 
 % default input parameters
-options = struct('combinedParams', [],       ...   
+options = struct('nBasesKeep', NaN, ...
+                 'nBasesPerMarginalization', NaN, ...
+                 'combinedParams', [],       ...   
                  'lambda',         0,        ...
                  'order',          'yes',    ...
                  'timeSplits',     [],       ...
@@ -69,6 +71,9 @@ for pair = reshape(varargin,2,[])    % pair is {propName; propValue}
 	end
 end
 
+assert(~isnan(options.nBasesKeep));
+assert(~any(isnan(options.nBasesPerMarginalization)));
+
 % centering
 X = Xfull(:,:);
 X = bsxfun(@minus, X, nanmean(X,2));
@@ -83,10 +88,14 @@ totalVar = nansum(X(:).^2);
                     'timeParameter', options.timeParameter, ...
                     'notToSplit', options.notToSplit, ...
                     'ifFlat', 'yes');
+XwhichMarg = margNums;
 
 decoder = [];
 encoder = [];
 whichMarg = [];
+
+numComps = options.nBasesPerMarginalization;
+
 
 % loop over marginalizations
 for i=1:length(Xmargs)
@@ -171,28 +180,28 @@ V(:, toFlip) = -V(:, toFlip);
 
 % if there were timeSplits, join the components from one marginalization
 % together (ordering by variance)
-if ~isempty(options.timeSplits)
-    toKeep = [];
-    for i=1:max(margNums)
-        components = find(ismember(whichMarg, find(margNums==i)));
-        
-        Z = W(:,components)'*X;
-        explVar = nansum(Z.^2,2); % @nansum
-        [~, order] = sort(explVar, 'descend');
-        
-        if length(numComps) == 1
-            nc = numComps;
-        else
-            nc = numComps(i);
-        end
-        
-        toKeep = [toKeep components(order(1:nc))];
-    end
-    W = W(:, toKeep);
-    V = V(:, toKeep);
-    whichMarg = whichMarg(toKeep);
-    whichMarg = margNums(whichMarg);
-end
+% if ~isempty(options.timeSplits)
+%     toKeep = [];
+%     for i=1:max(margNums)
+%         components = find(ismember(whichMarg, find(margNums==i)));
+%         
+%         Z = W(:,components)'*X;
+%         explVar = nansum(Z.^2,2); % @nansum
+%         [~, order] = sort(explVar, 'descend');
+%         
+%         if length(numComps) == 1
+%             nc = numComps;
+%         else
+%             nc = numComps(i);
+%         end
+%         
+%         toKeep = [toKeep components(order(1:nc))];
+%     end
+%     W = W(:, toKeep);
+%     V = V(:, toKeep);
+%     whichMarg = whichMarg(toKeep);
+%     whichMarg = margNums(whichMarg);
+% end
 
 % ordering components by explained variance (or not)
 if length(numComps) == 1 || strcmp(options.order, 'yes')
@@ -200,12 +209,14 @@ if length(numComps) == 1 || strcmp(options.order, 'yes')
     explVar = nansum(Z.^2,2); % @ djoshea
     [~ , order] = sort(explVar, 'descend');
     
-    if length(numComps) == 1
-        L = numComps;
-    else
-        L = sum(numComps);
-    end
-    
+%     if length(numComps) == 1
+%         L = numComps * length(Xmargs);
+%     else
+%         L = sum(numComps);
+%     end
+%     
+
+    L = min(size(decoder, 2), options.nBasesKeep);
     W = W(:, order(1:L));
     V = V(:, order(1:L));
     whichMarg = whichMarg(order(1:L));

@@ -12,7 +12,8 @@ classdef ConditionDescriptor
         nValuesAlongAxes % X x 1 array of number of elements along the ax`is
         
         nConditions % how many total conditions
-        conditionsSize
+        conditionsSize % size of conditions, will have trailing 1 for single axis so can be passed to e.g. ones(conditionsSize)
+        conditionsSizeNoExpand % size of conditions, will be length nAxes
         
         allAxisValueListsManual
         allAttributeValueListsManual
@@ -605,6 +606,21 @@ classdef ConditionDescriptor
             ci = ci.invalidateCache();
         end
         
+        function ci = fixAxisValueList(ci, axisSpec)
+            ci.warnIfNoArgOut(nargout);
+            idx = ci.axisLookupByAttributes(axisSpec);
+            for i = 1:numel(idx)
+                ci = ci.setAxisValueList(idx(i), ci.axisValueLists{idx(i)});
+            end
+        end
+        
+        function ci = fixAllAxisValueLists(ci)
+            ci.warnIfNoArgOut(nargout);
+            for iA = 1:ci.nAxes
+                ci = ci.fixAxisValueList(iA);
+            end
+        end
+        
         function valueList = getAxisValueList(ci, axisSpec)
             idx = ci.axisLookupByAttributes(axisSpec);
             valueList = makecol(ci.axisValueLists{idx});
@@ -632,6 +648,15 @@ classdef ConditionDescriptor
         function nv = get.conditionsSize(ci)
             nv = TensorUtils.expandSizeToNDims(size(ci.conditions), ci.nAxes);
         end
+        
+        function nv = get.conditionsSizeNoExpand(ci)
+            if ci.nAxes <= 1
+                nv = size(ci.conditions, 1);
+            else
+                nv = size(ci.conditions);
+            end
+        end
+            
 
         function linearInds = get.conditionsAsLinearInds(ci)
             linearInds = TensorUtils.containingLinearInds(ci.conditionsSize);
@@ -2033,7 +2058,8 @@ classdef ConditionDescriptor
         end
 
         function valueList = buildAttributeValueLists(ci)
-            % just pull the manual lists (ConditionInfo will deal
+            % just pull the manual lists (ConditionInfo will deal with this
+            % when it has the TrialData it's being applied to)
             modes = ci.attributeValueModes;
             valueList = cellvec(ci.nAttributes);
             for i = 1:ci.nAttributes
@@ -2052,7 +2078,7 @@ classdef ConditionDescriptor
                         valueList{i} = arrayfun(@(bin) sprintf('quantile%d', bin), ...
                             1:ci.attributeValueBinsAutoCount(i), 'UniformOutput', false);
                     otherwise
-                         % place holder, must be determined when
+                        % place holder, must be determined when
                         % ConditionInfo applies it to data
                         if ci.attributeNumeric(i)
                             valueList{i} = NaN;
@@ -2245,6 +2271,13 @@ classdef ConditionDescriptor
             cd.warnIfNoArgOut(nargout);
             ci = ConditionInfo.fromConditionDescriptor(cd, td);
             cdManual = ci.getFixedConditionDescriptor();
+        end
+        
+        function cdManual = fixValueListsToCurrent(cd)
+            cd.warnIfNoArgOut(nargout);
+            assert(all(ismember(cd.attributeValueModes(idx), [ci.AttributeValueListManual, ci.AttributeValueBinsManual])), ...
+                'All attributes must have manually specified value lists');
+            cd = cd.setAllAxisValueListsManualToCurrent();
         end
     end
 

@@ -133,6 +133,7 @@ classdef AlignSummary
         end
     end
     
+    % constructor methods and aggregation
     methods(Static)
         % factory constructor method used by TDCA
         function as = buildFromConditionAlignInfo(conditionInfo, alignInfo)
@@ -632,6 +633,7 @@ classdef AlignSummary
 %         end
     end
     
+    % manipulations of AlignSummary that yield new AlignSummary objects
     methods    
         function as = combineSetsOfConditions(as, newConditionDescriptor, conditionIdxCell)
             % recombine conditions, for each entry of conditionIdxCell,
@@ -681,6 +683,80 @@ classdef AlignSummary
             as.nTrialsByCondition = cellfun(@(idx) sum(as.nTrialsByCondition(idx)), conditionIdxCell);
             
         end
+        
+%         function as = manualSliceTimeWindow(as, tMin, tMax)
+%             % reslice a window of time out of this align summary, used by
+%             % pset's method by the same name
+%             
+%             function v = constrainToWindow(v)
+%                 if v < tMin
+%                     v = tMin;
+%                 elseif v > tMax
+%                     v = tMax;
+%                 end
+%             end
+%             
+%             constrainToWindowCell = @(c) cellfun(@(v) filterWindow, c, 'UniformOutput', false);
+%             as.startMin = filterWindow(as.startMin);
+%             as.startMax = filterWindow(as.startMax);
+%             as.startMean = filterWindow(as.startMean);
+%         
+%             as.stopMin = filterWindow(as.stopMin);
+%             as.stopMax = filterWindow(as.stopMax);
+%             as.stopMean = filterWindow(as.stopMean);
+%        
+%             % nMark x 1 cell array with nOccurrences x 1 vectors
+%             as.markMax = filterWindowCell(as.markMax);
+%             as.markMin = filterWindowCell(as.markMin);
+%             as.markMean = filterWindowCell(as.markMean);
+%         
+%             % nInterval x 1 cell array with nOccurrences x 1 vectors
+%             as.intervalStartMax = filterWindowCell(as.intervalStartMax);
+%             as.intervalStartMin = filterWindowCell(as.intervalStartMin);
+%             as.intervalStartMean = filterWindowCell(as.intervalStartMean);
+%             
+%             % nInterval x 1 cell array of nOccurrences x 1 vectors
+%             as.intervalStopMax = filterWindowCell(as.intervalStopMax);
+%             as.intervalStopMin = filterWindowCell(as.intervalStopMin);
+%             as.intervalStopMean = filterWindowCell(as.intervalStopMean);
+%         
+%             function v = nanOutsideWindow(v)
+%                 v(v < tMin | v > tMax) = NaN;
+%             end
+%             
+%             function v = nanOutsideWindowCell(c, nOccurrencesKeepCell)
+%                 for i = 1:numel(c)
+%                     v = c{i};
+%                     v(v < tMin | v > tMax) = NaN;
+%                     c{i} = v(:, 1:nOccurrencesKeepCell{i});
+%                 end
+%             end
+% 
+%             % nConditions x 1 vector of earliest start times by condition
+%             as.startMinByCondition = nanOutsideWindow(as.startMinByCondition);
+%             as.startMaxByCondition = nanOutsideWindow(as.startMaxByCondition);
+%             as.startMeanByCondition = nanOutsideWindow(as.startMeanByCondition);
+%             as.stopMinByCondition = nanOutsideWindow(as.stopMinByCondition);
+%             as.stopMaxByCondition = nanOutsideWindow(as.stopMaxByCondition);
+%             as.stopMeanByCondition = nanOutsideWindow(as.stopMeanByCondition);
+%         
+%             % nMarks x 1 cell with nConditions x nOccurrences matrices
+%             % the nOccurrences dependent properties will automatically
+%             % update due to the filtering operations above, so we'll 
+%             as.markMaxByCondition = nanOutsideWindowCell(as.markMaxByCondition, as.nOccurrencesByMark);
+%             as.markMinByCondition = nanOutsideWindowCell(as.markMinByCondition);
+%             as.markMeanByCondition = nanOutsideWindowCell(markMeanByCondition, 
+%         
+%         % nIntervals x 1 cell with nConditions x nOccurrences matrices of
+%         % latest occurrence time of the start of each occurrence of that interval 
+%         % (relative to the zero event)
+%         intervalStartMaxByCondition
+%         intervalStartMinByCondition
+%         intervalStartMeanByCondition
+%         intervalStopMaxByCondition
+%         intervalStopMinByCondition
+%         intervalStopMeanByCondition
+%         end
     end
 
     methods(Access=protected) % Builds internal properties at construction time

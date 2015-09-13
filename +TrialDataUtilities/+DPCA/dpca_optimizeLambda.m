@@ -1,6 +1,10 @@
 function [optimalLambda, optimalLambdas] = dpca_optimizeLambda(Xfull, ...
     XrandomTrials, numOfTrials, varargin)
-% optimalLambda = dpca_optimizeLambda(X, Xtrial, numOfTrials, ...)
+% Xfull is N x T x ConditionAttr
+% XrandomTrials is N x T x ConditionAttr x R where R is the number of
+% trials to iterate over for cross-validation
+% numOfTrials is N x ConditionAttr
+% 
 % computes optimal regularization parameter. X is the data array. Xtrial 
 % is an array storing single trials. It has one extra dimension as compared 
 % with X and stores individual single trial firing rates, as opposed to the 
@@ -56,7 +60,8 @@ function [optimalLambda, optimalLambdas] = dpca_optimizeLambda(Xfull, ...
 import(getPackageImportString);
 
 % default input parameters
-options = struct('numComps',       25,                  ...   
+options = struct('nBasesKeep', NaN, ...
+                 'nBasesPerMarginalization', NaN, ...
                  'lambdas',        1e-07 * 1.5.^(0:25), ...
                  'numRep',         10,                  ...
                  'display',        'yes',               ...
@@ -77,10 +82,21 @@ for pair = reshape(varargin,2,[])    % pair is {propName; propValue}
 	end
 end
 
+assert(~isnan(options.nBasesKeep));
+assert(~any(isnan(options.nBasesPerMarginalization)));
+
 assert(size(XrandomTrials, ndims(XrandomTrials)) >= options.numRep, ...
     'Number of random trials provided must be greater than or equal to numRep');
 
+% numComps = options.nBasesPerMarginalization;
+
 tic
+% numOfTrials is N x CondAttr, need it to look like Xfull which is N x T x
+% condAttr
+szNumTrials = size(numOfTrials);
+N = szNumTrials(1);
+condSize = szNumTrials(2:end);
+numOfTrials = reshape(numOfTrials, [N 1 condSize]);
 Xsum = bsxfun(@times, Xfull, numOfTrials);
 %Xsum = nansum(Xtrial,5);
 
@@ -118,7 +134,9 @@ for rep = 1:options.numRep
     for l = 1:length(options.lambdas)
         progInner.update(l);
         
-        [W,V,whichMarg] = TrialDataUtilities.DPCA.dpca(Xtrain, options.numComps, ...
+        [W,V,whichMarg] = TrialDataUtilities.DPCA.dpca(Xtrain, ...
+            'nBasesKeep', options.nBasesKeep, ...
+            'nBasesPerMarginalization', options.nBasesPerMarginalization, ..., ...
             'combinedParams', options.combinedParams, ...
             'lambda', options.lambdas(l));
         
@@ -168,11 +186,11 @@ meanErrorMarg = mean(errorsMarg(:, :,:), 3);
 [~, indm] = min(meanErrorMarg, [], 2);
 optimalLambdas = options.lambdas(indm);
 
-if ~isempty(options.filename)
-    lambdas = options.lambdas;
-    numComps = options.numComps;
-    save(options.filename, 'lambdas', 'errors', 'errorsMarg', 'optimalLambda', 'optimalLambdas', 'numComps', 'timeTaken')
-end
+% if ~isempty(options.filename)
+%     lambdas = options.lambdas;
+%     numComps = options.numComps;
+%     save(options.filename, 'lambdas', 'errors', 'errorsMarg', 'optimalLambda', 'optimalLambdas', 'numComps', 'timeTaken')
+% end
 
 if strcmp(options.display, 'yes')
     figure

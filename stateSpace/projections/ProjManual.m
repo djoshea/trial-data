@@ -24,8 +24,13 @@ classdef ProjManual < StateSpaceProjection
         end
         
         function proj = set.decoderKbyNManual(proj, v)
+            % save the old nBasesProj
+%             nBasesProjOrig = proj.nBasesProj;
+            
             proj.decoderKbyNManual = v;
             proj.decoderKbyN = v;
+            
+            % c
         end
         
         function proj = set.encoderNbyKManual(proj, v)
@@ -35,10 +40,22 @@ classdef ProjManual < StateSpaceProjection
     end
     
     methods(Static)
+        function [proj, stats, psetPrepared] = buildFromDecoderKbyN(pset, decoderKbyN, varargin)
+            % choose encoder such that encoder * decoder forms the
+            % projection matrix onto the row space of the decoder
+            encoderNbyK = decoderKbyN' * (decoderKbyN * decoderKbyN')^(-1);
+            [proj, stats, psetPrepared] = ProjManual.createFrom(pset, 'encoderNbyK', encoderNbyK, 'decoderKbyN', decoderKbyN, varargin{:});
+        end
+        
+        function proj = buildIdentityFor(pset)
+            proj = ProjManual.buildInternal(pset, 'meanCenterBases', false, ...
+                'decoderKbyN', eye(pset.nBases), 'encoderNbyK', eye(pset.nBases));
+        end
+        
         function [proj, stats, psetPrepared] = createFrom(pset, varargin)
             % you can provide the properties listed above as param value
             % pairs
-            [proj, unmatched] = ProjManual.buildInternal(varargin{:});
+            [proj, unmatched] = ProjManual.buildInternal(pset, varargin{:});
             [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, unmatched);
         end
 
@@ -51,7 +68,7 @@ classdef ProjManual < StateSpaceProjection
     end
     
     methods(Static, Access=protected)
-        function [proj, unmatched] = buildInternal(varargin)
+        function [proj, unmatched] = buildInternal(pset, varargin)
             p = inputParser();
             p.addParamValue('meanCenterBases', true, @islogical);
             p.addParamValue('decoderKbyN', eye(pset.nBases), @(x) ~isempty(x) && ismatrix(x));
@@ -62,6 +79,7 @@ classdef ProjManual < StateSpaceProjection
             proj.meanCenterBases = p.Results.meanCenterBases;
             proj.decoderKbyNManual = p.Results.decoderKbyN;
             proj.encoderNbyKManual = p.Results.encoderNbyK;
+            proj.basisValid = pset.basisValid;
             unmatched = p.Unmatched;
         end
     end
@@ -160,20 +178,20 @@ classdef ProjManual < StateSpaceProjection
             proj.warnIfNoArgOut(nargout);
             
             % use modified gram schmidt, not sure if necessary
-            [Q, R] = TrialDataUtilities.Data.gs_m(proj.decoderKbyNManual');
+            [Q, R] = TrialDataUtilities.Data.qrGramSchmidt(proj.decoderKbyNManual');
             proj.decoderKbyNManual = Q';
             proj.encoderNbyKManual = proj.encoderNbyKManual * R';
         end
         
         function proj = normalize(proj)
-            normsByBasis = sum(proj.decoderKbyNManual.^2, 2); % sum over N neurons for each of K bases
+            normsByBasis = sqrt(sum(proj.decoderKbyNManual.^2, 2)); % sum over N neurons for each of K bases
             proj.decoderKbyNManual = bsxfun(@rdivide, proj.decoderKbyNManual, normsByBasis);
-            proj.encoderNbyKManual = bsxfun(@times, proj.encoderKbyNManual, normsByBasis');
+            proj.encoderNbyKManual = bsxfun(@times, proj.encoderNbyKManual, normsByBasis');
         end
     end
 
     methods
-        function [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(proj, pset, varargin)
+        function [decoderKbyN, encoderNbyK, proj] = computeProjectionCoefficients(proj, pset, varargin)
             decoderKbyN = proj.decoderKbyNManual;
             encoderNbyK = proj.encoderNbyKManual;
             

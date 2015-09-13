@@ -47,6 +47,7 @@ classdef TrialDataConditionAlign < TrialData
         conditionAppearances
         conditionColors
         conditionsSize
+        conditionsSizeNoExpand
         
         nAxes
         axisValueLists
@@ -486,6 +487,15 @@ classdef TrialDataConditionAlign < TrialData
             end
             set(axh, 'ColorOrder', td.conditionColors, 'ColorOrderIndex', 1);
         end
+        
+        function cellOfCategoricals = getConditionSubsAsCategorical(td)
+           valLists = td.axisValueListsAsStringsShort;
+           subs = td.conditionSubs;
+           cellOfCategoricals = cellvec(td.nAxes);
+            for iAx = 1:td.nAxes
+               cellOfCategoricals{iAx} = categorical(subs(:, iAx), 1:numel(valLists{iAx}), valLists{iAx});
+           end
+        end
 
         function td = selectTrials(td, mask)
             % Apply a logical mask or index selection to the list of trials
@@ -855,6 +865,10 @@ classdef TrialDataConditionAlign < TrialData
         
         function sz = get.conditionsSize(td)
             sz = td.conditionInfo.conditionsSize;
+        end
+        
+        function sz = get.conditionsSizeNoExpand(td)
+            sz = td.conditionInfo.conditionsSizeNoExpand;
         end
         
         function n = get.nAxes(td)
@@ -2621,8 +2635,11 @@ classdef TrialDataConditionAlign < TrialData
             % make room for labels using AutoAxis
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
             
-            p.addParameter('useShortLabels', false, @islogical);
-           
+            p.addParameter('useShortLabels', true, @islogical);
+            
+            % shade start:stop intervals in gray to show valid time interval
+            p.addParameter('shadeValidIntervals', false, @islogical);
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2743,6 +2760,7 @@ classdef TrialDataConditionAlign < TrialData
                     error('Not yet implemented');
                 end
             else
+                % draw marks and intervals on each trial
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
                     for iCond = 1:nConditionsUsed
@@ -2753,7 +2771,8 @@ classdef TrialDataConditionAlign < TrialData
                             'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
                             'yOffsetTop', yOffsetByCondition(iCond), ...
                             'intervalMinWidth', p.Results.intervalMinWidth, ...
-                            'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+                            'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
+                            'shadeStartStopInterval', p.Results.shadeValidIntervals);
                     end
                 end
             end

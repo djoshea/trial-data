@@ -88,6 +88,8 @@ classdef PopulationTrajectorySetBuilder
                 'dataDifferenceOfTrialsScaledNoiseEstimate'}
         
         fTrialAvgRandomized = {'dataMeanRandomized', 'dataSemRandomized'};
+        
+        fCanBeEmptyExceptions = {'translationNormalization', 'conditionDescriptorRandomized'};
     end
         
     methods(Static)
@@ -317,6 +319,7 @@ classdef PopulationTrajectorySetBuilder
         function assertNonEmpty(bld, varargin)
             % assert that all fields in field are non empty
             fields = [varargin{:}];
+            fields = setdiff(fields, PopulationTrajectorySetBuilder.fCanBeEmptyExceptions);
             isEmpty = cellfun(@(fld) isempty(bld.(fld)), fields);
             if any(isEmpty)
                 error('Values must be specified for these fields: %s', ...

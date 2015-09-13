@@ -285,6 +285,7 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('varianceType', 'total', @ischar);
             p.addParameter('marginalize', [], @(x) isempty(x) || islogical(x));
             p.addParameter('showRandomQuantiles', 0.95, @isscalar); % show traces individual for individual randomization statistics
+            p.addParameter('showTotals', true, @islogical); % show horizontal lines at total for each variance
             p.parse(varargin{:});
             
             varianceType = p.Results.varianceType;
@@ -382,6 +383,31 @@ classdef StateSpaceProjectionStatistics
                 % nBasesProj x nQuantiles matrix
                 randKbyQ = TensorUtils.squeezeDims(s.computeQuantilesForRandomizedStatistics(fieldName, p.Results.showRandomQuantiles), 1);
                 plot(axh, 1:s.nBasesProj, randKbyQ, '-', 'Color', [0.5 0.5 0.5]);
+            end
+            
+            if p.Results.showTotals
+                fieldName = sprintf('total%s_%s', varStr, timeStr);
+                total = s.(fieldName);
+                if ~p.Results.fractional
+                    h = TrialDataUtilities.Plotting.horizontalLine(total, ...
+                        'Color', [0.3 0.3 0.3], 'LineWidth', 0.5, 'LineStyle', '--');
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+                
+                if marginalize
+                    mFieldName = sprintf('totalMarginalized%s_%s', varStr, timeStr);
+                    totalMarg = s.(mFieldName);
+                    if p.Results.fractional
+                        totalMarg = totalMarg / total;
+                    end
+                    
+                    for m = 1:s.nMarginalizations
+                        color = s.marginalizationColors(m, :);
+                        h = TrialDataUtilities.Plotting.horizontalLine(totalMarg(m), ... 
+                            'LineStyle', '--', 'Color', color, 'LineWidth', 0.5);
+                        TrialDataUtilities.Plotting.hideInLegend(h);
+                    end
+                end
             end
             
             xlabel(axh, 'Number of Bases');
@@ -502,6 +528,7 @@ classdef StateSpaceProjectionStatistics
     methods(Static) % Build from StateSpaceProjection and PopulationTrajectorySet
         function s = build(proj, pset, varargin)
             p = inputParser();
+            p.addParameter('meanSubtract', true, @islogical); % setting this to false only makes sense for situations where the data is already normalized relative to some absolute baseline, such as a difference between two conditions
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -532,6 +559,10 @@ classdef StateSpaceProjectionStatistics
             
             % Save covariance matrices
             CTAbyNv = pset.buildCTAbyN('validBasesOnly', true);
+            if size(CTAbyNv, 1) == 1
+                CTAbyNv = repmat(CTAbyNv, 2, 1); % some methods below transpose automatically if the matrix looks like a row vector
+            end
+            
             s.covSource = TensorUtils.inflateMaskedTensor(nancov(CTAbyNv, 1), [1 2], proj.basisValid); 
             s.corrSource = TensorUtils.inflateMaskedTensor(corrcoef(CTAbyNv, 'rows', 'complete'), [1 2], proj.basisValid);
             covMarginalizedValidCell = TrialDataUtilities.DPCA.dpca_marginalizedCov(NvbyTAbyAttr, 'combinedParams', s.combinedParams);
@@ -553,10 +584,12 @@ classdef StateSpaceProjectionStatistics
                 
                 s = s.computeStatistics(NvbyTAbyAttr, ...
                     decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams, ...
-                    'scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', scaledNoiseEstimate_NvbyTAbyAttr);
+                    'scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', scaledNoiseEstimate_NvbyTAbyAttr, ...
+                    'meanSubtract', p.Results.meanSubtract);
             else
                 s = s.computeStatistics(NvbyTAbyAttr, ...
-                    decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams);
+                    decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams, ...
+                    'meanSubtract', p.Results.meanSubtract);
             end
             
             if pset.hasDataRandomized
@@ -623,6 +656,7 @@ classdef StateSpaceProjectionStatistics
             nConditions = prod(szVec(3:end));
             
             p = inputParser();
+            p.addParameter('meanSubtract', true, @islogical); % setting this to false only makes sense for situations where the data is already normalized relative to some absolute baseline, such as a difference between two conditions
             p.addParameter('combinedParams', {}, @(x) true);
             p.addParameter('scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', [], @(x) isempty(x) || isnumeric(x));
             p.addParameter('verbose', true, @islogical);
@@ -652,7 +686,9 @@ classdef StateSpaceProjectionStatistics
             
             % subtract means for "all timepoints" over time for each basis,
             % condition
-            dataNbyT_allTimepoints = bsxfun(@minus, dataNbyT_allTimepoints, mean(dataNbyT_allTimepoints, 2));
+            if p.Results.meanSubtract
+                dataNbyT_allTimepoints = bsxfun(@minus, dataNbyT_allTimepoints, mean(dataNbyT_allTimepoints, 2));
+            end
 
             % total variance
             s.totalVar_allTimepoints = sum(dataNbyT_allTimepoints(:).^2);
@@ -661,8 +697,8 @@ classdef StateSpaceProjectionStatistics
                 % PCA explained variance
                 if p.Results.verbose, debug('Computing trial-average SVD\n'); end
                 Spca_all = svd(dataNbyT_allTimepoints', 0);
-                if K >= N
-                    Spca_all = cat(1, Spca_all, zerosvec(K-N));
+                if numel(Spca_all) < K
+                    Spca_all = cat(1, Spca_all, zerosvec(K-numel(Spca_all)));
                 end
                 s.pca_cumulativeVarByBasis_allTimepoints = cumsum(Spca_all.^2');
                 s.pca_cumulativeFractionVarByBasis_allTimepoints = s.pca_cumulativeVarByBasis_allTimepoints / s.totalVar_allTimepoints;
@@ -696,18 +732,22 @@ classdef StateSpaceProjectionStatistics
             if any(sharedTimepoints_tensor_keepMaskT)
                 % subtract means for "all timepoints" over time for each basis,
                 % condition. do this once for the tensor
-                dataTensor_shared = TensorUtils.centerSlicesOrthogonalToDimension(dataTensor_shared, 1);
+                if p.Results.meanSubtract
+                    dataTensor_shared = TensorUtils.centerSlicesOrthogonalToDimension(dataTensor_shared, 1);
+                end
 
                 dataNxT_shared = dataTensor_shared(:, :);
                 s.totalVar_sharedTimepoints = sum(dataNxT_shared(:).^2);
-
+                    
                 if p.Results.pcaBound
                     % PCA explained variance upper bound
                     if p.Results.verbose, debug('Computing trial-average SVD shared timepoints\n'); end
 
+                    % the size of this will be min(N, T) x 1, need it to be
+                    % at least length K
                     Sshared = svd(dataNxT_shared', 0);
-                    if K >= N
-                        Sshared = cat(1, Sshared, zerosvec(K-N));
+                    if numel(Sshared) <= K
+                        Sshared = cat(1, Sshared, zerosvec(K-numel(Sshared)));
                     end
                     s.pca_cumulativeVarByBasis_sharedTimepoints = cumsum(Sshared(1:K).^2');
                     s.pca_cumulativeFractionVarByBasis_sharedTimepoints = s.pca_cumulativeVarByBasis_sharedTimepoints / s.totalVar_sharedTimepoints;
@@ -809,13 +849,15 @@ classdef StateSpaceProjectionStatistics
                 end
                 noiseVarMultiplier_allTimepoints = numel(nanMaskT) / nnz(~nanMaskT);
 
-%                 % we mean subtract here because we will also mean subtract
-%                 % when we look at noise in shared timepoints, and we want
-%                 % the noise variances to be comparable when all timepoints
-%                 % are shared timepoints. we mean subtract there because the
-%                 % marginalization essentially accomplishes the same effect,
-%                 % and then we'll 
-%                 noiseNxT_all = bsxfun(@minus, noiseNxT_all, mean(noiseNxT_all, 2));
+                % we mean subtract here because we will also mean subtract
+                % when we look at noise in shared timepoints, and we want
+                % the noise variances to be comparable when all timepoints
+                % are shared timepoints. we mean subtract there because the
+                % marginalization essentially accomplishes the same effect,
+                %Removed since this is
+    %                 already the difference between two trials so
+    %                 distribution mean should be zero
+%                 noiseNxT_all_nonNan = bsxfun(@minus, noiseNxT_all_nonNan, mean(noiseNxT_all_nonNan, 2));
 
                 %%%%%%
                 % Noise variance, all timepoints
@@ -831,8 +873,8 @@ classdef StateSpaceProjectionStatistics
                     % PCA explained signal variance
                     if p.Results.verbose, debug('Computing noise SVD\n'); end
                     Snoise_all = svd(noiseNxT_all_nonNan', 0) * noiseVarMultiplier_allTimepoints;
-                    if K >= N % account for too many output bases
-                        Snoise_all = cat(1, Snoise_all, zerosvec(K-N));
+                    if numel(Snoise_all) < K % account for too many output bases
+                        Snoise_all = cat(1, Snoise_all, zerosvec(K-numel(Snoise_all)));
                     end
                 else
                     s.totalNoiseVar_allTimepoints = NaN;
@@ -875,7 +917,10 @@ classdef StateSpaceProjectionStatistics
                     % in shared timepoints
                     noiseTensor_shared = TensorUtils.selectAlongDimension(noiseTensor, 2, ...
                         sharedTimepoints_tensor_keepMaskT);
-    %                 % subtract mean by basis now
+                    
+    %                 % subtract mean by basis now - Removed since this is
+    %                 already the difference between two trials so
+    %                 distribution mean should be zero
     %                 noiseTensor_shared = bsxfun(@minus, noiseTensor_shared, nanmean(noiseTensor_shared,2));
 
                     % this may need to be replaced with something better, there's no
@@ -913,10 +958,18 @@ classdef StateSpaceProjectionStatistics
                     if ~isempty(noiseTensor_shared_nonNaN)
                         noiseNxT_shared = noiseTensor_shared_nonNaN(:, :);
                         [~, Dnoise_shared, Vnoise_shared] = svd(noiseNxT_shared', 0);
-                        Snoise_shared = diag(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
-                        if K >= N
-                            Snoise_shared = cat(1, Snoise_shared, zerosvec(K-N));
-                            Vnoise_shared = cat(2, Vnoise_shared, zeros(size(Vnoise_shared, 1), K-N));
+                        if isvector(Dnoise_shared);
+                            Snoise_shared = makecol(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
+                        else
+                            Snoise_shared = diag(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
+                        end
+                        if numel(Snoise_shared) < K
+                            Snoise_shared = cat(1, Snoise_shared, zerosvec(K-numel(Snoise_shared)));
+                        end
+                        
+                        if size(Vnoise_shared, 1) < K
+                            Vnoise_shared = cat(2, Vnoise_shared, zeros(size(Vnoise_shared, 1), K-size(Vnoise_shared, 2)));
+%                             Vnoise_shared = cat(1, Vnoise_shared, zeros(K-size(Vnoise_shared, 1), size(Vnoise_shared, 2)));
                         end
                     else
                         % not possible to compute noise
@@ -1198,7 +1251,7 @@ classdef StateSpaceProjectionStatistics
             
             assert(isListOfMarginalizationCombinations(axesCombineSpecificMarginalizations), ...
                 'axesCombineSpecificMarginalizations must be a list of marginalizationCombinations, see help');
-            % this isnt the write nomenclature since we're specifying list of lists
+            % this isnt the right nomenclature since we're specifying list of lists
             % of axisSpec, rather than precise marginalizations, but the test is
             % equivalent
             assert(isMarginalizationCombination(axesCombineAllMarginalizations), ...

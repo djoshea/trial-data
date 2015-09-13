@@ -20,10 +20,18 @@ classdef ProjPCA < StateSpaceProjection
             proj = ProjPCA();
             [proj, psetProjected, stats] = proj.buildFromAndProjectPopulationTrajectorySet(pset, varargin{:});
         end
+        
+        function [denoised, proj, stats] = denoiseViaLowRankApproximation(pset, K, varargin)
+            if nargin < 2
+                K = 10;
+            end
+            [proj, stats] = ProjPCA.createFrom(pset, 'nBasesProj', K, 'computeStatistics', nargout >= 3);
+            denoised = proj.projectInAndOut(pset);
+        end
     end
 
     methods
-        function [decoderKbyN, encoderNbyK] = computeProjectionCoefficients(proj, pset, varargin)
+        function [decoderKbyN, encoderNbyK, proj] = computeProjectionCoefficients(proj, pset, varargin)
             p = inputParser;
             p.addParamValue('nBasesProj', NaN, @isscalar);
             p.parse(varargin{:});

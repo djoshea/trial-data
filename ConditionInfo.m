@@ -522,6 +522,7 @@ classdef ConditionInfo < ConditionDescriptor
         end
         
         function valueListByAxes = buildAxisValueLists(ci)
+            % uses ConditionDescriptor's implementation but deals with 
             valueListByAxes = buildAxisValueLists@ConditionDescriptor(ci);
             if ~ci.applied
                 return;
@@ -550,7 +551,9 @@ classdef ConditionInfo < ConditionDescriptor
                        % need to filter by which values are actually
                        % occupied by at least one trial
                        maskTrialsByValues = ci.getAttributeMatchesOverTrials(valueListByAxes{iX});
-                       maskTrialsByValues(~matchesFilters, :) = false;
+                       % exclude invalid or soon-to-be invalid trials as
+                       % marked above
+                       maskTrialsByValues(~validTrials, :) = false;
                        keepValues = any(maskTrialsByValues, 1);
                        
                        valueListByAxes{iX} = makecol(valueListByAxes{iX}(keepValues));

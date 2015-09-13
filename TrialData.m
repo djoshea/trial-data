@@ -1283,9 +1283,10 @@ classdef TrialData
 
             p = inputParser;
             p.addRequired('name', @ischar);
-            p.addOptional('values', @isvector);
+            p.addOptional('values', '', @(x) ischar(x));
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
-            p.addParamValue('like', '', @ischar);
+            p.addParameter('like', '', @ischar);
+            p.KeepUnmatched = true;
             p.parse(name, varargin{:});
             
             name = p.Results.name;
@@ -1294,7 +1295,15 @@ classdef TrialData
 %             if td.hasChannel(name)
 %                 warning('Overwriting existing param channel with name %s', name);
 %             end
+
             if ~isempty(values)
+                % expand scalar values to be nTrials x 1
+                if ischar(values)
+                    values = repmat({values}, td.nTrials, 1);
+                elseif numel(values) == 1
+                    values = repmat(values, td.nTrials, 1);
+                end
+                    
                 assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
             end
             
@@ -1310,7 +1319,7 @@ classdef TrialData
             end
             cd = cd.rename(name);
 
-            td = td.addChannel(cd, {values});
+            td = td.addChannel(cd, {values}, p.Unmatched);
         end
         
         function td = addScalarParam(td, name, varargin)
@@ -1419,9 +1428,10 @@ classdef TrialData
         
         function values = getParamUnique(td, name)
             vals = td.getParam(name);
-            if ~iscell(vals)
-                vals = removenan(vals);
-            end
+            vals = vals(td.valid);
+%             if ~iscell(vals)
+%                 vals = removenan(vals);
+%             end
             values = unique(vals);
         end
 

@@ -95,11 +95,14 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             else
                 newNamesAlongAxis = {p.Results.newNameAlongAxis};
             end
-            
-            wNbyO = ones(1, nAlongAxis) / nAlongAxis;
+
+            % normalization is done by normalizeCoeffientsByNumConditions
+            % below
+            wNbyO = ones(1, nAlongAxis);
             
             psetMean = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
-                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, p.Unmatched);
+                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, ...
+                'replaceNaNWithZero', true, 'normalizeCoeffientsByNumConditions', true, p.Unmatched);
         end
         
         function psetReweighted = applyLinearCombinationAlongConditionAxis(pset, axisName, weightsNewCByOldC, varargin)
@@ -107,6 +110,11 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p.addParameter('newNamesAlongAxis', {}, @iscellstr);
             p.addParameter('removeAxis', false, @islogical);
             p.addParameter('conditionAppearanceFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
+            
+            % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis
+            % this enables nanmean like computations
+            p.addParameter('normalizeCoeffientsByNumConditions', false, @islogical); 
             p.parse(varargin{:});
             
             aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
@@ -150,7 +158,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             for iAlign = 1:pset.nAlign
                 % build N x TA x C1 x C2 x ...
                 tensorMean = pset.buildNbyTAbyConditionAttributes('alignIdx', iAlign);
-                tensorMeanReweighted = TensorUtils.linearCombinationAlongDimension(tensorMean, aIdx+2, wNbyO);
+                tensorMeanReweighted = TensorUtils.linearCombinationAlongDimension(tensorMean, aIdx+2, wNbyO, ...
+                    'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                    'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions);
                 % back to N x C x TA
                 b.dataMean{iAlign} = permute(tensorMeanReweighted(:, :, :), [1 3 2]);
                 
