@@ -66,20 +66,30 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.tMinByTrial = {};
             odc.tMaxByTrial = {};
             odc.alignValidByTrial = {};
+            odc.flushTrialAveragedData();
         end
         
-        function flushTrialAveragedData(odc)
+        function flushTrialAveragedData(odc) % built by buildDataMean
             odc.dataMean = {};
             odc.dataSem = {};
+            odc.tMinForDataMean = [];
+            odc.tMaxForDataMean = [];
+            odc.flushDataNTrials();
+            odc.flushTimeWindowsByAlignBasisCondition();
+            odc.flushRandomizedTrialAveragedData();
+            odc.flushDifferenceOfTrialsNoiseEstimate();
+            odc.flushAlignSummaryData();
+        end
+        
+        function flushDataNTrials(odc) % built by buildDataNTrials
             odc.dataValid = {};
             odc.dataNTrials = {};
             odc.trialLists = {};
-            odc.tMinForDataMean = [];
-            odc.tMaxForDataMean = [];
+        end
+        
+        function flushTimeWindowsByAlignBasisCondition(odc) % built by buildTimeWindowsByAlignBasisCondition
             odc.tMinValidByAlignBasisCondition = [];
             odc.tMaxValidByAlignBasisCondition = [];
-            odc.flushRandomizedTrialAveragedData();
-            odc.flushDifferenceOfTrialsNoiseEstimate();
         end
         
         function flushAlignSummaryData(odc)

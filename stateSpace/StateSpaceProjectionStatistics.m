@@ -720,9 +720,11 @@ classdef StateSpaceProjectionStatistics
             % Shared timepoints variance
             %%%%%%%
             
-            % find timepoints where all conditions and all neurons have samples, any
+            % find timepoints where all conditions that have any samples and all neurons have samples, any
             % along non-time dimensions
-            sharedTimepoints_tensor_keepMaskT = makecol(squeeze(~TensorUtils.anyMultiDim(isnan(dataTensor), [1 3:ndims(dataTensor)])));
+            dataTensor_NxTxC = dataTensor(:, :, :);
+            maskConditionsConsider = all(any(~isnan(dataTensor_NxTxC), 2), 1);
+            sharedTimepoints_tensor_keepMaskT = makecol(squeeze(~TensorUtils.anyMultiDim(isnan(dataTensor_NxTxC(:, :, maskConditionsConsider)), [1 3])));
             dataTensor_shared = TensorUtils.selectAlongDimension(dataTensor, 2, sharedTimepoints_tensor_keepMaskT);
 
             s.nTimepointsPerCondition_sharedTimepoints = nnz(sharedTimepoints_tensor_keepMaskT);
@@ -736,7 +738,10 @@ classdef StateSpaceProjectionStatistics
                     dataTensor_shared = TensorUtils.centerSlicesOrthogonalToDimension(dataTensor_shared, 1);
                 end
 
-                dataNxT_shared = dataTensor_shared(:, :);
+                % dataNxT_shared has only participating conditions
+                dataNxTxC_shared = dataTensor_shared(:, :, maskConditionsConsider);
+                dataNxT_shared = dataNxTxC_shared(:, :);
+                
                 s.totalVar_sharedTimepoints = sum(dataNxT_shared(:).^2);
                     
                 if p.Results.pcaBound
@@ -752,10 +757,7 @@ classdef StateSpaceProjectionStatistics
                     s.pca_cumulativeVarByBasis_sharedTimepoints = cumsum(Sshared(1:K).^2');
                     s.pca_cumulativeFractionVarByBasis_sharedTimepoints = s.pca_cumulativeVarByBasis_sharedTimepoints / s.totalVar_sharedTimepoints;
                 end
-
-                % compute total variance separately for the shared timepoints only
-                s.totalVar_sharedTimepoints = sum(dataTensor_shared(:).^2);
-
+                
                 % explained variance along bases
                 prog = ProgressBar(size(decoderKbyN, 1), 'Computing cumulative variance explained shared timepoints');
                 Z = decoderKbyN*dataNxT_shared;
@@ -782,28 +784,31 @@ classdef StateSpaceProjectionStatistics
                     % mean-subtracted
                     dataMarginalizedTensors_shared = TrialDataUtilities.DPCA.dpca_marginalize(dataTensor_shared, ...
                         'meanSubtract', false, ... % should already be mean subtracted since it's a difference
-                        'combinedParams', p.Results.combinedParams, 'ifFlat', 'yes');
-                    nMarginalizations = length(dataMarginalizedTensors_shared);
+                        'combinedParams', p.Results.combinedParams, 'ifFlat', 'no');
+                    nMarginalizations = length(dataMarginalizedTensors_shared); %#ok<*PROPLC>
 
                     Zshared = decoderKbyN*dataNxT_shared;
                     s.componentVarByBasis_allTimepoints = sum(Zshared.^2, 2)';
 
                     % total marginalized variance
                     s.totalMarginalizedVar_sharedTimepoints = nan(nMarginalizations, 1);
+                    dataMarg_NxTxC = cellvec(nMarginalizations);
                     for i=1:nMarginalizations
-                        s.totalMarginalizedVar_sharedTimepoints(i) = sum(dataMarginalizedTensors_shared{i}(:).^2);
+                        dataMarg_NxTxC{i} = dataMarginalizedTensors_shared{i}(:, :, maskConditionsConsider);
+                        s.totalMarginalizedVar_sharedTimepoints(i) = sum(dataMarg_NxTxC{i}(:).^2);
                     end
 
                     % marginalized variance of each component : shared timepoints
                     for i=1:nMarginalizations
-                        s.componentMarginalizedVarByBasis_sharedTimepoints(i,:) = sum((decoderKbyN * dataMarginalizedTensors_shared{i}).^2, 2)'; % @ djoshea shouldn't be normalized
+                        s.componentMarginalizedVarByBasis_sharedTimepoints(i,:) = sum((decoderKbyN * dataMarg_NxTxC{i}(:, :)).^2, 2)'; % @ djoshea shouldn't be normalized
                     end
 
                     % explained variance along cumulative sets of bases
                     prog = ProgressBar(nMarginalizations, 'Computing variance over %d marginalizations', nMarginalizations);
                     for m=1:nMarginalizations
                         prog.update(m);
-                        thisMarg = dataMarginalizedTensors_shared{m}(:, :);
+%                         thisMarg = dataMarginalizedTensors_shared{m}(:, :);
+                        thisMarg = dataMarg_NxTxC{m}(:, :);
                         totalVarThisMarg = sum(thisMarg(:).^2);
                         Zmarg = decoderKbyN*thisMarg;
                         progK = ProgressBar(K, 'Computing cumulative marginalized variance');
@@ -928,21 +933,25 @@ classdef StateSpaceProjectionStatistics
                     % trial-averaged traces do not, since there could still be enough
                     % trials at that timepoint to form a non-NaN average. However, if we
                     % drop additional timepoints here, then we'll have less total variance
-                    % to explain and need to correct for this. #todo
-                    nanMaskT = TensorUtils.anyMultiDim(isnan(noiseTensor_shared), [1 3:ndims(noiseTensor_shared)]);
+                    % to explain and need to correct for this. Thus the
+                    % correction factor noiseVarMultiplier below
+                    noiseTensor_shared_NxTxC = noiseTensor_shared(:, :, maskConditionsConsider);
+                    nanMaskT = makecol(squeeze(TensorUtils.anyMultiDim(isnan(noiseTensor_shared_NxTxC), [1 3])));
+                    %  nanMaskT = TensorUtils.anyMultiDim(isnan(noiseTensor_shared), [1 3:ndims(noiseTensor_shared)]); % old version
                     if all(nanMaskT)
                         warning('Single trial data has NaN values at all shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will not be computed.\n', nnz(nanMaskT), numel(nanMaskT));
-                        noiseTensor_shared_nonNaN = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
+                        noiseTensor_shared_maskT = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
                     elseif any(nanMaskT)
                         debug('Single trial data has NaN values at shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will be normalized accordingly.\n', nnz(nanMaskT), numel(nanMaskT));
-                        noiseTensor_shared_nonNaN = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
+                        noiseTensor_shared_maskT = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
                     else
-                        noiseTensor_shared_nonNaN = noiseTensor_shared;
+                        noiseTensor_shared_maskT = noiseTensor_shared;
                     end
                     noiseVarMultiplier_sharedTimepoints = numel(nanMaskT) / nnz(~nanMaskT);
-%%%% TODO
+
+                    noiseData_NxTxC_nonNaN = noiseTensor_shared_maskT(:, :, maskConditionsConsider);
                     if ~all(nanMaskT)
-                        s.totalNoiseVar_sharedTimepoints = sum(noiseTensor_shared_nonNaN(:).^2) * noiseVarMultiplier_sharedTimepoints;
+                        s.totalNoiseVar_sharedTimepoints = sum(noiseData_NxTxC_nonNaN(:).^2) * noiseVarMultiplier_sharedTimepoints;
 
                         % ensure signal var is nonnegative using max(0, ...) and
                         % update the noise var to match if necessary
@@ -955,8 +964,8 @@ classdef StateSpaceProjectionStatistics
                     
                     % PCA explained signal variance
                     if p.Results.verbose, debug('Computing noise SVD shared timepoints\n'); end
-                    if ~isempty(noiseTensor_shared_nonNaN)
-                        noiseNxT_shared = noiseTensor_shared_nonNaN(:, :);
+                    if ~isempty(noiseData_NxTxC_nonNaN)
+                        noiseNxT_shared = noiseData_NxTxC_nonNaN(:, :);
                         [~, Dnoise_shared, Vnoise_shared] = svd(noiseNxT_shared', 0);
                         if isvector(Dnoise_shared);
                             Snoise_shared = makecol(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
@@ -1012,14 +1021,16 @@ classdef StateSpaceProjectionStatistics
 
                     if p.Results.marginalize
                         % marginalize the noise tensor
-                        noiseMarginalizedTensors_shared = TrialDataUtilities.DPCA.dpca_marginalize(noiseTensor_shared_nonNaN, ...
-                            'meanSubtract', false, ... % should already be mean subtracted since it's a difference
+                        noiseMarginalizedTensors_shared = TrialDataUtilities.DPCA.dpca_marginalize(noiseTensor_shared_maskT, ...
+                            'meanSubtract', false, 'ifFlat', 'no', ... % should already be mean subtracted since it's a difference
                             'combinedParams', p.Results.combinedParams); % Theta_phi in paper
 
                         % total signal variance, marginalized
                         s.totalMarginalizedNoiseVar_sharedTimepoints = nan(nMarginalizations, 1);
+                        noiseMarg_NxTxC = cellvec(nMarginalizations);
                         for m=1:nMarginalizations
-                            s.totalMarginalizedNoiseVar_sharedTimepoints(m) = sum(noiseMarginalizedTensors_shared{m}(:).^2) * noiseVarMultiplier_sharedTimepoints;
+                            noiseMarg_NxTxC{m} = noiseMarginalizedTensors_shared{m}(:, :, maskConditionsConsider);
+                            s.totalMarginalizedNoiseVar_sharedTimepoints(m) = sum(noiseMarg_NxTxC{m}(:).^2) * noiseVarMultiplier_sharedTimepoints;
                         end
 
                         % put floor at zero and adjust noise bound to ensure they
@@ -1043,7 +1054,7 @@ classdef StateSpaceProjectionStatistics
                                 % project marginalized noise into SVD bases found
                                 % on the full noise matrix and compute the noise
                                 % variance in those bases
-                                s.cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints(m, d) = sum(sum((Vnoise_shared(:, 1:d)' * noiseMarginalizedTensors_shared{m}(:,:)).^2)) * noiseVarMultiplier_sharedTimepoints;
+                                s.cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints(m, d) = sum(sum((Vnoise_shared(:, 1:d)' * noiseMarg_NxTxC{m}(:,:)).^2)) * noiseVarMultiplier_sharedTimepoints;
 
         %                        s.cumulativeMarginalizedSignalVarByBasis_sharedTimepoints(m, d) = max(0, ...
         %                            sum(dataMarginalizedTensors_shared{m}(:).^2) - sum(sum((dataMarginalizedTensors_shared{m} - encoderNbyK(:,1:d)*Z(1:d,:)).^2)) - ...

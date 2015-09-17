@@ -118,7 +118,7 @@ classdef PopulationTrajectorySet
 
     % These properties store raw data sources (TrialDataConditionAlign instances)
     % from which data is extracted, as well as track from where each basis
-    % originates.
+    % originates. Along with other misc settings
     properties(SetAccess=?PopulationTrajectorySetBuilder)
         timeUnitName % string name of common time units
         
@@ -146,6 +146,13 @@ classdef PopulationTrajectorySet
         % random seed used as initial seed when generating random data
         % sets
         randomSeed
+                        
+        % nConditions x 1 logical: conditions not listed valid will be
+        % ignored (and thus NaN) in .dataMean when it is computed
+        % this can be used if some bases but not all bases have data for
+        % that condition, and the condition is messing up the time vector
+        % limits
+        conditionIncludeMask
     end
     
     % Properties whose values are computed dynamically and persist within odc
@@ -239,12 +246,14 @@ classdef PopulationTrajectorySet
         
         % nAlign x 1 numeric vectors indicating the time window used for each
         % alignmnet for the dataMean and dataIntervalHigh/Low cells
+        % (buildDataMean)
         tMinForDataMean
         tMaxForDataMean
         
         % trial-averaged data within each condition
         % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign) 
         % numeric array of single trial-averaged traces
+        % (buildDataMean)
         dataMean
 
         % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign) 
@@ -263,17 +272,17 @@ classdef PopulationTrajectorySet
         % nAlign x nBases x nCondition logical array indicating whether there is  
         % valid data in the corresponding cell, which is required when the conditions
         % matrix isn't complete (all conditions valid) or only some alignments are valid
-        % for a given condition, etc.
+        % for a given condition, etc. (buildDataNTrials)
         dataValid
 
         % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
         % numeric array containing the lower confidence interval value for
-        % dataMean
+        % dataMean (buildDataRandomizedIntervals)
         dataIntervalLow
         
         % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
         % numeric array containing the upper confidence interval value for
-        % dataMean
+        % dataMean (buildDataRandomizedIntervals)
         dataIntervalHigh
         
         % nBases x sum(nTimeDataMean) (aka TA) x nConditions numeric array
@@ -281,7 +290,7 @@ classdef PopulationTrajectorySet
         % scaled by 1/sqrt(2*nTrials). These serve as a sample from the
         % centered distribution of the estimation noise on the dataMean
         % traces. These are used by StateSpaceProjectionStatistics in
-        % estimating a noise floor
+        % estimating a noise floor (buildDifferenceOfTrials)
         dataDifferenceOfTrialsScaledNoiseEstimate % built by buildDifferenceOfTrials
     end
     
@@ -328,6 +337,7 @@ classdef PopulationTrajectorySet
         basisUnitsManual
         basisValidManual
         basisInvalidCauseManual
+        conditionIncludeMaskManual
         alignSummaryDataManual
         alignSummaryAggregatedManual
         basisAlignSummaryLookupManual
@@ -409,6 +419,14 @@ classdef PopulationTrajectorySet
         
         % nBases x 1 logical array indicating bases which have no valid trials on some condition for which other bases have trials
         basesMissingTrialAverageForNonEmptyConditionAligns
+        
+        % nBases x 1 logical indicating which valid basess have at least one valid
+        % trial average on some condition, on some alignment
+        basesNonEmpty
+        
+        % nConditions x 1 logical indicating which conditions are present
+        % in all nonEmptyBases
+        conditionsWithValidTrialAverageOnNonEmptyBases
     end
    
     % Constructor
@@ -721,6 +739,20 @@ classdef PopulationTrajectorySet
         function pset = set.dataIntervalQuantileHigh(pset, v)
             pset.dataIntervalQuantileHigh = v;
             pset = pset.invalidateRandomizedTrialAveragedData();
+        end
+        
+        function pset = set.conditionIncludeMask(pset, v)
+            assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
+                'conditionIncludeMask must be logical vector with length nConditions');
+            pset.conditionIncludeMaskManual = v;
+        end
+        
+        function v = get.conditionIncludeMask(pset)
+            if isempty(pset.conditionIncludeMaskManual)
+                v = truevec(pset.nConditions);
+            else
+                v = pset.conditionIncludeMaskManual;
+            end
         end
     end
     
@@ -3164,6 +3196,21 @@ classdef PopulationTrajectorySet
             basesValidMissingTrialAverages = makecol(TensorUtils.squeezeDims(any(any(shouldHaveTrialAverage & ~hasTrialAverage, 3), 1), [1 3]));
             basesMissingTrialAverages = TensorUtils.inflateMaskedTensor(basesValidMissingTrialAverages, 1, pset.basisValid, false);
         end
+        
+        function bMask = get.basesNonEmpty(pset)
+            % nBases x 1 logical
+            bMask = pset.basisValid & makecol(any(any(pset.alignBasisConditionsWithValidTrialAverage, 1), 3));
+        end
+        
+        function cMask = get.conditionsWithValidTrialAverageOnNonEmptyBases(pset)
+            % look at valid bases that have a trial average on at least one
+            % condition. which conditions have trial averages on ALL bases
+            % satisfying this?
+            bMask = pset.basesNonEmpty;
+            % any alignment, all bases
+            cMask = squeeze(all(any(pset.alignBasisConditionsWithValidTrialAverage(:,bMask,:), 1), 2));
+        end
+           
     end
     
     methods % Resampling, shuffling : WILL IMPLEMENT PASS-THRUS to

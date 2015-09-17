@@ -48,6 +48,7 @@ classdef TrialDataConditionAlign < TrialData
         conditionColors
         conditionsSize
         conditionsSizeNoExpand
+        conditionIncludeMask
         
         nAxes
         axisValueLists
@@ -615,10 +616,24 @@ classdef TrialDataConditionAlign < TrialData
             td = td.groupBy();
         end
         
+        function td = fixAllAxisValueLists(td) 
+            % this only undoes the grouping axes, NOT the value list
+            % filtering. use reset condition info for that
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.fixAllAxisValueLists();
+            td = td.postUpdateConditionInfo();
+        end
+        
         function td = reset(td)
             td.warnIfNoArgOut(nargout);
             td = td.resetConditionInfo();
             td = td.unalign();
+        end
+        
+        function td = setConditionIncludeMask(td, m)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setConditionIncludeMask(m);
+            td = td.postUpdateConditionInfo();
         end
         
         function td = reshapeAxes(td, varargin)
@@ -869,6 +884,10 @@ classdef TrialDataConditionAlign < TrialData
         
         function sz = get.conditionsSizeNoExpand(td)
             sz = td.conditionInfo.conditionsSizeNoExpand;
+        end
+        
+        function m = get.conditionIncludeMask(td)
+            m = td.conditionInfo.conditionIncludeMask;
         end
         
         function n = get.nAxes(td)

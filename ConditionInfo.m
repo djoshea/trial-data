@@ -182,6 +182,7 @@ classdef ConditionInfo < ConditionDescriptor
         
         % compute which condition each trial falls into, without writing
         % NaNs for manualInvalid marked trials and without applying randomization along each axis
+        % do remove trials where conditionIncludeMask == false
         function [subsMat, reasonInvalid] = buildConditionSubsRaw(ci)
             % filter out any that don't have a valid attribute value
             % along the other non-axis attributes which act as a filter
@@ -226,6 +227,13 @@ classdef ConditionInfo < ConditionDescriptor
             else
                 subsMat = nan(ci.nTrials, 1);
             end
+            
+            % remove trials where conditionIncludeMask is false
+            conditionIdx = TensorUtils.subMat2Ind(ci.conditionsSize, subsMat); %#ok<*PROP>
+            removeMask = ~isnan(conditionIdx); % only consider trials still valid
+            removeMask(~isnan(conditionIdx)) = ~ci.conditionIncludeMask(conditionIdx(~isnan(conditionIdx)));
+            subsMat(removeMask, :) = NaN;
+            reasonInvalid(removeMask) = {'condition marked ignored by conditionIncludeMask'};
         end
         
         function valueList = buildAttributeFilterValueListStruct(ci)
