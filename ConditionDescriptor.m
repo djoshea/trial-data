@@ -202,7 +202,7 @@ classdef ConditionDescriptor
             end
             
             % clear the conditionIncludeMask if it's no longer valid
-            if numel(ci.conditionIncludeMaskManual) ~= ci.nConditions || ~ci.allAxisValueListsManual
+            if ~ci.allAxisValueListsManual
                 ci.conditionIncludeMaskManual = [];
             end
         end
