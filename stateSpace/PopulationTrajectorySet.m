@@ -683,6 +683,10 @@ classdef PopulationTrajectorySet
             tcprintf('inline', '{yellow}Time Delta: {none}%g ms, {yellow}Spike Filter: {none}%s\n', ...
                 pset.timeDelta, pset.spikeFilter.getDescription);
             
+            if pset.hasDataRandomized
+                tcprintf('inline', '{yellow}Data Randomized: {none}%d random samples\n', pset.nRandomSamples);
+            end
+            
             fprintf('\n');
             pset.conditionDescriptor.printDescription();
             for i = 1:pset.nAlign
