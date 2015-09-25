@@ -48,6 +48,10 @@ classdef ConditionDescriptor
         % taken care of. the only effect will be to ignore trials that fall
         % into the specific conditions where conditionIncludeMask is true
         conditionIncludeMask
+        
+        % a short string summarizing the randomization applied to this
+        % conditionDescriptor
+        randomizationDescription
     end
 
     properties
@@ -417,6 +421,17 @@ classdef ConditionDescriptor
         
         function desc = get.axisDescriptions(ci)
             desc = ci.generateAxisDescriptions();
+        end
+        
+        function str = get.randomizationDescription(ci)
+            isRand = ci.axisRandomizeModes ~= ci.AxisOriginal;
+            axisModeStr = cellfun(@(name, mode) sprintf('%s %s', name, mode), ...
+                ci.axisNames(isRand), ci.axisRandomizeModesAsStrings(isRand), ...
+                'UniformOutput', false);
+            if ci.isResampledWithinConditions
+                axisModeStr{end+1} = 'trials resampled within conditions';
+            end
+            str = strjoin(axisModeStr, ', ');
         end
         
         function desc = generateAxisDescriptions(ci, useColor)

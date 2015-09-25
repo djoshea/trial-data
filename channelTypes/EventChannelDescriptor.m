@@ -41,6 +41,10 @@ classdef EventChannelDescriptor < ChannelDescriptor
                 cd.unitsByField = {timeUnits};
             end
         end
+        
+        function buildEventWithTagFields(name, timeUnits, tagFields)
+            error('not yet implemented');
+        end
     end
 
 end

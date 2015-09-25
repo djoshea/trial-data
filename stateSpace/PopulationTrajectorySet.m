@@ -684,7 +684,8 @@ classdef PopulationTrajectorySet
                 pset.timeDelta, pset.spikeFilter.getDescription);
             
             if pset.hasDataRandomized
-                tcprintf('inline', '{yellow}Data Randomized: {none}%d random samples\n', pset.nRandomSamples);
+                tcprintf('inline', '{yellow}Data Randomized: {none}%d random samples, {red}%s\n', ...
+                    pset.nRandomSamples, pset.conditionDescriptorRandomized.randomizationDescription);
             end
             
             fprintf('\n');
