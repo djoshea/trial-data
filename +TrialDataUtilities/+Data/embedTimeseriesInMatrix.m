@@ -65,7 +65,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     % fix duplicate timestamps
     if p.Results.fixDuplicateTimes
-        [dataCell, timeCell] = cellfun(@fix, dataCell, timeCell, 'UniformOutput', false);
+        [timeCell, dataCell] = TrialDataUtilities.Data.fixNonmonotonicTimeseries(timeCell, dataCell);
     end
 
     if isempty(p.Results.tvec)
@@ -117,24 +117,6 @@ end
 
 function timeDelta = inferTimeDelta(tvec)
      timeDelta = nanmedian(diff(tvec));
-end
-
-function [d, t] = fix(d, t)
-    if isempty(t) || isempty(d)
-        d = [];
-        t = [];
-        return;
-    end
-    
-    diffT = diff(t);
-    stuck = find(diffT(1:end-1) == 0 & diffT(2:end) == 2);
-    t(stuck+1) = t(stuck+1) + 1;
-    skip = find(diffT(1:end-1) == 2 & diffT(2:end) == 0);
-    t(skip+1) = t(skip+1) - 1;
-
-    tMask = [true; makecol(diff(t)>0)];
-    t = t(tMask);
-    d = d(tMask);
 end
 
 function [mn, mx] = minmax(x)

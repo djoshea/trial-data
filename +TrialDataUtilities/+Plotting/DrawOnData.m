@@ -195,7 +195,8 @@ classdef DrawOnData
             D = size(data, 2);
             
             % interpolate to find the mean location
-            % dMean will be nOccurrences x D x N            
+            % dMean will be nOccurrences x D x N   
+            [time, data] = TrialDataUtilities.Data.fixNonmonotonicTimeseries(time, data);
             dMean = interp1(time, data, tMean(:), 'nearest');
             
             % insert time as column 1 if D == 1

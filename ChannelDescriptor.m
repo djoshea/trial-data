@@ -200,15 +200,19 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             oldName = cd.name;
             cd.name = newName;
             
+            dataFieldRenameStruct = struct();
             if strcmp(cd.dataFields{1}, oldName)
                 dataFieldRenameStruct.(oldName) = newName;
                 cd.dataFields{1} = newName;
             end
+            cd = cd.initialize();
         end
         
         function cd = renameDataField(cd, iF, newName)
             cd.warnIfNoArgOut(nargout);
+            assert(iF ~= 1, 'Should not rename primary field using this method');
             cd.dataFields{iF} = newName;
+            cd = cd.initialize();
         end
         
         function cd = setPrimaryUnits(cd, unitName)
@@ -242,7 +246,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
 
         % do any replacement of missing values, etc.
-        function data = repairData(cd, data)
+        % also adjust the data class inside channelDescriptor to match the
+        % data
+        function [data, cd] = repairData(cd, data)
             % replace empty values with appropriate missing value
             for iF = 1:cd.nFields
                 fld = cd.dataFields{iF};
@@ -269,6 +275,29 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                    % manually convert to column
                     for i = 1:numel(data)
                         data(i).(fld) = makecol(data(i).(fld));
+                    end
+                end
+                
+                % check the data types match the specified memory data
+                % types
+                maskEmpty = arrayfun(@(t) isempty(t.(fld)), data);
+                if all(maskEmpty), continue, end;
+                % get all unique data classes ignoring empty (which are
+                % typically created as [] and tend to be double)
+                actualClasses = unique(arrayfun(@(t) class(t.(fld)), data(~maskEmpty), 'UniformOutput', false));
+                if ~ismember(cd.originalDataClassByField{iF}, actualClasses) && numel(actualClasses) == 1
+                    % all the actual data is a different class than its
+                    % specified in channelDescriptor and the classes are
+                    % uniform. Presumably the wrong class is specified in
+                    % the channelDescriptor, so we should change it
+                    cd.originalDataClassByField{iF} = actualClasses{1};
+                end
+                
+                % now convert everything to the memory class, which will
+                % match the originalDataClassByField for numeric types
+                for i = 1:numel(data)
+                    if ~strcmp(class(data(i).(fld)), cd.memoryClassByField{iF})
+                        data(i).(fld) = cast(data(i).(fld), cd.memoryClassByField{iF});
                     end
                 end
             end

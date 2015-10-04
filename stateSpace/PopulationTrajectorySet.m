@@ -146,13 +146,6 @@ classdef PopulationTrajectorySet
         % random seed used as initial seed when generating random data
         % sets
         randomSeed
-                        
-        % nConditions x 1 logical: conditions not listed valid will be
-        % ignored (and thus NaN) in .dataMean when it is computed
-        % this can be used if some bases but not all bases have data for
-        % that condition, and the condition is messing up the time vector
-        % limits
-        conditionIncludeMask
     end
     
     % Properties whose values are computed dynamically and persist within odc
@@ -228,6 +221,13 @@ classdef PopulationTrajectorySet
         % nConditions x 1 logical vector indicating whether the condition
         % has trial average data for EVERY basis on ALL aligns
         conditionHasValidTrialAverageAllAlignsBases
+        
+        % nConditions x 1 logical: conditions not listed valid will be
+        % ignored (and thus NaN) in .dataMean when it is computed
+        % this can be used if some bases but not all bases have data for
+        % that condition, and the condition is messing up the time vector
+        % limits
+        conditionIncludeMask
         
         % nAlign x nConditions matrix containing the start and stop times
         % for which sufficient trials exist to compute a trial-average for 
@@ -2732,6 +2732,16 @@ classdef PopulationTrajectorySet
             % the ith sample used seed initialSeed+i-1
             cdr = cdr.setRandomSeed(cdr.randomSeed+dataRandomIndex-1);
             pset = pset.setConditionDescriptor(cdr);
+        end
+        
+        function pset = dropDataRandom(pset)
+            % drop the .dataRandom and derived fields from the pset
+            pset.warnIfNoArgOut(nargout);
+            pset.dataMeanRandomized = [];
+            pset.dataSemRandomized = [];
+            pset.conditionDescriptorRandomized = [];
+            pset.odc = pset.odc.copy();
+            pset.odc.flushRandomizedTrialAveragedData();
         end
         
         function buildAlignSummaryData(pset)

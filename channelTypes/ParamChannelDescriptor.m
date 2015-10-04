@@ -39,6 +39,10 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 cd.unitsByField = {''};
             end
             
+            if strcmp(cd.name, 'protocolVersion')
+                a = 1;
+            end
+            
             if ~iscell(dataCell)
                 cd.originalDataClassByField = {class(dataCell)};               
                 if islogical(dataCell)

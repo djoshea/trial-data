@@ -77,6 +77,16 @@ classdef StateSpaceProjectionStatistics
         marginalizationNames
         combinedParams
         marginalizationColorsStored
+        
+        % stored parameters that were passed in
+        axisAttributeSets % what attributes were grouped along each axis
+        axesIgnore % manually specified axes ignored for marginalization
+        axesCombineSpecificMarginalizations
+        axesCombineAllMarginalizations
+        combineAxesWithTime % true or false
+        
+        axisIncludeMask % axes considered for marginalization, typically those with size > 1
+        axisNames % names of original axes
     end
     
     properties(Constant)
@@ -276,6 +286,22 @@ classdef StateSpaceProjectionStatistics
         statisticsRandomized
     end
 
+    methods % Post-build utilities
+        function idxList = lookupMarginalizationIdx(marginalizationSpec)
+            if StateSpaceProjectionStatistics.isMarginalizationSpec(marginalizationSpec)
+                % convert to list so we can loop over it
+                marginalizationSpec = {marginalizationSpec};
+            elseif ~StateSpaceProjectionStatistics.isListOfMarginalizationSpec(marginalizationSpec)
+                error('Input must be marginalization spec or list of marginalizationSpec');
+            end
+            
+            for iM = 1:numel(marginalizationSpec)
+                margSpec = marginalizationSpec{iM};
+                
+            end
+        end
+    end
+    
     methods % Plotting results 
         function plotCumulativeVariance(s, varargin)
             p = inputParser();
@@ -529,6 +555,11 @@ classdef StateSpaceProjectionStatistics
         function s = build(proj, pset, varargin)
             p = inputParser();
             p.addParameter('meanSubtract', true, @islogical); % setting this to false only makes sense for situations where the data is already normalized relative to some absolute baseline, such as a difference between two conditions
+            p.addParameter('computeForRandomized', true, @islogical);
+            p.addParameter('axesIgnore', {}, @(x) true);
+            p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
+            p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
+            p.addParameter('combineAxesWithTime', true, @(x) islogical(x) || iscell(x));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -548,11 +579,20 @@ classdef StateSpaceProjectionStatistics
             dimMask = nConditionsAlongAxis > 1;
             
             % build the list of covariates and covariate interactions to marginalize along
+            s.axesIgnore = p.Results.axesIgnore;
+            s.axesCombineSpecificMarginalizations = p.Results.axesCombineSpecificMarginalizations;
+            s.axesCombineAllMarginalizations = p.Results.axesCombineAllMarginalizations;
+            s.combineAxesWithTime = p.Results.combineAxesWithTime;
+            s.axisNames = pset.conditionDescriptor.axisNames;
+            s.axisIncludeMask = dimMask;
             [s.combinedParams, s.marginalizationNames] = StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization( ...
                 pset.conditionDescriptor.axisAttributes, ...
                 'axisIncludeMask', dimMask, ...
                 'axisNames', pset.conditionDescriptor.axisNames, ...
-                p.Unmatched);
+                'axesIgnore', p.Results.axesIgnore, ...
+                'axesCombineSpecificMarginalizations', p.Results.axesCombineSpecificMarginalizations, ...
+                'axesCombineAllMarginalizations', p.Results.axesCombineAllMarginalizations, ...
+                'combineAxesWithTime', p.Results.combineAxesWithTime);
                    
             % Extract trial averaged data
             NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true);
@@ -592,7 +632,7 @@ classdef StateSpaceProjectionStatistics
                     'meanSubtract', p.Results.meanSubtract);
             end
             
-            if pset.hasDataRandomized
+            if pset.hasDataRandomized && p.Results.computeForRandomized
                 % do same statistics computation on 
                 prog = ProgressBar(pset.nRandomSamples, 'Computing projection statitics on dataMeanRandomized');
                 for iR = 1:pset.nRandomSamples
@@ -1178,8 +1218,88 @@ classdef StateSpaceProjectionStatistics
         end
     end
         
-    methods(Static) % Internal static utilities
-        function [fullList, names] = generateCombinedParamsForMarginalization(axisAttributeSets, varargin)
+    methods(Static) % Internal static utilities 
+        % below are validation functions for marginalization specifications
+        function tf = isAxisSpec(x) 
+            % does x describe a specific axis? scalar index or cell of strings
+            tf = isempty(x) || isscalar(x) || iscellstr(x);
+        end
+        
+        function tf = isMarginalizationSpec(x)
+            % marginalizationSpec is a cell array of axesSpecs that are
+            % considered one type of marginalized variance
+            tf = isempty(x) || (iscell(x) && all(cellfun(@StateSpaceProjectionStatistics.isAxisSpec, x)));
+        end
+        
+        function tf = isListOfAxisSpecs(x)
+            % list of axisSpecs is a cell array of axesSpecs
+            tf = StateSpaceProjectionStatistics.isMarginalizationSpec(x);
+        end
+        
+        function tf = isMarginalizationCombination(x)
+            % a marginalizationCombination is a cell array of
+            % marginalization specs
+            tf = isempty(x) || (iscell(x) && all(cellfun(@StateSpaceProjectionStatistics.isMarginalizationSpec, x)));
+        end
+        
+        function tf = isListOfMarginalizationSpec(x)
+            % cell array of marginalizationSpec
+            tf = StateSpaceProjectionStatistics.isMarginalizationCombination(x);
+        end
+        
+        function tf = isListOfMarginalizationCombinations(x)
+            % list of marginalizationCombinations is a cell array of
+            % marginalizationCombinations
+            tf =  isempty(x) || (iscell(x) && all(cellfun(@StateSpaceProjectionStatistics.isMarginalizationCombination, x)));
+        end
+        
+        % translate axisSpec cellstrs into numeric axis numbers (one of the numbers in dims)
+        function axisIndex = staticAxisLookup(axisSpec, axisAttributeSets, axisInclude)
+            axisInclude = TensorUtils.vectorMaskToIndices(axisInclude);
+            if isempty(axisSpec)
+                axisIndex = [];
+                return
+            end
+
+            if isnumeric(axisSpec)
+                assert(ismember(axisSpec, axisInclude), 'axisSpec %s not found in dims [%s]', num2str(axisSpec), vec2str(axisInclude));
+                axisIndex = axisSpec;
+            else
+                axisSpec = sort(axisSpec);
+                if numel(axisSpec) == 1 && strcmp(axisSpec{1}, 'time')
+                    axisIndex = 0;
+                    return;
+                end
+                for iA = 1:numel(axisAttributeSets)
+                    if isequal(sort(axisAttributeSets{iA}), axisSpec)
+                        axisIndex = iA;
+                        return;
+                    end
+                end
+                error('axisSpec {%s} not found in axisAttributeSets', strjoin(axisSpec, ','));
+            end
+        end
+        
+        function axisIndices = staticLookupMarginalizationSpec(axisSpecList, axisAttributeSets, axisInclude)
+            assert(StateSpaceProjectionStatistics.isMarginalizationSpec(axisSpecList), 'AxisSpecList must be marginalizationSpec');
+            if iscell(axisSpecList)
+                axisIndices = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupAxis(x, axisAttributeSets, axisInclude), axisSpecList));
+            else
+                axisIndices = makecol(arrayfun(@(x) StateSpaceProjectionStatistics.staticLookupAxis(x, axisAttributeSets, axisInclude), axisSpecList));
+            end
+        end
+        
+        function listOfAxisIndexVectors = staticLookupMarginalizationCombination(margComb, axisAttributeSets, axisInclude)
+            assert(StateSpaceProjectionStatistics.isMarginalizationCombination(margComb), 'Input must be marginalizationCombination');
+            listOfAxisIndexVectors = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupMarginalizationSpec(x, axisAttributeSets, axisInclude), margComb, 'UniformOutput', false));
+        end
+        
+         function listOfListsOfAxisIndexVectors = staticLookupListOfMarginalizationCombinations(listMargComb, axisAttributeSets, axisInclude)
+             assert(StateSpaceProjectionStatistics.isListOfMarginalizationCombinations(listMargComb), 'Input must be list of marginalizationCombinations');
+             listOfListsOfAxisIndexVectors = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupListOfMarginalizationCombinations(x, axisAttributeSets, axisInclude), listMargComb, 'UniformOutput', false));
+         end
+
+        function [fullList, names, axisIncludeList] = generateCombinedParamsForMarginalization(axisAttributeSets, varargin)
             % function [fullList, names] = generateCombinedParamsForMarginalization(dims, varargin)
             % builds combinedParams argument for dpca, which specifies the covariate and
             % covariate interactions to consider collectively.
@@ -1246,64 +1366,23 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('axisNames', {}, @iscellstr);
             p.parse(varargin{:});
 
-            isAxisSpec = @(x) isempty(x) || isscalar(x) || iscellstr(x);
-            isMarginalizationSpec = @(x) isempty(x) || (iscell(x) && all(cellfun(isAxisSpec, x)));
-            isListOfAxisSpecs = isMarginalizationSpec;
-            isMarginalizationCombination = @(x) isempty(x) || (iscell(x) && all(cellfun(isMarginalizationSpec, x)));
-
-            isListOfMarginalizationCombinations = @(x) isempty(x) || (iscell(x) && all(cellfun(isMarginalizationCombination, x)));
-
             axesCombineSpecificMarginalizations = p.Results.axesCombineSpecificMarginalizations;
             axesCombineAllMarginalizations = p.Results.axesCombineAllMarginalizations;
 
-            assert(isListOfAxisSpecs(axisAttributeSets), 'axisAttributeSets must be list of axisSpecs, see help.');
+            assert(StateSpaceProjectionStatistics.isListOfAxisSpecs(axisAttributeSets), 'axisAttributeSets must be list of axisSpecs, see help.');
             axesIgnore = p.Results.axesIgnore;
-            assert(isListOfAxisSpecs(axesIgnore), 'axisIgnore must be list of axisSpecs, see help.');
+            assert(StateSpaceProjectionStatistics.isListOfAxisSpecs(axesIgnore), 'axisIgnore must be list of axisSpecs, see help.');
             
-            assert(isListOfMarginalizationCombinations(axesCombineSpecificMarginalizations), ...
+            assert(StateSpaceProjectionStatistics.isListOfMarginalizationCombinations(axesCombineSpecificMarginalizations), ...
                 'axesCombineSpecificMarginalizations must be a list of marginalizationCombinations, see help');
             % this isnt the right nomenclature since we're specifying list of lists
             % of axisSpec, rather than precise marginalizations, but the test is
             % equivalent
-            assert(isMarginalizationCombination(axesCombineAllMarginalizations), ...
+            assert(StateSpaceProjectionStatistics.isMarginalizationCombination(axesCombineAllMarginalizations), ...
                 'axesCombineAllMarginalizations must be a list of list of axisSpecs, see help');
 
             combineAxesWithTime = p.Results.combineAxesWithTime;
-            assert(islogical(combineAxesWithTime) || isListOfAxisSpecs(combineAxesWithTime), 'combineAxesWithTime must be logical or list of axisSpecs, see help');
-
-            % translate axisSpec cellstrs into numeric axis numbers (one of the numbers in dims)
-            function axisIndex = doAxisLookup(axisSpec)
-                if isempty(axisSpec)
-                    axisIndex = [];
-                    return
-                end
-
-                if isnumeric(axisSpec)
-                    assert(ismember(axisSpec, dims), 'axisSpec %s not found in dims [%s]', num2str(axisSpec), vec2str(dims));
-                    axisIndex = axisSpec;
-                else
-                    axisSpec = sort(axisSpec);
-                    if numel(axisSpec) == 1 && strcmp(axisSpec{1}, 'time')
-                        axisIndex = 0;
-                        return;
-                    end
-                    for iA = 1:numel(axisAttributeSets)
-                        if isequal(sort(axisAttributeSets{iA}), axisSpec)
-                            axisIndex = iA;
-                            return;
-                        end
-                    end
-                    error('axisSpec {%s} not found in axisAttributeSets', strjoin(axisSpec, ','));
-                end
-            end
-
-            function axisIndices = doAxisLookupMultiple(axisSpecList)
-                if iscell(axisSpecList)
-                    axisIndices = makecol(cellfun(@doAxisLookup, axisSpecList));
-                else
-                    axisIndices = makecol(arrayfun(@doAxisLookup, axisSpecList));
-                end
-            end
+            assert(islogical(combineAxesWithTime) || StateSpaceProjectionStatistics.isListOfAxisSpecs(combineAxesWithTime), 'combineAxesWithTime must be logical or list of axisSpecs, see help');
 
             % utility function for printing lists
             function pr(axisSpecList) %#ok<DEFNU>
@@ -1319,14 +1398,15 @@ classdef StateSpaceProjectionStatistics
             end
             
             % then drop axes listed in axesIgnore
-            axesIgnore = doAxisLookupMultiple(axesIgnore);
+            axesIgnore = StateSpaceProjectionStatistics.staticLookupMarginalizationSpec(axesIgnore, axisAttributeSets, dims);
             dims = setdiff(dims, axesIgnore);
+            axisIncludeList = dims;
             
-            % apply the conversion
-            map = @(varargin) makecol(cellfun(varargin{:}, 'UniformOutput', false));
-
-            combineSpecific = map(@(x) map(@doAxisLookupMultiple, x), axesCombineSpecificMarginalizations);
-            combineAll = map(@doAxisLookupMultiple, axesCombineAllMarginalizations);
+            combineSpecific = StateSpaceProjectionStatistics.staticLookupMarginalizationCombination(axesCombineSpecificMarginalizations, axisAttributeSets, axisIncludeList);
+%             combineSpecific = map(@(x) map(@(x) doAxisLookupMultiple(x, axisAttributeSets, dims), axesCombineSpecificMarginalizations));
+            
+            combineAll = StateSpaceProjectionStatistics.staticLookupListOfMarginalizationCombinations(axesCombineAllMarginalizations, axisAttributeSets, axisIncludeList);
+%            combineAll = map(@doAxisLookupMultiple, axesCombineAllMarginalizations);
 
             if isempty(combineSpecific)
                 combineSpecific = cell(0, 1); % to allow for vertcat later
@@ -1345,9 +1425,10 @@ classdef StateSpaceProjectionStatistics
 
             % add dim, time+dim combinations to the list 
             if iscell(combineAxesWithTime)
-                combineAxesWithTime = doAxisLookupMultiple(combineAxesWithTime);
+                combineAxesWithTime = StateSpaceProjectionStatistics.staticLookupMarginalizationSpec(combineAxesWithTime, axisAttributeSets, axisIncludeList);
+%                 combineAxesWithTime = doAxisLookupMultiple(combineAxesWithTime);
             end
-            if isscalar(combineAxesWithTime)
+            if islogical(combineAxesWithTime) && isscalar(combineAxesWithTime)
                 combineAxesWithTime = repmat(combineAxesWithTime, numel(dims), 1);
             end
             list = supersets(num2cell(dims(combineAxesWithTime)));

@@ -863,9 +863,10 @@ classdef AlignInfo < AlignDescriptor
             % do not call .update() here
         end
 
-        function ad = setInvalid(ad, mask)
+        function ad = setManualValidTo(ad, mask)
             ad.warnIfNoArgOut(nargout);
-            ad.manualInvalid = mask;
+            assert(isvector(mask) && islogical(mask) && numel(mask) == ad.nTrials);
+            ad.manualInvalid = ~mask;
             ad = ad.updateManualInvalid();
             % IT IS PERFORMANCE-CRITICAL THAT WE ONLY UPDATE TIMEINFOVALID HERE, 
             % do not call .update() here
@@ -1009,7 +1010,7 @@ classdef AlignInfo < AlignDescriptor
             zero = ad.timeInfoValid.zero;
             
             [alignedTimes, rawTimesMask] = deal(cell(ad.nTrials, 1));
-            valid = ad.valid;
+            valid = ad.valid; %#ok<*PROPLC>
             for i = 1:ad.nTrials
                 if valid(i)
                     raw = rawTimesCell{i};

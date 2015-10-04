@@ -9,7 +9,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
     
     properties
         waveformsField = '';
-        waveformsUnits = []
+        waveformsUnits = '';
         waveformsScaleFromLims = [];
         waveformsScaleToLims = [];
         waveformsOriginalDataClass = '';
@@ -82,6 +82,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
 
             cd.waveformsField = waveField;
             cd.waveformsTime = p.Results.time;
+            cd.waveformsUnits = p.Results.units;
             cd.waveformsOriginalDataClass = p.Results.dataClass;
             cd.waveformsScaleFromLims = p.Results.scaleFromLims;
             cd.waveformsScaleToLims = p.Results.scaleToLims;
@@ -99,11 +100,16 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         
         function waveData = scaleWaveforms(cd, waveData)
             % waveData is either matrix or cell of matrices
-            fromDelta = cd.waveformsScaleFromLims(2) - cd.waveformsScaleFromLims(1);
-            toDelta = cd.waveformsScaleToLims(2) - cd.waveformsScaleToLims(1);
             dtype = cd.accessClassByField{2};
-            % convert to dtype and scale
-            scaleFn = @(x) (cast(x, dtype) - cd.waveformsScaleFromLims(1)) / fromDelta * toDelta + cd.waveformsScaleToLims(1);
+            if isempty(cd.waveformsScaleFromLims) || isempty(cd.waveformsScaleToLims)
+                scaleFn = @(x) cast(x, dtype);
+            else
+                fromDelta = cd.waveformsScaleFromLims(2) - cd.waveformsScaleFromLims(1);
+                toDelta = cd.waveformsScaleToLims(2) - cd.waveformsScaleToLims(1);
+
+                % convert to dtype and scale
+                scaleFn = @(x) (cast(x, dtype) - cd.waveformsScaleFromLims(1)) / fromDelta * toDelta + cd.waveformsScaleToLims(1);
+            end
             if iscell(waveData)
                 waveData = cellfun(scaleFn, waveData, 'UniformOutput', false);
             else

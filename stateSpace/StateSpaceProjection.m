@@ -187,6 +187,8 @@ classdef StateSpaceProjection
             p.addParameter('computeStatistics', true, @islogical);
             p.addParameter('meanSubtractForStatistics', true, @islogical); % mean subtract data when computing statistics, this makes sense to turn off if the data is already measured relative to some meaningful baseline
             p.addParameter('nBasesProj', NaN, @isscalar); % this is optional for both the caller to provide and the projection to obey
+            p.addParameter('computeStatisticsMarginalized', true, @islogical);
+            p.addParameter('computeStatisticsForRandomized', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(pset, varargin{:});
             
@@ -222,7 +224,10 @@ classdef StateSpaceProjection
             % results will store statistics and useful quantities related to the
             % projection
             if p.Results.computeStatistics
-                stats = StateSpaceProjectionStatistics.build(proj, pset, 'meanSubtract', p.Results.meanSubtractForStatistics, p.Unmatched);
+                stats = StateSpaceProjectionStatistics.build(proj, pset, 'meanSubtract', ...
+                    p.Results.meanSubtractForStatistics, 'marginalize', p.Results.computeStatisticsMarginalized, ...
+                    'computeForRandomized', p.Results.computeStatisticsForRandomized', ...
+                    p.Unmatched);
                 proj.buildStats = stats;
             else
                 stats = [];

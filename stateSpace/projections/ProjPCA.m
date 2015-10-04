@@ -28,6 +28,18 @@ classdef ProjPCA < StateSpaceProjection
             [proj, stats] = ProjPCA.createFrom(pset, 'nBasesProj', K, 'computeStatistics', nargout >= 3);
             denoised = proj.projectInAndOut(pset);
         end
+        
+        function [proj, psetProjected, stats] = createFromAndProjectCaptureThresholdVariance(pset, threshFractionVar, varargin)
+            % truncate the output bases so as to capture a certain threshFractionVar of the
+            % variance. Look at proj.nBasesProj to get this number
+            p = inputParser;
+            p.addParamValue('threshForSignalVariance', false, @isscalar); % set threshhold for signal variance. if false, for overall variance
+            p.addParamValue('threshForMarginalizationVariance', [], @(x) isempty(x) || StateSpaceProjectionStatistics.isMarginalizationSpec(x)); 
+            p.parse(varargin{:});
+            
+            [proj, psetProjected, stats] = ProjPCA.createFromAndProject(pset, varargin{:});
+            proj.truncate
+        end
     end
 
     methods
@@ -52,7 +64,7 @@ classdef ProjPCA < StateSpaceProjection
             if exist('pca', 'file') == 2
                 [coeffValid] = pca(CTAbyNvalid, 'Rows', 'complete');
             else
-                [coeffValid] = princomp(CTAbyNvalid);
+                [coeffValid] = princomp(CTAbyNvalid); %#ok<PRINCOMP>
             end
             
             % filter down to K output bases, unless K is too small

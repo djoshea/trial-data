@@ -1,8 +1,8 @@
-function td = remapNeuralChannels(td, spikeMapFn, lfpMapFn)
-% spikeMapFn and lfpMapFn receive channel descriptors and return the new
+function td = remapNeuralChannels(td, spikeMapFn, continuousMapFn)
+% spikeMapFn and continuousMapFn receive channel descriptors and return the new
 % name for the channel, and the meta field.
 % [newName, meta] = spikeMapFn(spikeChannelDescriptor)
-% [newName, meta] = lfpMapFn(lfpChannelDescriptor)
+% [newName, meta] = continuousMapFn(continuousChannelDescriptor)
 
 td.warnIfNoArgOut(nargout);
 
@@ -19,13 +19,13 @@ if ~isempty(spikeMapFn)
     prog.finish();
 end
 
-if ~isempty(lfpMapFn)
-    lfpCh = td.listLFPChannels();
-    prog = ProgressBar(numel(lfpCh), 'Mapping spike channels');
-    for i = 1:numel(lfpCh)
-        ch = lfpCh{i};
-        [newCh, meta] = lfpMapFn(td.channelDescriptorsByName.(ch)); 
-        prog.update(i, 'Mapping spike channel %s to %s', ch, newCh);
+if ~isempty(continuousMapFn)
+    continuousCh = td.listContinuousNeuralChannels();
+    prog = ProgressBar(numel(continuousCh), 'Mapping spike channels');
+    for i = 1:numel(continuousCh)
+        ch = continuousCh{i};
+        [newCh, meta] = continuousMapFn(td.channelDescriptorsByName.(ch)); 
+        prog.update(i, 'Mapping continuous neural channel %s to %s', ch, newCh);
         td = td.renameChannel(ch, newCh);
         td = td.setChannelMeta(newCh, meta);
     end
