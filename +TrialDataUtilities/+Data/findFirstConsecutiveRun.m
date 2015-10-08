@@ -27,8 +27,12 @@ function startIdx = findFirstConsecutiveRun(v, nConsecutive, dim, nToReturn)
     
     function startIdxSelected = findSingleLongRuns(daux)
         runStartIdx = find(daux == 1);
-        runLengths = find(daux == -1) - runStartIdx;
-        idx = find(runLengths >= nConsecutive, nToReturn, 'first');
-        startIdxSelected = cat(1, makecol(runStartIdx(idx)), nanvec(nToReturn-numel(idx)));        
+        if isempty(runStartIdx)
+            startIdxSelected = nanvec(nToReturn);
+        else
+            runLengths = find(daux == -1) - runStartIdx;
+            idx = find(runLengths >= nConsecutive, nToReturn, 'first');
+            startIdxSelected = cat(1, makecol(runStartIdx(idx)), nanvec(nToReturn-numel(idx)));        
+        end
     end
 end

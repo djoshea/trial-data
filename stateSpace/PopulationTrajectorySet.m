@@ -1503,6 +1503,14 @@ classdef PopulationTrajectorySet
                 psetManual = PopulationTrajectorySetBuilder.convertToManualWithSingleTrialData(pset);
             end
         end
+
+        function psetManual = getAsManualTrialAveraged(pset)
+            if pset.dataSourceManual
+                psetManual = pset;
+            else
+                psetManual = PopulationTrajectorySetBuilder.convertToManualWithTrialAveragedData(pset);
+            end
+        end
         
         function psetSliced = manualSliceTimeWindow(pset, tMinByAlign, tMaxByAlign)
             % convert to a manual pset, then manually slice timepoints 

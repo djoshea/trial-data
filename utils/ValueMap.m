@@ -269,4 +269,13 @@ classdef ValueMap < DynamicClass
         end
     end
 
+    methods(Static)
+        function map = fromStruct(s)
+            map = ValueMap();
+            flds = fieldnames(s);
+            for i = 1:numel(flds)
+                map = map.set(flds{i}, s.(flds{i}));
+            end
+        end
+    end
 end
