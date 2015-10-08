@@ -660,9 +660,10 @@ classdef AlignSummary
             as.stopMeanByCondition = cellfun(@(idx) wmean(as.stopMeanByCondition(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
             
             for iMark = 1:as.alignDescriptor.nMarks
-                as.markMinByCondition{iMark} = cellfun(@(idx) nanmin(as.markMinByCondition{iMark}(idx)), conditionIdxCell);
-                as.markMaxByCondition{iMark} = cellfun(@(idx) nanmax(as.markMaxByCondition{iMark}(idx)), conditionIdxCell);
-                as.markMeanByCondition{iMark} = cellfun(@(idx) nanWeightedMean(as.markMeanByCondition{iMark}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+                % nC x nOccur
+                as.markMinByCondition{iMark} = cell2mat(cellfun(@(idx) nanmin(as.markMinByCondition{iMark}(idx, :)), conditionIdxCell, 'UniformOutput', false));
+                as.markMaxByCondition{iMark} = cell2mat(cellfun(@(idx) nanmax(as.markMaxByCondition{iMark}(idx, :)), conditionIdxCell, 'UniformOutput', false));
+                as.markMeanByCondition{iMark} = cell2mat(cellfun(@(idx) nanWeightedMean(as.markMeanByCondition{iMark}(idx, :), as.nTrialsByCondition(idx)), conditionIdxCell, 'UniformOutput', false));
             end
 
             for iInterval = 1:as.alignDescriptor.nIntervals

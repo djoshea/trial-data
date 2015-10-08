@@ -1407,13 +1407,13 @@ classdef StateSpaceProjectionStatistics
             
             combineAll = StateSpaceProjectionStatistics.staticLookupListOfMarginalizationCombinations(axesCombineAllMarginalizations, axisAttributeSets, axisIncludeList);
 %            combineAll = map(@doAxisLookupMultiple, axesCombineAllMarginalizations);
-
+p
             if isempty(combineSpecific)
                 combineSpecific = cell(0, 1); % to allow for vertcat later
             end
 
             % generate names for each dim if not provided
-            nDims = max(dims);
+            nDims = numel(dims);
             if isempty(p.Results.axisNames)
                 covariateNames = arrayfun(@(i) sprintf('Axis %d', i), ...
                     1:numel(axisAttributeSets), 'UniformOutput', false);
