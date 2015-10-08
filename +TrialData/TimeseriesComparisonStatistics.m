@@ -9,13 +9,13 @@ classdef TimeseriesComparisonStatistics
         function [dprimeTensor, dprimeCI, tvec] = dPrimeAlongAxisVsTime(tdca, varargin)
             import(getPackageImportString);
             p = inputParser;
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             alpha = p.Results.alpha;
             
-            [misc, dprimeTensor, dprimeHigh, dprimeLow] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
-                tdca, @(in) TimeseriesComparisonStatistics.dprimeFn(alpha, in), p.Unmatched);
+            [misc, dprimeTensor, dprimeHigh, dprimeLow] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
+                tdca, @(in) TrialData.TimeseriesComparisonStatistics.dprimeFn(alpha, in), p.Unmatched);
             tvec = misc.tvec;
             
             dprimeCI = cat(1, shiftdim(dprimeLow, -1), shiftdim(dprimeHigh, -1));   
@@ -24,13 +24,13 @@ classdef TimeseriesComparisonStatistics
         function [gTensor, gCI, tvec] = hedgesGAlongAxisVsTime(tdca, varargin)
             import(getPackageImportString);
             p = inputParser;
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             alpha = p.Results.alpha;
             
-            [misc, gTensor, gHigh, gLow] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
-                tdca, @(in) TimeseriesComparisonStatistics.hedgesGFn(alpha, in), p.Unmatched);
+            [misc, gTensor, gHigh, gLow] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
+                tdca, @(in) TrialData.TimeseriesComparisonStatistics.hedgesGFn(alpha, in), p.Unmatched);
             tvec = misc.tvec;
             
             gCI = cat(1, shiftdim(gLow, -1), shiftdim(gHigh, -1));  
@@ -39,13 +39,13 @@ classdef TimeseriesComparisonStatistics
         function [gTensor, gCI, tvec] = meanDifferenceAlongAxisVsTime(tdca, varargin)
             import(getPackageImportString);
             p = inputParser;
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             alpha = p.Results.alpha;
             
-            [misc, gTensor, gHigh, gLow] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
-                tdca, @(in) TimeseriesComparisonStatistics.meanDiffFn(alpha, in), p.Unmatched);
+            [misc, gTensor, gHigh, gLow] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
+                tdca, @(in) TrialData.TimeseriesComparisonStatistics.meanDiffFn(alpha, in), p.Unmatched);
             tvec = misc.tvec;
             
             gCI = cat(1, shiftdim(gLow, -1), shiftdim(gHigh, -1));    
@@ -59,7 +59,7 @@ classdef TimeseriesComparisonStatistics
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [misc, pValTensor] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(tdca, @TimeseriesComparisonStatistics.kwFun, p.Unmatched);
+            [misc, pValTensor] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(tdca, @TrialData.TimeseriesComparisonStatistics.kwFun, p.Unmatched);
             tvec = misc.tvec;  
         end
     end
@@ -69,13 +69,13 @@ classdef TimeseriesComparisonStatistics
             import(getPackageImportString);
             p = inputParser();
             p.addParameter('thresh', 1, @isscalar);
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar);
-            p.addParameter('nConsecutive', TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
+            p.addParameter('nConsecutive', TrialData.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             % will be T x size(other condition axes)
-            [gTensor, gCI, tvec] = TimeseriesComparisonStatistics.hedgesGAlongAxisVsTime(tdca, 'alpha', p.Results.alpha, p.Unmatched);
+            [gTensor, gCI, tvec] = TrialData.TimeseriesComparisonStatistics.hedgesGAlongAxisVsTime(tdca, 'alpha', p.Results.alpha, p.Unmatched);
             if isempty(tvec)
                 error('tvec parameter must be provided if data passed in as parameter');
             end
@@ -91,13 +91,13 @@ classdef TimeseriesComparisonStatistics
             import(getPackageImportString);
             
             p = inputParser();
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar);
-            p.addParameter('nConsecutive', TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
+            p.addParameter('nConsecutive', TrialData.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             % will be T x size(other condition axes)
-            [pValTensor, tvec] = TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime(...
+            [pValTensor, tvec] = TrialData.TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime(...
                 tdca, p.Unmatched);
             if isempty(tvec)
                 error('tvec parameter must be provided if data passed in as parameter');

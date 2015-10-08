@@ -76,7 +76,7 @@ classdef PopulationTrajectorySetBuilder
         
         fBasisInfo = {'basisNames', 'basisUnits', 'basisValid', 'basisInvalidCause'};
         
-        fDataSourceInfo = {'dataSources', 'basisDataSourceIdx', 'basisDataSourceChannelNames'};
+        fDataSourceInfo = {'basisDataSourceIdx', 'basisDataSourceChannelNames'};
         
         fSingleTrial = {'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
             'alignValidByTrial', 'tMinByTrial', 'tMaxByTrial'};
