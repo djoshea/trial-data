@@ -212,11 +212,15 @@ classdef PopulationTrajectorySet
         % Below are for finding time windows to use for trial averaging
         % which occurs just before
         
-        % nAlign x nBases x nConditions matrices containing the start and stop times for
+        %  containing the start and stop times for
         % which sufficient trials exist to compute a trial-average for each
         % align, basis, and condition
         tMinValidByAlignBasisCondition
         tMaxValidByAlignBasisCondition
+        
+        % nAlign x nBases x nConditions logical indicating whether that
+        % basis provides a valid trial average
+        hasValidTrialAverageByAlignBasisCondition
         
         % nConditions x 1 logical vector indicating whether the condition
         % has trial average data for EVERY basis on ALL aligns
@@ -237,6 +241,12 @@ classdef PopulationTrajectorySet
         tMinValidAllBasesByAlignCondition
         tMaxValidAllBasesByAlignCondition
  
+        basisConstrainingTMinValidByAlignCondition
+        basisConstrainingTMaxValidByAlignCondition
+
+        basisConstrainingTMinDataMeanByAlign
+        basisConstrainingTMaxDataMeanByAlign
+
         %% BELOW ARE FOR TRIAL-AVERAGED DATA WITHIN CONDITION
         
         % trial averaged data contains common time vectors across
@@ -691,7 +701,7 @@ classdef PopulationTrajectorySet
             fprintf('\n');
             pset.conditionDescriptor.printDescription();
             for i = 1:pset.nAlign
-                pset.alignDescriptorSet{i}.printDescription();
+               pset.alignDescriptorSet{i}.printDescription();
             end
             if ~isempty(pset.translationNormalization)
                 pset.translationNormalization.printOneLineDescription();
@@ -703,6 +713,75 @@ classdef PopulationTrajectorySet
             fprintf('\n');
             %builtin('disp', pset);
         end 
+        
+        function explain(pset, varargin)
+            p = inputParser();
+            p.addParamValue('dropFraction', 0.05, @isscalar);
+            p.parse(varargin{:});
+            
+            temp = pset.tMinForDataMean; %#ok<NASGU>
+            
+            hcprintf('%d / %d bases are valid\n  {999}[.basisValid, .nBasesValid, .nBases, .basisInvalidCause, .setBasesInvalid, .resetBasisValid]\n', pset.nBasesValid, pset.nBases);
+            hcprintf('%d / %d conditions marked for inclusion\n  {999}[.conditionIncludeMask, .nConditions]\n', pset.nConditions, nnz(pset.conditionIncludeMask));
+            
+            hcprintf('\nExistence of valid trial averages:\n');
+            hcprintf('  Trial averages require at least %d trials and at least %d %% of trials at each timepoint\n    {999}[minTrialsForTrialAveraging, minFractionTrialsForTrialAveraging]\n', ...
+                pset.minTrialsForTrialAveraging, pset.minFractionTrialsForTrialAveraging * 100);
+            
+            hcprintf('  %d / %d conditions have valid trial averages for all aligns, bases\n    {999}[.conditionHasValidTrialAverageAllAlignsBases]\n', ...
+                nnz(pset.conditionHasValidTrialAverageAllAlignsBases), pset.nConditions);
+            for iAlign = 1:pset.nAlign
+                hcprintf('  Align %d : %d conditions lack valid trial average for at least 1 valid basis\n', ...
+                    iAlign, nnz(~pset.alignConditionsWithTrialAverage(iAlign, :)));
+            end
+            hcprintf('    {999}[.alignConditionsWithTrialAverage, .alignBasisConditionsWithValidTrialAverage]\n');
+
+            hcprintf('  %d / %d bases lack a trial average for some align/condition where other bases have one\n    {999}.basesMissingTrialAverageForNonEmptyConditionAligns, findBasesMissingTrialAverageForNonEmptyConditionAligns]\n', ...
+                nnz(pset.basesMissingTrialAverageForNonEmptyConditionAligns), pset.nBases);
+            if nnz(pset.basesMissingTrialAverageForNonEmptyConditionAligns) > 0
+                hcprintf('  {FF9}Consider using {999}.setBasesInvalidMissingTrialAverageForNonEmptyConditionAligns{FF9} to invalidate these bases.\n');
+            end
+            
+            hcprintf('\nValid time windows for dataMean: hypotheticals for ''dropFraction'' = %d%% \n  {999}[.tMinForDataMean, .tMaxForDataMean]\n', ...
+                p.Results.dropFraction * 100);
+            listByAlign = pset.listBasesConstrainingTimeWindowValidByAlign('dropFraction', p.Results.dropFraction);
+            listByAlignCondition = pset.listBasesConstrainingTimeWindowValidByAlignCondition('dropFraction', p.Results.dropFraction);
+            tMinValidAC = pset.tMinValidAllBasesByAlignCondition;
+            tMaxValidAC = pset.tMaxValidAllBasesByAlignCondition;
+            tMinValidABC = pset.tMinValidByAlignBasisCondition;
+            tMaxValidABC = pset.tMaxValidAllBasesByAlignCondition;
+            
+            for iA = 1:pset.nAlign
+                if any(listByAlign{iA})
+                    [newMinAC, newMaxAC] = pset.computeNewTimeWindowValidAfterInvalidatingBases(listByAlign{iA});
+                    newMinA = nanmin(newMinAC, [], 2);
+                    newMaxA = nanmax(newMaxAC, [], 2);
+                    hcprintf('  Align %d : [%g - %g %s], would be [%g - %g %s] without %d bases\n', ...
+                        iA, pset.tMinForDataMean(iA), pset.tMaxForDataMean(iA), pset.timeUnitName, ...
+                        newMinA(iA), newMaxA(iA), pset.timeUnitName, numel(listByAlign{iA}));
+                else
+                    hcprintf('  Align %d : [%g - %g %s] not constrained by any bases\n', ...
+                        iA, pset.tMinForDataMean(iA), pset.tMaxForDataMean(iA), pset.timeUnitName);
+                end
+                hcprintf('    {999}[.listBasesConstrainingTimeWindowValidByAlign, .computeNewTimeWindowValidAfterInvalidatingBases]\n');
+
+                for iC = 1:pset.nConditions
+                    if ~isempty(listByAlignCondition{iA, iC})
+                        [newMinAC, newMaxAC] = pset.computeNewTimeWindowValidAfterInvalidatingBases(listByAlignCondition{iA, iC});
+                        hcprintf('    Condition %d : [%g - %g %s], would be [%g - %g %s] without %d bases \n        {c99}%s\n', ...
+                            iC, tMinValidAC(iA, iC), tMaxValidAC(iA, iC), pset.timeUnitName, ...
+                            newMinAC(iA, iC), newMaxAC(iA, iC), pset.timeUnitName, ...
+                            numel(listByAlignCondition{iA, iC}), strjoin(listByAlignCondition{iA, iC}));
+                    else
+                        hcprintf('    Condition %d : [%g - %g %s] not constrained by any bases\n', ...
+                            iC, tMinValidAC(iA, iC), tMaxValidAC(iA, iC), pset.timeUnitName);
+                    end
+                end   
+                hcprintf('    {999}[.listBasesConstrainingTimeWindowValidByAlignCondition, .computeNewTimeWindowValidAfterInvalidatingBases]\n');
+            end
+            
+
+        end
     end
     
     % these methods are setters for property values which change the
@@ -1065,7 +1144,7 @@ classdef PopulationTrajectorySet
                     v = pset.odc.tMinValidByAlignBasisCondition;
                 end
             else
-                v = pset.tMaxValidByAlignBasisConditionManual;
+                v = pset.tMinValidByAlignBasisConditionManual;
             end
         end
         
@@ -1074,7 +1153,7 @@ classdef PopulationTrajectorySet
                 pset.odc = pset.odc.copy();
                 pset.odc.tMinValidByAlignBasisCondition = v;
             else
-                pset.tMaxValidByAlignBasisConditionManual = v;
+                pset.tMinValidByAlignBasisConditionManual = v;
             end
         end
         
@@ -1099,9 +1178,13 @@ classdef PopulationTrajectorySet
             end
         end
         
+        function v = get.hasValidTrialAverageByAlignBasisCondition(pset)
+            v = pset.tMinValidByAlignBasisCondition <= pset.tMaxValidByAlignBasisCondition;
+        end
+        
         function v = get.conditionHasValidTrialAverageAllAlignsBases(pset)
-            hasAvg = pset.tMinValidByAlignBasisCondition <= pset.tMaxValidByAlignBasisCondition;
-            v = makecol(TensorUtils.allMultiDim(hasAvg(:, pset.basisValid, :), [1 2]));
+            hasAvg = pset.hasValidTrialAverageByAlignBasisCondition;
+            v = makecol(squeeze(TensorUtils.allMultiDim(hasAvg(:, pset.basisValid, :), [1 2])));
         end
         
         function v = get.tMinValidAllBasesByAlignCondition(pset)
@@ -1130,6 +1213,102 @@ classdef PopulationTrajectorySet
                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
             end
         end
+
+        function c = listBasesConstrainingTimeWindowValidByAlignCondition(pset, varargin)
+            % if tMinByAlign and tMaxByAlign are not specified, they will
+            % be picked according to the widest window available for any
+            % basis on that align / condition
+            p = inputParser();
+            
+            % specify either these manually
+            p.addParamValue('tMinByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
+            p.addParamValue('tMaxByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
+            
+            % or use this to allow only a certain percent of the 
+            p.addParamValue('dropFraction', 0.05, @isscalar);
+            p.parse(varargin{:});
+            
+            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            c = cell(pset.nAlign, pset.nConditions);
+            
+            tMinValidABC = pset.tMinValidByAlignBasisCondition;
+            tMaxValidABC = pset.tMaxValidByAlignBasisCondition;
+            basisValid = pset.basisValid; %#ok<*PROPLC>
+            
+            for iA = 1:pset.nAlign
+                for iC = 1:pset.nConditions
+                    if cMask(iC)                
+                        % if no time window specified, allow only a certain
+                        % fraction of bases to be listed as constrained
+                        
+                        tMin = p.Results.tMinByAlignCondition(iA,iC);
+                        tMax = p.Results.tMaxByAlignCondition(iA,iC);
+                        if isnan(tMin)
+                            tMin = quantile(tMinValidABC(iA, pset.basisValid, iC), 1-p.Results.dropFraction, 2);
+                        end
+                        if isnan(tMax)
+                            tMax = quantile(tMaxValidABC(iA, pset.basisValid, iC), p.Results.dropFraction, 2);
+                        end
+                        % find bases which can't provide the full tMin:tMax window
+                        c{iA, iC} = find((tMinValidABC(iA, :, iC)' > tMin | tMaxValidABC(iA, :, iC)' < tMax) & basisValid);
+                    else
+                        % some bases have no valid window on this align,
+                        % condition. find those bases
+                        c{iA, iC} = find(makecol(squeeze(pset.hasValidTrialAverageByAlignBasisCondition(iA, :, iC))) & basisValid);
+                    end
+                end
+            end
+        end
+        
+        function [tMinValidAllBasesByAlignCondition, tMaxValidAllBasesByAlignCondition] = computeNewTimeWindowValidAfterInvalidatingBases(pset, basesMarkInvalid)
+            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            
+            if ~any(cMask)
+                tMinValidAllBasesByAlignCondition = nan(pset.nAlign, pset.nConditions);
+                tMaxValidAllBasesByAlignCondition = nan(pset.nAlign, pset.nConditinos);
+            else
+                tMinABC = pset.tMinValidByAlignBasisCondition;
+                tMaxABC = pset.tMaxValidByAlignBasisCondition;
+                basisValid = pset.basisValid;
+                basisValid(basesMarkInvalid) = false;
+                % but then reexpand this to have the full complement of
+                % conditions, using NaNs for non-contributing conditions
+                inflate = @(v) TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
+                tMinValidAllBasesByAlignCondition = inflate(nanmax(tMinABC(:, basisValid, cMask), [], 2));
+                tMaxValidAllBasesByAlignCondition = inflate(nanmin(tMaxABC(:, basisValid, cMask), [], 2));
+            end
+        end
+        
+        function list = listBasesConstrainingTimeWindowValid(pset, varargin)
+            c = pset.listBasesConstrainingTimeWindowValidByAlign(varargin{:});
+            list = unique(cat(1, c{:}));
+        end 
+        
+        function listByAlign = listBasesConstrainingTimeWindowValidByAlign(pset, varargin)
+            p = inputParser();
+            
+            % either specify these
+            p.addParamValue('tMinByAlign', nanvec(pset.nAlign), @(x) isvector(x) && numel(x) == pset.nAlign);
+            p.addParamValue('tMaxByAlign', nanvec(pset.nAlign), @(x) isvector(x) && numel(x) == pset.nAlign);
+            
+            % or specify tMinByAlignCondition and tMaxBYALignCondition
+            
+            % or use this to allow only a certain percent of the 
+            p.addParamValue('dropFractionPerCondition', 0.05, @isscalar);
+            
+            p.parse(varargin{:});
+            
+            c = pset.listBasesConstrainingTimeWindowValidByAlignCondition(...
+                'tMinByAlignCondition', repmat(p.Results.tMinByAlign(:), 1, pset.nConditions), ...
+                'tMaxByAlignCondition', repmat(p.Results.tMaxByAlign(:), 1, pset.nConditions), ...
+                'dropFraction', p.Results.dropFractionPerCondition, ...
+                p.Unmatched);
+
+            listByAlign = cellvec(pset.nAlign);
+            for iA = 1:pset.nAlign
+                listByAlign{iA} = unique(cat(1, c{iA, :}));
+            end
+        end 
         
         function v = get.tvecDataMean(pset)
             % generate on the fly, no caching
@@ -2310,7 +2489,9 @@ classdef PopulationTrajectorySet
 %             tMaxValidByAlignCondition = TensorUtils.squeezeDims(min(pset.tMaxValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
             
             % for each align, compute the widest window valid for ANY
-            % condition for ALL bases
+            % considered condition for ALL valid bases. A condition is
+            % considered if at least one basis has a valid trial average
+            % for it on this align.
             tMinForDataMean = makecol(nanmin(pset.tMinValidAllBasesByAlignCondition, [], 2));
             tMaxForDataMean = makecol(nanmax(pset.tMaxValidAllBasesByAlignCondition, [], 2));
             
