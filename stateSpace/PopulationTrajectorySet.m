@@ -745,11 +745,13 @@ classdef PopulationTrajectorySet
             hcprintf('\nValid time windows for dataMean: hypotheticals for ''dropFraction'' = %d%% \n  {999}[.tMinForDataMean, .tMaxForDataMean]\n', ...
                 p.Results.dropFraction * 100);
             listByAlign = pset.listBasesConstrainingTimeWindowValidByAlign('dropFraction', p.Results.dropFraction);
-            listByAlignCondition = pset.listBasesConstrainingTimeWindowValidByAlignCondition('dropFraction', p.Results.dropFraction);
+            listByAlignConditionMin = pset.listBasesConstrainingTimeWindowValidByAlignCondition('dropFraction', p.Results.dropFraction, 'mode', 'min');
+            listByAlignConditionMax = pset.listBasesConstrainingTimeWindowValidByAlignCondition('dropFraction', p.Results.dropFraction, 'mode', 'max');
+            
             tMinValidAC = pset.tMinValidAllBasesByAlignCondition;
             tMaxValidAC = pset.tMaxValidAllBasesByAlignCondition;
             tMinValidABC = pset.tMinValidByAlignBasisCondition;
-            tMaxValidABC = pset.tMaxValidAllBasesByAlignCondition;
+            tMaxValidABC = pset.tMaxValidByAlignBasisCondition;
             
             for iA = 1:pset.nAlign
                 if any(listByAlign{iA})
@@ -766,12 +768,31 @@ classdef PopulationTrajectorySet
                 hcprintf('    {999}[.listBasesConstrainingTimeWindowValidByAlign, .computeNewTimeWindowValidAfterInvalidatingBases]\n');
 
                 for iC = 1:pset.nConditions
-                    if ~isempty(listByAlignCondition{iA, iC})
-                        [newMinAC, newMaxAC] = pset.computeNewTimeWindowValidAfterInvalidatingBases(listByAlignCondition{iA, iC});
-                        hcprintf('    Condition %d : [%g - %g %s], would be [%g - %g %s] without %d bases \n        {c99}%s\n', ...
+                    if ~isempty(listByAlignConditionMin{iA, iC}) ||  ~isempty(listByAlignConditionMax{iA, iC}) 
+                        listCombined = unique(cat(1, listByAlignConditionMin{iA, iC}, listByAlignConditionMax{iA, iC}));
+                        [newMinAC, newMaxAC] = pset.computeNewTimeWindowValidAfterInvalidatingBases(listCombined);
+                        hcprintf('    Condition %d : [%g - %g %s], would be [%g - %g %s] without %d bases\n', ...
                             iC, tMinValidAC(iA, iC), tMaxValidAC(iA, iC), pset.timeUnitName, ...
                             newMinAC(iA, iC), newMaxAC(iA, iC), pset.timeUnitName, ...
-                            numel(listByAlignCondition{iA, iC}), strjoin(listByAlignCondition{iA, iC}));
+                            numel(listCombined));
+                        if ~isempty(listByAlignConditionMin{iA, iC})
+                            list = listByAlignConditionMin{iA, iC};
+                            [uniqTimes, ~, whichTimeIdx] = unique(tMinValidABC(iA, list, iC));
+                            fprintf('      min ');
+                            for iT = 1:numel(uniqTimes)
+                                hcprintf('{f99}b%s{999}(%d)', strjoin(list(whichTimeIdx==iT), ','), uniqTimes(iT));
+                            end
+                            fprintf('\n');
+                        end
+                        if ~isempty(listByAlignConditionMax{iA, iC})
+                            list = listByAlignConditionMax{iA, iC};
+                            [uniqTimes, ~, whichTimeIdx] = unique(tMaxValidABC(iA, list, iC));
+                            fprintf('      max ');
+                            for iT = numel(uniqTimes):-1:1 % sort in reverse order
+                                hcprintf('{f99}b%s{999}(%d)', strjoin(list(whichTimeIdx==iT), ','), uniqTimes(iT));
+                            end
+                            fprintf('\n');
+                        end
                     else
                         hcprintf('    Condition %d : [%g - %g %s] not constrained by any bases\n', ...
                             iC, tMinValidAC(iA, iC), tMaxValidAC(iA, iC), pset.timeUnitName);
@@ -1224,6 +1245,10 @@ classdef PopulationTrajectorySet
             p.addParamValue('tMinByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
             p.addParamValue('tMaxByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
             
+            % proceed outward from both ends or just to widen the min or
+            % max?
+            p.addParamValue('mode', 'both', @(x) ismember(x, {'both', 'min', 'max'}));
+            
             % or use this to allow only a certain percent of the 
             p.addParamValue('dropFraction', 0.05, @isscalar);
             p.parse(varargin{:});
@@ -1235,6 +1260,14 @@ classdef PopulationTrajectorySet
             tMaxValidABC = pset.tMaxValidByAlignBasisCondition;
             basisValid = pset.basisValid; %#ok<*PROPLC>
             
+            widenMin = ismember(p.Results.mode, {'both', 'min'});
+            widenMax = ismember(p.Results.mode, {'both', 'max'});
+            if widenMax & widenMin
+                dropFraction = p.Results.dropFraction / 2;
+            else
+                dropFraction = p.Results.dropFraction;
+            end
+            
             for iA = 1:pset.nAlign
                 for iC = 1:pset.nConditions
                     if cMask(iC)                
@@ -1243,14 +1276,24 @@ classdef PopulationTrajectorySet
                         
                         tMin = p.Results.tMinByAlignCondition(iA,iC);
                         tMax = p.Results.tMaxByAlignCondition(iA,iC);
+
                         if isnan(tMin)
-                            tMin = quantile(tMinValidABC(iA, pset.basisValid, iC), 1-p.Results.dropFraction, 2);
+                            tMin = quantile(tMinValidABC(iA, pset.basisValid, iC), 1-dropFraction, 2);
                         end
                         if isnan(tMax)
-                            tMax = quantile(tMaxValidABC(iA, pset.basisValid, iC), p.Results.dropFraction, 2);
+                            tMax = quantile(tMaxValidABC(iA, pset.basisValid, iC), dropFraction, 2);
                         end
+                 
                         % find bases which can't provide the full tMin:tMax window
-                        c{iA, iC} = find((tMinValidABC(iA, :, iC)' > tMin | tMaxValidABC(iA, :, iC)' < tMax) & basisValid);
+                        mask = falsevec(pset.nBases);
+                        if widenMin
+                            mask = mask | tMinValidABC(iA, :, iC)' > tMin;
+                        end
+                        if widenMax
+                            mask = mask | tMaxValidABC(iA, :, iC)' < tMax;
+                        end
+                        mask = mask & basisValid;
+                        c{iA, iC} = find(mask);
                     else
                         % some bases have no valid window on this align,
                         % condition. find those bases
