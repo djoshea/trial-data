@@ -742,7 +742,7 @@ classdef PopulationTrajectorySet
                 hcprintf('  {FF9}Consider using {999}.setBasesInvalidMissingTrialAverageForNonEmptyConditionAligns{FF9} to invalidate these bases.\n');
             end
             
-            hcprintf('\nValid time windows for dataMean: hypotheticals for ''dropFraction'' = %d%% \n  {999}[.tMinForDataMean, .tMaxForDataMean]\n', ...
+            hcprintf('\nValid time windows for dataMean: hypotheticals for ''dropFraction'' = %g%% \n  {999}[.tMinForDataMean, .tMaxForDataMean]\n', ...
                 p.Results.dropFraction * 100);
             listByAlign = pset.listBasesConstrainingTimeWindowValidByAlign('dropFraction', p.Results.dropFraction);
             listByAlignConditionMin = pset.listBasesConstrainingTimeWindowValidByAlignCondition('dropFraction', p.Results.dropFraction, 'mode', 'min');
@@ -754,7 +754,7 @@ classdef PopulationTrajectorySet
             tMaxValidABC = pset.tMaxValidByAlignBasisCondition;
             
             for iA = 1:pset.nAlign
-                if any(listByAlign{iA})
+                if ~isempty(listByAlign{iA})
                     [newMinAC, newMaxAC] = pset.computeNewTimeWindowValidAfterInvalidatingBases(listByAlign{iA});
                     newMinA = nanmin(newMinAC, [], 2);
                     newMaxA = nanmax(newMaxAC, [], 2);
@@ -798,7 +798,7 @@ classdef PopulationTrajectorySet
                             iC, tMinValidAC(iA, iC), tMaxValidAC(iA, iC), pset.timeUnitName);
                     end
                 end   
-                hcprintf('    {999}[.listBasesConstrainingTimeWindowValidByAlignCondition, .computeNewTimeWindowValidAfterInvalidatingBases]\n');
+                hcprintf('    {999}[.tMinValidByAlignBasisCondition, .tMinValidAllBasesByAlignCondition]\n    {999}[.listBasesConstrainingTimeWindowValidByAlignCondition, .computeNewTimeWindowValidAfterInvalidatingBases]\n');
             end
             
 
