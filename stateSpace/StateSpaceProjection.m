@@ -201,7 +201,7 @@ classdef StateSpaceProjection
 
             % compute the coefficients for the projection
             debug('Computing projection encoder and decoder coefficients\n');
-            [decoderKbyN, encoderNbyK, proj] = proj.computeProjectionCoefficients(pset, 'nBasesProj', p.Results.nBasesProj);
+            [decoderKbyN, encoderNbyK, proj] = proj.computeProjectionCoefficients(pset, 'nBasesProj', p.Results.nBasesProj); %#ok<*PROPLC>
             % don't put these in the line above b/c assignment to proj will
             % override it
             proj.decoderKbyN = decoderKbyN;

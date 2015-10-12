@@ -2254,12 +2254,17 @@ classdef ConditionDescriptor
         function addColoredLabels(ci, varargin)
             p = inputParser();
             p.addParameter('axh', gca, @ishandle);
+            p.addParameter('useNamesShort', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             axh = p.Results.axh;
 
             au = AutoAxis(axh);
-            strCell = ci.namesShort;
+            if p.Results.useNamesShort
+                strCell = ci.namesShort;
+            else
+                strCell = ci.names;
+            end
             cmap = ci.conditionColors;
             au.addColoredLabels(strCell, cmap, p.Unmatched);
             au.update();
