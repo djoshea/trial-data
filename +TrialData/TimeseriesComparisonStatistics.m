@@ -68,6 +68,18 @@ classdef TimeseriesComparisonStatistics
             tvec = misc.tvec;
             conditionDescriptorSansAxis = misc.conditionDescriptorSansAxis;
         end
+        
+        function [pValTensor, tvec, conditionDescriptorSansAxis] = anovaAlongAxisVsTime(tdca, varargin)
+            % pValTensor will be T x size(other condition axes)
+            import(getPackageImportString);
+            p = inputParser;
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [misc, pValTensor] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(tdca, @TrialData.TimeseriesComparisonStatistics.anova1Fun, p.Unmatched);
+            tvec = misc.tvec;
+            conditionDescriptorSansAxis = misc.conditionDescriptorSansAxis;
+        end
     end
     
     methods(Static) % find first time of effect size divergence above threshold
@@ -230,6 +242,16 @@ classdef TimeseriesComparisonStatistics
                 pValVsTime(iT) = kruskalwallis(dataCat(keep, iT), group(keep), 'off');
             end
         end     
+        
+        function pValVsTime = anova1Fun(inCell)
+            [dataCat, group] = TensorUtils.catWhich(1, inCell{:});
+            T = size(dataCat, 2);
+            pValVsTime = nanvec(T);
+            for iT = 1:T
+                keep = ~isnan(dataCat(:, iT));
+                pValVsTime(iT) = anova1(dataCat(keep, iT), group(keep), 'off');
+            end
+        end 
     end
     
 end
