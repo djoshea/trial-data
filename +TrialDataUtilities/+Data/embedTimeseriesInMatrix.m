@@ -41,8 +41,10 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addParamValue('tvec', [], @(x) isempty(x) || isvector(x));
     p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
-    p.addParameter('timeDelta', [], @isscalar);
+    p.addParamValue('timeDelta', [], @isscalar);
+    p.addParamValue('timeReference', 0, @isscalar);
     p.KeepUnmatched = true;
+    p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
     
     
@@ -70,7 +72,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 
     if isempty(p.Results.tvec)
         % auto-compute appropriate time vector
-        [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, 'timeDelta', p.Results.timeDelta, p.Unmatched);
+        [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, ...
+            'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, p.Unmatched);
     else
         tvec = p.Results.tvec;
         % compute the global min / max timestamps or each trial

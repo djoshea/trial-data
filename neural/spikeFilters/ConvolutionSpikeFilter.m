@@ -44,6 +44,12 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             sf.binAlignmentMode = p.Results.binAlignmentMode;
         end
         
+        function checkTimeDeltaOkay(sf, timeDelta)
+            % doesn't make sense to sample more finely than the
+            % spikeBinWidth used
+            assert(timeDelta >= sf.binWidthMs, 'TimeDelta is shorter than spike filter binWidthMs. Filter output should not be sampled more finely than the spike bin resolution');
+        end
+        
         function plotFilter(sf)
             [filt, indZero] = sf.getFilter();
             filt = filt ./ sum(filt);
