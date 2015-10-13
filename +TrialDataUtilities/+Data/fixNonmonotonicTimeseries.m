@@ -45,5 +45,5 @@ end
 function [t, d, tMask] = fixSingle(t, d)
     % d is data, t is time, both must be vectors
     [t, tMask] = fixSingleTime(t);
-    d = d(tMask) ;
+    d = d(tMask, :) ;
 end

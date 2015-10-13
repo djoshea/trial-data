@@ -1407,7 +1407,7 @@ classdef StateSpaceProjectionStatistics
             
             combineAll = StateSpaceProjectionStatistics.staticLookupListOfMarginalizationCombinations(axesCombineAllMarginalizations, axisAttributeSets, axisIncludeList);
 %            combineAll = map(@doAxisLookupMultiple, axesCombineAllMarginalizations);
-p
+
             if isempty(combineSpecific)
                 combineSpecific = cell(0, 1); % to allow for vertcat later
             end

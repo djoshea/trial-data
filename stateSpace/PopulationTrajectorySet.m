@@ -1308,7 +1308,7 @@ classdef PopulationTrajectorySet
             
             if ~any(cMask)
                 tMinValidAllBasesByAlignCondition = nan(pset.nAlign, pset.nConditions);
-                tMaxValidAllBasesByAlignCondition = nan(pset.nAlign, pset.nConditinos);
+                tMaxValidAllBasesByAlignCondition = nan(pset.nAlign, pset.nConditions);
             else
                 tMinABC = pset.tMinValidByAlignBasisCondition;
                 tMaxABC = pset.tMaxValidByAlignBasisCondition;
@@ -2538,12 +2538,17 @@ classdef PopulationTrajectorySet
             tMinForDataMean = makecol(nanmin(pset.tMinValidAllBasesByAlignCondition, [], 2));
             tMaxForDataMean = makecol(nanmax(pset.tMaxValidAllBasesByAlignCondition, [], 2));
             
-            if any(isnan(tMinForDataMean)) || any(isnan(tMaxForDataMean))
-                error('No valid time window is valid across all bases across all conditions for some alignment');
+            alignInvalid = isnan(tMinForDataMean) | isnan(tMaxForDataMean);
+            if any(alignInvalid)
+                 warning('No valid time window is valid across all bases across all conditions for alignment %s. Use .explain to advise', ...
+                     strjoin(find(alignInvalid), ','));
             end
-            
-            nTimeByAlign = nanvec(pset.nAlign);
+                
+            nTimeByAlign = zerosvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
+                if alignInvalid(iAlign)
+                    continue;
+                end
                 % realign time vector to run through t=0 with increments of timeDelta
                 tempVec = TrialDataUtilities.Data.linspaceIntercept(tMinForDataMean(iAlign), pset.timeDelta, tMaxForDataMean(iAlign), 0);
                 tMinForDataMean(iAlign) = min(tempVec);
@@ -2553,10 +2558,6 @@ classdef PopulationTrajectorySet
                 nTimeByAlign(iAlign) = numel(tempVec);
             end
             
-            assert(pset.nBasesValid > 0, 'No valid bases found to compute trial-averaged data. Check .basisValid and .basisInvalidCause');
-            assert(~isempty(tMinForDataMean) && ~isempty(tMaxForDataMean) && all(tMinForDataMean <= tMaxForDataMean), ...
-                'No time window is valid across all bases. Try using .setBasesInvalidMissingTrialsOnNonEmptyConditions()');
-            
             % now that we've determined the time window, we can compute the
             % trial average using data from these windows
             [dataMean, dataSem] = deal(cellvec(pset.nAlign));
@@ -2564,6 +2565,13 @@ classdef PopulationTrajectorySet
                 [dataMean{iAlign}, dataSem{iAlign}] = ...
                     deal(nan(pset.nBases, pset.nConditions, nTimeByAlign(iAlign)));
             end
+                                    
+            if pset.nBasesValid == 0
+                warning('No valid bases found to compute trial-averaged data. Check .basisValid and .basisInvalidCause');
+            end
+%             if isempty(tMinForDataMean) || isempty(tMaxForDataMean) || ~all(tMinForDataMean <= tMaxForDataMean)
+%                 warning('No time window is valid across all bases for some al. Try using .setBasesInvalidMissingTrialsOnNonEmptyConditions() or use .explain to advise');
+%             end
            
             % copy temp values for for slicing
             conditionHasValidTrialAverageAllAlignsBases = pset.conditionHasValidTrialAverageAllAlignsBases;
@@ -2577,6 +2585,9 @@ classdef PopulationTrajectorySet
             trialLists = pset.trialLists;
             
             for iAlign = 1:pset.nAlign
+                if alignInvalid(iAlign)
+                    continue;
+                end
                 prog = ProgressBar(pset.nBases, 'Computing trial-averaged data for align %d', iAlign);
                 
                 for iBasis = 1:pset.nBases
@@ -4241,26 +4252,32 @@ classdef PopulationTrajectorySet
                     
                     if p.Results.alpha < 1
                         if use3d
-                            TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+                            h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
                                  plotArgs{:});
                         else
-                            TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
+                            h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
                                 plotArgs{:});
                         end
                     else
                         if use3d
-                            plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+                            h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
                                 'LineWidth', p.Results.lineWidth, plotArgsC{:}, plotArgs{:});
                         else
 %                             dataMat = [dataVec1 dataVec2];
-                            plot(axh, dataMat(1, :), dataMat(2, :), ...
+                            h = plot(axh, dataMat(1, :), dataMat(2, :), ...
                                 'LineWidth', p.Results.lineWidth, ...
                                 plotArgsC{:}, plotArgs{:});
                         end
+                    end
+                    
+                    if iAlign == 1
+                        TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionNames{iCondition});
+                    else
+                        TrialDataUtilities.Plotting.hideInLegend(h);
                     end
                 end
             
