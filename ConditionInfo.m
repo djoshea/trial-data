@@ -225,7 +225,7 @@ classdef ConditionInfo < ConditionDescriptor
               
                 subsMat(~matchesFilters, :) = NaN;
             else
-                subsMat = nan(ci.nTrials, 1);
+                subsMat = nan(ci.nTrials, ci.nAxes);
             end
             
             % remove trials where conditionIncludeMask is false

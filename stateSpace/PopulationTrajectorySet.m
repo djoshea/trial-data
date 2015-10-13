@@ -307,6 +307,10 @@ classdef PopulationTrajectorySet
     % generated on the fly on get.property. Best to retrieve this value
     % once rather than access it directly every iteration in a loop
     properties(Transient, Dependent, SetAccess=protected)
+        % nAlign x 1 logical indicating whether a given align has any trial
+        % averaged data
+        alignValid
+        
         % nAlign x 1 numeric vectors indicating the number of timepoints
         % used for each alignment in the dataMean cell
         nTimeDataMean
@@ -849,7 +853,9 @@ classdef PopulationTrajectorySet
         function pset = set.conditionIncludeMask(pset, v)
             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
                 'conditionIncludeMask must be logical vector with length nConditions');
+            
             pset.conditionIncludeMaskManual = v;
+            pset = pset.invalidateTrialAveragedData();
         end
         
         function v = get.conditionIncludeMask(pset)
@@ -1204,8 +1210,10 @@ classdef PopulationTrajectorySet
         end
         
         function v = get.conditionHasValidTrialAverageAllAlignsBases(pset)
+            % here is where conditionIncludeMask is factored in
             hasAvg = pset.hasValidTrialAverageByAlignBasisCondition;
             v = makecol(squeeze(TensorUtils.allMultiDim(hasAvg(:, pset.basisValid, :), [1 2])));
+            v(~pset.conditionIncludeMask) = false;
         end
         
         function v = get.tMinValidAllBasesByAlignCondition(pset)
@@ -1363,6 +1371,10 @@ classdef PopulationTrajectorySet
         
         function v = get.nTimeValidByAlignBasisCondition(pset)
             v = (pset.tMaxValidByAlignBasisCondition - pset.tMinValidByAlignBasisCondition) / pset.timeDelta + 1;
+        end
+        
+        function v = get.alignValid(pset)
+            v = ~isnan(pset.tMinForDataMean) & ~isnan(pset.tMaxForDataMean);
         end
         
         function v = get.nTimeDataMean(pset)
@@ -1563,8 +1575,6 @@ classdef PopulationTrajectorySet
                 pset.dataIntervalHighManual = v;
             end
         end
-        
-        
         
         function v = get.dataDifferenceOfTrialsScaledNoiseEstimate(pset)
             if ~pset.dataSourceManual
@@ -4317,7 +4327,7 @@ classdef PopulationTrajectorySet
         
     end
 
-    methods % Build data matrices
+    methods % Build data matrices trial averaged
         % Notation:
         % C is nConditions
         % T is nTimepoints for a given alignment, such that T*A really
@@ -4417,9 +4427,156 @@ classdef PopulationTrajectorySet
              condSize = pset.conditionDescriptor.conditionsSize;
              NbyTAbyAttr = reshape(NbyTAbyC, [N TA makerow(condSize)]);
          end
-         
-         % added primarily for dpca-type noise floor
-         function [NbyTAbyCbyR, nTrials_NbyC, tvec, avec, whichTrials] = buildNbyTAbyCbyTrials(pset, varargin)
+    end
+
+    methods % Individual trial data
+        function assertSimultaneous(pset)
+            assert(pset.simultaneous, 'This method may only be called on simultaneously collected data sets, i.e. where there is only one data source');
+        end
+        
+        function [NbyTAbyR, tvec, avec, cvec] = simultaneous_buildNbyTAbyTrials(pset, varargin)
+            p = inputParser();
+            p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
+            p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
+            p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
+            p.addParameter('validBasesOnly', false, @islogical);
+            p.addParameter('validTrialsOnly', false, @islogical);
+            p.parse(varargin{:});
+            
+            pset.assertSimultaneous();
+            
+            alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
+            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
+            if p.Results.validBasesOnly
+                mask = pset.basisValid(basisIdx);
+                basisIdx = basisIdx(mask);
+            end
+            conditionIdx =  TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
+            
+            % dataByTrial is nBases x nAlign, insides are R x T_a
+            % concatenate time over alignments
+            [tvec, avec] = TensorUtils.catWhich(1, pset.tvecDataByTrial{1, :});
+            RbyTA_eachBasis = TensorUtils.catInnerDimOverOuterDim(pset.dataByTrial(basisIdx, alignIdx), 2, 2);
+            RbyTAbyN = cat(3, RbyTA_eachBasis{:});
+            NbyTAbyR = permute(RbyTAbyN, [3 2 1]);
+            
+            cvec = pset.dataSources{1}.conditionIdx;
+            rmask = ismember(cvec, conditionIdx);
+            
+            if p.Results.validTrialsOnly
+                rmask = rmask & pset.dataSources{1}.valid;
+            end
+            
+            cvec = cvec(rmask);
+            NbyTAbyR = NbyTAbyR(:, :, rmask);  
+        end
+        
+        function dataByTrial = buildDataByTrialWithDataMeanTimeVector(pset, varargin)
+            % dataByTrial will nBases x nAlign cell containing ordered data by trial
+            % each cell contains nTrials x nTime analog data for that
+            % basis, where nTime is now set by .tvecDataMean instead of
+            % .tvecDataByTrial
+            p = inputParser();
+            p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
+            p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
+            p.addParameter('validBasesOnly', false, @islogical);
+            p.addParameter('message', 'Extracting grouped trial data matrix by basis', @ischar);
+            p.parse(varargin{:});
+            
+            alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
+            nAlign = numel(alignIdx);
+            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
+
+            if p.Results.validBasesOnly
+                mask = pset.basisValid(basisIdx);
+                basisIdx = basisIdx(mask);
+            end
+            
+            nBases = numel(basisIdx);
+            
+            tMinDataMean = pset.tMinForDataMean; 
+            tMaxDataMean = pset.tMaxForDataMean;
+            
+            dataByTrial = cell(nBases, nAlign);
+            for iAlignIdx = 1:nAlign
+                iAlign = alignIdx(iAlignIdx);
+                if isnan(tMinDataMean(iAlign)) || isnan(tMaxDataMean(iAlign))
+                    continue;
+                end
+                if nBases > 1
+                    prog = ProgressBar(nBases, 'Computing trial-averaged data for align %d', iAlign);
+                end
+                for iBasisIdx = 1:nBases
+                    iBasis = basisIdx(iBasisIdx);
+                    if nBases > 1
+                        prog.update(iBasisIdx);
+                    end
+                    
+                    % don't process invalid bases, leave these as NaNs
+                    if ~pset.basisValid(iBasis);
+                        continue;
+                    end
+                    
+                    % lookup the time limits which describe the byTrial
+                    % matrix
+                    tMinAll = pset.tMinForDataByTrial(iBasis, iAlign);
+                    tMaxAll = pset.tMaxForDataByTrial(iBasis, iAlign);
+                    
+                    if isnan(tMinAll) || isnan(tMaxAll)
+                        error('Basis %d has no valid timepoints', iBasis);
+                    end
+                    tvecAll = tMinAll:pset.timeDelta:tMaxAll;
+                    
+                    % lookup the new time limits which we'll compute the
+                    % trial average within
+                    tMinValid = tMinDataMean(iAlign); 
+                    tMaxValid = tMaxDataMean(iAlign);
+                    tMaskValid = tvecAll >= tMinValid & tvecAll <= tMaxValid;
+                    
+                    % grab the valid time portion of the nTrials x
+                    % nTime data matrix
+                    dataByTrial{iBasisIdx, iAlignIdx} = pset.dataByTrial{iBasis, iAlign}(:, tMaskValid);
+                end
+                prog.finish();
+            end
+            
+        end
+        
+        function [dataByTrialGrouped, nTrials] = buildDataByTrialGroupedWithDataMeanTimeVector(pset, varargin)
+            % dataByTrialGrouped will nBases x nAlign x nConditions cell containing ordered data by trial
+            % each cell contains nTrialsThisCondition x nTime analog data for that
+            % basis, where nTime is now set by .tvecDataMean instead of
+            % .tvecDataByTrial. 
+            % 
+            % nTrials will be nBases x nAlign x nConditions
+   
+            dataByTrial = pset.buildDataByTrialWithDataMeanTimeVector(varargin{:});
+            nBases = size(dataByTrial, 1);
+            nAlign = size(dataByTrial, 2);
+            
+            cMask = pset.conditionHasValidTrialAverageAllAlignsBases;
+            
+            prog = ProgressBar(nBases, 'Grouping dataByTrial into conditions');
+            
+            dataByTrialGrouped = cell(nBases, nAlign, pset.nConditions);
+            nTrials = zeros(nBases, nAlign, pset.nConditions);
+            for iBasis = 1:nBases
+                prog.update(iBasis);
+                trialLists = pset.trialLists(iBasis, :)';
+                for iAlign= 1:size(dataByTrial, 2)
+                     byCondition = cellfun(@(idx) dataByTrial{iBasis, iAlign}(idx,:), trialLists, ...
+                        'UniformOutput', false);
+                    [byCondition{~cMask}] = {};
+                    
+                    dataByTrialGrouped(iBasis, iAlign, :) = byCondition;
+                    nTrials(iBasis, iAlign, :) = cellfun(@(x) size(x, 1), byCondition);
+                end
+            end
+            prog.finish();            
+        end
+       
+        % added primarily for dpca-type noise floor
+        function [NbyTAbyCbyR, nTrials_NbyC, tvec, avec, whichTrials] = buildNbyTAbyCbyTrials(pset, varargin)
             p = inputParser();
             p.addParameter('maxTrials', Inf, @isscalar);
             p.addParameter('chooseRandom', false, @islogical);
@@ -4436,6 +4593,8 @@ classdef PopulationTrajectorySet
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             conditionIdx = makecol(p.Results.conditionIdx);
             nConditions = numel(conditionIdx);
+            
+            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
             
             if p.Results.validBasesOnly
                 mask = pset.basisValid(basisIdx);
@@ -4499,6 +4658,8 @@ classdef PopulationTrajectorySet
                     
                     listByCondition = cellvec(nConditions);
                     for iC = 1:nConditions
+                        if ~cMask(iC), continue; end;
+                        
                         % count number of valid timepoints in dataMean that are
                         % present in each trial, this will be the ranking order
                         % for the trials, we prefer this number to be higher.
@@ -4600,102 +4761,7 @@ classdef PopulationTrajectorySet
              nTrials_NbyC = pset.buildTrialCountsNbyC();
              condSize = pset.conditionDescriptor.conditionsSize;
              nTrials_NbyAttr = reshape(nTrials_NbyC, [size(nTrials_NbyC, 1) makerow(condSize)]);
-         end
-         
-%         function [out tvecByConditionAlign] = buildCTByNEachA(pset, varargin)
-%             % out: A cell vector of CT x N matrices 
-%             % timeVec: nAlign cell of time vectors common to alignment
-%             
-%             p = inputParser();
-%             p.addParameter('timeValidAcrossConditions', false, @islogical)
-%             p.parse(varargin{:});
-% 
-%             % data is N bases x nConditions x nAlign cell array with vectors of length t
-%             % allow different time vectors per condition
-%             if p.Results.timeValidAcrossConditions
-%                 [data timeData timeVecByAlign] = pset.getDataTimeWindowedValidAcrossBasesConditions();
-%                 tvecByConditionAlign = repmat(timeVecByAlign', pset.nConditions, 1);
-%             else
-%                 [data, timeData, tvecByConditionAlign] = pset.getDataTimeWindowedValidAcrossBases();
-%             end
-% 
-%             % convert to nAlign cell of nCondition*time x nBases 
-%             out = cell(pset.nAlign, 1);
-%             for iAlign = 1:pset.nAlign
-%                 out{iAlign} = cell2mat(data(:,:,iAlign)');
-%             end
-%         end
-% 
-%         function [out tvecByConditionAlign] = buildTByNEachCA(pset, varargin)
-%             % out: C x A cell of N x T matrices 
-%             % tvecByConditionAlign is C x A cell of time vectors common to condition x alignment
-% 
-%             p = inputParser();
-%             p.addParameter('timeValidAcrossConditions', false, @islogical)
-%             p.parse(varargin{:});
-%                         
-%             % data is N bases x nConditions x nAlign cell array with vectors of length t
-%             if p.Results.timeValidAcrossConditions
-%                 [data timeData timeVecByAlign] = pset.getDataTimeWindowedValidAcrossBasesConditions();
-%                 tvecByConditionAlign = repmat(makerow(timeVecByAlign), pset.nConditions, 1);
-%             else
-%                 [data, timeData, tvecByConditionAlign] = pset.getDataTimeWindowedValidAcrossBases();
-%             end
-% 
-%             out = cell(pset.nConditions, pset.nAlign);
-%             for iAlign = 1:pset.nAlign
-%                 for iCondition = 1:pset.nConditions
-% 
-%                     % nBases cell of time vectors
-%                     dataThisCA = data(:,iCondition, iAlign);
-% 
-%                     % nAlign*nTime x nBases matrix for this condition
-%                     out{iCondition, iAlign} = cell2mat(dataThisCA');
-%                 end
-%             end
-%         end
-%         
-    end
-
-    methods % Single trial
-        function assertSingleTrialData(pset)
-            assert(pset.simultaneous && ~pset.dataSourceManual, 'This method may only be called on simultaneously collected data sets, i.e. where there is only one data source');
-        end
-        
-        function [NbyTAbyR, tvec, avec, cvec] = buildNbyTAbyTrials(pset, varargin)
-            p = inputParser();
-            p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
-            p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
-            p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
-            p.addParameter('validBasesOnly', false, @islogical);
-            p.addParameter('validTrialsOnly', false, @islogical);
-            p.parse(varargin{:});
-            
-            alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
-            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
-            if p.Results.validBasesOnly
-                mask = pset.basisValid(basisIdx);
-                basisIdx = basisIdx(mask);
-            end
-            conditionIdx =  TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
-            
-            % dataByTrial is nBases x nAlign, insides are R x T_a
-            % concatenate time over alignments
-            [tvec, avec] = TensorUtils.catWhich(1, pset.tvecDataByTrial{1, :});
-            RbyTA_eachBasis = TensorUtils.catInnerDimOverOuterDim(pset.dataByTrial(basisIdx, alignIdx), 2, 2);
-            RbyTAbyN = cat(3, RbyTA_eachBasis{:});
-            NbyTAbyR = permute(RbyTAbyN, [3 2 1]);
-            
-            cvec = pset.dataSources{1}.conditionIdx;
-            rmask = ismember(cvec, conditionIdx);
-            
-            if p.Results.validTrialsOnly
-                rmask = rmask & pset.dataSources{1}.valid;
-            end
-            
-            cvec = cvec(rmask);
-            NbyTAbyR = NbyTAbyR(:, :, rmask);  
-        end
+         end 
     end
     
     methods % Comparative statistics

@@ -93,15 +93,18 @@ classdef PopulationTrajectorySetBuilder
     end
         
     methods(Static)
-        function pset = fromAllUnitsInTrialData(td)
+        function pset = fromAllUnitsInTrialData(tdca)
+            if ~isa(tdca, 'TrialDataConditionAlign')
+                tdca = TrialDataConditionAlign(tdca);
+            end
+            
             % each unit in TrialData becomes a basis
-            units = td.listSpikeChannels();
+            units = tdca.listSpikeChannels();
             nUnits = numel(units);
             
             pset = PopulationTrajectorySet();
-            pset.datasetName = td.datasetName;
+            pset.datasetName = tdca.datasetName;
             
-            tdca = TrialDataConditionAlign(td);
             pset.timeUnitName = tdca.timeUnitName;
             pset.timeUnitsPerSecond = tdca.timeUnitsPerSecond;
             pset.dataSources = {tdca};
@@ -109,14 +112,16 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
             
-            pset = pset.setConditionDescriptor(td.conditionInfo);
-            pset = pset.setAlignDescriptorSet(td.alignInfoSet);
+            pset = pset.setConditionDescriptor(tdca.conditionInfo);
+            pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
             pset = pset.initialize();
         end
         
         function pset = fromAllUnitsInTrialDataSplitBySaveTag(td)
             % each unit from each save tag in TrialData becomes a basis
-            td = TrialDataConditionAlign(td);
+            if ~isa(td, 'TrialDataConditionAlign')
+                td = TrialDataConditionAlign(td);
+            end
             units = td.listSpikeChannels();
             nUnits = numel(units);
             
@@ -147,6 +152,8 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceChannelNames = units(keepUnits);
 
             debug('Initializing PTS\n');
+            pset = pset.setConditionDescriptor(td.conditionInfo);
+            pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
         end
         
@@ -166,14 +173,14 @@ classdef PopulationTrajectorySetBuilder
                 if nargin < 2
                     % use all spike channels in each file
                     for j = 1:numel(units)
-                        basisDataSourceIdx(iBasis) = i; %#ok<AGROW,PROP>
-                        basisDataSourceChannelNames{iBasis} = units{j}; %#ok<AGROW,PROP>
+                        basisDataSourceIdx(iBasis) = i; %#ok<AGROW>
+                        basisDataSourceChannelNames{iBasis} = units{j}; %#ok<AGROW>
                         iBasis = iBasis + 1;
                     end
                 else
                     % use specified channel names
-                    basisDataSourceIdx(iBasis) = i; %#ok<PROP>
-                    basisDataSourceChannelNames{iBasis} = channelNames{i}; %#ok<PROP> 
+                    basisDataSourceIdx(iBasis) = i;
+                    basisDataSourceChannelNames{iBasis} = channelNames{i}; 
                     iBasis = iBasis + 1;
                 end
             end
@@ -185,13 +192,12 @@ classdef PopulationTrajectorySetBuilder
             pset.timeUnitName = tdCell{1}.timeUnitName;
             pset.timeUnitsPerSecond = tdCell{1}.timeUnitsPerSecond;
             pset.dataSources = makecol(tdCell);
-            pset.basisDataSourceIdx = makecol(basisDataSourceIdx); %#ok<PROP>
-            pset.basisDataSourceChannelNames = makecol(basisDataSourceChannelNames); %#ok<PROP>
+            pset.basisDataSourceIdx = makecol(basisDataSourceIdx); 
+            pset.basisDataSourceChannelNames = makecol(basisDataSourceChannelNames); 
             
-            
-            td = tdCell{1};
-            pset = pset.setConditionDescriptor(td.conditionInfo);
-            pset = pset.setAlignDescriptorSet(td.alignInfoSet);
+            tdca = tdCell{1};
+            pset = pset.setConditionDescriptor(tdca.conditionInfo);
+            pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
             pset = pset.initialize();
         end
         
@@ -208,6 +214,8 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceIdx = onesvec(numel(chNames));
             pset.basisDataSourceChannelNames = chNames;
             
+            pset = pset.setConditionDescriptor(tdca.conditionInfo);
+            pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
             pset = pset.initialize();
         end
     end
