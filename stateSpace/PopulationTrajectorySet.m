@@ -4560,11 +4560,14 @@ classdef PopulationTrajectorySet
             
             dataByTrialGrouped = cell(nBases, nAlign, pset.nConditions);
             nTrials = zeros(nBases, nAlign, pset.nConditions);
+            alignValid = pset.alignValid;
             for iBasis = 1:nBases
                 prog.update(iBasis);
+                if ~pset.basisValid(iBasis), continue; end
                 trialLists = pset.trialLists(iBasis, :)';
                 for iAlign= 1:size(dataByTrial, 2)
-                     byCondition = cellfun(@(idx) dataByTrial{iBasis, iAlign}(idx,:), trialLists, ...
+                    if ~alignValid(iAlign), continue; end
+                    byCondition = cellfun(@(idx) dataByTrial{iBasis, iAlign}(idx,:), trialLists, ...
                         'UniformOutput', false);
                     [byCondition{~cMask}] = {};
                     
