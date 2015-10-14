@@ -16,7 +16,8 @@ classdef StateSpaceComparison
 
             fn = @TrialData.TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime;
             [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
-                TrialData.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, p.Results);
+                TrialData.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, ...
+                'functionName', 'Kruskal Wallis', p.Results);
         end
 
         function [fractionSignificantByAlign, firstSignificantTimeByAlign, pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
@@ -57,12 +58,12 @@ classdef StateSpaceComparison
             % conditionDescriptorSansAxis.conditionsSize
             p = inputParser();
             p.addParamValue('axis', 1, @(x) true);
-            p.addParamValue('removeZeroSpikeTrials', false, @islogical);
             p.parse(varargin{:});
 
             fn = @TrialData.TimeseriesComparisonStatistics.anovaAlongAxisVsTime;
             [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
-                TrialData.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, p.Results);
+                TrialData.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, ...
+                'functionName', 'anova', p.Results);
         end
                    
         function [fractionSignificantByAlign, firstSignificantTimeByAlign, pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
@@ -102,7 +103,7 @@ classdef StateSpaceComparison
             % conditionDescriptorSansAxis.conditionsSize
             p = inputParser();
             p.addParamValue('axis', 1, @(x) true);
-            p.addParamValue('removeZeroSpikeTrials', false, @islogical);
+            p.addParamValue('functionName', 'comparison function', @ischar);
             p.parse(varargin{:});
 
             axisIdx = pset.conditionDescriptor.axisLookupByAttributes(p.Results.axis);
@@ -110,13 +111,13 @@ classdef StateSpaceComparison
             condSizeOther = TensorUtils.sizeOtherDims(pset.conditions, axisIdx);
 
             % nBases x nAlign
-            dataByTrialGrouped = pset.buildDataByTrialGroupedWithDataMeanTimeVector('nanZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
+            dataByTrialGrouped = pset.buildDataByTrialGroupedWithDataMeanTimeVector();
             pTensorByAlign = cell(pset.nAlign, 1);
             for iA = 1:pset.nAlign
                 pTensorByAlign{iA} = nan(pset.nBases, pset.nTimeDataMean(iA), condSizeOther);
 
                 if ~pset.alignValid(iA), continue; end
-                prog = ProgressBar(pset.nBases, 'Computing kruskal wallis for each basis for align %d', iA);
+                prog = ProgressBar(pset.nBases, 'Computing %s for each basis for align %d', p.Results.functionName, iA);
                 for iB = 1:pset.nBases
                     prog.update(iB);
                     if ~pset.basisValid(iB), continue; end
@@ -143,7 +144,7 @@ classdef StateSpaceComparison
             % concatenate over alignments
             % N x TA x conditionsSizeRemaining
             [pTensorCat, whichAlign] = TensorUtils.catWhich(2, pTensorByAlign{:});
-            tvecCat = cat(1, pset.tvecForDataMean{:});
+            tvecCat = cat(1, pset.tvecDataMean{:});
             sigTensor = pTensorCat <= p.Results.alpha;
             [changeIdx, inRunMask] = TrialDataUtilities.Data.findFirstConsecutiveRun(sigTensor, p.Results.nConsecutive, 2, 1);
 

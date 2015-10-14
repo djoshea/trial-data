@@ -63,6 +63,14 @@ classdef PopulationTrajectorySet
         % trial-averaged data (e.g. dataMean)
         minTrialsForTrialAveraging
         
+        % Ignore all zero spike trials when building trial averages
+        ignoreAllZeroSpikeTrials = false;
+        
+        % Ignore zero spike trials at the beginnning and end of the list of trials
+        % when building trial averages (i.e. but not in between the other
+        % trials)
+        ignoreLeadingTrailingZeroSpikeTrials = false;
+        
         % The minimum fraction of trials in a given condition over which to
         % compute a trial average, relative to the the total number of trials
         % in that condition. This parameter determines the valid time
@@ -328,6 +336,9 @@ classdef PopulationTrajectorySet
         
         % is dataByTrial empty?
         hasDataByTrial
+        
+        % nBases cell of nTrials x 1 logical masks
+        trialHasSpikesMaskByBasis
         
         % has one of the storeDataRandomized* methods been called to
         % populate dataMeanRandomized?
@@ -696,7 +707,14 @@ classdef PopulationTrajectorySet
                 pset.minTrialsForTrialAveraging, pset.minFractionTrialsForTrialAveraging*100);
             tcprintf('inline', '{yellow}Time Delta: {none}%g ms, {yellow}Spike Filter: {none}%s\n', ...
                 pset.timeDelta, pset.spikeFilter.getDescription);
-            
+            if pset.ignoreAllZeroSpikeTrials
+                zeroSpikeMode = 'ignore all';
+            elseif pset.ignoreLeadingTrailingZeroSpikeTrials
+                zeroSpikeMode = 'ignore leading and trailing';
+            else
+                zeroSpikeMode = 'keep all';
+            end
+            tcprintf('inline', '{yellow}Zero Spike Trial Mode: {none}%s\n', zeroSpikeMode);
             if pset.hasDataRandomized
                 tcprintf('inline', '{yellow}Data Randomized: {none}%d random samples, {red}%s\n', ...
                     pset.nRandomSamples, pset.conditionDescriptorRandomized.randomizationDescription);
@@ -831,6 +849,20 @@ classdef PopulationTrajectorySet
         function pset = set.minTrialsForTrialAveraging(pset, v)
             % only affects trial averaging
             pset.minTrialsForTrialAveraging = v;
+            pset = pset.invalidateTrialAveragedData();
+        end
+        
+        function pset = set.ignoreAllZeroSpikeTrials(pset, tf)
+            % only affects trial averaging
+            assert(islogical(tf) && isscalar(tf));
+            pset.ignoreAllZeroSpikeTrials = tf;
+            pset = pset.invalidateTrialAveragedData();
+        end
+        
+        function pset = set.ignoreLeadingTrailingZeroSpikeTrials(pset, tf)
+            % only affects trial averaging
+            assert(islogical(tf) && isscalar(tf));
+            pset.ignoreLeadingTrailingZeroSpikeTrials = tf;
             pset = pset.invalidateTrialAveragedData();
         end
         
@@ -2403,22 +2435,60 @@ classdef PopulationTrajectorySet
             c.tMaxByTrial = tMaxByTrial;
         end
         
+        function masks = get.trialHasSpikesMaskByBasis(pset)
+            if ~pset.hasDataByTrial
+                masks = {};
+            else
+                masks = cellvec(pset.nBases);
+%                 prog = ProgressBar(pset.nBases, 'Computing has spikes by trial for each basis');
+                for iBasis = 1:pset.nBases
+
+                    isNonNanZero = @(x) ~isnan(x) & x~=0;
+                    masksByAlign = cellfun(@(x) isNonNanZero(nanmax(x, [], 2)), pset.dataByTrial(iBasis, :), 'UniformOutput', false);
+                    masksCat = cat(2, masksByAlign{:});
+                    maskAny = any(masksCat, 2);
+                    masks{iBasis} = maskAny;
+                end
+            end
+        end
+        
         function buildDataNTrials(pset)
             % computes and stores dataNTrials and dataValid into odc
             
             trialLists = cell(pset.nBases, pset.nConditions);
             [dataValid, dataNTrials] = deal(nan(pset.nAlign, pset.nBases, pset.nConditions));
             
+            hasSpikesByBasis = pset.trialHasSpikesMaskByBasis;
             prog = ProgressBar(pset.nBases, 'Computing trial-counts by condition');
             for iBasis = 1:pset.nBases
                 prog.update(iBasis); 
+                if ~pset.basisValid(iBasis), continue, end;
                 % note, this src will not be aligned to this iAlign,
                 % but this isn't necessary since we've already
                 % extracted the aligned data
                 src = pset.dataSources{pset.basisDataSourceIdx(iBasis)};
                 
-                trialLists(iBasis, :) = src.conditionInfo.listByCondition(:);
-                nTrialsByCondition = cellfun(@numel, src.conditionInfo.listByCondition);
+                listsThis = src.conditionInfo.listByCondition(:);
+                
+                % filter out trials that don't have spikes, or lie outside
+                % the band of trials with spikes
+                if pset.ignoreAllZeroSpikeTrials || pset.ignoreLeadingTrailingZeroSpikeTrials
+                    if pset.ignoreAllZeroSpikeTrials
+                        keepTrials = find(hasSpikesByBasis{iBasis});
+                    else
+                        mask = hasSpikesByBasis{iBasis};
+                        firstNonZero = find(mask, 1, 'first');
+                        lastNonZero = find(mask, 1, 'last');
+                        keepTrials = firstNonZero:lastNonZero;
+                    end
+                    
+                    for iC = 1:numel(listsThis)
+                        listsThis{iC} = intersect(listsThis{iC}, keepTrials);
+                    end
+                end
+                
+                trialLists(iBasis, :) = listsThis;
+                nTrialsByCondition = cellfun(@numel, trialLists(iBasis, :));
                 nTrialsByCondition = nTrialsByCondition(:);
                 
                 for iAlign = 1:pset.nAlign
@@ -2594,6 +2664,7 @@ classdef PopulationTrajectorySet
             
             trialLists = pset.trialLists;
             
+            trialHasSpikesMaskByBasis = pset.trialHasSpikesMaskByBasis;
             for iAlign = 1:pset.nAlign
                 if alignInvalid(iAlign)
                     continue;
@@ -2642,6 +2713,9 @@ classdef PopulationTrajectorySet
                     % nTime data matrix
                     byTrialValid = byTrial(:, tMaskValid);
                     
+                    % IMPORTANT no need to remove zero spike trials since they are
+                    % omitted in trialLists already
+                      
                     byCondition = cellfun(@(idx) byTrialValid(idx,:), trialLists(iBasis, :)', ...
                         'UniformOutput', false);
                     
@@ -4481,10 +4555,9 @@ classdef PopulationTrajectorySet
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.addParameter('validBasesOnly', false, @islogical);
             p.addParameter('message', 'Extracting grouped trial data matrix by basis', @ischar);
-            p.addParameter('nanZeroSpikeTrials', false, @islogical); % if no spikes occur on a trial, mark the whole trial as NaN
             p.parse(varargin{:});
             
-            assert(p.hasDataByTrial, 'PopulationTrajectorySet must have dataByTrial');
+            assert(pset.hasDataByTrial, 'PopulationTrajectorySet must have dataByTrial');
             
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
@@ -4539,11 +4612,6 @@ classdef PopulationTrajectorySet
                     % grab the valid time portion of the nTrials x
                     % nTime data matrix
                     dataByTrial{iBasisIdx, iAlignIdx} = pset.dataByTrial{iBasis, iAlign}(:, tMaskValid);
-                    
-                    if p.Results.nanZeroSpikeTrials
-                        hasSpikes = max(dataByTrial{iBasisIdx, iAlignIdx}, [], 2) > 0;
-                        dataByTrial{iBasisIdx, iAlignIdx}(~hasSpikes, :) = NaN;
-                    end
                 end
                 prog.finish();
             end
