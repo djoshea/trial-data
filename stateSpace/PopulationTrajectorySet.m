@@ -4481,7 +4481,10 @@ classdef PopulationTrajectorySet
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.addParameter('validBasesOnly', false, @islogical);
             p.addParameter('message', 'Extracting grouped trial data matrix by basis', @ischar);
+            p.addParameter('nanZeroSpikeTrials', false, @islogical); % if no spikes occur on a trial, mark the whole trial as NaN
             p.parse(varargin{:});
+            
+            assert(p.hasDataByTrial, 'PopulationTrajectorySet must have dataByTrial');
             
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
@@ -4536,6 +4539,11 @@ classdef PopulationTrajectorySet
                     % grab the valid time portion of the nTrials x
                     % nTime data matrix
                     dataByTrial{iBasisIdx, iAlignIdx} = pset.dataByTrial{iBasis, iAlign}(:, tMaskValid);
+                    
+                    if p.Results.nanZeroSpikeTrials
+                        hasSpikes = max(dataByTrial{iBasisIdx, iAlignIdx}, [], 2) > 0;
+                        dataByTrial{iBasisIdx, iAlignIdx}(~hasSpikes, :) = NaN;
+                    end
                 end
                 prog.finish();
             end
