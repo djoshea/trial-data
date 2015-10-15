@@ -225,19 +225,19 @@ classdef PopulationTrajectorySetBuilder
     
     methods(Static)
         function [toCopy, toCheckNonEmpty] = listFieldsSingleTrial()
-            toCopy = {PopulationTrajectorySetBuilder.fSettings, ...
+            toCopy = [PopulationTrajectorySetBuilder.fSettings, ...
                 PopulationTrajectorySetBuilder.fDescriptors, ...
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
                 PopulationTrajectorySetBuilder.fDataSourceInfo, ...
                 PopulationTrajectorySetBuilder.fSingleTrial, ...
                 PopulationTrajectorySetBuilder.fTrialAvg, ...
-                PopulationTrajectorySetBuilder.fTrialAvgRandomized};
+                PopulationTrajectorySetBuilder.fTrialAvgRandomized];
             
-            toCheckNonEmpty = {PopulationTrajectorySetBuilder.fDescriptors, ...
+            toCheckNonEmpty = [PopulationTrajectorySetBuilder.fDescriptors, ...
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
                 PopulationTrajectorySetBuilder.fDataSourceInfo, ...
                 PopulationTrajectorySetBuilder.fSingleTrial, ...
-                PopulationTrajectorySetBuilder.fTrialAvg};
+                PopulationTrajectorySetBuilder.fTrialAvg];
         end
         
         function [toCopy, toCheckNonEmpty] = listFieldsTrialAverage(varargin)
@@ -245,17 +245,17 @@ classdef PopulationTrajectorySetBuilder
             p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
             p.parse(varargin{:});
             
-            extra = cell(0, 1);
+            extra = cell(1, 0);
             if p.Results.includeDiffTrialsNoise
                 extra{end+1} = PopulationTrajectorySetBuilder.fDiffTrialsNoise;
             end
             
-            toCopy = {PopulationTrajectorySetBuilder.fSettings, ...
+            toCopy = [PopulationTrajectorySetBuilder.fSettings, ...
                 PopulationTrajectorySetBuilder.fDescriptors, ...
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
                 PopulationTrajectorySetBuilder.fTrialAvg, ...
-                PopulationTrajectorySetBuilder.fTrialAvgRandomized
-                extra{:}};
+                PopulationTrajectorySetBuilder.fTrialAvgRandomized, ...
+                extra{:}];
             
             toCheckNonEmpty = {};
         end
@@ -273,7 +273,7 @@ classdef PopulationTrajectorySetBuilder
                     PopulationTrajectorySetBuilder.fBasisInfo, ...
                     PopulationTrajectorySetBuilder.fDataSourceInfo, ...
                     PopulationTrajectorySetBuilder.fSingleTrial, ...
-                    PopulationTrajectorySetBuilder.fTrialAvg ...
+                    PopulationTrajectorySetBuilder.fTrialAvg, ...
                     PopulationTrajectorySetBuilder.fTrialAvgRandomized
                     ]   ;
             end
@@ -337,7 +337,7 @@ classdef PopulationTrajectorySetBuilder
         function pset = buildManualWithSingleTrialData(bld)
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.listFieldsSingleTrial();
             bld.assertNonEmpty(toCheckNonEmpty{:});
-            pset = bld.buildManualWithFields(toCopy{:});
+            pset = bld.buildManualWithFields(toCopy);
         end
         
         function pset = buildManualWithTrialAveragedData(bld, varargin)
@@ -349,7 +349,7 @@ classdef PopulationTrajectorySetBuilder
                 'includeDiffTrialsNoise', p.Results.includeDiffTrialsNoise);
             
             bld.assertNonEmpty(toCheckNonEmpty{:});
-            pset = bld.buildManualWithFields(toCopy{:});
+            pset = bld.buildManualWithFields(toCopy);
         end
     end
     
@@ -365,17 +365,14 @@ classdef PopulationTrajectorySetBuilder
             end
         end
         
-        function pset = buildManualWithFields(bld, varargin)
+        function pset = buildManualWithFields(bld, fields)
             pset = PopulationTrajectorySet();
             pset.dataSourceManual = true;
             
-            for iArg = 1:numel(varargin)
-                fields = varargin{iArg};
-                for iFld = 1:numel(fields)
-                    fld = fields{iFld};
-                    pset.(fld) = bld.(fld);
-                end 
-            end
+            for iFld = 1:numel(fields)
+                fld = fields{iFld};
+                pset.(fld) = bld.(fld);
+            end 
             
             pset = pset.initialize();
         end
