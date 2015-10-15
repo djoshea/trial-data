@@ -33,7 +33,9 @@ classdef StateSpaceProjection
         
         basisNamesSource % nBasesSource x 1 cellstr of basis names from the pset I was built off
         dataUnitsSource = '';
-        
+    end
+    
+    properties
         % nBasesProj x 1 cell of basis names, optional, that I will pick for the basis names of the projected 
         % output. If set, this will override the method "getBasisNames"
         % which typically picks these names based on the input pset.
@@ -97,6 +99,11 @@ classdef StateSpaceProjection
                 names = arrayfun(@(i) sprintf('Basis %d', i), ...
                         (1:proj.nBasesProj)', 'UniformOutput', false);
             end
+        end
+        
+        function proj = set.basisNamesProj(proj, names)
+            assert(numel(names) == proj.nBasesProj);
+            proj.basisNamesProj = names;
         end
     end
     
@@ -519,4 +526,29 @@ classdef StateSpaceProjection
         
     end
     
+    
+    methods(Static)
+        function proj = concatenate(pset, projCell)
+            % proj = concatenate(pset, projCell)
+            decoders = cellfun(@(p) p.decoderKbyN, projCell, 'UniformOutput', false);
+            decoderKbyN = cat(1, decoders{:});
+            encoders = cellfun(@(p) p.encoderNbyK, projCell, 'UniformOutput', false);
+            encoderNbyK = cat(2, encoders{:});
+            
+            basisValidProjCell = cellfun(@(p) p.basisValidProj, projCell, 'UniformOutput', false);
+            basisValidProj = cat(1, basisValidProjCell{:});
+            basisInvalidCauseProjCell = cellfun(@(p) p.basisInvalidCauseProj, projCell, 'UniformOutput', false);
+            basisInvalidCauseProj = cat(1, basisInvalidCauseProjCell{:});
+            basisNamesProjCell = cellfun(@(p) p.basisNamesProj, projCell, 'UniformOutput', false);
+            basisNamesProj = cat(1, basisNamesProjCell{:});
+            
+            trNormPostCell = cellfun(@(p) p.translationNormalizationPostProject, projCell, 'UniformOutput', false);
+            
+            proj = ProjManual.buildFromEncoderDecoder(pset, encoderNbyK, decoderKbyN);
+            proj.translationNormalizationPostProject = StateSpaceTranslationNormalization.concatenate(trNormPostCell);
+            proj.basisValidProj = basisValidProj;
+            proj.basisInvalidCauseProj = basisInvalidCauseProj;
+            proj.basisNamesProj = basisNamesProj;
+        end
+    end
 end

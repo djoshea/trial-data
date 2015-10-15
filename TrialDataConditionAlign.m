@@ -3013,12 +3013,12 @@ classdef TrialDataConditionAlign < TrialData
             % location to start the next alignment.
             %
             % tvecCell is a nAlign x 1 cell of:
-            %    time vectors, for common time across trials, or
-            %    nTrials x 1 cell of time vectors, for different times
-            %    across trials.
+            %     time vectors, for common time across trials, or
+            %     nTrials x 1 cell of time vectors, for different times
+            %     across trials.
             %  
             % Parameters:
-            %  alignIdx : vector indicating which alignments to include
+            %     alignIdx : vector indicating which alignments to include
             
             p = inputParser();
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);

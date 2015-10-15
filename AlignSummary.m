@@ -885,6 +885,7 @@ classdef AlignSummary
             p.addParameter('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             p.addParameter('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
             p.addParameter('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
+            p.addParameter('tUnits', 'ms', @ischar); % units for time
             p.addParameter('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);

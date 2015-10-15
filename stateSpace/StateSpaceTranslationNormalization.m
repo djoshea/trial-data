@@ -214,6 +214,26 @@ classdef StateSpaceTranslationNormalization
             
             obj = obj.assertValid();
         end
+        
+        function obj = concatenate(trNormCell)
+            % be sure to call this superclass method if overriding and to
+            % not break the basic behavior
+            
+            emptyMask = cellfun(@isempty, trNormCell);
+            if all(emptyMask)
+                obj = [];
+                return;
+            end
+            trNormCell = trNormCell(~emptyMask);
+            
+            translations = cellfun(@(t) t.translationByBasis, trNormCell, 'UniformOutput', false);
+            translationByBasis = cat(1, translations{:});
+            norms = cellfun(@(t) t.normalizationByBasis, trNormCell, 'UniformOutput', false);
+            normByBasis = cat(1, norms{:});
+            
+            obj = StateSpaceTranslationNormalization.buildManual('translationByBasis', translationByBasis, ...
+                'normalizationByBasis', normByBasis);
+        end
     end
     
     methods(Sealed) % apply normalization and/or normalization to data as a vector or cell array

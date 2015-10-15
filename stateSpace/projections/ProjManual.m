@@ -40,11 +40,15 @@ classdef ProjManual < StateSpaceProjection
     end
     
     methods(Static)
+        function [proj, stats, psetPrepared] = buildFromEncoderDecoder(pset, encoderNbyK, decoderKbyN, varargin)
+            [proj, stats, psetPrepared] = ProjManual.createFrom(pset, 'encoderNbyK', encoderNbyK, 'decoderKbyN', decoderKbyN, varargin{:});
+        end
+        
         function [proj, stats, psetPrepared] = buildFromDecoderKbyN(pset, decoderKbyN, varargin)
             % choose encoder such that encoder * decoder forms the
             % projection matrix onto the row space of the decoder
             encoderNbyK = decoderKbyN' * (decoderKbyN * decoderKbyN')^(-1);
-            [proj, stats, psetPrepared] = ProjManual.createFrom(pset, 'encoderNbyK', encoderNbyK, 'decoderKbyN', decoderKbyN, varargin{:});
+            [proj, stats, psetPrepared] = ProjManual.buildFromEncoderDecoder(pset, encoderNbyK, decoderKbyN, varargin{:});
         end
         
         function proj = buildIdentityFor(pset)
