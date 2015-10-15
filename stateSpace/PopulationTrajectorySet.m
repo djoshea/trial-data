@@ -1301,7 +1301,7 @@ classdef PopulationTrajectorySet
             
             widenMin = ismember(p.Results.mode, {'both', 'min'});
             widenMax = ismember(p.Results.mode, {'both', 'max'});
-            if widenMax & widenMin
+            if widenMax && widenMin
                 dropFraction = p.Results.dropFraction / 2;
             else
                 dropFraction = p.Results.dropFraction;
@@ -1828,11 +1828,15 @@ classdef PopulationTrajectorySet
             end
         end
 
-        function psetManual = getAsManualTrialAveraged(pset)
+        function psetManual = getAsManualTrialAveraged(pset, varargin)
+            p = inputParser();
+            p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
+            p.parse(varargin{:});
+            
             if pset.dataSourceManual
                 psetManual = pset;
             else
-                psetManual = PopulationTrajectorySetBuilder.convertToManualWithTrialAveragedData(pset);
+                psetManual = PopulationTrajectorySetBuilder.convertToManualWithTrialAveragedData(pset, p.Results);
             end
         end
         
@@ -2724,7 +2728,6 @@ classdef PopulationTrajectorySet
             
             trialLists = pset.trialLists;
             
-            trialHasSpikesMaskByBasis = pset.trialHasSpikesMaskByBasis;
             for iAlign = 1:pset.nAlign
                 if alignInvalid(iAlign)
                     continue;
@@ -4341,9 +4344,10 @@ classdef PopulationTrajectorySet
             au.axisMarginLeft = p.Results.axisMarginLeft;
             axis off;
             
-            pset.setupTimeAxisMultiAlign('axh', axh, 'doUpdate', true, 'markShowOnAxis', p.Results.markShowOnAxis, ...
-                'intervalShowOnAxis', p.Results.intervalShowOnAxis, ...
-                'showRangesOnAxis', p.Results.showRangesOnAxis, ...
+            pset.setupTimeAxisMultiAlign('axh', axh, 'doUpdate', true, ...
+                'showMarks', p.Results.markShowOnAxis, ...
+                'showIntervals', p.Results.intervalShowOnAxis, ...
+                'showRanges', p.Results.showRangesOnAxis, ...
                 'timeAxisStyle', p.Results.timeAxisStyle, ...
                 'tOffsetByAlign', tAlignZero, ...
                 'alignIdx', alignIdx, 'basisIdx', basisIdx);
@@ -4360,64 +4364,34 @@ classdef PopulationTrajectorySet
             p.addParamValue('tOffsetByAlign', pset.offsetsTimeDataMeanForPlotting, @isvector);
             p.addParamValue('axh', gca, @ishandle);
             p.addParamValue('doUpdate', true, @islogical);
-            p.addParameter('markShowOnAxis', true, @islogical);
-            p.addParameter('intervalShowOnAxis', true, @islogical);
-            p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis            
+            p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showIntervals', true, @islogical);
+            p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis            
             p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
             p.addParameter('alignIdx', 1:pset.nAlign, @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.parse(varargin{:});
             
-            axh = p.Results.axh;
-            
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
-            nAlignUsed = numel(alignIdx);
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             
-            au = AutoAxis(axh);
-            switch p.Results.timeAxisStyle
-                case 'tickBridge'
-                    for iAlign = 1:nAlignUsed
-                        idxAlign = alignIdx(iAlign);
-                        if numel(basisIdx) == 1
-                            as = pset.alignSummaryData{pset.basisDataSourceIdx(basisIdx), idxAlign};
-                        else
-                            as = pset.alignSummaryAggregated{idxAlign};
-                        end
-                        tvec = pset.tvecDataMean{idxAlign};
-                        offset = p.Results.tOffsetByAlign(iAlign);
-                        
-                        as.setupTimeAutoAxis('axh', axh, 'style', 'tickBridge', ...
-                            'tMin', min(tvec), 'tMax', max(tvec), 'tOffsetZero', offset, ...
-                            'tUnits', pset.timeUnitName, ...
-                            'showRanges', p.Results.showRangesOnAxis);
-                    end
-                    
-                case 'marker'
-                    for iAlign = 1:nAlignUsed
-                        idxAlign = alignIdx(iAlign);
-                        if numel(basisIdx) == 1 && ~isempty(pset.basisDataSourceIdx)
-                            as = pset.alignSummaryData{pset.basisDataSourceIdx(basisIdx), idxAlign};
-                        else
-                            as = pset.alignSummaryAggregated{idxAlign};
-                        end
-                        tvec = pset.tvecDataMean{idxAlign};
-                        offset = p.Results.tOffsetByAlign(iAlign);
-                        
-                        as.setupTimeAutoAxis('axh', axh, 'style', 'marker', ...
-                            'tMin', min(tvec), 'tMax', max(tvec), 'tOffsetZero', offset, ...
-                            'tUnits', pset.timeUnitName, ...
-                            'showMarks', p.Results.markShowOnAxis, ...
-                            'showIntervals', p.Results.intervalShowOnAxis, ...
-                            'showRanges', p.Results.showRangesOnAxis);
-                    end
-                    au.addAutoScaleBarX();
+            % if we're only using one basis, use that basis' align summary
+            % otherwise just use the aggregate over all bases to save time
+            if numel(basisIdx) == 1 && ~isempty(pset.basisDataSourceIdx)
+                asSet = pset.alignSummaryData(pset.basisDataSourceIdx(basisIdx), alignIdx);
+            else
+                asSet = pset.alignSummaryAggregated(alignIdx);
             end
             
-            if p.Results.doUpdate
-                au.update();
-                au.installCallbacks();
-            end
+            AlignSummary.setupTimeAutoAxisForMultipleAligns(asSet, pset.tvecDataMean, ...
+                'tOffsetByAlign', p.Results.tOffsetByAlign, ...
+                'axh', p.Results.axh, ...
+                'doUpdate', p.Results.doUpdate, ...
+                'showMarks', p.Results.showMarks, ...
+                'showIntervals', p.Results.showIntervals, ...
+                'showRanges', p.Results.showRanges, ...  
+                'timeAxisStyle', p.Results.timeAxisStyle, ...
+                'tUnits', pset.timeUnitName);
         end
 
         function plotSingleBasis(pset, basisIdx, varargin)

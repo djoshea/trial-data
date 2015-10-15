@@ -56,6 +56,8 @@ classdef PopulationTrajectorySetBuilder
         dataValid
         alignSummaryData
         basisAlignSummaryLookup
+        
+        %% fDiffTrialsNoise
         dataDifferenceOfTrialsScaledNoiseEstimate
         
         %% fTrialAvgRandomized
@@ -84,8 +86,9 @@ classdef PopulationTrajectorySetBuilder
         fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
                 'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
                 'dataNTrials', 'dataValid', ...
-                'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists', ...
-                'dataDifferenceOfTrialsScaledNoiseEstimate'}
+                'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists'};
+            
+        fDiffTrialsNoise = {'dataDifferenceOfTrialsScaledNoiseEstimate'};
         
         fTrialAvgRandomized = {'dataMeanRandomized', 'dataSemRandomized'};
         
@@ -220,37 +223,41 @@ classdef PopulationTrajectorySetBuilder
         end
     end
     
-    methods
-        function pset = buildManualWithSingleTrialData(bld)
-            bld.assertNonEmpty(...
-                PopulationTrajectorySetBuilder.fDescriptors, ...
-                PopulationTrajectorySetBuilder.fBasisInfo, ...
-                PopulationTrajectorySetBuilder.fDataSourceInfo, ...
-                PopulationTrajectorySetBuilder.fSingleTrial, ...
-                PopulationTrajectorySetBuilder.fTrialAvg);
-            
-            pset = bld.buildManualWithFields(...
-                PopulationTrajectorySetBuilder.fSettings, ...
+    methods(Static)
+        function [toCopy, toCheckNonEmpty] = listFieldsSingleTrial()
+            toCopy = {PopulationTrajectorySetBuilder.fSettings, ...
                 PopulationTrajectorySetBuilder.fDescriptors, ...
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
                 PopulationTrajectorySetBuilder.fDataSourceInfo, ...
                 PopulationTrajectorySetBuilder.fSingleTrial, ...
                 PopulationTrajectorySetBuilder.fTrialAvg, ...
-                PopulationTrajectorySetBuilder.fTrialAvgRandomized);
+                PopulationTrajectorySetBuilder.fTrialAvgRandomized};
+            
+            toCheckNonEmpty = {PopulationTrajectorySetBuilder.fDescriptors, ...
+                PopulationTrajectorySetBuilder.fBasisInfo, ...
+                PopulationTrajectorySetBuilder.fDataSourceInfo, ...
+                PopulationTrajectorySetBuilder.fSingleTrial, ...
+                PopulationTrajectorySetBuilder.fTrialAvg};
         end
         
-        function pset = buildManualWithTrialAveragedData(bld)
-%             bld.assertNonEmpty(...
-%                 PopulationTrajectorySetBuilder.fDescriptors, ...
-%                 PopulationTrajectorySetBuilder.fBasisInfo, ...
-%                 PopulationTrajectorySetBuilder.fTrialAvg);
+        function [toCopy, toCheckNonEmpty] = listFieldsTrialAverage(varargin)
+            p = inputParser();
+            p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
+            p.parse(varargin{:});
             
-            pset = bld.buildManualWithFields(...
-                PopulationTrajectorySetBuilder.fSettings, ...
+            extra = cell(0, 1);
+            if p.Results.includeDiffTrialsNoise
+                extra{end+1} = PopulationTrajectorySetBuilder.fDiffTrialsNoise;
+            end
+            
+            toCopy = {PopulationTrajectorySetBuilder.fSettings, ...
                 PopulationTrajectorySetBuilder.fDescriptors, ...
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
                 PopulationTrajectorySetBuilder.fTrialAvg, ...
-                PopulationTrajectorySetBuilder.fTrialAvgRandomized);
+                PopulationTrajectorySetBuilder.fTrialAvgRandomized
+                extra{:}};
+            
+            toCheckNonEmpty = {};
         end
     end
     
@@ -312,14 +319,37 @@ classdef PopulationTrajectorySetBuilder
                   PopulationTrajectorySetBuilder.fDescriptors ]);
         end
         
-        function psetManual = convertToManualWithSingleTrialData(pset)
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset);
-            psetManual = bld.buildManualWithSingleTrialData();
+        function psetManual = convertToManualWithSingleTrialData(pset, varargin)
+            fields = PopulationTrajectorySetBuilder.listFieldsSingleTrial(varargin{:});
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, fields);
+            psetManual = bld.buildManualWithSingleTrialData(varargin{:});
         end
         
-        function psetManual = convertToManualWithTrialAveragedData(pset)
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset);
-            psetManual = bld.buildManualWithTrialAveragedData();
+        function psetManual = convertToManualWithTrialAveragedData(pset, varargin)
+            % params include 'includeDiffTrialsNoise'
+            fields = PopulationTrajectorySetBuilder.listFieldsTrialAverage(varargin{:});
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, fields);
+            psetManual = bld.buildManualWithTrialAveragedData(varargin{:});
+        end
+    end
+    
+    methods
+        function pset = buildManualWithSingleTrialData(bld)
+            [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.listFieldsSingleTrial();
+            bld.assertNonEmpty(toCheckNonEmpty{:});
+            pset = bld.buildManualWithFields(toCopy{:});
+        end
+        
+        function pset = buildManualWithTrialAveragedData(bld, varargin)
+            p = inputParser();
+            p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
+            p.parse(varargin{:});
+            
+            [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.listFieldsTrialAverage(...
+                'includeDiffTrialsNoise', p.Results.includeDiffTrialsNoise);
+            
+            bld.assertNonEmpty(toCheckNonEmpty{:});
+            pset = bld.buildManualWithFields(toCopy{:});
         end
     end
     

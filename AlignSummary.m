@@ -1314,9 +1314,9 @@ classdef AlignSummary
             end
         end
         
-        function [hMarks, hIntervals] = drawOnRasterByCondition(ad, varargin)
-            error('Not yet implemented'); % WIP copied from AlignInfo
-            % annotate raster plots with markers and intervals located near each condition 
+%         function [hMarks, hIntervals] = drawOnRasterByCondition(ad, varargin)
+%             error('Not yet implemented'); % WIP copied from AlignInfo
+%             % annotate raster plots with markers and intervals located near each condition 
             % according to the labels indicated
             % by this align descriptor. 
             %
@@ -1435,7 +1435,7 @@ classdef AlignSummary
 %                     TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
 %                 end
 %             end
-        end
+%         end
         
         % used to annotate a time axis with the relevant start/stop/zero/marks
         % non-fixed marks as <markLabel> unless the range is less than a specified 
@@ -1487,5 +1487,57 @@ classdef AlignSummary
 
     end
     
+    methods(Static) % tools for interacting with multiple alignments
+        function setupTimeAutoAxisForMultipleAligns(asSet, tvecByAlign, varargin)
+            nAlign = numel(asSet);
+            p = inputParser();
+            p.addParamValue('tOffsetByAlign', zerosvec(nAlign), @isvector);
+            p.addParamValue('axh', gca, @ishandle);
+            p.addParamValue('doUpdate', true, @islogical);
+            p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showIntervals', true, @islogical);
+            p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis            
+            p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
+            p.addParameter('tUnits', 'ms', @ischar); % time units
+            p.parse(varargin{:});
+            
+            axh = p.Results.axh;
+            
+            au = AutoAxis(axh);
+            switch p.Results.timeAxisStyle
+                case 'tickBridge'
+                    for iAlign = 1:nAlign
+                        as = asSet{iAlign};
+                        tvec = tvecByAlign{iAlign};
+                        offset = p.Results.tOffsetByAlign(iAlign);
+                        
+                        as.setupTimeAutoAxis('axh', axh, 'style', 'tickBridge', ...
+                            'tMin', nanmin(tvec), 'tMax', nanmax(tvec), 'tOffsetZero', offset, ...
+                            'tUnits', p.Results.tUnits, ...
+                            'showRanges', p.Results.showRanges);
+                    end
+                    
+                case 'marker'
+                    for iAlign = 1:nAlign
+                        as = asSet{iAlign};
+                        tvec = tvecByAlign{iAlign};
+                        offset = p.Results.tOffsetByAlign(iAlign);
+                        
+                        as.setupTimeAutoAxis('axh', axh, 'style', 'marker', ...
+                            'tMin', nanmin(tvec), 'tMax', nanmax(tvec), 'tOffsetZero', offset, ...
+                            'tUnits', p.Results.tUnits, ...
+                            'showMarks', p.Results.showMarks, ...
+                            'showIntervals', p.Results.showIntervals, ...
+                            'showRanges', p.Results.showRanges);
+                    end
+                    au.addAutoScaleBarX();
+            end
+            
+            if p.Results.doUpdate
+                au.update();
+                au.installCallbacks();
+            end
+        end
+    end
 
 end
