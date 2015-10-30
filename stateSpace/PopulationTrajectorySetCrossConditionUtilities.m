@@ -110,7 +110,13 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p.addParameter('newNamesAlongAxis', {}, @iscellstr);
             p.addParameter('removeAxis', false, @islogical);
             p.addParameter('conditionAppearanceFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
-            p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
+            
+            % if true, ignore NaNs by replacing them with zero. by enabling
+            % this flag, you allow combined data to be valid if _any_ of
+            % the conditions that contribute to the combination are valid.
+            % If false, all conditions that contribute must be valid for
+            % the combined data to be valid
+            p.addParameter('replaceNaNWithZero', false, @islogical); 
             
             % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis
             % this enables nanmean like computations
@@ -168,7 +174,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 % use sd1+2 = sqrt(sd1^2 / n1 + sd2^2 / n2) formula
                 % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
                 tensorSem = pset.buildNbyTAbyConditionAttributes('type', 'sem', 'alignIdx', iAlign);
-                tensorSemReweighted = sqrt( TensorUtils.linearCombinationAlongDimension(tensorSem.^2, aIdx+2, abs(wNbyO)) );
+                tensorSemReweighted = sqrt( TensorUtils.linearCombinationAlongDimension(tensorSem.^2, aIdx+2, abs(wNbyO), ...
+                    'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                    'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions) );
                 % back to N x C x TA
                 b.dataSem{iAlign} = permute(tensorSemReweighted(:, :, :), [1 3 2]);
             end
@@ -179,12 +187,28 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % simply add them together to get the new scaled estimate
             scaledNoiseEstimate_NbyTAbyC = pset.dataDifferenceOfTrialsScaledNoiseEstimate;
             scaledNoiseEstimate_NbyTAbyAttr = reshape(scaledNoiseEstimate_NbyTAbyC, [pset.nBases, sum(pset.nTimeDataMean), makerow(pset.conditionsSize)]);
-            newScaledNoiseEstimate_NbyTAbyAttr = TensorUtils.linearCombinationAlongDimension(scaledNoiseEstimate_NbyTAbyAttr, aIdx+2, abs(wNbyO));
+            newScaledNoiseEstimate_NbyTAbyAttr = TensorUtils.linearCombinationAlongDimension(...
+                scaledNoiseEstimate_NbyTAbyAttr, aIdx+2, abs(wNbyO), ...
+                'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions);
             b.dataDifferenceOfTrialsScaledNoiseEstimate = reshape(newScaledNoiseEstimate_NbyTAbyAttr, ...
                 [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew]);
             
             % diff randomized data if present, recompute intervals
             if ~isempty(pset.dataMeanRandomized)
+                % setup new condition descriptor, optionally drop the axis
+                % we're combining along, if the new size is 1
+                newCD = pset.conditionDescriptorRandomized.setAxisValueList(axisName, newNamesAlongAxis);
+                if p.Results.removeAxis
+                    assert(cNewAlongAxis == 1, 'New condition count along axis must be 1 in order to removeAxis');
+                    newCD = newCD.removeAxis(aIdx);
+                end
+                % update the condition appearance fn if specified
+                if ~ismember('conditionAppearanceFn', p.UsingDefaults) % we dont just check isempty b/c the user may or may not want to set it to empty
+                    newCD.appearanceFn = p.Results.conditionAppearanceFn;
+                end
+                b.conditionDescriptorRandomized = newCD;
+                
                 [b.dataMeanRandomized, b.dataSemRandomized] = deal(cell(pset.nAlign, 1));
                 for iAlign = 1:pset.nAlign
                     % dataMeanRandomized is N x C x TA x R (where R is number of random samples)
@@ -192,7 +216,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     meanTensor = reshape(pset.dataMeanRandomized{iAlign}, ...
                         [pset.nBases, makerow(pset.conditionsSize), pset.nTimeDataMean(iAlign), pset.nRandomSamples]);
                     
-                    meanTensorReweighted = TensorUtils.linearCombinationAlongDimension(meanTensor, aIdx+1, wNbyO); 
+                    meanTensorReweighted = TensorUtils.linearCombinationAlongDimension(meanTensor, aIdx+1, wNbyO, ...
+                        'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                        'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions); 
                     
                     % back to N x C x TA x R
                     b.dataMeanRandomized{iAlign} = reshape(meanTensorReweighted, [pset.nBases, nConditionsNew, pset.nTimeDataMean(iAlign), pset.nRandomSamples]);
@@ -205,12 +231,25 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     semTensor = reshape(pset.dataSemRandomized{iAlign}, ...
                         [pset.nBases, makerow(pset.conditionsSize), pset.nTimeDataMean(iAlign), pset.nRandomSamples]);
                     
-                    semTensorReweighted = TensorUtils.linearCombinationAlongDimension(semTensor, aIdx+1, wNbyO); 
+                    semTensorReweighted = TensorUtils.linearCombinationAlongDimension(semTensor, aIdx+1, wNbyO, ...
+                        'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                        'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions); 
 
                     % back to N x C x TA x R
                     b.dataSemRandomized{iAlign} = reshape(semTensorReweighted, [pset.nBases, nConditionsNew, pset.nTimeDataMean(iAlign), pset.nRandomSamples]);
                     b.dataSemRandomized{iAlign}(~pset.basisValid, :, :, :) = NaN;
                 end
+                
+                % and scale randomized difference of trials
+                scaledNoiseEstimate_NbyTAbyCbyS = pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized;
+                scaledNoiseEstimate_NbyTAbyAttrbyS = reshape(scaledNoiseEstimate_NbyTAbyCbyS, ...
+                    [pset.nBases, sum(pset.nTimeDataMean), makerow(pset.conditionsSize), pset.nRandomSamples]);
+                newScaledNoiseEstimate_NbyTAbyAttrbyS = TensorUtils.linearCombinationAlongDimension(...
+                    scaledNoiseEstimate_NbyTAbyAttrbyS, aIdx+2, abs(wNbyO), ...
+                    'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                    'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions);
+                b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = reshape(newScaledNoiseEstimate_NbyTAbyAttrbyS, ...
+                [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew, pset.nRandomSamples]);
             end
             
             b.trialLists = {}; % no longer relevant
@@ -218,17 +257,24 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % A x N x C
             % for data valid, we need all input conditions to be valid for
             % output conditions to be valid, so we change wNbyO such that
-            % the linear combination will be 1 iff all bases that
-            % contribute to that output are valid.
+            % the linear combination will be 1 iff all/any bases that
+            % contribute to that output are valid. All is if
+            % replaceNanWithZero is false, any is if replaceNanWithZero is true
             wNbyO_forValid = bsxfun(@rdivide, wNbyO ~= 0, sum(wNbyO ~= 0, 2));
             [dataValidTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataValid, 3, pset.conditionsSize);
-            b.dataValid = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
-                dataValidTensor, aIdx+2, wNbyO_forValid) == 1, cdims);
+            
+            if p.Results.replaceNaNWithZero
+                b.dataValid = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
+                    dataValidTensor, aIdx+2, wNbyO_forValid) == 1, cdims);
+            else
+                b.dataValid = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
+                    dataValidTensor, aIdx+2, wNbyO_forValid) ~= 0, cdims);
+            end
             
             % sum trials from all included ocnditions
             [dataNTrialsTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataNTrials, 3, pset.conditionsSize);
             b.dataNTrials = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
-                dataNTrialsTensor, aIdx+2, wNbyO ~= 0), cdims);
+                dataNTrialsTensor, aIdx+2, wNbyO ~= 0, 'replaceNaNWithZero', p.Results.replaceNaNWithZero), cdims);
 
             % shrink the time windows over all considered conditions
             [tMinValidOld, cdims] = TensorUtils.reshapeDimsInPlace(pset.tMinValidByAlignBasisCondition, 3, pset.conditionsSize);
@@ -276,16 +322,16 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
             
+            % update condition descriptor
             cd = pset.conditionDescriptor;
             cd = cd.addAttribute(axisName, 'valueList', axisValueList);
             cd = cd.addAxis(axisName, 'valueList', axisValueList);
-            
             % update the condition appearance fn if specified
             if ~ismember('conditionAppearanceFn', p.UsingDefaults) % we dont just check isempty b/c the user may or may not want to set it to empty
                 cd.appearanceFn = p.Results.conditionAppearanceFn;
             end
-            
             b.conditionDescriptor = cd;
+            
             cAxis = cd.nAxes;
             
             cSize = pset.conditionsSize;
@@ -343,11 +389,24 @@ classdef PopulationTrajectorySetCrossConditionUtilities
 
             hasDataRandomized = cellfun(@(p) p.hasDataRandomized, psetCell);
             if all(hasDataRandomized)
+                % update condition descriptor
+                cd = pset.conditionDescriptorRandomized;
+                cd = cd.addAttribute(axisName, 'valueList', axisValueList);
+                cd = cd.addAxis(axisName, 'valueList', axisValueList);
+                % update the condition appearance fn if specified
+                if ~ismember('conditionAppearanceFn', p.UsingDefaults) % we dont just check isempty b/c the user may or may not want to set it to empty
+                    cd.appearanceFn = p.Results.conditionAppearanceFn;
+                end
+                b.conditionDescriptorRandomized = cd;
+                
                 debug('Concatenating data randomized\n');
                 for iAlign = 1:pset.nAlign
                     b.dataMeanRandomized{iAlign} = catConditionsFlat(psetCell, @(p) p.dataMeanRandomized{iAlign}, 2, cSize, cAxis);
                     b.dataSemRandomized{iAlign} = catConditionsFlat(psetCell, @(p) p.dataSemRandomized{iAlign}, 2, cSize, cAxis);
                 end
+                
+                % N x T x C by S
+                b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = catConditionsFlat(psetCell, @(p) p.dataDifferenceOfTrialsScaledNoiseEstimateRandomized, 3, cSize, cAxis);
             end
             
             psetCat = b.buildManualWithTrialAveragedData();

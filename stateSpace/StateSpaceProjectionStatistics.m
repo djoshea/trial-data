@@ -643,8 +643,9 @@ classdef StateSpaceProjectionStatistics
                     sRand(iR) = s.copyExcludingComputedStatistics(); %#ok<AGROW>
                     sRand(iR) = sRand(iR).computeStatistics(NvbyTAbyAttr, ...
                         decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams, ...
+                        'meanSubtract', p.Results.meanSubtract, ...
                         'verbose', false, ...
-                        'pcaBound', true, 'marginalize', true); %#ok<AGROW>
+                        'scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(:, :, :, iR)); %#ok<AGROW>
                 end
                 prog.finish();
                 
@@ -1202,6 +1203,7 @@ classdef StateSpaceProjectionStatistics
     
     methods % for computing statistics on randomized data
         function varargout = aggregateRandomizedStatistics(s, varargin)
+            % [agg1, agg2, ...] = s.aggregateRandomizedStatistics(s, prop1Name, prop2Name, ...)
             % for s.(propName), looks into s.statisticsRandomized and
             % aggregates these values along dimension 3
             

@@ -122,6 +122,15 @@ classdef PopulationTrajectorySet
         % tensors containing randomly generated dataMean
         dataMeanRandomized
         dataSemRandomized
+        
+        % nBases x sum(nTimeDataMean) (aka TA) x nConditions x nRandomSamples numeric array
+        % containing randomized samples of differences of pairs of trials,
+        % scaled by 1/sqrt(2*nTrials). These serve as a sample from the
+        % centered distribution of the estimation noise on the dataMean
+        % traces. These are used by StateSpaceProjectionStatistics in
+        % estimating a noise floor (buildDifferenceOfTrials)
+        % same as dataDifferenceOfTrialsScaledNoiseEstimate except for 
+        dataDifferenceOfTrialsScaledNoiseEstimateRandomized
     end
 
     % These properties store raw data sources (TrialDataConditionAlign instances)
@@ -674,8 +683,10 @@ classdef PopulationTrajectorySet
                 pset.odc = pset.odc.copy();
                 pset.odc.flushRandomizedTrialAveragedData();
             end
+            pset.conditionDescriptorRandomized = [];
             pset.dataMeanRandomized = {};
             pset.dataSemRandomized = {};
+            pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = [];
         end
         
         function pset = invalidateAlignSummaryData(pset)
@@ -1810,6 +1821,12 @@ classdef PopulationTrajectorySet
                     pset.dataSemRandomized = pset.dataSemRandomized(idx);
                     pset.dataIntervalLow = pset.dataIntervalLow(idx);
                     pset.dataIntervalHigh = pset.dataIntervalHigh(idx);
+                    
+                    if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
+                        dsplit = TensorUtils.splitAlongDimension(pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized, 2, pset.nTimeDataMean);
+                        dsplit = dsplit(idx);
+                        pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = cat(2, dsplit{:});
+                    end
                 end
 
                 
@@ -1906,9 +1923,14 @@ classdef PopulationTrajectorySet
             end
 
             % slice dataDifferenceOfTrialsScaledNoiseEstimate
-            tmaskCombined = cat(1, tmaskByAlign{:});
-            pb.dataDifferenceOfTrialsScaledNoiseEstimate = pb.dataDifferenceOfTrialsScaledNoiseEstimate(:, tmaskCombined, :);
+            if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
+                tmaskCombined = cat(1, tmaskByAlign{:});
+                pb.dataDifferenceOfTrialsScaledNoiseEstimate = pb.dataDifferenceOfTrialsScaledNoiseEstimate(:, tmaskCombined, :);
 
+                if pset.hasDataRandomized
+                    pb.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = pb.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(:, tmaskCombined, :, :);
+                end
+            end
             psetSliced = pb.buildManualWithSingleTrialData();
         end
     end
@@ -2122,7 +2144,8 @@ classdef PopulationTrajectorySet
                 if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
                     % since this is a difference between pairs of trials,
                     % we normalize here only
-                    pset.dataDifferenceOfTrialsScaledNoiseEstimate = trNorm.applyNormalizationToData(pset.dataDifferenceOfTrialsScaledNoiseEstimate);
+                    pset.dataDifferenceOfTrialsScaledNoiseEstimate = ...
+                        trNorm.applyNormalizationToData(pset.dataDifferenceOfTrialsScaledNoiseEstimate);
                 end
             else
                 % for auto-computed data, we can check whether the data has
@@ -2155,7 +2178,16 @@ classdef PopulationTrajectorySet
                     % we normalize here only
                     pset.dataDifferenceOfTrialsScaledNoiseEstimate = trNorm.applyNormalizationToData(pset.dataDifferenceOfTrialsScaledNoiseEstimate);
                 end
-
+            end
+            
+            % scale randomized data too
+            if pset.hasDataRandomized
+                pset.dataMeanRandomized = cellApplyToDataFn(pset.dataMeanRandomized);
+                pset.dataSemRandomized = cellApplyNormOnlyToDataFn(pset.dataSemRandomized);
+                if ~isempty(pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate)
+                    pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = ...
+                        trNorm.applyNormalizationToData(pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized);
+                end
             end
         end
         
@@ -2222,6 +2254,16 @@ classdef PopulationTrajectorySet
                 % not necessary to invalidate if we're careful about making
                 % updates to all derived quantities here.
                 %pset = pset.invalidateTrialAveragedData();
+            end
+            
+            % scale randomized data too
+            if pset.hasDataRandomized
+                pset.dataMeanRandomized = cellfun(@trNorm.undoTranslationNormalizationToData, pset.dataMeanRandomized, 'UniformOutput', false);
+                pset.dataSemRandomized = cellfun(@trNorm.undoNormalizationToData, pset.dataSemRandomized, 'UniformOutput', false);
+                if ~isempty(pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate)
+                    pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = ...
+                        trNorm.undoNormalizationToData(pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized);
+                end
             end
             
             pset.translationNormalization = [];
@@ -2841,10 +2883,12 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
-            [pset.dataMeanRandomized, pset.dataSemRandomized, pset.conditionDescriptorRandomized] = pset.computeDataMeanResampleTrialsWithinConditions(varargin{:});
+            [pset.dataMeanRandomized, pset.dataSemRandomized, ...
+                pset.conditionDescriptorRandomized, pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                pset.computeDataMeanResampleTrialsWithinConditions(varargin{:});
         end    
         
-        function [dataMeanRandomized, dataSemRandomized, cd] = computeDataMeanResampleTrialsWithinConditions(pset, varargin)
+        function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = computeDataMeanResampleTrialsWithinConditions(pset, varargin)
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
@@ -2866,7 +2910,8 @@ classdef PopulationTrajectorySet
             end
             prog.finish();
             
-            [dataMeanRandomized, dataSemRandomized] = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+            [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
                 
@@ -2878,10 +2923,12 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
-            [pset.dataMeanRandomized, pset.dataSemRandomized, pset.conditionDescriptorRandomized] = pset.computeDataMeanAxisResampleFromSpecifiedValueListIndices(varargin{:});
+            [pset.dataMeanRandomized, pset.dataSemRandomized, ...
+                pset.conditionDescriptorRandomized, pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                pset.computeDataMeanAxisResampleFromSpecifiedValueListIndices(varargin{:});
         end
         
-        function [dataMeanRandomized, dataSemRandomized, cd] = computeDataMeanAxisResampleFromSpecifiedValueListIndices(pset, ...
+        function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = computeDataMeanAxisResampleFromSpecifiedValueListIndices(pset, ...
                 axisIdxOrAttr, resampleFromList, replace, varargin)            
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
@@ -2904,7 +2951,8 @@ classdef PopulationTrajectorySet
             end
             prog.finish();
             
-            [dataMeanRandomized, dataSemRandomized] = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+            [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
         
@@ -2916,10 +2964,12 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
-            [pset.dataMeanRandomized, pset.dataSemRandomized, pset.conditionDescriptorRandomized] = pset.computeDataMeanAxisResampleFromSpecifiedValues(varargin{:});
+            [pset.dataMeanRandomized, pset.dataSemRandomized, ...
+                pset.conditionDescriptorRandomized, pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                pset.computeDataMeanAxisResampleFromSpecifiedValues(varargin{:});
         end
         
-        function [dataMeanRandomized, dataSemRandomized, cd] = computeDataMeanAxisResampleFromSpecifiedValues(pset, ...
+        function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = computeDataMeanAxisResampleFromSpecifiedValues(pset, ...
                 axisIdxOrAttr, resampleFromList, replace, varargin)            
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
@@ -2942,7 +2992,8 @@ classdef PopulationTrajectorySet
             end
             prog.finish();
             
-            [dataMeanRandomized, dataSemRandomized] = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+            [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
 
@@ -2954,11 +3005,12 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
-            [pset.dataMeanRandomized, pset.dataSemRandomized, pset.conditionDescriptorRandomized] = ...
+            [pset.dataMeanRandomized, pset.dataSemRandomized, ...
+                pset.conditionDescriptorRandomized, pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
                 pset.computeDataMeanAxisShuffle(varargin{:});
         end
         
-        function [dataMeanRandomized, dataSemRandomized, cd] = computeDataMeanAxisShuffle(pset, ...
+        function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = computeDataMeanAxisShuffle(pset, ...
                 axisIdxOrAttr, varargin)        
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
@@ -2981,11 +3033,13 @@ classdef PopulationTrajectorySet
             end
             prog.finish();
             
-            [dataMeanRandomized, dataSemRandomized] = pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+            [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
 
-        function [dataMeanRandomized, dataSemRandomized] = computeDataMeanUsingMultipleListByCondition(pset, listByConditionCell)
+        function [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
+                computeDataMeanUsingMultipleListByCondition(pset, listByConditionCell)
             % a utility function for recomputing dataMean using a different
             % conditionInfo.listByCondition than the one already present in
             % the data source. This is typically used when shuffling or resampling
@@ -3095,6 +3149,39 @@ classdef PopulationTrajectorySet
                 dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
                     pset.nTimeDataMean, nRandomSamples));
             end
+            
+            % generate difference by trial for randomized data
+            if ~pset.hasDataByTrial
+                dataDifferenceOfTrialsScaledNoiseEstimateRandomized = [];
+            else
+                % grab trial counts
+                nTrials_NbyC = pset.buildTrialCountsNbyC();
+                % scale appropriately each timeseries (running along dim 2) taking into account trial counts
+                nTrials_Nby1byC = permute(nTrials_NbyC, [1 3 2]);
+
+                prog = ProgressBar(nRandomSamples, 'Computing randomized difference of trials noise estimates');
+                
+                dataDifferenceOfTrialsScaledNoiseEstimateRandomized = nan(nBases, T, nConditions, nRandomSamples);
+                for iSample = 1:nRandomSamples 
+                    prog.update(iSample);
+                    % nConditions x nSamples
+                    
+                    % grab random pair of trials for each basis, each condition,
+                    % concatenate aligns in time
+                    NbyTAbyCby2 = pset.buildNbyTAbyCbyTrials('maxTrials', 2, 'minimizeMissingSamples', true, ...
+                        'message', 'Building difference of trials noise estimate', ...
+                        'trialListsByBasisCondition', listByConditionCell(:, :, iSample));
+
+                    % diff be N x TA x C
+                    dif_NbyTAbyC = diff(NbyTAbyCby2, 1, 4);
+
+                    % N x TA x C
+                    dif_NbyTAbyC = bsxfun(@rdivide, dif_NbyTAbyC, sqrt(2*nTrials_Nby1byC));
+
+                    dataDifferenceOfTrialsScaledNoiseEstimateRandomized(:, :, :, iSample) = dif_NbyTAbyC;
+                end
+                prog.finish();
+            end
         end
         
         function buildDataRandomizedIntervals(pset)
@@ -3113,15 +3200,28 @@ classdef PopulationTrajectorySet
             c.dataIntervalLow = dataIntervalLow;  
         end
         
-        function pset = withDataRandomSampleAsData(pset, dataRandomIndex, varargin)
+        function psetNew = withDataRandomSampleAsData(pset, dataRandomIndex, varargin)
             % take random sample idx from dataMeanRandomized as the new
             % dataMean, so that the randomization can be studied as a
             % normal pset            
             pset.warnIfNoArgOut(nargout);
+            assert(pset.hasDataRandomized == 1);
             cdr = pset.conditionDescriptorRandomized;
             % the ith sample used seed initialSeed+i-1
             cdr = cdr.setRandomSeed(cdr.randomSeed+dataRandomIndex-1);
-            pset = pset.setConditionDescriptor(cdr);
+            
+            b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
+            b.conditionDescriptor = cdr;
+            for iAlign = 1:pset.nAlign
+                b.dataMean{iAlign} = pset.dataMeanRandomized{iAlign}(:, :, :, dataRandomIndex);
+                b.dataSem{iAlign} = pset.dataSemRandomized{iAlign}(:, :, :, dataRandomIndex);
+            end
+            b.dataDifferenceOfTrialsScaledNoiseEstimate = pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(:, :, :, dataRandomIndex);
+         	b.dataMeanRandomized = [];
+            b.dataSemRandomized = [];
+            b.conditionDescriptorRandomized = [];
+            b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = [];
+            psetNew = b.buildManualWithTrialAveragedData();
         end
         
         function pset = dropDataRandom(pset)
@@ -3129,6 +3229,7 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             pset.dataMeanRandomized = [];
             pset.dataSemRandomized = [];
+            pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = [];
             pset.conditionDescriptorRandomized = [];
             pset.odc = pset.odc.copy();
             pset.odc.flushRandomizedTrialAveragedData();
@@ -3220,7 +3321,8 @@ classdef PopulationTrajectorySet
             maskDim1 = {'basisNames', 'basisUnits', 'basisValid', 'basisInvalidCause', 'dataByTrial', 'tMinForDataByTrial', ...
                 'tMaxForDataByTrial', 'tMinByTrial', 'tMaxByTrial', 'alignValidByTrial'};
             maskDim2 = {'dataValid', 'dataNTrials'};
-            maskCellDim1 = {'dataMean', 'dataSem', 'dataMeanRandomized', 'dataIntervalHigh', 'dataIntervalLow'}; 
+            maskCellDim1 = {'dataMean', 'dataSem', 'dataMeanRandomized', 'dataSemReandomized', ...
+                'dataIntervalHigh', 'dataIntervalLow'}; 
 
             % essential that we copy before write
 %             c = pset.odc.copy();
@@ -3294,7 +3396,10 @@ classdef PopulationTrajectorySet
             
             if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
                 pset.dataDifferenceOfTrialsScaledNoiseEstimate = pset.dataDifferenceOfTrialsScaledNoiseEstimate(mask, :, :);
-            end
+                if pset.hasDataRandomized
+                    pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(mask, :, :, :);
+                end
+            end   
                 
             % force time windows to become updated
             pset = pset.updateValid();
@@ -3667,6 +3772,12 @@ classdef PopulationTrajectorySet
         function varByBasis = computeVarByBasis(pset, varargin)
             varByBasis = nanvar(pset.buildCTAbyN(varargin{:}), 0, 1)';
             varByBasis(~pset.basisValid) = NaN;
+        end
+        
+        function normByBasis = computeNormByBasis(pset, varargin)
+            ctaByN = pset.buildCTAbyN(varargin{:});
+            normByBasis = nansum(ctaByN.^2, 1)';
+            normByBasis(~pset.basisValid) = NaN;
         end
         
         function stdByBasis = computeStdByBasis(pset, varargin)
@@ -4097,6 +4208,7 @@ classdef PopulationTrajectorySet
             nBasesPlot = numel(basisIdx);
             conditionIdx = p.Results.conditionIdx;
             nConditionsPlot = numel(conditionIdx);
+            conditionNames = pset.conditionNames(conditionIdx);
             
             scaleBases = p.Results.scaleBases;
             scaling = p.Results.scaling;
@@ -4254,6 +4366,10 @@ classdef PopulationTrajectorySet
                         hData{iCond, iAlign} = plot(tvecPlot, dataC, '-', ...
                             'Parent', axh, 'LineWidth', p.Results.lineWidth, ...
                             'Color', app(idxCondition).Color);
+                    end
+                    
+                    if iAlign==1
+                        TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, conditionNames{iCond});
                     end
                 end
                 
@@ -4799,6 +4915,7 @@ classdef PopulationTrajectorySet
             p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.addParameter('validBasesOnly', false, @islogical);
+            p.addParameter('trialListsByBasisCondition', [], @iscell); % optional, will overwrite pset's actual trial lists
             p.addParameter('message', 'Extracting individual trial data matrix by basis', @ischar);
             p.parse(varargin{:});
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
@@ -4816,8 +4933,15 @@ classdef PopulationTrajectorySet
             
             nBases = numel(basisIdx);
             
-            % figure out how many trials to allocate for
-            dataNTrials = pset.dataNTrials(alignIdx, basisIdx, conditionIdx);
+            if isempty(p.Results.trialListsByBasisCondition)
+                dataNTrials = pset.dataNTrials(alignIdx, basisIdx, conditionIdx);
+                trialLists = pset.trialLists;
+            else
+                trialLists = p.Results.trialListsByBasisCondition;
+                dataNTrials = repmat(shiftdim(cellfun(@numel, trialLists), -1), pset.nAlign, 1, 1);
+            end
+            
+            % figure out how many trials to select and allocate for
             maxTrials = min(p.Results.maxTrials, max(dataNTrials(:)));
             
             if p.Results.chooseRandom
@@ -4845,7 +4969,7 @@ classdef PopulationTrajectorySet
                     continue;
                 end
                 
-                fullListByCondition = pset.trialLists(iBasis, conditionIdx)';
+                fullListByCondition = trialLists(iBasis, conditionIdx)';
                 nTrialsByCondition = cellfun(@numel, fullListByCondition);
                 nTrialsByCondition = min(nTrialsByCondition, maxTrials);
 
