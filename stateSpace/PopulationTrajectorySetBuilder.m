@@ -56,6 +56,9 @@ classdef PopulationTrajectorySetBuilder
         dataValid
         alignSummaryData
         basisAlignSummaryLookup
+        dataCachedSampledTrialsTensor
+        dataCachedMeanExcludingSampledTrialsTensor
+        dataCachedSampledTrialCounts
         
         %% fDiffTrialsNoise
         dataDifferenceOfTrialsScaledNoiseEstimate
@@ -87,7 +90,9 @@ classdef PopulationTrajectorySetBuilder
         fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
                 'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
                 'dataNTrials', 'dataValid', ...
-                'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists'};
+                'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists', ...
+                'dataCachedSampledTrialsTensor', 'dataCachedMeanExcludingSampledTrialsTensor', ...
+                'dataCachedSampledTrialCounts'};
             
         fDiffTrialsNoise = {'dataDifferenceOfTrialsScaledNoiseEstimate'};
         

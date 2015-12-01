@@ -1,24 +1,45 @@
 classdef ProjPCA < StateSpaceProjection
 
+    properties
+        meanSubtract = true;
+    end
+    
     methods
         function proj = ProjPCA(varargin)
             proj = proj@StateSpaceProjection(varargin{:}); 
         end
         
         function pset = preparePsetForInference(proj, pset) 
-            pset = pset.meanSubtractBases();
+            if proj.meanSubtract
+                if sum(pset.nTimeDataMean) == 1
+                    warning('Doing mean subtraction on single timepoint data. Set .meanSubtract = false');
+                end
+                    
+                pset = pset.meanSubtractBases();
+            end
         end
     end
     
     methods(Static)
+        function [proj, unmatched] = parseCreateParams(proj, varargin)
+            p = inputParser;
+            p.addParameter('meanSubtract', true, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            unmatched = p.Unmatched;
+            
+            proj.meanSubtract = p.Results.meanSubtract;
+        end
         function [proj, stats, psetPrepared] = createFrom(pset, varargin)
             proj = ProjPCA();
-            [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
+            [proj, unmatched] = ProjPCA.parseCreateParams(proj, varargin{:});
+            [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, unmatched);
         end
 
         function [proj, psetProjected, stats] = createFromAndProject(pset, varargin)
             proj = ProjPCA();
-            [proj, psetProjected, stats] = proj.buildFromAndProjectPopulationTrajectorySet(pset, varargin{:});
+            [proj, unmatched] = ProjPCA.parseCreateParams(proj, varargin{:});
+            [proj, psetProjected, stats] = proj.buildFromAndProjectPopulationTrajectorySet(pset, unmatched);
         end
         
         function [denoised, proj, stats] = denoiseViaLowRankApproximation(pset, K, varargin)
@@ -29,17 +50,17 @@ classdef ProjPCA < StateSpaceProjection
             denoised = proj.projectInAndOut(pset);
         end
         
-        function [proj, psetProjected, stats] = createFromAndProjectCaptureThresholdVariance(pset, threshFractionVar, varargin)
-            % truncate the output bases so as to capture a certain threshFractionVar of the
-            % variance. Look at proj.nBasesProj to get this number
-            p = inputParser;
-            p.addParamValue('threshForSignalVariance', false, @isscalar); % set threshhold for signal variance. if false, for overall variance
-            p.addParamValue('threshForMarginalizationVariance', [], @(x) isempty(x) || StateSpaceProjectionStatistics.isMarginalizationSpec(x)); 
-            p.parse(varargin{:});
-            
-            [proj, psetProjected, stats] = ProjPCA.createFromAndProject(pset, varargin{:});
-            proj.truncate
-        end
+%         function [proj, psetProjected, stats] = createFromAndProjectCaptureThresholdVariance(pset, threshFractionVar, varargin)
+%             % truncate the output bases so as to capture a certain threshFractionVar of the
+%             % variance. Look at proj.nBasesProj to get this number
+%             p = inputParser;
+%             p.addParamValue('threshForSignalVariance', false, @isscalar); % set threshhold for signal variance. if false, for overall variance
+%             p.addParamValue('threshForMarginalizationVariance', [], @(x) isempty(x) || StateSpaceProjectionStatistics.isMarginalizationSpec(x)); 
+%             p.parse(varargin{:});
+%             
+%             [proj, psetProjected, stats] = ProjPCA.createFromAndProject(pset, varargin{:});
+%             proj.truncate
+%         end
     end
 
     methods
@@ -59,9 +80,14 @@ classdef ProjPCA < StateSpaceProjection
             
             ctaKeep = ~any(isnan(CTAbyNvalid), 2);
             CTAbyNvalid = CTAbyNvalid(ctaKeep, :);
-            CTAbyNvalid = bsxfun(@minus, CTAbyNvalid, mean(CTAbyNvalid, 1));
+            if proj.meanSubtract
+                CTAbyNvalid = bsxfun(@minus, CTAbyNvalid, mean(CTAbyNvalid, 1));
+            end
             
-            if exist('pca', 'file') == 2
+            if size(CTAbyNvalid, 1) == 1
+                % single timepoint, just normalize as the direction
+                coeffValid = CTAbyNvalid' / sqrt(sum(CTAbyNvalid(:).^2));
+            elseif exist('pca', 'file') == 2
                 [coeffValid] = pca(CTAbyNvalid, 'Rows', 'complete');
             else
                 [coeffValid] = princomp(CTAbyNvalid); %#ok<PRINCOMP>
@@ -85,9 +111,9 @@ classdef ProjPCA < StateSpaceProjection
             encoderNbyK = coeff;
         end
 
-        function names = getBasisNames(proj, pset) %#ok<INUSD>
-            names = arrayfun(@(i) sprintf('PC %d', i), ...
-                    (1:proj.nBasesProj)', 'UniformOutput', false);
+        function [nameStem, names] = generateBasisNameProjStem(proj, pset) %#ok<INUSD>
+            names = {};
+            nameStem = 'PC';
         end
     end
 

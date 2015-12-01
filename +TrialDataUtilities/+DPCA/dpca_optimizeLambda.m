@@ -1,5 +1,5 @@
-function [optimalLambda, optimalLambdas] = dpca_optimizeLambda(Xfull, ...
-    XrandomTrials, numOfTrials, varargin)
+function [optimalLambda, optimalLambdas, stats] = dpca_optimizeLambda(Xfull, ...
+    trials_NbyTAbyAttrbyR, meansExcluding_NbyTAbyAttrbyR, varargin)
 % Xfull is N x T x ConditionAttr
 % XrandomTrials is N x T x ConditionAttr x R where R is the number of
 % trials to iterate over for cross-validation
@@ -85,41 +85,42 @@ end
 assert(~isnan(options.nBasesKeep));
 assert(~any(isnan(options.nBasesPerMarginalization)));
 
-assert(size(XrandomTrials, ndims(XrandomTrials)) >= options.numRep, ...
+assert(size(trials_NbyTAbyAttrbyR, ndims(trials_NbyTAbyAttrbyR)) >= options.numRep, ...
     'Number of random trials provided must be greater than or equal to numRep');
 
 % numComps = options.nBasesPerMarginalization;
 
-tic
+% tic
 % numOfTrials is N x CondAttr, need it to look like Xfull which is N x T x
 % condAttr
-szNumTrials = size(numOfTrials);
-N = szNumTrials(1);
-condSize = szNumTrials(2:end);
-numOfTrials = reshape(numOfTrials, [N 1 condSize]);
-Xsum = bsxfun(@times, Xfull, numOfTrials);
+% szNumTrials = size(numOfTrials);
+% N = szNumTrials(1);
+% condSize = szNumTrials(2:end);
+% numOfTrials = reshape(numOfTrials, [N 1 condSize]);
+% Xsum = bsxfun(@times, Xfull, numOfTrials);
 %Xsum = nansum(Xtrial,5);
 
-
-prog = ProgressBar(options.numRep, 'Optimizating lambda');
+prog = ProgressBar(options.numRep, 'Optimizing lambda');
 for rep = 1:options.numRep
     prog.update(rep);
     %fprintf(['Repetition #' num2str(rep) ' out of ' num2str(options.numRep)])
     
 %     Xtest = TrialDataUtilities.DPCA.dpca_getTestTrials(Xtrial, numOfTrials);
-    Xtest = TensorUtils.selectAlongDimension(XrandomTrials, ndims(XrandomTrials), rep);
-    Xtrain = bsxfun(@times, Xsum - Xtest, 1./(numOfTrials-1));
+    Xtest = TensorUtils.selectAlongDimension(trials_NbyTAbyAttrbyR, ndims(trials_NbyTAbyAttrbyR), rep);
+    Xtrain = TensorUtils.selectAlongDimension(meansExcluding_NbyTAbyAttrbyR, ndims(meansExcluding_NbyTAbyAttrbyR), rep);
     
     XtestCen = bsxfun(@minus, Xtest, mean(Xtest(:,:),2));
-    XtestMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtestCen, 'combinedParams', options.combinedParams, ...
-                    'ifFlat', 'yes');
+    XtestMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtestCen, ...
+        'combinedParams', options.combinedParams, 'ifFlat', 'yes');
+    margTestVar = nan(length(XtestMargs), 1);
     for i=1:length(XtestMargs)
         margTestVar(i) = sum(XtestMargs{i}(:).^2);
     end
     
     XtrainCen = bsxfun(@minus, Xtrain, mean(Xtrain(:,:),2));
-    XtrainMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtrainCen, 'combinedParams', options.combinedParams, ...
-                    'ifFlat', 'yes');
+    XtrainMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtrainCen, ...
+        'combinedParams', options.combinedParams, 'ifFlat', 'yes');
+    margTrainVar = nan(length(XtrainMargs), 1);
     for i=1:length(XtrainMargs)
         margTrainVar(i) = sum(XtrainMargs{i}(:).^2);
     end
@@ -128,6 +129,11 @@ for rep = 1:options.numRep
         margVar_toNormalize = margTestVar;
     else
         margVar_toNormalize = margTrainVar;
+    end
+    
+    if rep == 1
+        errorsMarg = nan(numel(XtestMargs), length(options.lambdas), options.numRep);
+        errors = nan(length(options.lambdas), options.numRep);
     end
 
     progInner = ProgressBar(length(options.lambdas), 'Testing lambda values');
@@ -176,8 +182,6 @@ for rep = 1:options.numRep
 end
 prog.finish();
 
-timeTaken = toc;
-
 meanError = mean(errors,2);
 [~, ind] = min(meanError);
 optimalLambda = options.lambdas(ind);
@@ -185,6 +189,10 @@ optimalLambda = options.lambdas(ind);
 meanErrorMarg = mean(errorsMarg(:, :,:), 3);
 [~, indm] = min(meanErrorMarg, [], 2);
 optimalLambdas = options.lambdas(indm);
+
+stats.meanErrorMarg = meanErrorMarg;
+stats.rawErrorsMarg = errorsMarg;
+stats.lambdas = options.lambdas;
 
 % if ~isempty(options.filename)
 %     lambdas = options.lambdas;
@@ -220,11 +228,11 @@ if strcmp(options.display, 'yes')
         plot(log(options.lambdas(indm(i))), meanErrorMarg(i,indm(i)), '.k', 'MarkerSize', 20)
     end
     
-    legendText = {};
+    legendText = cell(length(hh)+1, 1);
     for i = 1:length(hh)
         legendText{i} = ['Marginalization #' num2str(i)];
     end
-    legendText{end+1} = 'Overall';
+    legendText{length(hh)+1} = 'Overall';
     legend([hh; h1], legendText, 'Location', 'East')
     
     xticks = [1e-07:1e-07:1e-06 2e-06:1e-06:1e-05 2e-05:1e-05:1e-04 2e-04:1e-04:1e-03];

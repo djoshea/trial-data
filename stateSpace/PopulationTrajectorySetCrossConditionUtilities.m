@@ -5,6 +5,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
         function psetDiff = computeDifferenceAlongAxis(pset, axisName, varargin)
             % more parameters available in applyLinearCombinationAlongConditionAxis
             p = inputParser();
+            p.addParameter('autoNamesAlongAxis', true, @islogical);
             p.addParameter('newNamesAlongAxis', {}, @iscellstr);
             p.addParameter('reverse', false, @islogical);
             p.KeepUnmatched = true;
@@ -16,7 +17,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             nAlongAxis = pset.conditionsSize(aIdx);
             
             % generate new names from differences
-            if isempty(p.Results.newNamesAlongAxis)
+            if p.Results.autoNamesAlongAxis
                 valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
                 valueList = valueLists{aIdx};
                 if reverse
@@ -26,6 +27,10 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     newNamesAlongAxis = cellfun(@(v1, v2) [v1 ' - ' v2], valueList(1:end-1), ...
                         valueList(2:end), 'UniformOutput', false);
                 end
+            elseif isempty(p.Results.newNamesAlongAxis)
+                % keep same names
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                newNamesAlongAxis = valueLists{aIdx};
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
             end
@@ -48,6 +53,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
         function psetDiff = subtractOneConditionFromOthersAlongAxis(pset, axisName, conditionToSubtract, varargin)
             % more parameters available in applyLinearCombinationAlongConditionAxis
             p = inputParser();
+            p.addParameter('autoNamesAlongAxis', true, @islogical);
             p.addParameter('newNamesAlongAxis', {}, @iscellstr);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -59,13 +65,17 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             idxKeep = setdiff(1:nAlongAxis, conditionToSubtract);
             
             % generate new names from differences
-            if isempty(p.Results.newNamesAlongAxis)
+            if p.Results.autoNamesAlongAxis
                 valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
                 valueList = valueLists{aIdx}(idxKeep);
                 valueSubtract = valueLists{aIdx}{conditionToSubtract};
                 
                 newNamesAlongAxis = cellfun(@(v) [v ' - ' valueSubtract], valueList, ...
-                    'UniformOutput', false);
+                    'UniformOutput', false); 
+            elseif isempty(p.Results.newNamesAlongAxis)
+                % keep same names
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                newNamesAlongAxis = valueLists{aIdx};
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
             end
@@ -82,7 +92,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
         function psetMean = computeMeanAlongAxis(pset, axisName, varargin)
             % more parameters available in applyLinearCombinationAlongConditionAxis
             p = inputParser();
-            p.addParameter('newNameAlongAxis', '', @ischar);
+            p.addParameter('autoNamesAlongAxis', true, @islogical);
+            p.addParameter('newNamesAlongAxis', {}, @iscell);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -90,19 +101,59 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             nAlongAxis = pset.conditionsSize(aIdx);
             
             % generate new names from differences
-            if isempty(p.Results.newNameAlongAxis)
+            if p.Results.autoNamesAlongAxis
                 newNamesAlongAxis = {sprintf('Mean Over %s', pset.conditionDescriptor.axisNames{aIdx}) }; 
+            elseif isempty(p.Results.newNamesAlongAxis)
+                % keep same names
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                newNamesAlongAxis = valueLists{aIdx};
             else
-                newNamesAlongAxis = {p.Results.newNameAlongAxis};
+                newNamesAlongAxis = p.Results.newNamesAlongAxis;
             end
 
-            % normalization is done by normalizeCoeffientsByNumConditions
+            % normalization is done by normalizeCoefficientsByNumNonNaN
             % below
             wNbyO = ones(1, nAlongAxis);
             
             psetMean = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
                 axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, ...
-                'replaceNaNWithZero', true, 'normalizeCoeffientsByNumConditions', true, p.Unmatched);
+                'replaceNaNWithZero', true, 'normalizeCoefficientsByNumNonNaN', true, p.Unmatched);
+        end
+        
+        function psetMean = subtractMeanAlongAxis(pset, axisName, varargin)
+            % more parameters available in applyLinearCombinationAlongConditionAxis
+            p = inputParser();
+            p.addParameter('autoNamesAlongAxis', true, @islogical);
+            p.addParameter('newNamesAlongAxis', '', @iscell);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
+            nAlongAxis = pset.conditionsSize(aIdx);
+            
+            if p.Results.autoNamesAlongAxis
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueList = valueLists{aIdx};
+                newNamesAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted', s), valueList, 'UniformOutput', false); 
+            elseif isempty(p.Results.newNamesAlongAxis)
+                % keep same names
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                newNamesAlongAxis = valueLists{aIdx};
+            else
+                newNamesAlongAxis = p.Results.newNamesAlongAxis;
+            end
+
+            % normalization is done by 'normalizeCoefficientsByNumNonNaN' below
+            % and the identity matrix is added in after normalization by
+            % 'addToOriginal'
+            wNbyO = -ones(nAlongAxis, nAlongAxis);
+            
+            psetMean = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
+                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, ...
+                'replaceNaNWithZero', true, ...
+                'normalizeCoefficientsByNumNonNaN', true, ...
+                'addToOriginal', true, ...
+                p.Unmatched);
         end
         
         function psetReweighted = applyLinearCombinationAlongConditionAxis(pset, axisName, weightsNewCByOldC, varargin)
@@ -116,11 +167,16 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % the conditions that contribute to the combination are valid.
             % If false, all conditions that contribute must be valid for
             % the combined data to be valid
-            p.addParameter('replaceNaNWithZero', false, @islogical); 
+            p.addParameter('replaceNaNWithZero', false, @islogical);
             
             % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis
             % this enables nanmean like computations
-            p.addParameter('normalizeCoeffientsByNumConditions', false, @islogical); 
+            p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); 
+            
+            % requires that the matrix be square, the equivalent of adding
+            % the identity matrix to the weight matrix, except that this
+            % will be added after normalization
+            p.addParameter('addToOriginal', false, @islogical);
             p.parse(varargin{:});
             
             aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
@@ -166,7 +222,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 tensorMean = pset.buildNbyTAbyConditionAttributes('alignIdx', iAlign);
                 tensorMeanReweighted = TensorUtils.linearCombinationAlongDimension(tensorMean, aIdx+2, wNbyO, ...
                     'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-                    'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions);
+                    'keepNaNIfAllNaNs', true, ...
+                    'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                    'addToOriginal', p.Results.addToOriginal);
                 % back to N x C x TA
                 b.dataMean{iAlign} = permute(tensorMeanReweighted(:, :, :), [1 3 2]);
                 
@@ -176,9 +234,43 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 tensorSem = pset.buildNbyTAbyConditionAttributes('type', 'sem', 'alignIdx', iAlign);
                 tensorSemReweighted = sqrt( TensorUtils.linearCombinationAlongDimension(tensorSem.^2, aIdx+2, abs(wNbyO), ...
                     'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-                    'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions) );
+                    'keepNaNIfAllNaNs', true, ...
+                    'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                    'addToOriginal', p.Results.addToOriginal) );
                 % back to N x C x TA
                 b.dataSem{iAlign} = permute(tensorSemReweighted(:, :, :), [1 3 2]);
+            end
+            
+            % reshape pset.dataCachedSampledTrialsTensor
+            % N x TA x C x Trials -> N x TA x size(conditions) x Trials
+            if ~isempty(pset.dataCachedSampledTrialsTensor)
+                cachedTrialsAttr = reshape(pset.dataCachedSampledTrialsTensor, ...
+                    [pset.nBases, sum(pset.nTimeDataMean), makerow(pset.conditionsSize), size(pset.dataCachedSampledTrialsTensor, 4)]);
+                newTrialsAttr = TensorUtils.linearCombinationAlongDimension(cachedTrialsAttr, ...
+                    aIdx+2, wNbyO, ...
+                    'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                    'keepNaNIfAllNaNs', true, ...
+                    'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                    'addToOriginal', p.Results.addToOriginal);
+                b.dataCachedSampledTrialsTensor = reshape(newTrialsAttr, ...
+                    [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew, size(pset.dataCachedSampledTrialsTensor, 4)]);
+                
+                cachedTrialsAttr = reshape(pset.dataCachedMeanExcludingSampledTrialsTensor, ...
+                    [pset.nBases, sum(pset.nTimeDataMean), makerow(pset.conditionsSize), size(pset.dataCachedMeanExcludingSampledTrialsTensor, 4)]);
+                newTrialsAttr = TensorUtils.linearCombinationAlongDimension(cachedTrialsAttr, ...
+                    aIdx+2, wNbyO, ...
+                    'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                    'keepNaNIfAllNaNs', true, ...
+                    'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                    'addToOriginal', p.Results.addToOriginal);
+                b.dataCachedMeanExcludingSampledTrialsTensor = reshape(newTrialsAttr, ...
+                    [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew, size(pset.dataCachedSampledTrialsTensor, 4)]);
+                
+                % N x C: need to compute min over number of trials for conditions included
+                % in that new combined condition
+                trialCountsNbyAttr = reshape(pset.dataCachedSampledTrialCounts, [pset.nBases, makerow(pset.conditionsSize)]);
+                trialCountsNew = TensorUtils.linearCombinationApplyScalarFnAlongDimension(trialCountsNbyAttr, aIdx+1, wNbyO, @min); 
+                b.dataCachedSampledTrialCounts = reshape(trialCountsNew, [pset.nBases, nConditionsNew]);
             end
             
             % update difference of trials scaled noise estimates so that we
@@ -190,7 +282,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             newScaledNoiseEstimate_NbyTAbyAttr = TensorUtils.linearCombinationAlongDimension(...
                 scaledNoiseEstimate_NbyTAbyAttr, aIdx+2, abs(wNbyO), ...
                 'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-                'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions);
+                'keepNaNIfAllNaNs', true, ...
+                'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                'addToOriginal', p.Results.addToOriginal);
             b.dataDifferenceOfTrialsScaledNoiseEstimate = reshape(newScaledNoiseEstimate_NbyTAbyAttr, ...
                 [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew]);
             
@@ -218,7 +312,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     
                     meanTensorReweighted = TensorUtils.linearCombinationAlongDimension(meanTensor, aIdx+1, wNbyO, ...
                         'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-                        'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions); 
+                        'keepNaNIfAllNaNs', true, ...
+                        'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                        'addToOriginal', p.Results.addToOriginal); 
                     
                     % back to N x C x TA x R
                     b.dataMeanRandomized{iAlign} = reshape(meanTensorReweighted, [pset.nBases, nConditionsNew, pset.nTimeDataMean(iAlign), pset.nRandomSamples]);
@@ -233,7 +329,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     
                     semTensorReweighted = TensorUtils.linearCombinationAlongDimension(semTensor, aIdx+1, wNbyO, ...
                         'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-                        'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions); 
+                        'keepNaNIfAllNaNs', true, ...
+                        'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                        'addToOriginal', p.Results.addToOriginal); 
 
                     % back to N x C x TA x R
                     b.dataSemRandomized{iAlign} = reshape(semTensorReweighted, [pset.nBases, nConditionsNew, pset.nTimeDataMean(iAlign), pset.nRandomSamples]);
@@ -247,7 +345,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 newScaledNoiseEstimate_NbyTAbyAttrbyS = TensorUtils.linearCombinationAlongDimension(...
                     scaledNoiseEstimate_NbyTAbyAttrbyS, aIdx+2, abs(wNbyO), ...
                     'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-                    'normalizeCoeffientsByNumConditions', p.Results.normalizeCoeffientsByNumConditions);
+                    'keepNaNIfAllNaNs', true, ...
+                    'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                    'addToOriginal', p.Results.addToOriginal);
                 b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = reshape(newScaledNoiseEstimate_NbyTAbyAttrbyS, ...
                 [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew, pset.nRandomSamples]);
             end
@@ -271,7 +371,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     dataValidTensor, aIdx+2, wNbyO_forValid) ~= 0, cdims);
             end
             
-            % sum trials from all included ocnditions
+            % sum trials from all included conditions
             [dataNTrialsTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataNTrials, 3, pset.conditionsSize);
             b.dataNTrials = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
                 dataNTrialsTensor, aIdx+2, wNbyO ~= 0, 'replaceNaNWithZero', p.Results.replaceNaNWithZero), cdims);
@@ -366,9 +466,15 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % N x C
             b.trialLists = catConditionsFlat(psetCell, @(p) p.trialLists, 2, cSize, cAxis);
             
-            % N x T x C
+            % N x TA x C
             b.dataDifferenceOfTrialsScaledNoiseEstimate = catConditionsFlat(psetCell, @(p) p.dataDifferenceOfTrialsScaledNoiseEstimate, 3, cSize, cAxis);
         
+            % N x TA x C x Trials
+            b.dataCachedSampledTrialsTensor = catConditionsFlat(psetCell, @(p) p.dataCachedSampledTrialsTensor, 3, cSize, cAxis);
+            b.dataCachedMeanExcludingSampledTrialsTensor = catConditionsFlat(psetCell, @(p) p.dataCachedMeanExcludingSampledTrialsTensor, 3, cSize, cAxis);
+            % N x C 
+            b.dataCachedSampledTrialCounts = catConditionsFlat(psetCell, @(p) p.dataCachedSampledTrialCounts, 2, cSize, cAxis);
+
             % adjust alignSummaryData
             % N x A
             temp = pset.alignSummaryData; %#ok<NASGU> % request up front to trigger computation before progress bar

@@ -1,10 +1,10 @@
 classdef StateSpaceTranslationNormalization
 % This class stores the offsets and multipliers which can be applied to a
-% PopulationTrajectorySet. This constitutes a normalization (subtraction off
+% PopulationTrajectorySet. This constitutes a translation (subtraction off
 % of each basis) followed by a normalization (multiplication of each basis
 % by a scalar)
 
-    properties(SetAccess=protected)
+    properties
         % nBases x 1 numeric vector of offsets to ADD to each basis
         translationByBasis
         
@@ -233,6 +233,10 @@ classdef StateSpaceTranslationNormalization
             
             obj = StateSpaceTranslationNormalization.buildManual('translationByBasis', translationByBasis, ...
                 'normalizationByBasis', normByBasis);
+        end
+        
+        function obj = combine(varargin)
+            obj = varargin{1}.combineWith(varargin(2:end));
         end
     end
     

@@ -17,10 +17,14 @@ classdef StateSpaceProjection
         % decoded_KbyT. We can then reconstruct the data in the original
         % basis using reconstruction_NbyT = encoderNbyK * decodedKbyT, or
         % reconstruction_NbyT = encoderNbyK * decoderKbyN * neural_NbyT 
+        %
+        % These matrices will contain zeros where either 
+        % ~basisValidProj (K dimension) or
+        % ~basisValid (N dimension)
         decoderKbyN
         encoderNbyK
         
-        buildStats % StateSpaceProjectionStatistics instance from build
+        buildStats % StateSpaceProjectionStatistics instance created at build time
         
         basisValid % nBasesSource x 1 logical vector indicating which bases were considered valid in the projection (typically copied from the pset from which I am built)
         basisInvalidCause % nBasesSource x 1 cell str (typically copied from the pset from which I am built)
@@ -33,9 +37,50 @@ classdef StateSpaceProjection
         
         basisNamesSource % nBasesSource x 1 cellstr of basis names from the pset I was built off
         dataUnitsSource = '';
+        
+        % stores meta data about the types of marginalizations performed
+        % when buildingn statistics during construction
+        
+        %  'combinedParams' - cell array of cell arrays specifying 
+        %                     which marginalizations should be added up together,
+        %                     e.g. for the three-parameter case with parameters
+        %                           1: stimulus
+        %                           2: decision
+        %                           3: time
+        %                     one could use the following value:
+        %                     {{1, [1 3]}, {2, [2 3]}, {3}, {[1 2], [1 2 3]}}.
+        combinedParams
+        
+        marginalizationNames
+        
+        axisIncludeList
+        
+        marginalizationList
     end
     
     properties
+        % the properties below control how different types of variance
+        % arising along the Condition axes will be treated by DPCA. These
+        % have the same meaning as in StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization
+        % and you can refer to the documentation there for more details
+
+        % list of specific marginalization combinations to combine
+        axesCombineSpecificMarginalizations = {};
+            
+        % cellvec of cellvec of axisSpec. For each
+        % cellvec of axes in the list, the appropriate marginalizationCombinations
+        % will be applied to prevent the marginalization from ever distinguishing
+        % variance due to one axis in the list from the others.
+        axesCombineAllMarginalizations = {};
+            
+        % logical scalar or logical vector or
+        % cell list of axis specs, indicating which axes should be
+        % combined with pure time (e.g. axis and axis+time will be
+        % combined)
+        combineAxesWithTime = true; 
+    end
+    
+    properties(Dependent)
         % nBasesProj x 1 cell of basis names, optional, that I will pick for the basis names of the projected 
         % output. If set, this will override the method "getBasisNames"
         % which typically picks these names based on the input pset.
@@ -43,13 +88,24 @@ classdef StateSpaceProjection
         % restore the basis names of the pset this projection was built off 
         basisNamesProj
     end
-
+    
+    properties(SetAccess=protected)
+        basisNamesProjManual % stores manual override for basisNamesProj
+    end
+    
+    properties
+        basisNamesProjStem % string which defines the stem to use for each basis, ' %d' will be added to each basis if this is set and basisNamesProjManual isempty
+    end
+    
     properties(Dependent)
         nBasesSource
         nBasesProj
         
         decoderKbyNValid
         encoderNbyKValid
+        
+        decoderKbyNZeroInvalid
+        encoderNbyKZeroInvalid
     end
     
     methods(Abstract, Static)
@@ -59,7 +115,8 @@ classdef StateSpaceProjection
         % the heavy lifting.
         % methods(Static)
         %     function [proj, stats, psetPrepared] = createFrom(pset, varargin)
-        %         proj = YOURSUBCLASSNAME() you can send in varargin{:} if there are options > );
+        %         proj = YOURSUBCLASSNAME() you can send in varargin{:} if
+        %           there are any options you wish to receive
         %         [proj, stats, psetPrepared] = proj.buildFromPopulationTrajectorySet(pset, varargin{:});
         %     end
         
@@ -73,7 +130,6 @@ classdef StateSpaceProjection
         
         [proj, psetProjected, stats] = createFromAndProject(pset, varargin)
     end
-            
 
     methods(Abstract)
         % compute the N * K matrix of basis coefficients for the projection
@@ -91,20 +147,52 @@ classdef StateSpaceProjection
     
     % Methods most classes may wish to override
     methods
-        % return a nBasesProj x 1 cell str: list of basis names for the new basis  
-        function names = getBasisNames(proj, pset) %#ok<INUSD>
-            if ~isempty(proj.basisNamesProj)
-                names = proj.basisNamesProj;
+        % return either a char nBasesProj x 1 cell str: list of basis names for the new basis  
+        function [nameStem, names] = generateBasisNameProjStem(proj, pset) %#ok<INUSD>
+            nameStem = 'Basis';
+            names = {};
+        end
+        
+        % this function can optionally use pset to create custom names
+        % based on pset.basisNames
+        function names = generateBasisNamesProj(proj, pset) %#ok<INUSD>
+            if ~isempty(proj.basisNamesProjManual) && numel(proj.basisNamesProjManual) == proj.nBasesProj
+                names = proj.basisNamesProjManual;
             else
-                names = arrayfun(@(i) sprintf('Basis %d', i), ...
-                        (1:proj.nBasesProj)', 'UniformOutput', false);
+                if ~isempty(proj.basisNamesProjStem)
+                    stem = proj.basisNamesProjStem;
+                else
+                    stem = 'Basis';
+                end
+                
+                names = makecol(arrayfun(@(idx) sprintf('%s %d', stem, idx), 1:proj.nBasesProj, 'UniformOutput', false));
             end
+        end
+        
+        function names = get.basisNamesProj(proj)
+            names = makecol(proj.generateBasisNamesProj());
         end
         
         function proj = set.basisNamesProj(proj, names)
             assert(numel(names) == proj.nBasesProj);
-            proj.basisNamesProj = names;
+            proj.basisNamesProjManual = names;
         end
+        
+        function stem = get.basisNamesProjStem(proj)
+            if isempty(proj.basisNamesProjStem)
+                stem = '';
+            else
+                stem = proj.basisNamesProjStem;
+            end
+        end
+                
+        function proj = set.basisNamesProjStem(proj, stem)
+            proj.basisNamesProjStem = stem;
+            if ~isempty(stem)
+                proj.basisNamesProjManual = {}; %#ok<MCSUP>
+            end
+        end
+            
     end
     
     % Simple dependent property getters
@@ -125,12 +213,24 @@ classdef StateSpaceProjection
             end
         end
         
+        % Don't remove these, other code may rely on
+        % these matrices being zeroed
+        function d = get.decoderKbyNZeroInvalid(proj)
+            d = proj.decoderKbyN;
+            d(~proj.basisValidProj, ~proj.basisValid) = 0;
+        end
+        
+        function e = get.encoderNbyKZeroInvalid(proj)
+            e = proj.encoderNbyK;
+            e(~proj.basisValid, ~proj.basisValidProj) = 0;
+        end
+        
         function d = get.decoderKbyNValid(proj)
             d = proj.decoderKbyN(proj.basisValidProj, proj.basisValid);
         end
         
-        function d = get.encoderNbyKValid(proj)
-            d = proj.encoderNbyK(proj.basisValid, proj.basisValidProj);
+        function e = get.encoderNbyKValid(proj)
+            e = proj.encoderNbyK(proj.basisValid, proj.basisValidProj);
         end
         
         function v = get.basisValid(proj)
@@ -180,13 +280,28 @@ classdef StateSpaceProjection
                 v = proj.basisInvalidCause;
             end
         end
+        
+        function norms = calculateDecoderNorms(proj)
+            norms = rownorms(proj.decoderKbyN);
+        end
+        
+        function tf = isDecoderOrthogonal(proj)
+            dd = proj.decoderKbyN * proj.decoderKbyN';
+            dd = dd - diag(diag(dd));
+            tf = max(abs(dd(:))) < 1e-09;
+        end
+        
+        function tf = isDecoderOrthonormal(proj)
+            dd = proj.decoderKbyN * proj.decoderKbyN';
+            dd = dd - eye(size(dd));
+            tf = max(abs(dd(:))) < 1e-09;
+        end
     end
 
     methods
         function [proj, stats, psetPrepared] = buildFromPopulationTrajectorySet(proj, pset, varargin)
             % build this projection matrix based on an existing PopulationTrajectorySet
             % defers to calculateProjectionMatrix for the actual basis computation
-            
             proj.warnIfNoArgOut(nargout);
 
             p = inputParser;
@@ -199,6 +314,24 @@ classdef StateSpaceProjection
             p.KeepUnmatched = true;
             p.parse(pset, varargin{:});
             
+            % we do this here simply to force calculation of all compute on
+            % demand properties, so that they get computed before we
+            % initiate a copy below
+            PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
+            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
+           
+            % build the list of covariates and covariate interactions to marginalize along
+            % in case the projection needs it for its own purposes
+            nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
+            dimMask = nConditionsAlongAxis > 1; % filter for non-singular axes
+            [proj.combinedParams, proj.marginalizationNames, proj.axisIncludeList, proj.marginalizationList] = StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization( ...
+                pset.conditionDescriptor.axisAttributes, ...
+                'axisIncludeMask', dimMask, ...
+                'axisNames', pset.conditionDescriptor.axisNames, ...
+                'combineAxesWithTime', proj.combineAxesWithTime, ...
+                'axesCombineAllMarginalizations', proj.axesCombineAllMarginalizations, ...
+                'axesCombineSpecificMarginalizations', proj.axesCombineSpecificMarginalizations);
+                        
             % make any necessary transformations, particularly translation / normalization
             pset = proj.preparePsetForInference(pset);
             psetPrepared = pset;
@@ -222,7 +355,7 @@ classdef StateSpaceProjection
             proj.basisInvalidCause = pset.basisInvalidCause;
             proj.basisNamesSource = pset.basisNames;
             proj.dataUnitsSource = pset.dataUnits;
-            proj.basisNamesProj = proj.getBasisNames(pset);
+            [proj.basisNamesProjStem, proj.basisNamesProjManual] = proj.generateBasisNameProjStem(pset);
             
             % set coeff to zero on invalid bases
             proj.decoderKbyN(:, ~proj.basisValid) = 0;
@@ -234,6 +367,9 @@ classdef StateSpaceProjection
                 stats = StateSpaceProjectionStatistics.build(proj, pset, 'meanSubtract', ...
                     p.Results.meanSubtractForStatistics, 'marginalize', p.Results.computeStatisticsMarginalized, ...
                     'computeForRandomized', p.Results.computeStatisticsForRandomized', ...
+                    'axesCombineSpecificMarginalizations', proj.axesCombineSpecificMarginalizations, ...
+                    'axesCombineAllMarginalizations', proj.axesCombineAllMarginalizations, ...
+                    'combineAxesWithTime', proj.combineAxesWithTime, ...
                     p.Unmatched);
                 proj.buildStats = stats;
             else
@@ -256,13 +392,21 @@ classdef StateSpaceProjection
             assert(pset.nBases == proj.nBasesSource, ...
                 'Number of bases must match in order to project');
 
-            % ensure proj-invalid bases are marked invalid
-            % this isn't strictly necessary but just in case
-            pset = pset.setBasesInvalid(~proj.basisValid, 'invalidated before state space projection');
+            if any(pset.basisValid & ~proj.basisValid)
+                % ensure proj-invalid bases are marked invalid
+                % this isn't strictly necessary but just in case
+                pset = pset.setBasesInvalid(~proj.basisValid, 'invalidated before state space projection');
+            end
             
             if any(proj.basisValid & ~pset.basisValid)
                 error('PopulationTrajectorySet has invalid bases not marked invalid in StateSpaceProjection. You should equalize the bases invalid to get consistent results');
             end
+            
+            % we do this here simply to force calculation of all compute on
+            % demand properties, so that they get computed before we
+            % initiate a copy below
+            PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
+            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
             
             % replace translation normalization
             if p.Results.applyTranslationNormalization && ~isempty(proj.translationNormalization)
@@ -277,11 +421,7 @@ classdef StateSpaceProjection
             b = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(pset);
             b.dataUnits = ''; % clear by default, since we're not necessarily willing to call them the same units anymore
 
-            if ~isempty(proj.basisNamesProj)
-                b.basisNames = proj.basisNamesProj;
-            else
-                b.basisNames = proj.getBasisNames(pset);
-            end
+            b.basisNames = proj.generateBasisNamesProj(pset);
             
             b.basisUnits = proj.getBasisUnits(pset); 
             
@@ -294,6 +434,14 @@ classdef StateSpaceProjection
             % all across bases for validity
             b.dataValid = repmat(all(pset.dataValid, 2), [1, proj.nBasesProj, 1]);
         
+            % take max / min over all bases involved in each linear combination
+            b.tMinValidByAlignBasisCondition = ...
+                TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+                pset.tMinValidByAlignBasisCondition, 2, proj.decoderKbyN, @max);
+            b.tMaxValidByAlignBasisCondition = ...
+                TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+                pset.tMaxValidByAlignBasisCondition, 2, proj.decoderKbyN, @min);
+            
             % project dataMean, leave dataSem as NaN
             [b.dataMean, b.dataSem] = deal(cell(pset.nAlign, 1));
             for iAlign = 1:pset.nAlign
@@ -319,6 +467,35 @@ classdef StateSpaceProjection
                 projMat = sqrt(abs(proj.decoderKbyN) * (mat.^2));
                 b.dataSem{iAlign} = reshape(projMat, proj.nBasesProj, ...
                     pset.nConditions, pset.nTimeDataMean(iAlign));
+            end
+            
+            % project cached single trial data if any
+            if ~isempty(pset.dataCachedSampledTrialsTensor)
+                tensor = pset.dataCachedSampledTrialsTensor;
+                tensor(~proj.basisValid, :) = 0;
+                b.dataCachedSampledTrialsTensor = TensorUtils.linearCombinationAlongDimension(...
+                    tensor, 1, proj.decoderKbyN, 'replaceNaNWithZero', true);
+                
+                tensor = pset.dataCachedMeanExcludingSampledTrialsTensor;
+                tensor(~proj.basisValid, :) = 0;
+                b.dataCachedMeanExcludingSampledTrialsTensor = TensorUtils.linearCombinationAlongDimension(...
+                    tensor, 1, proj.decoderKbyN, 'replaceNaNWithZero', true);
+                
+                % compute min over all trial counts included in each basis
+                b.dataCachedSampledTrialCounts = TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+                    pset.dataCachedSampledTrialCounts, 1, proj.decoderKbyN, @min);
+            end
+            
+            % update difference of trials scaled noise estimates so that we
+            % can compute noise variance floors when projecting. since the
+            % noise estimates are already scaled by 1/sqrt(2*nTrials), we
+            % simply add them together to get the new scaled estimate
+            if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
+                b.dataDifferenceOfTrialsScaledNoiseEstimate = TensorUtils.linearCombinationAlongDimension(...
+                    pset.dataDifferenceOfTrialsScaledNoiseEstimate, 1, abs(proj.decoderKbyN), ...
+                    'replaceNaNWithZero', true, ...
+                    'keepNaNIfAllNaNs', true, ...
+                    'normalizeCoefficientsByNumNonNaN', false);
             end
           
             % project randomized data, recompute intervals
@@ -347,6 +524,14 @@ classdef StateSpaceProjection
 %                     b.dataIntervalLow{iAlign} = quantiles(:, :, :, 1);
 %                     b.dataIntervalHigh{iAlign} = quantiles(:, :, :, 2);
                 end
+                
+                if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized)
+                    b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = TensorUtils.linearCombinationAlongDimension(...
+                        pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized, 1, abs(proj.decoderKbyN), ...
+                        'replaceNaNWithZero', true, ...
+                        'keepNaNIfAllNaNs', true, ...
+                        'normalizeCoefficientsByNumNonNaN', false);
+                end
             end
 
             % aggregate AlignSummary data. Each projected basis samples trials from all original
@@ -369,7 +554,11 @@ classdef StateSpaceProjection
             end
             
             if nargout > 1
-                stats = StateSpaceProjectionStatistics.build(proj, pset, 'meanSubtract', p.Results.meanSubtractForStatistics, p.Unmatched);
+                stats = StateSpaceProjectionStatistics.build(proj, pset, 'meanSubtract', p.Results.meanSubtractForStatistics, ...
+                    'axesCombineSpecificMarginalizations', proj.axesCombineSpecificMarginalizations, ...
+                    'axesCombineAllMarginalizations', proj.axesCombineAllMarginalizations, ...
+                    'combineAxesWithTime', proj.combineAxesWithTime, ...
+                    p.Unmatched);
             end
         end
         
@@ -386,8 +575,14 @@ classdef StateSpaceProjection
             p.parse(varargin{:});
             
             iproj = proj.getAsManual();
+            
+            % this is the pseudo inverse of the decoder matrix
+%             iproj.decoderKbyN = proj.decoderKbyN' * (proj.decoderKbyN * proj.decoderKbyN')^(-1);
+%             iproj.encoderNbyK = iproj.decoderKbyN' * (iproj.decoderKbyN * iproj.decoderKbyN')^(-1);
+
+            % just swap the encoder and decoder
             iproj.decoderKbyN = proj.encoderNbyK;
-            iproj.encoderNbyK = proj.decoderKbyN;
+            iproj.encoderNbyK = iproj.decoderKbyN;
             iproj.basisNamesProj = proj.basisNamesSource; % restore the basis names of the source pset when projecting back into the source bases
             iproj.basisNamesSource = proj.basisNamesProj;
             % the inverse projection will invert the post project
@@ -410,6 +605,18 @@ classdef StateSpaceProjection
             iproj.basisValid = proj.basisValidProj;
             iproj.basisInvalidCauseProj = proj.basisInvalidCause;
             iproj.basisInvalidCause = proj.basisInvalidCauseProj;
+        end
+        
+        function nproj = getProjectionToNullSpace(proj, varargin)
+            nproj = proj.getAsManual();
+            
+            nproj.decoderKbyN = null(proj.decoderKbyN)';
+            nproj.encoderNbyK = nproj.decoderKbyN';
+            
+            nproj.basisNamesProjStem = ['Null ' nproj.basisNamesProjStem];
+            nproj.basisValidProj = truevec(nproj.nBasesProj);
+            nproj.basisInvalidCauseProj = cellstrvec(nproj.nBasesProj);
+            nproj.translationNormalizationPostProject = [];
         end
         
         function [proj, psetProjected, stats] = buildFromAndProjectPopulationTrajectorySet(proj, pset, varargin)
@@ -523,12 +730,13 @@ classdef StateSpaceProjection
             proj = proj.getAsManual();
             proj = proj.normalize();
         end
-        
     end
     
     
     methods(Static)
-        function proj = concatenate(pset, projCell)
+        function proj = concatenate(varargin)
+            projCell = varargin;
+            
             % proj = concatenate(pset, projCell)
             decoders = cellfun(@(p) p.decoderKbyN, projCell, 'UniformOutput', false);
             decoderKbyN = cat(1, decoders{:});
@@ -542,13 +750,115 @@ classdef StateSpaceProjection
             basisNamesProjCell = cellfun(@(p) p.basisNamesProj, projCell, 'UniformOutput', false);
             basisNamesProj = cat(1, basisNamesProjCell{:});
             
+            trNormPreCell = cellfun(@(p) p.translationNormalization, projCell, 'UniformOutput', false);
             trNormPostCell = cellfun(@(p) p.translationNormalizationPostProject, projCell, 'UniformOutput', false);
             
-            proj = ProjManual.buildFromEncoderDecoder(pset, encoderNbyK, decoderKbyN);
+            proj = ProjManual.buildFromEncoderDecoder(projCell{1}, encoderNbyK, decoderKbyN);
+            proj.translationNormalization = StateSpaceTranslationNormalization.concatenate(trNormPreCell);
             proj.translationNormalizationPostProject = StateSpaceTranslationNormalization.concatenate(trNormPostCell);
             proj.basisValidProj = basisValidProj;
             proj.basisInvalidCauseProj = basisInvalidCauseProj;
             proj.basisNamesProj = basisNamesProj;
+        end
+
+        function proj = compose(varargin)
+            % compose several projections into one, i.e. create a single
+            % projection that performs the same action as projecting by
+            % varargin{1}, then varargin{2}, etc.
+            %
+            % This can become a bit tricky as the translationNormalization
+            % (pre projection) and translationNormalizationPostProject are
+            % folded into the decoder matrices as well. To make sense of
+            % this code, note that translationNormalizations apply the
+            % translation (addition) step first, followed by the
+            % normalization.
+            projCell = varargin;
+            
+            % We project using projCell{1} first. We'll asume its
+            % translationNormalization as the translationNormalization for the
+            % composed projection object, so we can ignore it subsequently.
+            trPre = projCell{1}.translationNormalization;
+            decoder = projCell{1}.decoderKbyN;
+            bias = zerosvec(projCell{1}.nBasesProj); % can ignore bias imposed by first translation, since it will actually be applied to data
+            
+            % apply translationNormalizationPostProject
+            tr = projCell{1}.translationNormalizationPostProject;
+            if ~isempty(tr)
+                bias = tr.normalizationByBasis .* (bias + tr.translationByBasis);
+                decoder = diag(tr.normalizationByBasis) * decoder;
+            end
+          
+            for iProj = 2:numel(projCell)
+                % first handle pre-project translationNormalization
+                tr = projCell{iProj}.translationNormalization;
+                if ~isempty(tr)
+                    bias = tr.normalizationByBasis .* (bias + tr.translationByBasis);
+                end
+                decoder = diag(tr.normalizationByBasis) * decoder;
+                
+                % then handle decoder projection
+                decoder = projCell{iProj}.decoderKbyN * decoder;
+                bias = projCell{iProj}.decoderKbyN * bias;
+                
+                if iProj < numel(projCell)
+                    % then post-project translationNormalization
+                    tr = projCell{1}.translationNormalizationPostProject;
+                    if ~isempty(tr)
+                        bias = tr.normalizationByBasis .* (bias + tr.translationByBasis);
+                        decoder = diag(tr.normalizationByBasis) * decoder;
+                    end
+                end
+            end
+            
+            % and then combine the last projections
+            % translationNormalizationPostProject with the accumulated bias
+            trPost = projCell{end}.translationNormalizationPostProject;
+            if isempty(trPost)
+                trPost = StateSpaceTranslationNormalization.buildIdentityManual(projCell{end}.nBasesProj);
+            end
+            trPost.translationByBasis = trPost.translationByBasis + bias;
+            % and then final normalization will apply after the bias
+            
+            % now we handle the encoder side
+            % first translationNormalizationPostProject is undone, which
+            % handles all biases except projCell{1}'s, and projCell{end}'s
+            % post project normalization, so the first encoder step should
+            % undo projCell{end}'s encoder matrix and pre-project
+            % normalization
+            
+            encoder = projCell{end}.encoderNbyK;
+            tr = projCell{end}.translationNormalization;
+            if ~isempty(tr)
+                encoder = diag(1./tr.normalizationByBasis) * encoder;
+            end
+            
+            for iProj = numel(projCell)-1:-1:1
+                % undo the post project normalization
+                tr = projCell{iProj}.translationNormalizationPostProject;
+                if ~isempty(tr)
+                    encoder = diag(1./tr.normalizationByBasis) * encoder;
+                end
+                
+                % then apply the encoder matrix
+                encoder = projCell{iProj}.encoderNbyK * encoder;
+                
+                % then undo the pre-project normalization
+                 % projCell{1}'s pre-project translationNormalization is
+                 % maintained by the projection and will be undone directly
+                if iProj > 1
+                    tr = projCell{iProj}.translationNormalization;
+                    if ~isempty(tr)
+                        encoder = diag(1./tr.normalizationByBasis) * encoder;
+                    end
+                end
+            end
+            
+            proj = ProjManual.buildFromEncoderDecoder(projCell{1}, encoder, decoder);
+            proj.translationNormalization = trPre;
+            proj.translationNormalizationPostProject = trPost;
+            proj.basisNamesProj = projCell{end}.basisNamesProj;
+            proj.basisValidProj = projCell{end}.basisValidProj;
+            proj.basisInvalidCauseProj = projCell{end}.basisInvalidCauseProj;
         end
     end
 end

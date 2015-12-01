@@ -28,7 +28,7 @@ classdef StateSpaceProjectionStatistics
 % and due to combinations of these. To do this requires that all
 % conditions have data at each timepoint being considered.
 % Consequently, when looking at the marginalized variances, be
-% sure to compare this with the corresponding _sharedTimepoints
+% sure to compare this with the corresponding _shared
 % total variance measurements.
 %
 % pca: we compute the cumulative variance explained by pca bases 
@@ -78,14 +78,16 @@ classdef StateSpaceProjectionStatistics
         combinedParams
         marginalizationColorsStored
         
-        % stored parameters that were passed in
+        % stored parameters that were originally passed in
         axisAttributeSets % what attributes were grouped along each axis
         axesIgnore % manually specified axes ignored for marginalization
         axesCombineSpecificMarginalizations
         axesCombineAllMarginalizations
         combineAxesWithTime % true or false
         
+        % stored info about build statistics
         axisIncludeMask % axes considered for marginalization, typically those with size > 1
+        marginalizationList % list of marginalization spec describing how the statistics were originally computed when building
         axisNames % names of original axes
     end
     
@@ -105,8 +107,8 @@ classdef StateSpaceProjectionStatistics
         nBasesValid
         
         % nBasesValidSource * nTimepoints * nConditions
-        nDataPoints_allTimepoints 
-        nDataPoints_sharedTimepoints
+        nDataPoints_all 
+        nDataPoints_shared
     end
             
     properties(Dependent)
@@ -123,7 +125,7 @@ classdef StateSpaceProjectionStatistics
         end
         
         function tf = get.hasSignalVariance(s)
-            tf = ~isempty(s.totalSignalVar_allTimepoints);
+            tf = ~isempty(s.totalSignalVar_all);
         end
         
         function tf = get.hasStatisticsRandomized(s)
@@ -142,12 +144,12 @@ classdef StateSpaceProjectionStatistics
             n = nnz(s.basisValid);
         end
 
-        function n = get.nDataPoints_allTimepoints(s)
-            n = s.nBasesValid * s.nTimepointsAllConditions_allTimepoints;
+        function n = get.nDataPoints_all(s)
+            n = s.nBasesValid * s.nTimepointsAllConditions_all;
         end
         
-        function n = get.nDataPoints_sharedTimepoints(s)
-            n = s.nBasesValid * s.nTimepointsAllConditions_sharedTimepoints;
+        function n = get.nDataPoints_shared(s)
+            n = s.nBasesValid * s.nTimepointsAllConditions_shared;
         end
     end
     
@@ -192,7 +194,7 @@ classdef StateSpaceProjectionStatistics
         % nBases x nBases covariance matrix
         corrSource
         covSource
-        covMarginalized
+        covMarg
         
         % variance estimates
         
@@ -203,83 +205,117 @@ classdef StateSpaceProjectionStatistics
         % number of total timepoints across all conditions in the "all
         % timepoints" case. Note that different conditions contribute differing
         % numbers of timepoints.
-        nTimepointsAllConditions_allTimepoints % scalar
-        timeMaskByCondition_allTimepoints % T x ConditionAttr logical
+        nTimepointsAllConditions_all % scalar
+        timeMaskByCondition_all % T x ConditionAttr logical
         
         % total variances
-        totalVar_allTimepoints % scalar
-        totalSignalVar_allTimepoints % scalar (requires single trials)
-        totalNoiseVar_allTimepoints % scalar (requires single trials)
+        totalVar_all % scalar
+        totalSignalVar_all % scalar (requires single trials)
+        totalNoiseVar_all % scalar (requires single trials)
         
-        % variance per component
-        componentVarByBasis_allTimepoints % 1 x K (do not cumsum these to get cumulative variance)
+        % variance per component (by reconstruction through
+        % encoder*decoder)
+        componentVarByBasis_all % 1 x K (do not cumsum these to get cumulative variance)
         
-        % cumulative raw variance
-        cumulativeVarByBasis_allTimepoints % 1x K
-        cumulativeNoiseVarByBasis_allTimepoints % 1 x K
-        cumulativeSignalVarByBasis_allTimepoints % 1 x K
+        % cumulative raw variance (by reconstruction through
+        % encoder*decoder)
+        cumVarByBasis_all % 1x K
+        cumNoiseVarByBasis_all % 1 x K
+        cumSignalVarByBasis_all % 1 x K
         
-        % cumulative fraction 0 --> 1
-        cumulativeFractionVarByBasis_allTimepoints % 1 x K
-        cumulativeFractionSignalVarByBasis_allTimepoints % 1 x K
+        % cumulative fraction 0 --> 1 (by reconstruction through
+        % encoder*decoder)
+        cumFracVarByBasis_all % 1 x K
+        cumFracSignalVarByBasis_all % 1 x K
         
         % pca upper bounds
-        pca_cumulativeVarByBasis_allTimepoints % 1 x K
-        pca_cumulativeSignalVarByBasis_allTimepoints % 1 x K
-        pca_cumulativeFractionVarByBasis_allTimepoints % 1 x K
-        pca_cumulativeFractionSignalVarByBasis_allTimepoints % 1 x K
+        pca_cumVarByBasis_all % 1 x K
+        pca_cumSignalVarByBasis_all % 1 x K
+        pca_cumFracVarByBasis_all % 1 x K
+        pca_cumFracSignalVarByBasis_all % 1 x K
+        
+        % variance of the decoder axes themselves, rather than reconstruction 
+        decoderVarByBasis_all % 1 x K 
+        decoderNormVarByBasis_all % 1 x K : same but with normalized decoder axes
+        decoderOrthonormVarByBasis_all
+        cumDecoderOrthonormVarByBasis_all % 1 x K
+        cumDecoderOrthonormSignalVarByBasis_all % 1 x K 
+        cumFracDecoderOrthonormVarByBasis_all % 1 x K
+        cumFracDecoderOrthonormSignalVarByBasis_all % 1 x K
         
         %%%%%
         % Shared timepoints
         %%%%%
         
-        nTimepointsAllConditions_sharedTimepoints % scalar
-        nTimepointsPerCondition_sharedTimepoints % scalar
-        timeMask_sharedTimepoints % T x 1 logical
+        nTimepointsAllConditions_shared % scalar
+        nTimepointsPerCondition_shared % scalar
+        timeMask_shared % T x 1 logical
         
         % total variances
-        totalVar_sharedTimepoints % scalar
-        totalSignalVar_sharedTimepoints % scalar
-        totalNoiseVar_sharedTimepoints % scalar
+        totalVar_shared % scalar
+        totalSignalVar_shared % scalar
+        totalNoiseVar_shared % scalar
         
         % variance per component
-        componentVarByBasis_sharedTimepoints % 1 x K (do not cumsum these to get cumulative variance)
+        componentVarByBasis_shared % 1 x K (do not cumsum these to get cumulative variance)
         
         % cumulative raw variance
-        cumulativeVarByBasis_sharedTimepoints
-        cumulativeSignalVarByBasis_sharedTimepoints
-        cumulativeNoiseVarByBasis_sharedTimepoints
+        cumVarByBasis_shared
+        cumSignalVarByBasis_shared
+        cumNoiseVarByBasis_shared
 
-        % cumulative fraction 0 -> 1
-        cumulativeFractionVarByBasis_sharedTimepoints
-        cumulativeFractionSignalVarByBasis_sharedTimepoints
+        % cum fraction 0 -> 1
+        cumFracVarByBasis_shared
+        cumFracSignalVarByBasis_shared
+        
+        % variance of the decoder axes themselves, rather 
+        decoderVarByBasis_shared % 1 x K 
+        decoderNormVarByBasis_shared % 1 x K : same but with normalized decoder axes
+        decoderOrthonormVarByBasis_shared
+        cumDecoderOrthonormVarByBasis_shared % 1 x K
+        cumDecoderOrthonormSignalVarByBasis_shared % 1 x K 
+        cumFracDecoderOrthonormVarByBasis_shared % 1 x K
+        cumFracDecoderOrthonormSignalVarByBasis_shared % 1 x K
         
         % pca upper bounds
-        pca_cumulativeVarByBasis_sharedTimepoints
-        pca_cumulativeSignalVarByBasis_sharedTimepoints
-        pca_cumulativeFractionVarByBasis_sharedTimepoints
-        pca_cumulativeFractionSignalVarByBasis_sharedTimepoints
+        pca_cumVarByBasis_shared
+        pca_cumSignalVarByBasis_shared
+        pca_cumFracVarByBasis_shared
+        pca_cumFracSignalVarByBasis_shared
         
         %%%%%
         % Marginalized variance in shared timepoints
         %%%%%
         
         % total variances
-        totalMarginalizedVar_sharedTimepoints
-        totalMarginalizedNoiseVar_sharedTimepoints
-        totalMarginalizedSignalVar_sharedTimepoints
+        totalMargVar_shared
+        totalMargNoiseVar_shared
+        totalMargSignalVar_shared
         
         % variance per component
-        componentMarginalizedVarByBasis_sharedTimepoints
+        componentMargVarByBasis_shared
             
-        % cumulative raw variance
-        cumulativeMarginalizedVarByBasis_sharedTimepoints
-        cumulativeMarginalizedSignalVarByBasis_sharedTimepoints
-        cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints
+        % cum raw variance
+        cumMargVarByBasis_shared
+        cumMargSignalVarByBasis_shared
+        cumMargNoiseVarByBasis_shared
         
         % cumulative fraction 0 --> 1
-        cumulativeFractionMarginalizedSignalVarByBasis_sharedTimepoints
-        cumulativeFractionMarginalizedVarByBasis_sharedTimepoints
+        cumFracMargSignalVarByBasis_shared
+        cumFracMargVarByBasis_shared
+        
+        % decoder axes
+        decoderMargVarByBasis_shared % M x K
+        decoderNormMargVarByBasis_shared % M x K
+        decoderOrthonormMargVarByBasis_shared % M x K
+        cumMargDecoderOrthonormVarByBasis_shared % M x K
+        cumMargDecoderOrthonormSignalVarByBasis_shared % M x K
+        cumFracMargDecoderOrthonormVarByBasis_shared % M x K
+        cumFracMargDecoderOrthonormSignalVarByBasis_shared % M x K
+        
+        %%%%%
+        % Randomized
+        %%%%%
         
         % StateSpaceProjectionStatistics instances for each randomization
         % in dataMeanRandomized
@@ -287,38 +323,35 @@ classdef StateSpaceProjectionStatistics
     end
 
     methods % Post-build utilities
-        function idxList = lookupMarginalizationIdx(marginalizationSpec)
-            if StateSpaceProjectionStatistics.isMarginalizationSpec(marginalizationSpec)
-                % convert to list so we can loop over it
-                marginalizationSpec = {marginalizationSpec};
-            elseif ~StateSpaceProjectionStatistics.isListOfMarginalizationSpec(marginalizationSpec)
-                error('Input must be marginalization spec or list of marginalizationSpec');
-            end
-            
-            for iM = 1:numel(marginalizationSpec)
-                margSpec = marginalizationSpec{iM};
-                
-            end
+        function idxMarg = lookupMarginalizationIdx(flatMargSpec, varargin)
+            idxMarg = StateSpaceProjectionStatistics.staticFindFlatMarginalizationSpecInList(flatMargSpec, s.marginalizationList, varargin{:});
         end
     end
     
     methods % Plotting results 
-        function plotCumulativeVariance(s, varargin)
+        function plotCumVar(s, varargin)
             p = inputParser();
             p.addParameter('fractional', true, @islogical);
             p.addParameter('showPCABound', true, @islogical);
             p.addParameter('timepoints', 'all', @ischar); % or 'shared'
             p.addParameter('varianceType', 'total', @ischar);
             p.addParameter('marginalize', [], @(x) isempty(x) || islogical(x));
-            p.addParameter('showRandomQuantiles', 0.95, @isscalar); % show traces individual for individual randomization statistics
             p.addParameter('showTotals', true, @islogical); % show horizontal lines at total for each variance
+            p.addParameter('verbose', true, @islogical);
+            p.addParameter('showThresholdAt', [], @(x) isempty(x) || isscalar(x)); % draw horizontal line at fractional threshold and vertical lines where each variance trace crosses that threshold
+            p.addParameter('showQuantiles', [], @(x) isempty(x) || isvector(x)); % either empty (don't show), scalar like 0.95 for 95% confidence interval, or [0.025 0.975] for specific quantiles
+            
             p.parse(varargin{:});
             
             varianceType = p.Results.varianceType;
             marginalize = p.Results.marginalize;
             timepoints = p.Results.timepoints;
+            verbose = p.Results.verbose;
             
             markerSize = 4;
+            
+            pcaColor = [0.7 0.7 0.7];
+            mainColor = [0.3 0.3 0.3];
             
             if isempty(marginalize)
                 marginalize = strcmp(timepoints, 'shared');
@@ -326,57 +359,120 @@ classdef StateSpaceProjectionStatistics
                 assert(strcmp(timepoints, 'shared'), 'Timepoints must be set to shared in order to show marginalized variances');
             end
             
+            % parse and convert randomizationInterval to quantiles
+            if isempty(p.Results.showQuantiles)
+                showQuantiles = false;
+            else
+                showQuantiles = true;
+                if isscalar(p.Results.showQuantiles)
+                    d = (1 - p.Results.showQuantiles) / 2;
+                    quantiles = [d, 1-d];
+                else
+                    quantiles = p.Results.showQuantiles(1:2);
+                end
+                assert(all(quantiles >= 0 & quantiles <= 1), 'Quantiles must be between 0 and 1');
+            end
+            
             axh = newplot;
             
             switch varianceType
                 case 'total'
                     varStr = 'Var';
+                    varStrForTotal = 'Var';
+                    varStrForPCA = 'Var';
                     varStrP = 'Variance';
                  case 'signal'
                     assert(s.hasSignalVariance, 'Signal variance not computed, PopulationTrajectorySet must have single trials for this to be possible');
                     varStr = 'SignalVar';
+                    varStrForTotal = 'SignalVar';
+                    varStrForPCA = 'SignalVar';
                     varStrP = 'Signal Variance';
                 case 'noise' 
                     assert(s.hasSignalVariance, 'Noise variance not computed, PopulationTrajectorySet must have single trials for this to be possible');
                     varStr = 'NoiseVar';
+                    varStrForTotal = 'NoiseVar';
+                    varStrForPCA = 'NoiseVar';
                     varStrP = 'Noise Variance';
+                case 'decoderOrthonorm'
+                    varStr = 'DecoderOrthonormVar';
+                    varStrForPCA = 'Var';
+                    varStrForTotal = 'Var';
+                    varStrP = 'Orthornormalized Decoder Variance';
+                case 'decoderOrthonormSignal'
+                    varStr = 'DecoderOrthonormSignalVar';
+                    varStrForPCA = 'SignalVar';
+                    varStrForTotal = 'SignalVar';
+                    varStrP = 'Orthornormalized Decoder Signal Variance';    
                 otherwise
                     error('Unknown varianceType argument %s, supported values are total, signal, noise', p.Results.varianceType);
             end
             
             switch timepoints
                 case 'all'
-                    timeStr = 'allTimepoints';
+                    timeStr = 'all';
                     timeStrP = 'All Timepoints';
                 case 'shared';
-                    timeStr = 'sharedTimepoints';
+                    timeStr = 'shared';
                     timeStrP = 'Shared Timepoints';
                 otherwise
                     error('Unknown timepoints argument %s, supported values are all and shared', p.Results.timepoints);
             end
             
             if p.Results.fractional
-                fracStr = 'Fraction';
+                fracStr = 'Frac';
                 fracStrP = 'Fraction ';
             else
                 fracStr = '';
                 fracStrP = '';
             end
             
-            fieldName = sprintf('cumulative%s%sByBasis_%s', fracStr, varStr, timeStr);
-            v = s.(fieldName);
+            % Collect for later
+            [data_mainVar, data_margVar, data_pcaVar] = deal([]);
+            
+            hold(axh, 'on');
+            
+            if p.Results.showPCABound
+                pcaFieldName = sprintf('pca_cum%s%sByBasis_%s', fracStr, varStrForPCA, timeStr);
+                if isprop(s, pcaFieldName)
+                    %%% Plotting pca var
+                    vp = s.(pcaFieldName);
+%                     vp = s.(pcaFieldName);
+                    if verbose
+                        debug('Plotting pca upper bound using .%s\n', pcaFieldName);
+                    end
+                    h = plot(axh, 1:s.nBasesProj, vp, '-', ...
+                        'Color', pcaColor, 'LineWidth', 1);
+                    TrialDataUtilities.Plotting.showInLegend(h, 'PCA Upper Bound');
+                    
+%                     data_pcaVar = vp;
+                else
+%                     data_pcaVar = [];
+                    pcaFieldName = ''; %#ok<NASGU>
+                end
+            else
+                pcaFieldName = ''; %#ok<NASGU>
+            end
+            
+            mainFieldName = sprintf('cum%s%sByBasis_%s', fracStr, varStr, timeStr);
+            v = s.(mainFieldName);
+            
+            %%% Plotting main trace
+            data_mainVar = v;
             
             h = plot(axh, 1:s.nBasesProj, v, 'o-', ...
-                'Color', [0.3 0.3 0.3], 'MarkerFaceColor', [0.1 0.1 0.1], ...
+                'Color', mainColor, 'MarkerFaceColor', [0.1 0.1 0.1], ...
                 'MarkerEdgeColor', 'none', 'MarkerSize', markerSize, 'LineWidth', 1);
             TrialDataUtilities.Plotting.showInLegend(h, 'Total');
+            if verbose
+                debug('Plotting variance using %s\n', mainFieldName);
+            end
 
-             hold(axh, 'on');
-            
             if marginalize
-                mFieldName = sprintf('cumulative%sMarginalized%sByBasis_%s', fracStr, varStr, timeStr);
-                vm = s.(mFieldName);
+                margFieldName = sprintf('cum%sMarg%sByBasis_%s', fracStr, varStr, timeStr);
+                vm = s.(margFieldName);
+                data_margVar = vm;
                 
+                %%% plotting marginalized var
                 for m = 1:s.nMarginalizations
                     color = s.marginalizationColors(m, :);
                     h = plot(axh, 1:s.nBasesProj, vm(m, :), 'o-', ...
@@ -384,45 +480,65 @@ classdef StateSpaceProjectionStatistics
                     'MarkerEdgeColor', 'none', 'MarkerSize', markerSize, 'LineWidth', 1);
                     TrialDataUtilities.Plotting.showInLegend(h, s.marginalizationNames{m});
                 end
-            else
-                mFieldName = ''; %#ok<NASGU>
-            end
-            
-            if p.Results.showPCABound
-                pcaFieldName = ['pca_' fieldName];
-                try
-                    vp = s.(pcaFieldName);
-%                     vp = s.(pcaFieldName);
-                    h = plot(axh, 1:s.nBasesProj, vp, '-', ...
-                        'Color', [0.7 0.7 0.7], 'LineWidth', 1);
-                    TrialDataUtilities.Plotting.showInLegend(h, 'PCA Upper Bound');
-                catch
-                    pcaFieldName = ''; %#ok<NASGU>
+                
+                if verbose
+                    debug('Plotting marginalized variances using %s\n', margFieldName);
                 end
-            else
-                pcaFieldName = ''; %#ok<NASGU>
-            end
+           end
             
-            if ~isempty(p.Results.showRandomQuantiles) && ~isempty(s.statisticsRandomized) && ...
-                    strcmp(varianceType, 'total')
-                % if asked, show each randomization quantiles, should be
-                % nBasesProj x nQuantiles matrix
-                randKbyQ = TensorUtils.squeezeDims(s.computeQuantilesForRandomizedStatistics(fieldName, p.Results.showRandomQuantiles), 1);
-                plot(axh, 1:s.nBasesProj, randKbyQ, '-', 'Color', [0.5 0.5 0.5]);
+            if showQuantiles
+                debug('Plotting randomization quantiles using .computeQuantilesForRandomizedStatistics');
+                quantileAlpha = 0.5;
+                if p.Results.showPCABound
+                    % 1 x K x 2
+                    qdata = TensorUtils.squeezeDims(s.computeQuantilesForRandomizedStatistics(pcaFieldName, quantiles), 1);
+                    hs = TrialDataUtilities.Plotting.errorshadeInterval(1:s.nBasesProj, qdata(:, 1), qdata(:, 2), [0.7 0.7 0.7], 'alpha', quantileAlpha, 'axh', axh);
+                    TrialDataUtilities.Plotting.hideInLegend(hs);
+                end
+                
+                % main trace
+                qdata = TensorUtils.squeezeDims(s.computeQuantilesForRandomizedStatistics(mainFieldName, quantiles), 1);
+                hs = TrialDataUtilities.Plotting.errorshadeInterval(1:s.nBasesProj, qdata(:, 1), qdata(:, 2), mainColor, 'alpha', quantileAlpha, 'axh', axh);
+                TrialDataUtilities.Plotting.hideInLegend(hs);
+                
+                if marginalize
+                    qdata = s.computeQuantilesForRandomizedStatistics(margFieldName, quantiles);
+                    for m = 1:s.nMarginalizations
+                        color = s.marginalizationColors(m, :);
+                        lo = TensorUtils.squeezeDims(qdata(m, :, 1), 1);
+                        hi = TensorUtils.squeezeDims(qdata(m, :, 2), 1);
+                        hs = TrialDataUtilities.Plotting.errorshadeInterval(1:s.nBasesProj, lo, hi, color, 'alpha', quantileAlpha, 'axh', axh);
+                        TrialDataUtilities.Plotting.hideInLegend(hs);
+                    end
+                end
             end
+%             
+%             if ~isempty(p.Results.showRandomQuantiles) && ~isempty(s.statisticsRandomized) && ...
+%                     strcmp(varianceType, 'total')
+%                 % if asked, show each randomization quantiles, should be
+%                 % nBasesProj x nQuantiles matrix
+%                 randKbyQ = TensorUtils.squeezeDims(s.computeQuantilesForRandomizedStatistics(fieldName, p.Results.showRandomQuantiles), 1);
+%                 plot(axh, 1:s.nBasesProj, randKbyQ, '-', 'Color', [0.5 0.5 0.5]);
+%                 if verbose
+%                     debug('Plotting randomization quantiles using .computeQuantilesForRandomizedStatistics(%s\n', fieldName);
+%                 end
+%             end
             
             if p.Results.showTotals
-                fieldName = sprintf('total%s_%s', varStr, timeStr);
+                fieldName = sprintf('total%s_%s', varStrForTotal, timeStr);
                 total = s.(fieldName);
                 if ~p.Results.fractional
                     h = TrialDataUtilities.Plotting.horizontalLine(total, ...
-                        'Color', [0.3 0.3 0.3], 'LineWidth', 0.5, 'LineStyle', '--');
+                        'Color', mainColor, 'LineWidth', 0.5, 'LineStyle', '--');
                     TrialDataUtilities.Plotting.hideInLegend(h);
+                    if verbose
+                        debug('Plotting total variance using %s\n', fieldName);
+                    end
                 end
                 
                 if marginalize
-                    mFieldName = sprintf('totalMarginalized%s_%s', varStr, timeStr);
-                    totalMarg = s.(mFieldName);
+                    margFieldName = sprintf('totalMarg%s_%s', varStrForTotal, timeStr);
+                    totalMarg = s.(margFieldName);
                     if p.Results.fractional
                         totalMarg = totalMarg / total;
                     end
@@ -432,6 +548,38 @@ classdef StateSpaceProjectionStatistics
                         h = TrialDataUtilities.Plotting.horizontalLine(totalMarg(m), ... 
                             'LineStyle', '--', 'Color', color, 'LineWidth', 0.5);
                         TrialDataUtilities.Plotting.hideInLegend(h);
+                    end
+                    
+                    if verbose
+                        debug('Plotting total marginalized variances using %s\n', margFieldName);
+                    end
+                end
+            end
+            
+            if ~isempty(p.Results.showThresholdAt) && ~isnan(p.Results.showThresholdAt)
+                thresh = p.Results.showThresholdAt;
+                TrialDataUtilities.Plotting.horizontalLine(thresh, 'Color', [0.9 0.3 0.3], 'Parent', axh);
+                TrialDataUtilities.Plotting.showInLegend(h, sprintf('%g%% Threshold', thresh*100));
+                
+                % calculate number of bases required to reach threshold
+                nMain = find(data_mainVar > thresh, 1);
+                if isempty(nMain)
+                    nMain = NaN;
+                else
+                    h = plot(axh, [nMain nMain], [0 data_mainVar(nMain)], '-', 'Color', [0.3 0.3 0.3]);
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                    debug('%d bases required to explain %g%% of total variance\n', nMain, thresh*100);
+                end
+                if marginalize
+                    for m = 1:s.nMarginalizations
+                        nMarg = find(data_margVar(m, :) > thresh, 1);
+                        if ~isempty(nMarg)
+                            h = plot(axh, [nMarg nMarg], [0 data_mainVar(nMarg)], '-', ...
+                                'Color', s.marginalizationColors(m, :));
+                            TrialDataUtilities.Plotting.hideInLegend(h);
+                            debug('%d bases required to explain %g%% of %s variance\n', ...
+                                nMarg, thresh*100, s.marginalizationNames{m});
+                        end
                     end
                 end
             end
@@ -456,23 +604,39 @@ classdef StateSpaceProjectionStatistics
                 au.update();
             end
             
-            % fieldsPlotted = {fieldName; mFieldName; pcaFieldName}
+            % fieldsPlotted = {fieldName; margFieldName; pcaFieldName}
         end
         
-        function plotCumulativeSignalVariance_SharedTimepoints(s, varargin)
-            s.plotCumulativeVariance('timepoints', 'shared', 'marginalize', true, 'fractional', true, 'varianceType', 'signal', varargin{:});
+        function plotCumSignalVar_shared(s, varargin)
+            s.plotCumVar('timepoints', 'shared', 'marginalize', true, 'fractional', true, 'varianceType', 'signal', varargin{:});
         end
         
-        function plotCumulativeVariance_SharedTimepoints(s, varargin)
-            s.plotCumulativeVariance('timepoints', 'shared', 'marginalize', true, 'fractional', true, 'varianceType', 'total', varargin{:});
+        function plotCumVar_shared(s, varargin)
+            s.plotCumVar('timepoints', 'shared', 'marginalize', true, 'fractional', true, 'varianceType', 'total', varargin{:});
         end
         
-        function plotCumulativeSignalVariance_AllTimepoints(s, varargin)
-            s.plotCumulativeVariance('timepoints', 'all', 'fractional', true, 'varianceType', 'signal', varargin{:});
+        function plotCumSignalVar_all(s, varargin)
+            s.plotCumVar('timepoints', 'all', 'fractional', true, 'varianceType', 'signal', varargin{:});
         end
         
-        function plotCumulativeVariance_AllTimepoints(s, varargin)
-            s.plotCumulativeVariance('timepoints', 'all', 'fractional', true, 'varianceType', 'total', varargin{:});
+        function plotCumVar_all(s, varargin)
+            s.plotCumVar('timepoints', 'all', 'fractional', true, 'varianceType', 'total', varargin{:});
+        end
+        
+        function plotCumDecoderOrthonormVar_shared(s, varargin)
+            s.plotCumVar('timepoints', 'shared', 'marginalize', true, 'fractional', true, 'varianceType', 'decoderOrthonorm', varargin{:});
+        end
+        
+        function plotCumDecoderOrthonormSignalVar_shared(s, varargin)
+            s.plotCumVar('timepoints', 'shared', 'marginalize', true, 'fractional', true, 'varianceType', 'decoderOrthonormSignal', varargin{:});
+        end
+        
+        function plotCumDecoderOrthonormVar_all(s, varargin)
+            s.plotCumVar('timepoints', 'all', 'fractional', true, 'varianceType', 'decoderOrthonorm', varargin{:});
+        end
+        
+        function plotCumDecoderOrthonormSignalVar_all(s, varargin)
+            s.plotCumVar('timepoints', 'all', 'fractional', true, 'varianceType', 'decoderOrthonormSignal', varargin{:});
         end
         
         function plotCovSource(proj, varargin)
@@ -496,7 +660,7 @@ classdef StateSpaceProjectionStatistics
             axh = newplot;
             hold(axh, 'on');
             
-            cumBasisMix = cumsum(s.componentMarginalizedVarByBasis_sharedTimepoints, 1)';
+            cumBasisMix = cumsum(s.componentMargVarByBasis_shared, 1)';
             nCov = s.nMarginalizations;
             nBases = length(basisIdx);
             rowHeight = 0.8;
@@ -526,8 +690,8 @@ classdef StateSpaceProjectionStatistics
 %                 extent = get(h, 'Extent');
 %                 %xMin = min(extent(1), xMin);
                 
-                componentFractionTotalVariance = s.componentVarByBasis_sharedTimepoints(iB) / s.totalVar_sharedTimepoints;
-                text(cumBasisMix(iB, end), nBases-iB+rowHeight/2, sprintf('  %.2f%%', componentFractionTotalVariance*100), ...
+                componentFracTotalVariance = s.componentVarByBasis_shared(iB) / s.totalVar_shared;
+                text(cumBasisMix(iB, end), nBases-iB+rowHeight/2, sprintf('  %.2f%%', componentFracTotalVariance*100), ...
                     'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Left', 'Parent', axh); 
                % extent = get(h, 'Extent');
                 %xMax = max(extent(1)+extent(3), xMax);
@@ -567,7 +731,7 @@ classdef StateSpaceProjectionStatistics
             
             % get the names and counts of source -> proj bases
             s.basisNamesSource = pset.basisNames;
-            s.basisNamesProj = proj.getBasisNames(pset);
+            s.basisNamesProj = proj.generateBasisNamesProj(pset);
             s.nBasesSource = proj.nBasesSource;
             
             s.basisValid = proj.basisValid;
@@ -584,8 +748,8 @@ classdef StateSpaceProjectionStatistics
             s.axesCombineAllMarginalizations = p.Results.axesCombineAllMarginalizations;
             s.combineAxesWithTime = p.Results.combineAxesWithTime;
             s.axisNames = pset.conditionDescriptor.axisNames;
-            s.axisIncludeMask = dimMask;
-            [s.combinedParams, s.marginalizationNames] = StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization( ...
+            s.axisAttributeSets = pset.conditionDescriptor.axisAttributes;
+            [s.combinedParams, s.marginalizationNames, s.axisIncludeMask, s.marginalizationList] = StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization( ...
                 pset.conditionDescriptor.axisAttributes, ...
                 'axisIncludeMask', dimMask, ...
                 'axisNames', pset.conditionDescriptor.axisNames, ...
@@ -605,9 +769,9 @@ classdef StateSpaceProjectionStatistics
             
             s.covSource = TensorUtils.inflateMaskedTensor(nancov(CTAbyNv, 1), [1 2], proj.basisValid); 
             s.corrSource = TensorUtils.inflateMaskedTensor(corrcoef(CTAbyNv, 'rows', 'complete'), [1 2], proj.basisValid);
-            covMarginalizedValidCell = TrialDataUtilities.DPCA.dpca_marginalizedCov(NvbyTAbyAttr, 'combinedParams', s.combinedParams);
-            s.covMarginalized = cellfun(@(x) TensorUtils.inflateMaskedTensor(x, [1 2], proj.basisValid), ...
-                covMarginalizedValidCell, 'UniformOutput', false);
+            covMargValidCell = TrialDataUtilities.DPCA.dpca_marginalizedCov(NvbyTAbyAttr, 'combinedParams', s.combinedParams);
+            s.covMarg = cellfun(@(x) TensorUtils.inflateMaskedTensor(x, [1 2], proj.basisValid), ...
+                covMargValidCell, 'UniformOutput', false);
 
             % filter encoder / decoder by basis valid
             encoderNvbyK = proj.encoderNbyK(proj.basisValid, :);
@@ -684,6 +848,10 @@ classdef StateSpaceProjectionStatistics
             %                     taken into average
             %
 
+            % utility fn
+            ssqAlongDim = @(data, dim) nansum(data.^2, dim);
+            ssq = @(data) nansum(data(:).^2);
+            
             % restore original input shape
             N = size(decoderKbyN,2);
             K = size(decoderKbyN,1);
@@ -707,6 +875,16 @@ classdef StateSpaceProjectionStatistics
 
             dataTensor = NbyTAbyAttr;
             
+            % build normalized and orthonormalized decoders
+            decoderKbyN_norm = bsxfun(@rdivide, decoderKbyN, sqrt(nansum(decoderKbyN.^2, 2)));
+            [q, ~] = qr(decoderKbyN', 0); % economy size to get the right number of output bases
+            decoderKbyN_orthonorm = q';
+            %decoderKbyN_orthonorm = TrialDataUtilities.Data.qrGramSchmidt(decoderKbyN')';
+            missingRows = size(decoderKbyN, 1) - size(decoderKbyN_orthonorm, 1); 
+            if missingRows > 0
+                decoderKbyN_orthonorm = cat(1, decoderKbyN_orthonorm, zeros(missingRows, size(decoderKbyN, 2)));
+            end
+            
             %%%%%%%%
             % All timepoints variances
             %%%%%%%%
@@ -718,45 +896,53 @@ classdef StateSpaceProjectionStatistics
             % timepoints from all conditions to be used as long as all neurons have a
             % sample at that time
             allTimepoints_NxT_keepMaskT = makecol(~any(isnan(dataNbyT), 1));
-            dataNbyT_allTimepoints = dataNbyT(:, allTimepoints_NxT_keepMaskT);
+            dataNbyT_all = dataNbyT(:, allTimepoints_NxT_keepMaskT);
             
-            s.nTimepointsAllConditions_allTimepoints = nnz(allTimepoints_NxT_keepMaskT);
+            s.nTimepointsAllConditions_all = nnz(allTimepoints_NxT_keepMaskT);
             
             % go from TC x 1 to T x Cattr
-            s.timeMaskByCondition_allTimepoints = reshape(allTimepoints_NxT_keepMaskT, szVec(2:end));
+            s.timeMaskByCondition_all = reshape(allTimepoints_NxT_keepMaskT, szVec(2:end));
             
             % subtract means for "all timepoints" over time for each basis,
             % condition
             if p.Results.meanSubtract
-                dataNbyT_allTimepoints = bsxfun(@minus, dataNbyT_allTimepoints, mean(dataNbyT_allTimepoints, 2));
+                dataNbyT_all = bsxfun(@minus, dataNbyT_all, mean(dataNbyT_all, 2));
             end
 
             % total variance
-            s.totalVar_allTimepoints = sum(dataNbyT_allTimepoints(:).^2);
+            s.totalVar_all = sum(dataNbyT_all(:).^2);
 
             if p.Results.pcaBound
                 % PCA explained variance
                 if p.Results.verbose, debug('Computing trial-average SVD\n'); end
-                Spca_all = svd(dataNbyT_allTimepoints', 0);
+                Spca_all = svd(dataNbyT_all', 0);
                 if numel(Spca_all) < K
                     Spca_all = cat(1, Spca_all, zerosvec(K-numel(Spca_all)));
                 end
-                s.pca_cumulativeVarByBasis_allTimepoints = cumsum(Spca_all.^2');
-                s.pca_cumulativeFractionVarByBasis_allTimepoints = s.pca_cumulativeVarByBasis_allTimepoints / s.totalVar_allTimepoints;
+                s.pca_cumVarByBasis_all = cumsum(Spca_all.^2');
+                s.pca_cumFracVarByBasis_all = s.pca_cumVarByBasis_all / s.totalVar_all;
             end
             
             % explained variance along cumulative sets of bases
-            Z = decoderKbyN*dataNbyT_allTimepoints;
-            s.componentVarByBasis_allTimepoints = sum(Z.^2, 2)';
+            Z = decoderKbyN*dataNbyT_all;
+            s.componentVarByBasis_all = sum(Z.^2, 2)';
             
             prog = ProgressBar(size(decoderKbyN,1), 'Computing cumulative variance explained all timepoints');
             for i=1:size(decoderKbyN,1)
                 prog.update(i);
-                s.cumulativeVarByBasis_allTimepoints(i) = s.totalVar_allTimepoints - sum(sum((dataNbyT_allTimepoints - encoderNbyK(:,1:i)*Z(1:i,:)).^2));    
+                s.cumVarByBasis_all(i) = s.totalVar_all - sum(sum((dataNbyT_all - encoderNbyK(:,1:i)*Z(1:i,:)).^2));    
             end
             prog.finish();
-            s.cumulativeFractionVarByBasis_allTimepoints = s.cumulativeVarByBasis_allTimepoints / s.totalVar_allTimepoints;
+            s.cumVarByBasis_all = max(0, s.cumVarByBasis_all);
+            s.cumFracVarByBasis_all = s.cumVarByBasis_all / s.totalVar_all;
 
+            % look at decoder variance
+            s.decoderVarByBasis_all = ssqAlongDim(decoderKbyN * dataNbyT_all, 2)';
+            s.decoderNormVarByBasis_all = ssqAlongDim(decoderKbyN_norm * dataNbyT_all, 2)';
+            s.decoderOrthonormVarByBasis_all = ssqAlongDim(decoderKbyN_orthonorm * dataNbyT_all, 2)';
+            s.cumDecoderOrthonormVarByBasis_all = cumsum(s.decoderOrthonormVarByBasis_all);
+            s.cumFracDecoderOrthonormVarByBasis_all = s.cumDecoderOrthonormVarByBasis_all ./ s.totalVar_all;
+            
             %%%%%%%
             % Shared timepoints variance
             %%%%%%%
@@ -768,9 +954,9 @@ classdef StateSpaceProjectionStatistics
             sharedTimepoints_tensor_keepMaskT = makecol(squeeze(~TensorUtils.anyMultiDim(isnan(dataTensor_NxTxC(:, :, maskConditionsConsider)), [1 3])));
             dataTensor_shared = TensorUtils.selectAlongDimension(dataTensor, 2, sharedTimepoints_tensor_keepMaskT);
 
-            s.nTimepointsPerCondition_sharedTimepoints = nnz(sharedTimepoints_tensor_keepMaskT);
-            s.nTimepointsAllConditions_sharedTimepoints = s.nTimepointsPerCondition_sharedTimepoints * nConditions;
-            s.timeMask_sharedTimepoints = sharedTimepoints_tensor_keepMaskT;
+            s.nTimepointsPerCondition_shared = nnz(sharedTimepoints_tensor_keepMaskT);
+            s.nTimepointsAllConditions_shared = s.nTimepointsPerCondition_shared * nConditions;
+            s.timeMask_shared = sharedTimepoints_tensor_keepMaskT;
             
             if any(sharedTimepoints_tensor_keepMaskT)
                 % subtract means for "all timepoints" over time for each basis,
@@ -783,7 +969,7 @@ classdef StateSpaceProjectionStatistics
                 dataNxTxC_shared = dataTensor_shared(:, :, maskConditionsConsider);
                 dataNxT_shared = dataNxTxC_shared(:, :);
                 
-                s.totalVar_sharedTimepoints = sum(dataNxT_shared(:).^2);
+                s.totalVar_shared = sum(dataNxT_shared(:).^2);
                     
                 if p.Results.pcaBound
                     % PCA explained variance upper bound
@@ -795,21 +981,30 @@ classdef StateSpaceProjectionStatistics
                     if numel(Sshared) <= K
                         Sshared = cat(1, Sshared, zerosvec(K-numel(Sshared)));
                     end
-                    s.pca_cumulativeVarByBasis_sharedTimepoints = cumsum(Sshared(1:K).^2');
-                    s.pca_cumulativeFractionVarByBasis_sharedTimepoints = s.pca_cumulativeVarByBasis_sharedTimepoints / s.totalVar_sharedTimepoints;
+                    s.pca_cumVarByBasis_shared = cumsum(Sshared(1:K).^2');
+                    s.pca_cumFracVarByBasis_shared = s.pca_cumVarByBasis_shared / s.totalVar_shared;
                 end
                 
                 % explained variance along bases
                 prog = ProgressBar(size(decoderKbyN, 1), 'Computing cumulative variance explained shared timepoints');
                 Z = decoderKbyN*dataNxT_shared;
-                s.componentVarByBasis_sharedTimepoints = sum(Z.^2, 2)'; % along each basis INDIVIDUALLY
+                s.componentVarByBasis_shared = sum(Z.^2, 2)'; % along each basis INDIVIDUALLY
                 for i=1:K
                     prog.update(i);
-                    s.cumulativeVarByBasis_sharedTimepoints(i) = s.totalVar_sharedTimepoints - sum(sum((dataNxT_shared - encoderNbyK(:,1:i)*Z(1:i,:)).^2));    
+                    s.cumVarByBasis_shared(i) = s.totalVar_shared - sum(sum((dataNxT_shared - encoderNbyK(:,1:i)*Z(1:i,:)).^2));    
                 end
                 prog.finish();
-                s.cumulativeFractionVarByBasis_sharedTimepoints = s.cumulativeVarByBasis_sharedTimepoints / s.totalVar_sharedTimepoints;
+                
+                s.cumSignalVarByBasis_shared = max(0, s.cumSignalVarByBasis_shared);
+                s.cumFracVarByBasis_shared = s.cumVarByBasis_shared / s.totalVar_shared;
             
+                % compute variance through decoder
+                s.decoderVarByBasis_shared = ssqAlongDim(decoderKbyN * dataNxT_shared, 2)';
+                s.decoderNormVarByBasis_shared = ssqAlongDim(decoderKbyN_norm * dataNxT_shared, 2)';
+                s.decoderOrthonormVarByBasis_shared = ssqAlongDim(decoderKbyN_orthonorm * dataNxT_shared, 2)';
+                s.cumDecoderOrthonormVarByBasis_shared = cumsum(s.decoderOrthonormVarByBasis_shared);
+                s.cumFracDecoderOrthonormVarByBasis_shared = s.cumDecoderOrthonormVarByBasis_shared ./ s.totalVar_shared;
+                
                 %%%%%%
                 % Marginalized Variances
                 %%%%%%
@@ -819,48 +1014,67 @@ classdef StateSpaceProjectionStatistics
                     % are present (non-nan). This means the total variance over all
                     % marginalizations will be different than for the non marginalized
                     % variance, since we throw away timepoints not shared across all conditions
-                    % hence the _sharedTimepoints vs allTimepoints distinction
+                    % hence the _shared vs allTimepoints distinction
 
                     % marginalizing the trimmed tensor, should already be
                     % mean-subtracted
-                    dataMarginalizedTensors_shared = TrialDataUtilities.DPCA.dpca_marginalize(dataTensor_shared, ...
+                    dataMargTensors_shared = TrialDataUtilities.DPCA.dpca_marginalize(dataTensor_shared, ...
                         'meanSubtract', false, ... % should already be mean subtracted since it's a difference
                         'combinedParams', p.Results.combinedParams, 'ifFlat', 'no');
-                    nMarginalizations = length(dataMarginalizedTensors_shared); %#ok<*PROPLC>
+                    nMarginalizations = length(dataMargTensors_shared); %#ok<*PROPLC>
 
                     Zshared = decoderKbyN*dataNxT_shared;
-                    s.componentVarByBasis_allTimepoints = sum(Zshared.^2, 2)';
+                    s.componentVarByBasis_all = sum(Zshared.^2, 2)';
 
                     % total marginalized variance
-                    s.totalMarginalizedVar_sharedTimepoints = nan(nMarginalizations, 1);
+                    s.totalMargVar_shared = nan(nMarginalizations, 1);
                     dataMarg_NxTxC = cellvec(nMarginalizations);
                     for i=1:nMarginalizations
-                        dataMarg_NxTxC{i} = dataMarginalizedTensors_shared{i}(:, :, maskConditionsConsider);
-                        s.totalMarginalizedVar_sharedTimepoints(i) = sum(dataMarg_NxTxC{i}(:).^2);
+                        dataMarg_NxTxC{i} = dataMargTensors_shared{i}(:, :, maskConditionsConsider);
+                        s.totalMargVar_shared(i) = sum(dataMarg_NxTxC{i}(:).^2);
                     end
 
                     % marginalized variance of each component : shared timepoints
                     for i=1:nMarginalizations
-                        s.componentMarginalizedVarByBasis_sharedTimepoints(i,:) = sum((decoderKbyN * dataMarg_NxTxC{i}(:, :)).^2, 2)'; % @ djoshea shouldn't be normalized
+                        s.componentMargVarByBasis_shared(i,:) = sum((decoderKbyN * dataMarg_NxTxC{i}(:, :)).^2, 2)'; % @ djoshea shouldn't be normalized
                     end
+                    
+                    [s.decoderMargVarByBasis_shared, ...
+                        s.decoderNormMargVarByBasis_shared, ...
+                        s.decoderOrthonormMargVarByBasis_shared, ...
+                        s.cumMargDecoderOrthonormVarByBasis_shared, ...
+                        s.cumFracMargDecoderOrthonormVarByBasis_shared ] = ...
+                        deal(nan(nMarginalizations, K));
 
                     % explained variance along cumulative sets of bases
                     prog = ProgressBar(nMarginalizations, 'Computing variance over %d marginalizations', nMarginalizations);
                     for m=1:nMarginalizations
                         prog.update(m);
-%                         thisMarg = dataMarginalizedTensors_shared{m}(:, :);
+%                         thisMarg = dataMargTensors_shared{m}(:, :);
                         thisMarg = dataMarg_NxTxC{m}(:, :);
                         totalVarThisMarg = sum(thisMarg(:).^2);
                         Zmarg = decoderKbyN*thisMarg;
-                        progK = ProgressBar(K, 'Computing cumulative marginalized variance');
+                        progK = ProgressBar(K, 'Computing cum marginalized variance');
                         for i=1:K
                             progK.update(i);
-                            s.cumulativeMarginalizedVarByBasis_sharedTimepoints(m, i) = totalVarThisMarg - sum(sum((thisMarg - encoderNbyK(:,1:i)*Zmarg(1:i,:)).^2));    
+                            s.cumMargVarByBasis_shared(m, i) = totalVarThisMarg - sum(sum((thisMarg - encoderNbyK(:,1:i)*Zmarg(1:i,:)).^2));    
                         end
+                        
+                        % compute variance through decoder
+                        s.decoderMargVarByBasis_shared(m, :) = ssqAlongDim(decoderKbyN * thisMarg, 2)';
+                        s.decoderNormMargVarByBasis_shared(m, :) = ssqAlongDim(decoderKbyN_norm * thisMarg, 2)';
+                        s.decoderOrthonormMargVarByBasis_shared(m, :) = ssqAlongDim(decoderKbyN_orthonorm * thisMarg, 2)';
+                        
                         progK.finish();
                     end
                     prog.finish();
-                    s.cumulativeFractionMarginalizedVarByBasis_sharedTimepoints = s.cumulativeMarginalizedVarByBasis_sharedTimepoints / s.totalVar_sharedTimepoints;
+                    s.cumFracMargVarByBasis_shared = s.cumMargVarByBasis_shared / s.totalVar_shared;
+                    
+                    s.cumMargDecoderOrthonormVarByBasis_shared = cumsum(s.decoderOrthonormMargVarByBasis_shared, 2);
+                    s.cumFracMargDecoderOrthonormVarByBasis_shared = s.cumMargDecoderOrthonormVarByBasis_shared ./ s.totalVar_shared;
+                    
+                    %bsxfun(@rdivide, s.cumMargDecoderOrthonormVarByBasis_shared, s.totalMargVar_shared);
+       
                 end
             else
                 warning('No shared timepoints found in PopulationTrajectorySet, skipping marginalization');
@@ -893,7 +1107,7 @@ classdef StateSpaceProjectionStatistics
                 else
                     noiseNxT_all_nonNan = noiseNxT_all;
                 end
-                noiseVarMultiplier_allTimepoints = numel(nanMaskT) / nnz(~nanMaskT);
+                noiseVarMultiplier_all = numel(nanMaskT) / nnz(~nanMaskT);
 
                 % we mean subtract here because we will also mean subtract
                 % when we look at noise in shared timepoints, and we want
@@ -911,48 +1125,58 @@ classdef StateSpaceProjectionStatistics
                 
                 if ~all(nanMaskT(:))
                      % total noise variance
-                    s.totalNoiseVar_allTimepoints = sum(noiseNxT_all_nonNan(:).^2) * noiseVarMultiplier_allTimepoints;
+                    s.totalNoiseVar_all = sum(noiseNxT_all_nonNan(:).^2) * noiseVarMultiplier_all;
 
                     % total signal variance
-                    s.totalSignalVar_allTimepoints = max(0, s.totalVar_allTimepoints - s.totalNoiseVar_allTimepoints);
+                    s.totalSignalVar_all = max(0, s.totalVar_all - s.totalNoiseVar_all);
 
                     % PCA explained signal variance
                     if p.Results.verbose, debug('Computing noise SVD\n'); end
-                    Snoise_all = svd(noiseNxT_all_nonNan', 0) * noiseVarMultiplier_allTimepoints;
+                    Snoise_all = svd(noiseNxT_all_nonNan', 0) * noiseVarMultiplier_all;
                     if numel(Snoise_all) < K % account for too many output bases
                         Snoise_all = cat(1, Snoise_all, zerosvec(K-numel(Snoise_all)));
                     end
                 else
-                    s.totalNoiseVar_allTimepoints = NaN;
-                    s.totalSignalVar_allTimepoints = NaN;
+                    s.totalNoiseVar_all = NaN;
+                    s.totalSignalVar_all = NaN;
                     Snoise_all = nanvec(maxNK);
                 end
                 
+                % Use pca projection to compute signal variance
                 pcaSignal = Spca_all(1:K).^2 - Snoise_all(1:K).^2;
-                s.pca_cumulativeSignalVarByBasis_allTimepoints = min(s.totalSignalVar_allTimepoints, cumsum(pcaSignal'));
-                s.pca_cumulativeSignalVarByBasis_allTimepoints = TensorUtils.makeNonDecreasing(s.pca_cumulativeSignalVarByBasis_allTimepoints);
+                s.pca_cumSignalVarByBasis_all = min(s.totalSignalVar_all, cumsum(pcaSignal'));
+                s.pca_cumSignalVarByBasis_all = TensorUtils.makeNonDecreasing(s.pca_cumSignalVarByBasis_all);
                 
-                s.pca_cumulativeFractionSignalVarByBasis_allTimepoints = s.pca_cumulativeSignalVarByBasis_allTimepoints / s.totalSignalVar_allTimepoints;
+                s.pca_cumFracSignalVarByBasis_all = s.pca_cumSignalVarByBasis_all / s.totalSignalVar_all;
                 
-                % variance explained cumulatively over basis variance
+                % noise variance upper bound by basis
                 for i=1:K
-                    s.cumulativeNoiseVarByBasis_allTimepoints(i) = sum(Snoise_all(1:i).^2);
+                    s.cumNoiseVarByBasis_all(i) = sum(Snoise_all(1:i).^2);
                 end
-                s.cumulativeSignalVarByBasis_allTimepoints = min(s.totalSignalVar_allTimepoints, ...
-                    s.cumulativeVarByBasis_allTimepoints - s.cumulativeNoiseVarByBasis_allTimepoints);
                 
-                % ensure cumulative signal var is non-decreasing and adjust
-                % noise var to ensure signal+noise = total
-                s.cumulativeSignalVarByBasis_allTimepoints = TensorUtils.makeNonDecreasing(max(0, s.cumulativeSignalVarByBasis_allTimepoints));
-                s.cumulativeNoiseVarByBasis_allTimepoints = s.cumulativeVarByBasis_allTimepoints - s.cumulativeSignalVarByBasis_allTimepoints;
+                % ensure cum signal var is non-decreasing and 
+                s.cumSignalVarByBasis_all = min(s.totalSignalVar_all, ...
+                    s.cumVarByBasis_all - s.cumNoiseVarByBasis_all);
+                s.cumSignalVarByBasis_all = TensorUtils.makeNonDecreasing(max(0, s.cumSignalVarByBasis_all));
+               
+                % adjust noise var to ensure signal+noise = total
+                s.cumNoiseVarByBasis_all = s.cumVarByBasis_all - s.cumSignalVarByBasis_all;
+                
+                s.cumDecoderOrthonormSignalVarByBasis_all = min(s.totalSignalVar_all, ...
+                    s.cumDecoderOrthonormVarByBasis_all - s.cumNoiseVarByBasis_all);
+                s.cumDecoderOrthonormSignalVarByBasis_all = TensorUtils.makeNonDecreasing(max(0, s.cumDecoderOrthonormSignalVarByBasis_all));
                 
                 % compute fraction of total signal var
-                s.cumulativeFractionSignalVarByBasis_allTimepoints = s.cumulativeSignalVarByBasis_allTimepoints / s.totalSignalVar_allTimepoints;
-                if s.totalSignalVar_allTimepoints == 0
+                s.cumFracSignalVarByBasis_all = s.cumSignalVarByBasis_all / s.totalSignalVar_all;
+                s.cumFracDecoderOrthonormSignalVarByBasis_all = s.cumDecoderOrthonormSignalVarByBasis_all ./ s.totalSignalVar_all;
+            
+                if s.totalSignalVar_all == 0
                     % otherwise will be nan
-                    s.cumulativeFractionSignalVarByBasis_allTimepoints = 0 * s.cumulativeSignalVarByBasis_allTimepoints;
-                    s.pca_cumulativeFractionSignalVarByBasis_allTimepoints = 0 * s.cumulativeSignalVarByBasis_allTimepoints;
+                    s.cumFracSignalVarByBasis_all = 0 * s.cumSignalVarByBasis_all;
+                    s.pca_cumFracSignalVarByBasis_all = 0 * s.pca_cumSignalVarByBasis_all;
+                    s.cumFracDecoderOrthonormSignalVarByBasis_all = 0 * s.cumDecoderOrthonormSignalVarByBasis_all;
                 end
+                
                 %%%%%%%%%%
                 % Noise variance, shared timepoints
                 %%%%%%%%%%
@@ -988,19 +1212,19 @@ classdef StateSpaceProjectionStatistics
                     else
                         noiseTensor_shared_maskT = noiseTensor_shared;
                     end
-                    noiseVarMultiplier_sharedTimepoints = numel(nanMaskT) / nnz(~nanMaskT);
+                    noiseVarMultiplier_shared = numel(nanMaskT) / nnz(~nanMaskT);
 
                     noiseData_NxTxC_nonNaN = noiseTensor_shared_maskT(:, :, maskConditionsConsider);
                     if ~all(nanMaskT)
-                        s.totalNoiseVar_sharedTimepoints = sum(noiseData_NxTxC_nonNaN(:).^2) * noiseVarMultiplier_sharedTimepoints;
+                        s.totalNoiseVar_shared = sum(noiseData_NxTxC_nonNaN(:).^2) * noiseVarMultiplier_shared;
 
                         % ensure signal var is nonnegative using max(0, ...) and
                         % update the noise var to match if necessary
-                        s.totalSignalVar_sharedTimepoints = max(0, s.totalVar_sharedTimepoints - s.totalNoiseVar_sharedTimepoints);
-                        s.totalNoiseVar_sharedTimepoints =  s.totalVar_sharedTimepoints - s.totalSignalVar_sharedTimepoints;
+                        s.totalSignalVar_shared = max(0, s.totalVar_shared - s.totalNoiseVar_shared);
+                        s.totalNoiseVar_shared =  s.totalVar_shared - s.totalSignalVar_shared;
                     else
-                        s.totalSignalVar_sharedTimepoints = NaN;
-                        s.totalNoiseVar_sharedTimepoints = NaN;
+                        s.totalSignalVar_shared = NaN;
+                        s.totalNoiseVar_shared = NaN;
                     end
                     
                     % PCA explained signal variance
@@ -1009,9 +1233,9 @@ classdef StateSpaceProjectionStatistics
                         noiseNxT_shared = noiseData_NxTxC_nonNaN(:, :);
                         [~, Dnoise_shared, Vnoise_shared] = svd(noiseNxT_shared', 0);
                         if isvector(Dnoise_shared);
-                            Snoise_shared = makecol(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
+                            Snoise_shared = makecol(Dnoise_shared) * noiseVarMultiplier_shared;
                         else
-                            Snoise_shared = diag(Dnoise_shared) * noiseVarMultiplier_sharedTimepoints;
+                            Snoise_shared = diag(Dnoise_shared) * noiseVarMultiplier_shared;
                         end
                         if numel(Snoise_shared) < K
                             Snoise_shared = cat(1, Snoise_shared, zerosvec(K-numel(Snoise_shared)));
@@ -1028,32 +1252,38 @@ classdef StateSpaceProjectionStatistics
                     end
                         
                     pcaSignal = Sshared(1:K).^2 - Snoise_shared(1:K).^2;
-                    s.pca_cumulativeSignalVarByBasis_sharedTimepoints = min(s.totalSignalVar_sharedTimepoints, cumsum(pcaSignal'));
-                    s.pca_cumulativeSignalVarByBasis_sharedTimepoints = TensorUtils.makeNonDecreasing(s.pca_cumulativeSignalVarByBasis_sharedTimepoints);
+                    s.pca_cumSignalVarByBasis_shared = min(s.totalSignalVar_shared, cumsum(pcaSignal'));
+                    s.pca_cumSignalVarByBasis_shared = TensorUtils.makeNonDecreasing(s.pca_cumSignalVarByBasis_shared);
 
-                    s.pca_cumulativeFractionSignalVarByBasis_sharedTimepoints = s.pca_cumulativeSignalVarByBasis_sharedTimepoints / s.totalSignalVar_sharedTimepoints;
+                    s.pca_cumFracSignalVarByBasis_shared = s.pca_cumSignalVarByBasis_shared / s.totalSignalVar_shared;
 
                     % variance explained cumulatively over basis variance
                     for i=1:K
-                        s.cumulativeNoiseVarByBasis_sharedTimepoints(i) = sum(Snoise_shared(1:i).^2);
+                        s.cumNoiseVarByBasis_shared(i) = sum(Snoise_shared(1:i).^2);
                     end
                     % explained signal var cannot exceed total, which can
                     % happen if the rates of signal and noise variance don't
                     % keep pace with each other in the first K bases.
-                    s.cumulativeSignalVarByBasis_sharedTimepoints = min(s.totalSignalVar_sharedTimepoints, ...
-                        s.cumulativeVarByBasis_sharedTimepoints - s.cumulativeNoiseVarByBasis_sharedTimepoints);
+                    s.cumSignalVarByBasis_shared = min(s.totalSignalVar_shared, ...
+                        s.cumVarByBasis_shared - s.cumNoiseVarByBasis_shared);
 
                     % ensure cumulative signal var is non-decreasing and adjust
                     % noise var to ensure signal+noise = total
-                    s.cumulativeSignalVarByBasis_sharedTimepoints = TensorUtils.makeNonDecreasing(max(0, s.cumulativeSignalVarByBasis_sharedTimepoints));
-                    s.cumulativeNoiseVarByBasis_sharedTimepoints = s.cumulativeVarByBasis_sharedTimepoints - s.cumulativeSignalVarByBasis_sharedTimepoints;
+                    s.cumSignalVarByBasis_shared = TensorUtils.makeNonDecreasing(max(0, s.cumSignalVarByBasis_shared));
+                    s.cumNoiseVarByBasis_shared = s.cumVarByBasis_shared - s.cumSignalVarByBasis_shared;
 
                     % compute fraction of total signal variance
-                    s.cumulativeFractionSignalVarByBasis_sharedTimepoints = s.cumulativeSignalVarByBasis_sharedTimepoints / s.totalSignalVar_sharedTimepoints;
+                    s.cumFracSignalVarByBasis_shared = s.cumSignalVarByBasis_shared / s.totalSignalVar_shared;
 
-                    if s.totalSignalVar_sharedTimepoints == 0 % otherwise will be NaN
-                        s.cumulativeFractionSignalVarByBasis_sharedTimepoints = 0 * s.cumulativeSignalVarByBasis_sharedTimepoints;
-                        s.pca_cumulativeFractionSignalVarByBasis_sharedTimepoints = 0 * s.cumulativeSignalVarByBasis_sharedTimepoints;
+                    s.cumDecoderOrthonormSignalVarByBasis_shared = min(s.totalSignalVar_shared, ...
+                        s.cumDecoderOrthonormVarByBasis_shared - s.cumNoiseVarByBasis_shared);
+                    s.cumDecoderOrthonormSignalVarByBasis_shared = TensorUtils.makeNonDecreasing(max(0, s.cumDecoderOrthonormSignalVarByBasis_shared));
+                    s.cumFracDecoderOrthonormSignalVarByBasis_shared = s.cumDecoderOrthonormSignalVarByBasis_shared ./ s.totalSignalVar_shared;
+            
+                    if s.totalSignalVar_shared == 0 % otherwise will be NaN
+                        s.cumFracSignalVarByBasis_shared = 0 * s.cumSignalVarByBasis_shared;
+                        s.pca_cumFracSignalVarByBasis_shared = 0 * s.cumSignalVarByBasis_shared;
+                        s.cumFracDecoderOrthonormSignalVarByBasis_shared = 0 * s.cumDecoderOrthonormSignalVarByBasis_shared;
                     end
                     
                     %%%%%%%%%%
@@ -1062,65 +1292,69 @@ classdef StateSpaceProjectionStatistics
 
                     if p.Results.marginalize
                         % marginalize the noise tensor
-                        noiseMarginalizedTensors_shared = TrialDataUtilities.DPCA.dpca_marginalize(noiseTensor_shared_maskT, ...
+                        noiseMargTensors_shared = TrialDataUtilities.DPCA.dpca_marginalize(noiseTensor_shared_maskT, ...
                             'meanSubtract', false, 'ifFlat', 'no', ... % should already be mean subtracted since it's a difference
                             'combinedParams', p.Results.combinedParams); % Theta_phi in paper
 
                         % total signal variance, marginalized
-                        s.totalMarginalizedNoiseVar_sharedTimepoints = nan(nMarginalizations, 1);
+                        s.totalMargNoiseVar_shared = nan(nMarginalizations, 1);
                         noiseMarg_NxTxC = cellvec(nMarginalizations);
                         for m=1:nMarginalizations
-                            noiseMarg_NxTxC{m} = noiseMarginalizedTensors_shared{m}(:, :, maskConditionsConsider);
-                            s.totalMarginalizedNoiseVar_sharedTimepoints(m) = sum(noiseMarg_NxTxC{m}(:).^2) * noiseVarMultiplier_sharedTimepoints;
+                            noiseMarg_NxTxC{m} = noiseMargTensors_shared{m}(:, :, maskConditionsConsider);
+                            s.totalMargNoiseVar_shared(m) = sum(noiseMarg_NxTxC{m}(:).^2) * noiseVarMultiplier_shared;
                         end
 
                         % put floor at zero and adjust noise bound to ensure they
                         % sum to total
-                        s.totalMarginalizedSignalVar_sharedTimepoints = max(0, s.totalMarginalizedVar_sharedTimepoints - s.totalMarginalizedNoiseVar_sharedTimepoints);
-                        s.totalMarginalizedNoiseVar_sharedTimepoints = s.totalMarginalizedVar_sharedTimepoints - s.totalMarginalizedSignalVar_sharedTimepoints; 
+                        s.totalMargSignalVar_shared = max(0, s.totalMargVar_shared - s.totalMargNoiseVar_shared);
+                        s.totalMargNoiseVar_shared = s.totalMargVar_shared - s.totalMargSignalVar_shared; 
 
                         % cumulative marginalized signal variance
                         prog = ProgressBar(nMarginalizations, 'Computing signal variance over %d marginalizations', nMarginalizations);
                         %Snoise_marg = cell(nMarginalizations, 1);
-                        s.cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints = nan(nMarginalizations, K);
+                        s.cumMargNoiseVarByBasis_shared = nan(nMarginalizations, K);
                         for m=1:nMarginalizations
                             prog.update(m);
 
-        %                     Snoise_marg{m} = svd(noiseMarginalizedTensors_shared{m}(:, :)', 0);
+        %                     Snoise_marg{m} = svd(noiseMargTensors_shared{m}(:, :)', 0);
         %                     Snoise_marg{m} = Snoise_marg{m}(1:K);
-        %                     Z = decoderKbyN*dataMarginalizedTensors_shared{m};
+        %                     Z = decoderKbyN*dataMargTensors_shared{m};
                             progK = ProgressBar(K, 'Computing cumulative marginalized signal variance');
                             for d = 1:K
                                 progK.update(d);
                                 % project marginalized noise into SVD bases found
                                 % on the full noise matrix and compute the noise
                                 % variance in those bases
-                                s.cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints(m, d) = sum(sum((Vnoise_shared(:, 1:d)' * noiseMarg_NxTxC{m}(:,:)).^2)) * noiseVarMultiplier_sharedTimepoints;
+                                s.cumMargNoiseVarByBasis_shared(m, d) = sum(sum((Vnoise_shared(:, 1:d)' * noiseMarg_NxTxC{m}(:,:)).^2)) * noiseVarMultiplier_shared;
 
-        %                        s.cumulativeMarginalizedSignalVarByBasis_sharedTimepoints(m, d) = max(0, ...
-        %                            sum(dataMarginalizedTensors_shared{m}(:).^2) - sum(sum((dataMarginalizedTensors_shared{m} - encoderNbyK(:,1:d)*Z(1:d,:)).^2)) - ...
-        %                            s.cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints(m, d));
+        %                        s.cumMargSignalVarByBasis_shared(m, d) = max(0, ...
+        %                            sum(dataMargTensors_shared{m}(:).^2) - sum(sum((dataMargTensors_shared{m} - encoderNbyK(:,1:d)*Z(1:d,:)).^2)) - ...
+        %                            s.cumMargNoiseVarByBasis_shared(m, d));
 
-                                s.cumulativeMarginalizedSignalVarByBasis_sharedTimepoints(m, d) = ...
-                                    max(0, min(s.cumulativeSignalVarByBasis_sharedTimepoints(d), ...
-                                    s.cumulativeMarginalizedVarByBasis_sharedTimepoints(m, d) - ...
-                                    s.cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints(m, d)));
+                                s.cumMargSignalVarByBasis_shared(m, d) = ...
+                                    max(0, min(s.cumSignalVarByBasis_shared(d), ...
+                                    s.cumMargVarByBasis_shared(m, d) - ...
+                                    s.cumMargNoiseVarByBasis_shared(m, d)));
                             end
                             progK.finish();
                         end
                         prog.finish();
 
-                        % ensure cumulative signal var is non-decreasing and adjust
+                        % ensure cum signal var is non-decreasing and adjust
                         % noise var to ensure signal+noise = total
-                        s.cumulativeMarginalizedSignalVarByBasis_sharedTimepoints = ...
-                            TensorUtils.makeNonDecreasing(s.cumulativeMarginalizedSignalVarByBasis_sharedTimepoints, 2);
-                        s.cumulativeMarginalizedNoiseVarByBasis_sharedTimepoints = ...
-                            s.cumulativeMarginalizedVarByBasis_sharedTimepoints - ...
-                            s.cumulativeMarginalizedSignalVarByBasis_sharedTimepoints;
+                        s.cumMargSignalVarByBasis_shared = ...
+                            TensorUtils.makeNonDecreasing(s.cumMargSignalVarByBasis_shared, 2);
+                        s.cumMargNoiseVarByBasis_shared = ...
+                            s.cumMargVarByBasis_shared - ...
+                            s.cumMargSignalVarByBasis_shared;
 
                         % compute fraction of total signal var
-                        s.cumulativeFractionMarginalizedSignalVarByBasis_sharedTimepoints = ...
-                            s.cumulativeMarginalizedSignalVarByBasis_sharedTimepoints / s.totalSignalVar_sharedTimepoints;
+                        s.cumFracMargSignalVarByBasis_shared = ...
+                            s.cumMargSignalVarByBasis_shared / s.totalSignalVar_shared;
+                          
+                        s.cumMargDecoderOrthonormSignalVarByBasis_shared = max(0, s.cumMargDecoderOrthonormVarByBasis_shared - s.cumMargNoiseVarByBasis_shared);
+                        s.cumMargDecoderOrthonormSignalVarByBasis_shared = TensorUtils.makeNonDecreasing(s.cumMargDecoderOrthonormSignalVarByBasis_shared, 2);
+                        s.cumFracMargDecoderOrthonormSignalVarByBasis_shared = s.cumMargDecoderOrthonormSignalVarByBasis_shared ./ s.totalSignalVar_shared;
                     end
                 end
                 % end of signal, noise variance section
@@ -1136,26 +1370,26 @@ classdef StateSpaceProjectionStatistics
             small = 1e-6;
             checkFields(s, searchFields(s, 'total.*'), @(x) x >= -small);
             checkFields(s, searchFields(s, '.*fraction*'), @(x) x >= -small & x <= 1+small);
-            checkFields(s, searchFields(s, '.*cumulativeSignal*'), @(x) isNonDecreasing(x, 2));
-            checkFields(s, searchFields(s, '.*cumulativeVar*'), @(x) isNonDecreasing(x, 2));
+            checkFields(s, searchFields(s, '.*cumSignal*'), @(x) isNonDecreasing(x, 2));
+            checkFields(s, searchFields(s, '.*cumVar*'), @(x) isNonDecreasing(x, 2));
 
             % cannot exceed total var
-            checkFields(s, searchFields(s, '.*VarByBasis_allTimepoints'), ...
-                @(x) x <= s.totalVar_allTimepoints * smallMult);
-            checkFields(s, searchFields(s, '.*VarByBasis_sharedTimepoints'), ...
-                @(x) x <= s.totalVar_sharedTimepoints * smallMult);
+            checkFields(s, searchFields(s, '.*VarByBasis_all'), ...
+                @(x) x <= s.totalVar_all * smallMult);
+            checkFields(s, searchFields(s, '.*VarByBasis_shared'), ...
+                @(x) x <= s.totalVar_shared * smallMult);
 
             if p.Results.marginalize
                 % marginalized var total less than var total
-                checkFields(s, 'totalMarginalizedVar_sharedTimepoints', @(x) x <= s.totalVar_sharedTimepoints * smallMult);
+                checkFields(s, 'totalMargVar_shared', @(x) x <= s.totalVar_shared * smallMult);
 
                 % marginalized vars must be less than total in that marginalization
-                checkFields(s, 'componentMarginalizedVarByBasis_sharedTimepoints', @(x) bsxfun(@le, x, s.totalMarginalizedVar_sharedTimepoints * smallMult));
+                checkFields(s, 'componentMargVarByBasis_shared', @(x) bsxfun(@le, x, s.totalMargVar_shared * smallMult));
             end
             
             if p.Results.pcaBound
                 % check that appropriate fields are less than their pca counterparts
-                cFields = searchFields(s, 'cumulative.*');
+                cFields = searchFields(s, 'cum.*');
                 pcaFields = cellfun(@(x) strcat('pca_', x), cFields, 'UniformOutput', false);
                 mask = isfield(s, pcaFields);
                 checkFields2(s, cFields(mask), pcaFields(mask), @(c, pc) c <= pc * smallMult); % allow small fudge for numerical error
@@ -1215,12 +1449,52 @@ classdef StateSpaceProjectionStatistics
         end
         
         function vals = computeQuantilesForRandomizedStatistics(s, name, quantileValues)
+            % vals will be same size as s.(name) along dims 1, 2, but
+            % size(vals, 3) will be numel(quantileValues)
             data = s.aggregateRandomizedStatistics(name);
             vals = quantile(data, quantileValues, 3);
         end
     end
         
     methods(Static) % Internal static utilities 
+        % axisSpec: list of attributes comprising the axis (or {'time'} )
+        %     {'target'}
+        %     {'targetX', 'targetY'} % if targetX x targetY is an axis
+        %
+        % marginalization spec : list of axisSpecs for defining a type of
+        %   marginalized variance.
+        %     { {'time'} } % indicates pure time variance
+        %     { {'time'}, {'target'} } % indicates interaction between time and target variance
+        %     { {'time'}, {'targetX', 'targetY'} } % indicates interaction
+        %
+        % marginalization combination : list of marginalization specs.
+        %   Defines a list of types of marginalized variance, typically when
+        %   declaring that they will be combined.
+        %     { ...
+        %       {{'time'}}, ...
+        %       {{'time'}, {'target'}} ...
+        %     }
+        % 
+        % list of marginalization combinations: basically just a list of
+        % one or more of the above. Used for axisCombineSpecificMarginalizations
+        % and axisCombineAllMarginalizations.
+        %
+        % The following indicates we would like
+        % to combine pure time with time x target interaction variance, 
+        % as well as combine pure time with time x delay interaction
+        % variance.
+        % 
+        %     { ...
+        %       { ...
+        %         {{'time'}}, ...
+        %         {{'time'}, {'target'}} ...
+        %       }, ...
+        %       { ...
+        %         {{'time'}}, ...
+        %         {{'time'}, {'delay'}} ...
+        %       } ...
+        %     }
+        
         % below are validation functions for marginalization specifications
         function tf = isAxisSpec(x) 
             % does x describe a specific axis? scalar index or cell of strings
@@ -1231,6 +1505,11 @@ classdef StateSpaceProjectionStatistics
             % marginalizationSpec is a cell array of axesSpecs that are
             % considered one type of marginalized variance
             tf = isempty(x) || (iscell(x) && all(cellfun(@StateSpaceProjectionStatistics.isAxisSpec, x)));
+        end
+        
+        function tf = isFlatMarginalizationSpec(x)
+            % flat marginalization spec is a cellstr of attribute names
+            tf = iscellstr(x) && isvector(x);
         end
         
         function tf = isListOfAxisSpecs(x)
@@ -1254,9 +1533,10 @@ classdef StateSpaceProjectionStatistics
             % marginalizationCombinations
             tf =  isempty(x) || (iscell(x) && all(cellfun(@StateSpaceProjectionStatistics.isMarginalizationCombination, x)));
         end
-        
-        % translate axisSpec cellstrs into numeric axis numbers (one of the numbers in dims)
-        function axisIndex = staticAxisLookup(axisSpec, axisAttributeSets, axisInclude)
+
+        function axisIndex = staticLookupAxisSpec(axisSpec, axisAttributeSets, axisInclude)
+            % lookup an axisSpec in axisAttributeSets, i.e.
+            % translate axisSpec cellstrs into numeric axis numbers (one of the numbers in dims)
             axisInclude = TensorUtils.vectorMaskToIndices(axisInclude);
             if isempty(axisSpec)
                 axisIndex = [];
@@ -1283,26 +1563,65 @@ classdef StateSpaceProjectionStatistics
         end
         
         function axisIndices = staticLookupMarginalizationSpec(axisSpecList, axisAttributeSets, axisInclude)
+            % take a marginalizationSpec (or list of axisSpec) and convert
+            % it into a vector of axis indices using axisAttributeSets,
+            % which describes the list of axes
             assert(StateSpaceProjectionStatistics.isMarginalizationSpec(axisSpecList), 'AxisSpecList must be marginalizationSpec');
             if iscell(axisSpecList)
-                axisIndices = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupAxis(x, axisAttributeSets, axisInclude), axisSpecList));
+                axisIndices = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupAxisSpec(x, axisAttributeSets, axisInclude), axisSpecList));
             else
-                axisIndices = makecol(arrayfun(@(x) StateSpaceProjectionStatistics.staticLookupAxis(x, axisAttributeSets, axisInclude), axisSpecList));
+                axisIndices = makecol(arrayfun(@(x) StateSpaceProjectionStatistics.staticLookupAxisSpec(x, axisAttributeSets, axisInclude), axisSpecList));
             end
         end
         
         function listOfAxisIndexVectors = staticLookupMarginalizationCombination(margComb, axisAttributeSets, axisInclude)
+            % take a marginalizationCombination (or list of marginalizationSpec) and convert
+            % it into a cell vector of vectors of axis indices using axisAttributeSets,
+            % which describes the list of axes
             assert(StateSpaceProjectionStatistics.isMarginalizationCombination(margComb), 'Input must be marginalizationCombination');
             listOfAxisIndexVectors = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupMarginalizationSpec(x, axisAttributeSets, axisInclude), margComb, 'UniformOutput', false));
         end
         
          function listOfListsOfAxisIndexVectors = staticLookupListOfMarginalizationCombinations(listMargComb, axisAttributeSets, axisInclude)
              assert(StateSpaceProjectionStatistics.isListOfMarginalizationCombinations(listMargComb), 'Input must be list of marginalizationCombinations');
-             listOfListsOfAxisIndexVectors = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupListOfMarginalizationCombinations(x, axisAttributeSets, axisInclude), listMargComb, 'UniformOutput', false));
+             listOfListsOfAxisIndexVectors = makecol(cellfun(@(x) StateSpaceProjectionStatistics.staticLookupMarginalizationCombination(x, axisAttributeSets, axisInclude), listMargComb, 'UniformOutput', false));
+         end
+         
+         function idxMarg = staticFindFlatMarginalizationSpecInList(flatMargSpec, listOfFlatMargSpec, varargin)
+             % given a particular marginalization spec, find it in a list
+             % of marginalization spec
+             
+             p = inputParser;
+             p.addParameter('ignoreMissingTime', false, @islogical);
+             p.parse(varargin{:});
+             
+             nMarg = numel(listOfFlatMargSpec);
+             if isnumeric(flatMargSpec) 
+                 idxMarg = flatMargSpec;
+                 assert(all(idxMarg > 1 & idxMarg <= nMarg), 'Index out of range');
+             else
+                 if ischar(flatMargSpec)
+                     flatMargSpec = {flatMargSpec};
+                 end
+                 
+                 matches = cellfun(@(a) attrListsMatch(flatMargSpec, a), listOfFlatMargSpec);
+                 idxMarg = find(matches);
+                 
+                 if isempty(idxMarg) && p.Results.ignoreMissingTime && ~ismember('time', flatMargSpec)
+                     % try adding time to flatMargSpec and search again
+                     flatMargSpec = union('time', flatMargSpec);
+                     matches = cellfun(@(a) attrListsMatch(flatMargSpec, a), listOfFlatMargSpec);
+                     idxMarg = find(matches);
+                 end
+             end
+             
+             function tf = attrListsMatch(a1, a2)
+                 tf = isempty(setxor(a1, a2));
+             end
          end
 
-        function [fullList, names, axisIncludeList] = generateCombinedParamsForMarginalization(axisAttributeSets, varargin)
-            % function [fullList, names] = generateCombinedParamsForMarginalization(dims, varargin)
+        function [combinedParams, names, axisIncludeList, marginalizationList] = generateCombinedParamsForMarginalization(axisAttributeSets, varargin)
+            % function [combinedParams, names, axisIncludeList, marginalizationList] = generateCombinedParamsForMarginalization(dims, varargin)
             % builds combinedParams argument for dpca, which specifies the covariate and
             % covariate interactions to consider collectively.
             %
@@ -1404,10 +1723,10 @@ classdef StateSpaceProjectionStatistics
             dims = setdiff(dims, axesIgnore);
             axisIncludeList = dims;
             
-            combineSpecific = StateSpaceProjectionStatistics.staticLookupMarginalizationCombination(axesCombineSpecificMarginalizations, axisAttributeSets, axisIncludeList);
+            combineSpecific = StateSpaceProjectionStatistics.staticLookupListOfMarginalizationCombinations(axesCombineSpecificMarginalizations, axisAttributeSets, axisIncludeList);
 %             combineSpecific = map(@(x) map(@(x) doAxisLookupMultiple(x, axisAttributeSets, dims), axesCombineSpecificMarginalizations));
             
-            combineAll = StateSpaceProjectionStatistics.staticLookupListOfMarginalizationCombinations(axesCombineAllMarginalizations, axisAttributeSets, axisIncludeList);
+            combineAll = StateSpaceProjectionStatistics.staticLookupMarginalizationCombination(axesCombineAllMarginalizations, axisAttributeSets, axisIncludeList);
 %            combineAll = map(@doAxisLookupMultiple, axesCombineAllMarginalizations);
 
             if isempty(combineSpecific)
@@ -1439,7 +1758,7 @@ classdef StateSpaceProjectionStatistics
             combineSpecific = [combineSpecific; timeList];
 
             % generate full list
-            fullList = num2cell(subsets(union(0, dims)));
+            combinedParams = num2cell(subsets(union(0, dims)));
             
             % merge axis all combinations to the list
             for iSet = 1:numel(combineAll)
@@ -1469,29 +1788,32 @@ classdef StateSpaceProjectionStatistics
 
                 % search for rows of full list that match
                 %isSubset = @(x, of) all(ismember(x, of));
-                matches = falsevec(numel(fullList));
+                matches = falsevec(numel(combinedParams));
                 for iV = 1:numel(searchFor)
                     value = searchFor{iV};
                     rowMatchesFn = @(list) any(cellfun(@(v) isequal(v, value), list));
-                    matches = matches | cellfun(rowMatchesFn, fullList);
+                    matches = matches | cellfun(rowMatchesFn, combinedParams);
                 end
 
                 % combine all the matches
-                combinedMatches = uniqueCell(cat(1, fullList {matches}));
+                combinedMatches = uniqueCell(cat(1, combinedParams {matches}));
 
                 % remove the matching rows and add the combined row
-                fullList = [fullList(~matches); {combinedMatches}];
+                combinedParams = [combinedParams(~matches); {combinedMatches}];
             end
         %     pr(fullList)
 
-            % generate marginalization names
+            % generate marginalization names and contents cell array
+            marginalizationList = cellvec(numel(combinedParams));
             if nargout > 1
                 covariateNames = [{'time'}; covariateNames];
-                names = cellvec(numel(fullList));
-                for iF = 1:numel(fullList)
-                    pieceStr = cellvec(numel(fullList{iF}));
-                    for iPiece = 1:numel(fullList{iF})
-                        index = fullList{iF}{iPiece} + 1;
+                names = cellvec(numel(combinedParams));
+                
+                for iF = 1:numel(combinedParams)
+                    marginalizationList{iF} = cellvec(numel(combinedParams{iF}));
+                    pieceStr = cellvec(numel(combinedParams{iF}));
+                    for iPiece = 1:numel(combinedParams{iF})
+                        index = combinedParams{iF}{iPiece} + 1;
                         % if we're combining with time automatically, don't
                         % include time in the marginalization names
                         if any(combineAxesWithTime) && ~isequal(index, 1) && ismember(1, index)
@@ -1499,6 +1821,8 @@ classdef StateSpaceProjectionStatistics
                         else
                             pieceStr{iPiece} = strjoin(covariateNames(index), ' x ');
                         end
+                        
+                        marginalizationList{iF}{iPiece} = covariateNames{index};
                     end
                     pieceStr = pieceStr(~cellfun(@isempty, pieceStr));
                     names{iF} = strjoin(pieceStr, ', ');
@@ -1506,9 +1830,9 @@ classdef StateSpaceProjectionStatistics
             end
 
             % change to being time = 1, dim 1 = 2 indexed
-            for iF = 1:numel(fullList)
-                for iJ = 1:numel(fullList{iF})
-                    fullList{iF}{iJ} = fullList{iF}{iJ} + 1;
+            for iF = 1:numel(combinedParams)
+                for iJ = 1:numel(combinedParams{iF})
+                    combinedParams{iF}{iJ} = combinedParams{iF}{iJ} + 1;
                 end
             end
 

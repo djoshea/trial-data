@@ -17,6 +17,7 @@ classdef TensorUtils
             contentsFn = p.Results.contentsFn;
             
             if isempty(sz)
+                varargout = cellvec(nargout);
                 for i = 1:nargout
                     if asCell
                         varargout{i} = {};
@@ -103,9 +104,9 @@ classdef TensorUtils
             % values will be stored as cell tensor elements, there are no
             % constraints on what these outputs look like
             
-            sz = size(varargin{1});
+            %sz = size(varargin{1});
             nd = ndims(varargin{1});
-            nArgs = length(varargin);
+            %nArgs = length(varargin);
             
             % we select individual slices by selecting each along the non-spanned dims
             dim = setdiff(1:nd, spanDim);
@@ -284,6 +285,9 @@ classdef TensorUtils
         function d = firstNonSingletonDim(t)
             sz = size(t);
             d = find(sz > 1, 1, 'first');
+            if isempty(d)
+                d = 1;
+            end
         end
     end
     
@@ -610,7 +614,7 @@ classdef TensorUtils
             
         end
         
-        function [res, mask] = selectAlongDimension(t, dim, select, squeezeResult)
+        function [res, maskByDim] = selectAlongDimension(t, dim, select, squeezeResult)
             if nargin < 4
                 squeezeResult = false;
             end
@@ -632,11 +636,11 @@ classdef TensorUtils
             sel = TensorUtils.inflateMaskedTensor(selNoNan, dim, ~nanMask);
         end
         
-        function [res mask] = squeezeSelectAlongDimension(t, dim, select)
+        function [res, maskByDim] = squeezeSelectAlongDimension(t, dim, select)
             % select ind along dimension dim and squeeze() the result
             % e.g. squeeze(t(:, :, ... ind, ...))
             
-            [res mask] = TensorUtils.selectAlongDimension(t, dim, select, true);
+            [res, maskByDim] = TensorUtils.selectAlongDimension(t, dim, select, true);
         end
         
         function tCell = selectEachAlongDimension(t, dim, squeezeEach)
@@ -649,7 +653,7 @@ classdef TensorUtils
             sz = size(t);
             
             % generate masks by dimension that are equivalent to ':'
-            maskByDimCell = TensorUtils.maskByDimCell(sz);
+            %maskByDimCell = TensorUtils.maskByDimCell(sz);
             
             dimMask = true(ndims(t), 1);
             dimMask(dim) = false;
@@ -680,7 +684,7 @@ classdef TensorUtils
             szInner = size(tCell{1});
             szInner = [szInner ones(1, nd - length(szInner))];
             
-            % dimMask(i) true if i in dim
+            % dimMask(i) true i
             dimMask = false(nd, 1);
             dimMask(dim) = true;
             
@@ -691,11 +695,11 @@ classdef TensorUtils
             szT(~dimMask) = szInner(~dimMask);
             
             % rebuild t by grabbing the appropriate element from tCell
-            subs = TensorUtils.containingSubscripts(szT);
+            %subs = TensorUtils.containingSubscripts(szT);
             t = TensorUtils.mapToSizeFromSubs(szT, @getElementT, true);
             
             function el = getElementT(varargin)
-                [innerSubs outerSubs] = deal(varargin);
+                [innerSubs, outerSubs] = deal(varargin);
                 % index with dim into tt, non-dim into tt{i}
                 [outerSubs{~dimMask}] = deal(1);
                 [innerSubs{dimMask}] = deal(1);
@@ -974,7 +978,7 @@ classdef TensorUtils
             % given a slice with D dimensions, orient slice so that it's
             % dimension(i) becomes dimension spanDim(i)
             
-            szSlice = size(slice);
+            %szSlice = size(slice);
             ndimsSlice = length(spanDim);
             if ndimsSlice == 1
                 % when spanDim is scalar, expect column vector or makecol
@@ -1008,8 +1012,8 @@ classdef TensorUtils
             % orient that slice along the dimensions in spanDim and repmat
             % it so that the output is size szOut.
             
-            nSpan = 1:length(spanDim);
-            ndimsOut = length(szOut);
+            %nSpan = 1:length(spanDim);
+            %ndimsOut = length(szOut);
             
             sliceOrient = TensorUtils.orientSliceAlongDims(slice, spanDim);
             
@@ -1274,14 +1278,23 @@ classdef TensorUtils
             
             p = inputParser();
             p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
+            p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
             % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis
             % this enables nanmean like computations
-            p.addParameter('normalizeCoeffientsByNumConditions', false, @islogical); 
+            p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); 
+            % requires that the weight matrix be square, the equivalent of adding
+            % the identity matrix to the weight matrix, except that this
+            % will be added after normalization. 
+            p.addParameter('addToOriginal', false, @islogical); 
             p.parse(varargin{:});
             
             nOld = size(t, dim);
             assert(size(weightsNewByOld, 2) == nOld, 'Size of weight matrix must have nOld==%d columns', nOld);
             nNew = size(weightsNewByOld, 1);
+            
+            if p.Results.addToOriginal
+                assert(size(weightsNewByOld, 1) == size(weightsNewByOld, 2), 'Weight matrix must be square for addToOriginal = true');
+            end
             
             sz = size(t);
             newSz = sz;
@@ -1294,7 +1307,7 @@ classdef TensorUtils
             % should be nOld x prod(size-t-other-dims)
             tpMat = tp(:, :);
             
-            if p.Results.normalizeCoeffientsByNumConditions
+            if p.Results.normalizeCoefficientsByNumNonNaN || p.Results.keepNaNIfAllNaNs
                 % count the number of values in each row
                 nValidMat = sum(~isnan(tpMat), 1);
             end
@@ -1306,13 +1319,41 @@ classdef TensorUtils
             % should be nNew x prod(size-t-other-dims)
             reweightMat = weightsNewByOld * tpMat;
             
-            if p.Results.normalizeCoeffientsByNumConditions
+            if p.Results.normalizeCoefficientsByNumNonNaN
                 % do the reweighting
                 reweightMat = bsxfun(@rdivide, reweightMat, nValidMat);
             end
             
+            if p.Results.addToOriginal
+                reweightMat = reweightMat + tpMat;
+            end
+            
+            if p.Results.keepNaNIfAllNaNs
+                % NaN out where nValidMat is zero
+                mask = ones(size(nValidMat));
+                mask(nValidMat == 0) = NaN;
+                reweightMat = bsxfun(@times, reweightMat, mask);
+            end
+            
             reweightedTensor = ipermute(reshape(reweightMat, newSz(pdims)), pdims);         
         end
-        
+       
+        function newTensor = linearCombinationApplyScalarFnAlongDimension(t, dim, logicalNewByOld, fn, varargin)
+            % this method is conceptually similar to the linear combination
+            % operation, except that it applies fn() to the set of values
+            % along dimension dim that are non-zero in logicalNewByOld.
+            
+            nOld = size(t, dim);
+            assert(size(logicalNewByOld, 2) == nOld, 'Size of weight matrix must have nOld==%d columns', nOld);
+            nNew = size(logicalNewByOld, 1);
+            
+            % compute min over all trial counts included in each basis
+            parts = cellvec(nNew);
+            for iNew = 1:nNew
+                fnSelect = @(c) fn(c(logicalNewByOld(iNew, :) ~= 0));
+                parts{iNew} = TensorUtils.mapSlices(fnSelect, dim, t);
+            end
+            newTensor = cell2mat(cat(dim, parts{:}));  
+        end
     end
 end
