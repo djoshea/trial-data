@@ -133,6 +133,7 @@ classdef AlignSummary
         end
     end
     
+    % constructor methods and aggregation
     methods(Static)
         % factory constructor method used by TDCA
         function as = buildFromConditionAlignInfo(conditionInfo, alignInfo)
@@ -632,6 +633,7 @@ classdef AlignSummary
 %         end
     end
     
+    % manipulations of AlignSummary that yield new AlignSummary objects
     methods    
         function as = combineSetsOfConditions(as, newConditionDescriptor, conditionIdxCell)
             % recombine conditions, for each entry of conditionIdxCell,
@@ -658,9 +660,10 @@ classdef AlignSummary
             as.stopMeanByCondition = cellfun(@(idx) wmean(as.stopMeanByCondition(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
             
             for iMark = 1:as.alignDescriptor.nMarks
-                as.markMinByCondition{iMark} = cellfun(@(idx) nanmin(as.markMinByCondition{iMark}(idx)), conditionIdxCell);
-                as.markMaxByCondition{iMark} = cellfun(@(idx) nanmax(as.markMaxByCondition{iMark}(idx)), conditionIdxCell);
-                as.markMeanByCondition{iMark} = cellfun(@(idx) nanWeightedMean(as.markMeanByCondition{iMark}(idx), as.nTrialsByCondition(idx)), conditionIdxCell);
+                % nC x nOccur
+                as.markMinByCondition{iMark} = cell2mat(cellfun(@(idx) nanmin(as.markMinByCondition{iMark}(idx, :)), conditionIdxCell, 'UniformOutput', false));
+                as.markMaxByCondition{iMark} = cell2mat(cellfun(@(idx) nanmax(as.markMaxByCondition{iMark}(idx, :)), conditionIdxCell, 'UniformOutput', false));
+                as.markMeanByCondition{iMark} = cell2mat(cellfun(@(idx) nanWeightedMean(as.markMeanByCondition{iMark}(idx, :), as.nTrialsByCondition(idx)), conditionIdxCell, 'UniformOutput', false));
             end
 
             for iInterval = 1:as.alignDescriptor.nIntervals
@@ -681,6 +684,80 @@ classdef AlignSummary
             as.nTrialsByCondition = cellfun(@(idx) sum(as.nTrialsByCondition(idx)), conditionIdxCell);
             
         end
+        
+%         function as = manualSliceTimeWindow(as, tMin, tMax)
+%             % reslice a window of time out of this align summary, used by
+%             % pset's method by the same name
+%             
+%             function v = constrainToWindow(v)
+%                 if v < tMin
+%                     v = tMin;
+%                 elseif v > tMax
+%                     v = tMax;
+%                 end
+%             end
+%             
+%             constrainToWindowCell = @(c) cellfun(@(v) filterWindow, c, 'UniformOutput', false);
+%             as.startMin = filterWindow(as.startMin);
+%             as.startMax = filterWindow(as.startMax);
+%             as.startMean = filterWindow(as.startMean);
+%         
+%             as.stopMin = filterWindow(as.stopMin);
+%             as.stopMax = filterWindow(as.stopMax);
+%             as.stopMean = filterWindow(as.stopMean);
+%        
+%             % nMark x 1 cell array with nOccurrences x 1 vectors
+%             as.markMax = filterWindowCell(as.markMax);
+%             as.markMin = filterWindowCell(as.markMin);
+%             as.markMean = filterWindowCell(as.markMean);
+%         
+%             % nInterval x 1 cell array with nOccurrences x 1 vectors
+%             as.intervalStartMax = filterWindowCell(as.intervalStartMax);
+%             as.intervalStartMin = filterWindowCell(as.intervalStartMin);
+%             as.intervalStartMean = filterWindowCell(as.intervalStartMean);
+%             
+%             % nInterval x 1 cell array of nOccurrences x 1 vectors
+%             as.intervalStopMax = filterWindowCell(as.intervalStopMax);
+%             as.intervalStopMin = filterWindowCell(as.intervalStopMin);
+%             as.intervalStopMean = filterWindowCell(as.intervalStopMean);
+%         
+%             function v = nanOutsideWindow(v)
+%                 v(v < tMin | v > tMax) = NaN;
+%             end
+%             
+%             function v = nanOutsideWindowCell(c, nOccurrencesKeepCell)
+%                 for i = 1:numel(c)
+%                     v = c{i};
+%                     v(v < tMin | v > tMax) = NaN;
+%                     c{i} = v(:, 1:nOccurrencesKeepCell{i});
+%                 end
+%             end
+% 
+%             % nConditions x 1 vector of earliest start times by condition
+%             as.startMinByCondition = nanOutsideWindow(as.startMinByCondition);
+%             as.startMaxByCondition = nanOutsideWindow(as.startMaxByCondition);
+%             as.startMeanByCondition = nanOutsideWindow(as.startMeanByCondition);
+%             as.stopMinByCondition = nanOutsideWindow(as.stopMinByCondition);
+%             as.stopMaxByCondition = nanOutsideWindow(as.stopMaxByCondition);
+%             as.stopMeanByCondition = nanOutsideWindow(as.stopMeanByCondition);
+%         
+%             % nMarks x 1 cell with nConditions x nOccurrences matrices
+%             % the nOccurrences dependent properties will automatically
+%             % update due to the filtering operations above, so we'll 
+%             as.markMaxByCondition = nanOutsideWindowCell(as.markMaxByCondition, as.nOccurrencesByMark);
+%             as.markMinByCondition = nanOutsideWindowCell(as.markMinByCondition);
+%             as.markMeanByCondition = nanOutsideWindowCell(markMeanByCondition, 
+%         
+%         % nIntervals x 1 cell with nConditions x nOccurrences matrices of
+%         % latest occurrence time of the start of each occurrence of that interval 
+%         % (relative to the zero event)
+%         intervalStartMaxByCondition
+%         intervalStartMinByCondition
+%         intervalStartMeanByCondition
+%         intervalStopMaxByCondition
+%         intervalStopMinByCondition
+%         intervalStopMeanByCondition
+%         end
     end
 
     methods(Access=protected) % Builds internal properties at construction time
@@ -808,6 +885,7 @@ classdef AlignSummary
             p.addParameter('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             p.addParameter('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
             p.addParameter('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
+            p.addParameter('tUnits', 'ms', @ischar); % units for time
             p.addParameter('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
@@ -1037,7 +1115,7 @@ classdef AlignSummary
             if islogical(conditionIdx)
                 conditionIdx = find(conditionIdx);
             end
-            nConditions = numel(conditionIdx);
+            nConditions = numel(conditionIdx); %#ok<*PROPLC>
             
             if iscell(data)
                 assert(isvector(data) && iscell(time) && isvector(time), 'Cell inputs must be vectors');
@@ -1236,9 +1314,9 @@ classdef AlignSummary
             end
         end
         
-        function [hMarks, hIntervals] = drawOnRasterByCondition(ad, varargin)
-            error('Not yet implemented'); % WIP copied from AlignInfo
-            % annotate raster plots with markers and intervals located near each condition 
+%         function [hMarks, hIntervals] = drawOnRasterByCondition(ad, varargin)
+%             error('Not yet implemented'); % WIP copied from AlignInfo
+%             % annotate raster plots with markers and intervals located near each condition 
             % according to the labels indicated
             % by this align descriptor. 
             %
@@ -1246,118 +1324,118 @@ classdef AlignSummary
             % it is assumed that each row is drawn below the last, such that timeCell{1} is drawn from 
             % yOffsetTop to yOffsetTop + 1, with timeCell{2} drawn 1 below that
             %
-            p = inputParser();
-            p.addParameter('startByTrial', [], @(x) isnumeric(x) && isvector(x));
-            p.addParameter('stopByTrial', [], @(x) isnumeric(x) && isvector(x));
-            p.addParameter('axh', gca, @ishandle);
-            p.addParameter('tOffsetZero', 0, @isscalar);
-            p.addParameter('yOffsetTop', 0, @isscalar);
-            
-            p.addParameter('markAsTicks', true, @islogical);
-            p.addParameter('markAlpha', 1, @isscalar);
-            p.addParameter('intervalAlpha', 0.5, @isscalar);
-            p.addParameter('conditionIdx', 1:ad.nConditions, @isnumeric);
-            p.addParameter('showInLegend', true, @islogical);
-            p.parse(varargin{:});
-
-            axh = p.Results.axh;
-            tOffsetZero = p.Results.tOffsetZero;
-            yOffsetTop = p.Results.yOffsetTop;
-            trialIdx = p.Results.trialIdx;
-            startByTrial = p.Results.startByTrial;
-            stopByTrial = p.Results.stopByTrial;
-
-            hold(axh, 'on');
-
-            N = numel(trialIdx);
-            assert(N == size(startByTrial, 1), 'numel(startByTrial) must match nTrials');
-            assert(N == size(stopByTrial, 1), 'numel(startByTrial) must match nTrials');
-            
-            % plot intervals
-            hIntervals = cell(ad.nIntervals, 1);
-            nOccurByInterval = ad.intervalMaxCounts;
-            [intStartData, intStopData] = ad.getAlignedIntervalData();
-            for iInterval = 1:ad.nIntervals
-                if ~ad.intervalShowOnData(iInterval), continue; end
-                % gather interval locations
-                % nOccur x nTrials set of start, stop by in interval
-                [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N)); 
-                
-                for iTrial = 1:N
-                    % filter by the time window specified (for this trial)
-                    tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
-                    tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
-                    
-                    % constrain the time window to the interval being
-                    % plotted as defined by tvec. not valid if it lies entirely outside
-                    % the interval for this trial defined by start/stopByTrial
-                    valid = ~isnan(tStart) & ~isnan(tStop);
-                    valid(tStart > stopByTrial(iTrial)) = false;
-                    valid(tStop < startByTrial(iTrial)) = false;
-                    
-                    if ~any(valid), continue; end
-                    
-                    tStart(tStart < startByTrial(iTrial)) = startByTrial(iTrial);
-                    tStop(tStop > stopByTrial(iTrial)) = stopByTrial(iTrial);
-                    
-                    intStart(:, iTrial) = tStart;
-                    intStop(:, iTrial) = tStop;
-                end
- 
-                app = ad.intervalAppear{iInterval};
-                
-                hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
-                    app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
-
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
-                end
-            end
-            
-            % plot marks
-            % grab information about the mark times relative to the trial
-            nOccurByMark = ad.markMaxCounts;
-            markData = ad.getAlignedMarkData();
-            
-            hMarks = cell(ad.nMarks, 1);
-            for iMark = 1:ad.nMarks
-                if ~ad.markShowOnData(iMark), continue; end
-                % gather mark locations
-                % nOccur x N 
-                markLoc = nan(nOccurByMark(iMark), N);
-                
-                for t = 1:N
-                    % get the mark times on this trial
-                    tMark = markData{iMark}(trialIdx(t), :);
-                    
-                    % filter by the time window specified (for this trial)
-                    maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(t);
-                    tMark(maskInvalid) = NaN;
-                    
-                    if all(isnan(tMark))
-                        % none found in this time window for this condition
-                        continue;
-                    end
-                    
-                    markLoc(:, t) = tMark;
-                end
-                
-                app = ad.markAppear{iMark};
-                
-                % plot mark and provide legend hint
-                hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
-                    p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
-
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
-                end
-            end
-        end
+%             p = inputParser();
+%             p.addParameter('startByTrial', [], @(x) isnumeric(x) && isvector(x));
+%             p.addParameter('stopByTrial', [], @(x) isnumeric(x) && isvector(x));
+%             p.addParameter('axh', gca, @ishandle);
+%             p.addParameter('tOffsetZero', 0, @isscalar);
+%             p.addParameter('yOffsetTop', 0, @isscalar);
+%             
+%             p.addParameter('markAsTicks', true, @islogical);
+%             p.addParameter('markAlpha', 1, @isscalar);
+%             p.addParameter('intervalAlpha', 0.5, @isscalar);
+%             p.addParameter('conditionIdx', 1:ad.nConditions, @isnumeric);
+%             p.addParameter('showInLegend', true, @islogical);
+%             p.parse(varargin{:});
+% 
+%             axh = p.Results.axh;
+%             tOffsetZero = p.Results.tOffsetZero;
+%             yOffsetTop = p.Results.yOffsetTop;
+%             trialIdx = p.Results.trialIdx;
+%             startByTrial = p.Results.startByTrial;
+%             stopByTrial = p.Results.stopByTrial;
+% 
+%             hold(axh, 'on');
+% 
+%             N = numel(trialIdx);
+%             assert(N == size(startByTrial, 1), 'numel(startByTrial) must match nTrials');
+%             assert(N == size(stopByTrial, 1), 'numel(startByTrial) must match nTrials');
+%             
+%             % plot intervals
+%             hIntervals = cell(ad.nIntervals, 1);
+%             nOccurByInterval = ad.intervalMaxCounts;
+%             [intStartData, intStopData] = ad.getAlignedIntervalData();
+%             for iInterval = 1:ad.nIntervals
+%                 if ~ad.intervalShowOnData(iInterval), continue; end
+%                 % gather interval locations
+%                 % nOccur x nTrials set of start, stop by in interval
+%                 [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N)); 
+%                 
+%                 for iTrial = 1:N
+%                     % filter by the time window specified (for this trial)
+%                     tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
+%                     tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
+%                     
+%                     % constrain the time window to the interval being
+%                     % plotted as defined by tvec. not valid if it lies entirely outside
+%                     % the interval for this trial defined by start/stopByTrial
+%                     valid = ~isnan(tStart) & ~isnan(tStop);
+%                     valid(tStart > stopByTrial(iTrial)) = false;
+%                     valid(tStop < startByTrial(iTrial)) = false;
+%                     
+%                     if ~any(valid), continue; end
+%                     
+%                     tStart(tStart < startByTrial(iTrial)) = startByTrial(iTrial);
+%                     tStop(tStop > stopByTrial(iTrial)) = stopByTrial(iTrial);
+%                     
+%                     intStart(:, iTrial) = tStart;
+%                     intStop(:, iTrial) = tStop;
+%                 end
+%  
+%                 app = ad.intervalAppear{iInterval};
+%                 
+%                 hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
+%                     app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
+% 
+%                 if p.Results.showInLegend
+%                     TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
+%                 else
+%                     TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
+%                 end
+%             end
+%             
+%             % plot marks
+%             % grab information about the mark times relative to the trial
+%             nOccurByMark = ad.markMaxCounts;
+%             markData = ad.getAlignedMarkData();
+%             
+%             hMarks = cell(ad.nMarks, 1);
+%             for iMark = 1:ad.nMarks
+%                 if ~ad.markShowOnData(iMark), continue; end
+%                 % gather mark locations
+%                 % nOccur x N 
+%                 markLoc = nan(nOccurByMark(iMark), N);
+%                 
+%                 for t = 1:N
+%                     % get the mark times on this trial
+%                     tMark = markData{iMark}(trialIdx(t), :);
+%                     
+%                     % filter by the time window specified (for this trial)
+%                     maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(t);
+%                     tMark(maskInvalid) = NaN;
+%                     
+%                     if all(isnan(tMark))
+%                         % none found in this time window for this condition
+%                         continue;
+%                     end
+%                     
+%                     markLoc(:, t) = tMark;
+%                 end
+%                 
+%                 app = ad.markAppear{iMark};
+%                 
+%                 % plot mark and provide legend hint
+%                 hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
+%                     p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
+% 
+%                 if p.Results.showInLegend
+%                     TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
+%                     TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
+%                 else
+%                     TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
+%                 end
+%             end
+%         end
         
         % used to annotate a time axis with the relevant start/stop/zero/marks
         % non-fixed marks as <markLabel> unless the range is less than a specified 
@@ -1409,5 +1487,57 @@ classdef AlignSummary
 
     end
     
+    methods(Static) % tools for interacting with multiple alignments
+        function setupTimeAutoAxisForMultipleAligns(asSet, tvecByAlign, varargin)
+            nAlign = numel(asSet);
+            p = inputParser();
+            p.addParamValue('tOffsetByAlign', zerosvec(nAlign), @isvector);
+            p.addParamValue('axh', gca, @ishandle);
+            p.addParamValue('doUpdate', true, @islogical);
+            p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showIntervals', true, @islogical);
+            p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis            
+            p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
+            p.addParameter('tUnits', 'ms', @ischar); % time units
+            p.parse(varargin{:});
+            
+            axh = p.Results.axh;
+            
+            au = AutoAxis(axh);
+            switch p.Results.timeAxisStyle
+                case 'tickBridge'
+                    for iAlign = 1:nAlign
+                        as = asSet{iAlign};
+                        tvec = tvecByAlign{iAlign};
+                        offset = p.Results.tOffsetByAlign(iAlign);
+                        
+                        as.setupTimeAutoAxis('axh', axh, 'style', 'tickBridge', ...
+                            'tMin', nanmin(tvec), 'tMax', nanmax(tvec), 'tOffsetZero', offset, ...
+                            'tUnits', p.Results.tUnits, ...
+                            'showRanges', p.Results.showRanges);
+                    end
+                    
+                case 'marker'
+                    for iAlign = 1:nAlign
+                        as = asSet{iAlign};
+                        tvec = tvecByAlign{iAlign};
+                        offset = p.Results.tOffsetByAlign(iAlign);
+                        
+                        as.setupTimeAutoAxis('axh', axh, 'style', 'marker', ...
+                            'tMin', nanmin(tvec), 'tMax', nanmax(tvec), 'tOffsetZero', offset, ...
+                            'tUnits', p.Results.tUnits, ...
+                            'showMarks', p.Results.showMarks, ...
+                            'showIntervals', p.Results.showIntervals, ...
+                            'showRanges', p.Results.showRanges);
+                    end
+                    au.addAutoScaleBarX();
+            end
+            
+            if p.Results.doUpdate
+                au.update();
+                au.installCallbacks();
+            end
+        end
+    end
 
 end

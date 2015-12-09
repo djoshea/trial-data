@@ -1,4 +1,4 @@
-function [Q, R] = gs_m(A)
+function [Q, R] = qrGramSchmidt(A)
 %GS_M    Modified Gram-Schmidt QR factorization.
 %        [Q, R] = GS_M(A) uses the modified Gram-Schmidt method to compute the
 %        factorization A = Q*R for m-by-n A of full rank,

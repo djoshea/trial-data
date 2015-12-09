@@ -47,6 +47,8 @@ classdef TrialDataConditionAlign < TrialData
         conditionAppearances
         conditionColors
         conditionsSize
+        conditionsSizeNoExpand
+        conditionIncludeMask
         
         nAxes
         axisValueLists
@@ -147,7 +149,7 @@ classdef TrialDataConditionAlign < TrialData
             evStruct = td.getRawEventFlatStruct();
             evList = fieldnames(evStruct);
             nEvents = numel(evList);
-            eventCounts = struct();
+            eventCounts = struct(); %#ok<*PROP>
             eventData = struct();
             
             for iE = 1:nEvents
@@ -205,7 +207,6 @@ classdef TrialDataConditionAlign < TrialData
                 valid = cvalid & avalid;
             end
        
-  
             cause = cell(td.nTrials, 1);
             explained = false(td.nTrials, 1);
             
@@ -265,6 +266,13 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             % this will flush .valid and .invalidCause
             td = invalidateValid@TrialData(td);
+            
+            % reset the manual valid arrays of all condition info and align
+            % info instances so that no attributes are overlooked
+            td.conditionInfo = td.conditionInfo.setManualValidTo(td.manualValid);
+            for iA = 1:td.nAlign
+                td.alignInfoSet{iA} = td.alignInfoSet{iA}.setManualValidTo(td.manualValid);
+            end
 
             % recompute valid using the conjunction condition info and
             % align info (this happens inside buildValid, which will be
@@ -273,9 +281,9 @@ classdef TrialDataConditionAlign < TrialData
             
             % coordinate the valid arrays of all condition info and align
             % info instances
-            td.conditionInfo = td.conditionInfo.setInvalid(~valid);
+            td.conditionInfo = td.conditionInfo.setManualValidTo(valid);
             for iA = 1:td.nAlign
-                td.alignInfoSet{iA} = td.alignInfoSet{iA}.setInvalid(~valid);
+                td.alignInfoSet{iA} = td.alignInfoSet{iA}.setManualValidTo(valid);
             end
             
             % cause align summary to be recomputed
@@ -486,6 +494,15 @@ classdef TrialDataConditionAlign < TrialData
             end
             set(axh, 'ColorOrder', td.conditionColors, 'ColorOrderIndex', 1);
         end
+        
+        function cellOfCategoricals = getConditionSubsAsCategorical(td)
+           valLists = td.axisValueListsAsStringsShort;
+           subs = td.conditionSubs;
+           cellOfCategoricals = cellvec(td.nAxes);
+            for iAx = 1:td.nAxes
+               cellOfCategoricals{iAx} = categorical(subs(:, iAx), 1:numel(valLists{iAx}), valLists{iAx});
+           end
+        end
 
         function td = selectTrials(td, mask)
             % Apply a logical mask or index selection to the list of trials
@@ -605,10 +622,24 @@ classdef TrialDataConditionAlign < TrialData
             td = td.groupBy();
         end
         
+        function td = fixAllAxisValueLists(td) 
+            % this only undoes the grouping axes, NOT the value list
+            % filtering. use reset condition info for that
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.fixAllAxisValueLists();
+            td = td.postUpdateConditionInfo();
+        end
+        
         function td = reset(td)
             td.warnIfNoArgOut(nargout);
             td = td.resetConditionInfo();
             td = td.unalign();
+        end
+        
+        function td = setConditionIncludeMask(td, m)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setConditionIncludeMask(m);
+            td = td.postUpdateConditionInfo();
         end
         
         function td = reshapeAxes(td, varargin)
@@ -855,6 +886,14 @@ classdef TrialDataConditionAlign < TrialData
         
         function sz = get.conditionsSize(td)
             sz = td.conditionInfo.conditionsSize;
+        end
+        
+        function sz = get.conditionsSizeNoExpand(td)
+            sz = td.conditionInfo.conditionsSizeNoExpand;
+        end
+        
+        function m = get.conditionIncludeMask(td)
+            m = td.conditionInfo.conditionIncludeMask;
         end
         
         function n = get.nAxes(td)
@@ -1302,7 +1341,7 @@ classdef TrialDataConditionAlign < TrialData
             % subtract baseline on condition by condition
             if ~isempty(p.Results.subtractConditionBaselineAt)
                 tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
-                tdBaseline.setInvalid(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name);
                 baselineForTrial = nanvec(tdBaseline.nTrials);
                 mask = ~isnan(tdBaseline.conditionIdx);
@@ -1313,7 +1352,7 @@ classdef TrialDataConditionAlign < TrialData
             % subtract baseline on trial by trial basis
             if ~isempty(p.Results.subtractTrialBaselineAt)
                 tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
-                tdBaseline.setInvalid(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name);
                 data = cellfun(@minus, data, num2cell(baseline), 'UniformOutput', false);
             end
@@ -1824,7 +1863,7 @@ classdef TrialDataConditionAlign < TrialData
                 axisStyleY = p.Results.axisStyleY;
             end
             
-            conditionIdx = p.Results.conditionIdx;
+            conditionIdx = p.Results.conditionIdx; %#ok<*PROPLC>
             if islogical(conditionIdx)
                 conditionIdx = find(conditionIdx);
             end
@@ -2455,6 +2494,76 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
+    methods % spike / continuous neural channel correspondence
+            function [names, units] = listSpikeChannelsOnArray(td, arrayName)
+            % [names, channelDescriptors] = getChannelsOnArray(td, arrayName)
+            names = td.listSpikeChannels();
+            units = nanvec(numel(names));
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = strcmp(cd.array, arrayName);
+                units(iC) = cd.unit;
+            end
+                
+            names = names(mask);
+            units = units(mask);
+        end
+        
+        function [names] = listContinuousNeuralChannelsOnArray(td, arrayName)
+        % [names, channelDescriptors] = getContinuousNeuralChannelsOnArray(td, arrayName)
+            names = td.listContinuousNeuralChannels();
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = strcmp(cd.array, arrayName);
+            end
+                
+            names = names(mask);
+        end
+        
+        function [names, units] = listSpikeChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+            % [names, channelDescriptors] = getChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+            names = td.listSpikeChannels();
+            units = nanvec(numel(names));
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = strcmp(cd.array, arrayName) && cd.electrode == electrodeNum;
+                units(iC) = cd.unit;
+            end
+                
+            names = names(mask);
+            units = units(mask);
+        end
+        
+        function [names] = listContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+            % [names, channelDescriptors] = getContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+            names = td.listContinuousNeuralChannels();
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = strcmp(cd.array, arrayName) && cd.electrode == electrodeNum;
+            end
+                
+            names = names(mask);
+        end
+        
+        function [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName)
+            % [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName)
+            % chName is spike channel or continuous neural channel name
+            cd = td.channelDescriptorsByName.(chName);
+            [names, units] = td.listSpikeChannelsOnArrayElectrode(cd.array, cd.electrode);
+        end
+        
+         function [names] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
+             % [names, units] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
+             % chName is spike channel or continuous neural channel name
+            cd = td.channelDescriptorsByName.(chName);
+            [names] = td.listContinuousNeuralChannelsOnArrayElectrode(cd.array, cd.electrode);
+         end
+    end
+    
     methods % spike waveforms
         function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName, varargin)
             [wavesCell, waveTvec, timesCell] = getSpikeWaveforms@TrialData(td, unitName);
@@ -2463,39 +2572,89 @@ classdef TrialDataConditionAlign < TrialData
             timesCell = cellfun(@(times, mask) times(mask), timesCell, maskCell, 'UniformOutput', false);
         end
         
-        function h = plotSpikeWaveforms(td, unitName, varargin)
+        function plotSpikeWaveforms(td, unitName, varargin)
             p = inputParser();
             p.addParameter('maxToPlot', 200, @isscalar);
-            p.addParameter('alpha', 0.4, @isscalar);
-            p.addParameter('color', 'k', @(x) ischar(x) || isvector(x));
+            p.addParameter('alpha', 0.5, @isscalar);
+            p.addParameter('color', [], @(x) true);
+            p.addParameter('colormap', @distinguishable_colors, @(x) isa(x, 'function_handle') || ismatrix(x));
+            p.addParameter('showThreshold', false, @islogical);
+            p.addParameter('showMean', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             [axh, unmatched] = td.getRequestedPlotAxis(p.Unmatched);
             
-            [wavesCell, waveTvec] = td.getSpikeWaveforms(unitName, unmatched);
-            wavesMat = cat(1, wavesCell{:})';
-            % wavesmat is T x nSpikes;
-            
-            maxSamples = p.Results.maxToPlot;
-            if maxSamples < size(wavesMat, 2)
-                s = RandStream('mt19937ar','Seed',1);
-                idx = randsample(s, size(wavesMat, 2), maxSamples);
-                wavesMat = wavesMat(:, idx);
+            if ~iscell(unitName)
+                unitName = {unitName};
             end
             
-            h = TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat, ...
-                'Parent', axh, 'EdgeColor', p.Results.color, 'EdgeAlpha', p.Results.alpha);
+            if ~isempty(p.Results.color)
+               colormap = AppearanceSpec.convertColor(p.Results.color);
+            elseif isa(p.Result.colormap, 'function_handle')
+                colormap = p.Results.colormap(numel(unitName));
+            else
+                colormap = p.Results.colormap;
+            end
+           
+            hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
+            for iU = 1:numel(unitName)
+                [wavesCell, waveTvec] = td.getSpikeWaveforms(unitName{iU}, unmatched);
+                wavesMat = cat(1, wavesCell{:});
+                % wavesmat is nSamples x nSpikes;
+
+                maxToPlot = p.Results.maxToPlot;
+                if maxToPlot < size(wavesMat, 1)
+                    s = RandStream('mt19937ar','Seed',1);
+                    idx = randsample(s, size(wavesMat, 1), maxToPlot);
+                    wavesMat = wavesMat(idx, :);
+                end
+
+%                 TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat', ...
+%                     'Parent', axh, 'EdgeColor', colormap(iU, :), 'EdgeAlpha', p.Results.alpha);
+                h = plot(waveTvec, wavesMat', 'Parent', axh, 'Color', colormap(iU, :));
+                TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
+                TrialDataUtilities.Plotting.showFirstInLegend(h, unitName{iU});
+                hold on;
+                
+                if p.Results.showMean
+                    hMean(iU) = plot(waveTvec, nanmean(wavesMat, 2), '-', 'Parent', axh, ...
+                        'Color', colormap(iU, :), 'LineWidth', 2);
+                end
+            end
+            if p.Results.showMean
+                uistack(hMean, 'top');
+            end
             
-            ht = title(sprintf('Spike Waveforms for %s', unitName));
+            if p.Results.showThreshold
+                hold on
+                threshEst = TrialDataUtilities.SpikeData.estimateThresholdFromSpikeWaveforms(td, unitName);
+                TrialDataUtilities.Plotting.horizontalLine(threshEst, 'Color', 'r');
+            end
+            
+            ht = title(sprintf('Spike Waveforms for %s', strjoin(unitName, ', ')));
             set(ht, 'Interpreter', 'none');
             
             axis tight;
-            AutoAxis.replaceScaleBars(gca, td.timeUnitName, td.channelDescriptorsByName.(unitName).waveformsUnits);
-            
+            AutoAxis.replaceScaleBars(gca, td.timeUnitName, td.channelDescriptorsByName.(unitName{1}).waveformsUnits);
+            hold off;
         end
         
-        function [wavesMat, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
+        function plotSpikeWaveformsWithOtherUnits(td, unitName, varargin)
+            otherUnits = setdiff(td.listSpikeChannelsOnSameArrayElectrodeAs(unitName), unitName);
+            unitNames = cat(1, otherUnits, unitName);
+            cmap = [0.2*ones(numel(otherUnits), 3); 1, 0, 0];
+            
+            td.plotSpikeWaveforms(unitNames, 'colormap', cmap, varargin{:});
+        end
+        
+        function plotSpikeWaveformsOnSameElectrodeArrayAs(td, chName, varargin)
+            unitNames = td.listSpikeChannelsOnSameArrayElectrodeAs(chName);
+            td.plotSpikeWaveforms(unitNames, varargin{:});
+        end
+        
+        function [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
+            % [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
             % returns a matrix containing all waveforms in units. Units
             % can be a string or cellstr, where each string is a spike unit name
             % or, if paramValue 'regexp' is true, a regexp search over
@@ -2505,6 +2664,12 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             if ischar(units), units = {units}; end
+            
+            waveTvec = td.channelDescriptorsByName.(units{1}).waveformsTime;
+            for iU = 2:numel(units)
+                assert(isequal(waveTvec, td.channelDescriptorsByName.(units{iU}).waveformsTime), ...
+                    'Differing waveform time vectors found for units %s and %s', units{1}, units{iU});
+            end
             
             % do regexp matching
             if p.Results.regexp
@@ -2542,6 +2707,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('showSem', false, @islogical); % equivalent to 'errorType', 'sem'
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.KeepUnmatched = true;
@@ -2565,13 +2731,21 @@ classdef TrialDataConditionAlign < TrialData
                 tvecCell{iAlign} = tvecTemp';
             end
             
-            switch p.Results.errorType
-                case ''
-                    errorMat = [];
-                case 'sem'
+            if isempty(p.Results.errorType)
+                if p.Results.showSem
                     errorMat = semMat;
-                case 'std'
-                    errorMat = stdMat;
+                else
+                    errorMat = [];
+                end
+            else
+                switch p.Results.errorType
+                    case ''
+                        errorMat = [];
+                    case 'sem'
+                        errorMat = semMat;
+                    case 'std'
+                        errorMat = stdMat;
+                end
             end
             
             maskEmpty = cellfun(@isempty, tvecCell);
@@ -2621,8 +2795,11 @@ classdef TrialDataConditionAlign < TrialData
             % make room for labels using AutoAxis
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
             
-            p.addParameter('useShortLabels', false, @islogical);
-           
+            p.addParameter('useShortLabels', true, @islogical);
+            
+            % shade start:stop intervals in gray to show valid time interval
+            p.addParameter('shadeValidIntervals', false, @islogical);
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2743,6 +2920,7 @@ classdef TrialDataConditionAlign < TrialData
                     error('Not yet implemented');
                 end
             else
+                % draw marks and intervals on each trial
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
                     for iCond = 1:nConditionsUsed
@@ -2753,7 +2931,8 @@ classdef TrialDataConditionAlign < TrialData
                             'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
                             'yOffsetTop', yOffsetByCondition(iCond), ...
                             'intervalMinWidth', p.Results.intervalMinWidth, ...
-                            'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+                            'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
+                            'shadeStartStopInterval', p.Results.shadeValidIntervals);
                     end
                 end
             end
@@ -2834,12 +3013,12 @@ classdef TrialDataConditionAlign < TrialData
             % location to start the next alignment.
             %
             % tvecCell is a nAlign x 1 cell of:
-            %    time vectors, for common time across trials, or
-            %    nTrials x 1 cell of time vectors, for different times
-            %    across trials.
+            %     time vectors, for common time across trials, or
+            %     nTrials x 1 cell of time vectors, for different times
+            %     across trials.
             %  
             % Parameters:
-            %  alignIdx : vector indicating which alignments to include
+            %     alignIdx : vector indicating which alignments to include
             
             p = inputParser();
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);

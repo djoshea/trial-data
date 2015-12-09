@@ -1,10 +1,10 @@
 classdef StateSpaceTranslationNormalization
 % This class stores the offsets and multipliers which can be applied to a
-% PopulationTrajectorySet. This constitutes a normalization (subtraction off
+% PopulationTrajectorySet. This constitutes a translation (subtraction off
 % of each basis) followed by a normalization (multiplication of each basis
 % by a scalar)
 
-    properties(SetAccess=protected)
+    properties
         % nBases x 1 numeric vector of offsets to ADD to each basis
         translationByBasis
         
@@ -213,6 +213,30 @@ classdef StateSpaceTranslationNormalization
             end
             
             obj = obj.assertValid();
+        end
+        
+        function obj = concatenate(trNormCell)
+            % be sure to call this superclass method if overriding and to
+            % not break the basic behavior
+            
+            emptyMask = cellfun(@isempty, trNormCell);
+            if all(emptyMask)
+                obj = [];
+                return;
+            end
+            trNormCell = trNormCell(~emptyMask);
+            
+            translations = cellfun(@(t) t.translationByBasis, trNormCell, 'UniformOutput', false);
+            translationByBasis = cat(1, translations{:});
+            norms = cellfun(@(t) t.normalizationByBasis, trNormCell, 'UniformOutput', false);
+            normByBasis = cat(1, norms{:});
+            
+            obj = StateSpaceTranslationNormalization.buildManual('translationByBasis', translationByBasis, ...
+                'normalizationByBasis', normByBasis);
+        end
+        
+        function obj = combine(varargin)
+            obj = varargin{1}.combineWith(varargin(2:end));
         end
     end
     

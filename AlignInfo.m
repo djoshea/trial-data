@@ -12,247 +12,247 @@ classdef AlignInfo < AlignDescriptor
         getEventTimesFn = @AlignInfo.defaultGetEventTimesFn;
 
         % struct with fieldnames == events.
-        % each value is nTrials x 1 numeric or cell array 
+        % each value is nTrials x 1 numeric or cell array
         % containing the absolute times of that event
         % for the trials, as returned by getEventTimesFn
         eventData
-        
+
         % struct with fieldnames == events
         % each is nTrials x 1 array of event counts
         eventCounts
 
         manualInvalid
 
-        applied = false; 
+        applied = false;
     end
-    
+
     % properties which are computed on demand and stored in odc
     properties(Transient, Dependent, SetAccess=protected)
         % struct array of nTrials x 1 containing the absolute times of the
-        % start, stop, zero events, as well as intervals and marks 
+        % start, stop, zero events, as well as intervals and marks
         timeInfo
-        
+
         timeInfoValid
-        
+
         % valid is a dependent property formed by merging computedValid
         % with manualInvalid
         computedValid
-        
+
         % nTrials x nMarks cell array of mark times
         markData
-        
+
         % nTrials x nMarks cell array of mark times; NaN for invalid trials
         markDataValid
-        
+
         % nTrials x nMarks array of mark occurrence counts
         markCounts
-        
+
         % nTrials x nMarks array of mark occurrence counts; NaN for invalid trials
         markCountsValid
-        
+
         % nMarks vector of maximum number of occurrences for each mark
         markMaxCounts
-        
+
         % nIntervals cell array of nTrials x nMaxOccurrences interval start times
         intervalStartData
-        
+
         % nIntervals cell array of nTrials x nMaxOccurrences interval start times
         % NaN for invalid trials
         intervalStartDataValid
-        
+
         % nIntervals cell array of nTrials x nMaxOccurrences interval stop times
         intervalStopData
-        
+
         intervalStopDataValid
-        
+
         % nTrials x nIntervals array of interval occurrence counts
         intervalCounts
-        
+
         % nTrials x nIntervals array of interval occurrence counts, NaN for
         % invalid trials
         intervalCountsValid
-        
+
         % nMarks vector of maximum number of occurrences for each mark
         intervalMaxCounts
     end
-    
+
     properties(Dependent)
         valid
         nTrials
         invalidCause
     end
-    
+
     methods % Property get/set stored in odc
         function v = get.timeInfo(ad)
-            v = ad.odc.timeInfo;            
+            v = ad.odc.timeInfo;
             if isempty(v)
                 ad.buildTimeInfo();
                 v = ad.odc.timeInfo;
             end
         end
-        
+
         function ad = set.timeInfo(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.timeInfo = v;
         end
-        
+
         function v = get.timeInfoValid(ad)
-            v = ad.odc.timeInfoValid;            
+            v = ad.odc.timeInfoValid;
             if isempty(v)
                 ad.buildTimeInfoValid();
                 v = ad.odc.timeInfoValid;
             end
         end
-        
+
         function ad = set.timeInfoValid(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.timeInfoValid = v;
         end
-        
+
         function v = get.computedValid(ad)
-            v = ad.odc.computedValid;            
+            v = ad.odc.computedValid;
             if isempty(v)
                 ad.buildTimeInfo();
                 v = ad.odc.computedValid;
             end
         end
-        
+
         function ad = set.computedValid(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.computedValid = v;
         end
-        
+
         function v = get.markData(ad)
-            v = ad.odc.markData;            
+            v = ad.odc.markData;
             if isempty(v)
                 ad.buildMarkData();
                 v = ad.odc.markData;
             end
         end
-        
+
         function ad = set.markData(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.markData = v;
         end
-        
+
         function v = get.markCounts(ad)
-            v = ad.odc.markCounts;            
+            v = ad.odc.markCounts;
             if isempty(v)
                 ad.buildMarkData();
                 v = ad.odc.markCounts;
             end
         end
-        
+
         function ad = set.markCounts(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.markCounts = v;
         end
 
         function v = get.markDataValid(ad)
-            v = ad.odc.markDataValid;            
+            v = ad.odc.markDataValid;
             if isempty(v)
                 ad.buildMarkDataValid();
                 v = ad.odc.markDataValid;
             end
         end
-        
+
         function ad = set.markDataValid(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.markDataValid = v;
         end
-        
+
         function v = get.markCountsValid(ad)
-            v = ad.odc.markCountsValid;            
+            v = ad.odc.markCountsValid;
             if isempty(v)
                 ad.buildMarkDataValid();
                 v = ad.odc.markCountsValid;
             end
         end
-        
+
         function ad = set.markCountsValid(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.markCountsValid = v;
         end
-        
+
         function v = get.intervalStartData(ad)
-            v = ad.odc.intervalStartData;            
+            v = ad.odc.intervalStartData;
             if isempty(v)
                 ad.buildIntervalData();
                 v = ad.odc.intervalStartData;
             end
         end
-        
+
         function ad = set.intervalStartData(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.intervalStartData = v;
         end
-        
+
         function v = get.intervalStopData(ad)
-            v = ad.odc.intervalStopData;            
+            v = ad.odc.intervalStopData;
             if isempty(v)
                 ad.buildIntervalData();
                 v = ad.odc.intervalStopData;
             end
         end
-        
+
         function ad = set.intervalStopData(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.intervalStopData = v;
         end
 
         function v = get.intervalCounts(ad)
-            v = ad.odc.intervalCounts;            
+            v = ad.odc.intervalCounts;
             if isempty(v)
                 ad.buildIntervalData();
                 v = ad.odc.intervalCounts;
             end
         end
-        
+
         function ad = set.intervalCounts(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.intervalCounts = v;
         end
-        
+
         function v = get.intervalStartDataValid(ad)
-            v = ad.odc.intervalStartDataValid;            
+            v = ad.odc.intervalStartDataValid;
             if isempty(v)
                 ad.buildIntervalDataValid();
                 v = ad.odc.intervalStartDataValid;
             end
         end
-        
+
         function ad = set.intervalStartDataValid(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.intervalStartDataValid = v;
         end
-        
+
         function v = get.intervalStopDataValid(ad)
-            v = ad.odc.intervalStopDataValid;            
+            v = ad.odc.intervalStopDataValid;
             if isempty(v)
                 ad.buildIntervalDataValid();
                 v = ad.odc.intervalStopDataValid;
             end
         end
-        
+
         function ad = set.intervalStopDataValid(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.intervalStopDataValid = v;
         end
 
         function v = get.intervalCountsValid(ad)
-            v = ad.odc.intervalCountsValid;            
+            v = ad.odc.intervalCountsValid;
             if isempty(v)
                 ad.buildIntervalDataValid();
                 v = ad.odc.intervalCountsValid;
             end
         end
-        
+
         function ad = set.intervalCountsValid(ad, v)
             ad.odc = ad.odc.copy();
             ad.odc.intervalCountsValid = v;
         end
     end
-    
+
     methods(Static) % construct from another align descriptor, used primarily by AlignInfo
         function adNew = fromAlignDescriptor(ad, adNew)
             if nargin < 2
@@ -264,7 +264,7 @@ classdef AlignInfo < AlignDescriptor
             adNew.applied = false;
         end
     end
-    
+
     methods % build a AlignDescriptor back from this AlignInfo
         % build a static ConditionDescriptor for the current groupByList
         function ad = getAlignDescriptor(ad)
@@ -304,52 +304,52 @@ classdef AlignInfo < AlignDescriptor
 
         function ad = update(ad)
             ad.warnIfNoArgOut(nargout);
-            
+
             if ~ad.applied
                 % nothing to udpate if we haven't applied to trial data yet
                 return;
             end
-            
+
             ad.odc = ad.odc.copy();
             ad.odc.flush();
         end
-        
+
         function ad = updateManualInvalid(ad)
             ad.warnIfNoArgOut(nargout);
             ad.odc = ad.odc.copy();
             ad.odc.flushManualValid();
         end
-        
+
         function ad = postUpdateMark(ad)
             ad.warnIfNoArgOut(nargout);
-            
+
             if ~ad.applied
                 % nothing to udpate if we haven't applied to trial data yet
                 return;
             end
-            
+
             ad.odc = ad.odc.copy();
             ad.odc.flushMarkData();
         end
-        
+
         function ad = postUpdateInterval(ad)
             ad.warnIfNoArgOut(nargout);
             if ~ad.applied
                 % nothing to udpate if we haven't applied to trial data yet
                 return;
             end
-            
+
             ad.odc = ad.odc.copy();
             ad.odc.flushIntervalData();
         end
-        
+
         % internal use function that simply grabs the event times relative to the trial
         % start and start/stop times as well
         % eventInfo(iTrial).event_eventName is time of eventName in trial
         % iTrial relative to eventInfo(iTrial).event_start
         function [eventData, eventCounts] = requestEventInfo(ad, td)
             eventList = ad.getEventList();
-            
+
             % grab the event times for all needed events
             [eventData, eventCounts] = ad.getEventTimesFn(td, eventList);
             if ~isfield(eventData, 'TrialStart')
@@ -362,22 +362,23 @@ classdef AlignInfo < AlignDescriptor
 %                 eventData.TrialEnd = nanvec(td.nTrials);
 %                 eventCounts.TrialEnd = zerosvec(td.nTrials);
             end
-            
+
             if isfield(eventData, 'TimeZero')
                 error('Event "TimeZero" is reserved');
             end
 
             for iE = 1:numel(eventList)
                 if ~isfield(eventData, eventList{iE})
-                    error('Missing event field %s', eventList{iE});
+                    warning('Missing event field %s', eventList{iE});
+                    eventData.(eventList{iE}) = nanvec(td.nTrials); eventCounts.(eventList{iE}) = zerosvec(td.nTrials);
                 end
             end
-    
+
             % create the "TimeZero" event as 0 on each trial
-            eventData.TimeZero = zerosvec(numel(eventData.TrialStart));
-            eventCounts.TimeZero = onesvec(numel(eventData.TrialStart));
+            eventData.TimeZero = zerosvec(td.nTrials);
+            eventCounts.TimeZero = onesvec(td.nTrials);
         end
-        
+
         function assertHasEvent(ad, eventName)
             if ad.applied
                 assert(isfield(ad.eventData, eventName), ...
@@ -386,19 +387,19 @@ classdef AlignInfo < AlignDescriptor
         end
 
         % internal utility functions for accessing specific event times
-        
+
         % n must be a scalar, times is a numeric array
         function times = getEventNthTimeVector(ad, event, n, offset, roundRelativeTo)
             ad.assertHasEvent(event);
-           
+
             if ad.nTrials == 0
                 times = zeros(0, 1);
                 return;
             end
-            
+
             timesMat = ad.eventData.(event);
             counts = ad.eventCounts.(event);
-            
+
             if strcmp(n, 'end')
                 % TODO implement 'end-1' type index
                 inds = sub2ind(size(timesMat), (1:ad.nTrials)', max(1, counts));
@@ -410,19 +411,19 @@ classdef AlignInfo < AlignDescriptor
                 elseif isempty(n)
                     n = 1;
                 end
-                
+
                 times = timesMat(:, n);
             end
-           
+
             times = times + offset;
-            
+
             if ~isempty(roundRelativeTo) && ad.roundTimes
                 % shift event times to maintain an integer multiple of
                 % timeDelta offset from .zero
                 times = ad.roundTimesRelativeTo(times, roundRelativeTo);
             end
         end
-        
+
         % n may be an index or a selector (e.g. '2:end')
         function [timeMatrix, counts] = getEventIndexedTimeMatrix(ad, event, n, offset, roundRelativeTo)
             % similar to getEventIndexedTimeVector but returns a nTrials x nMaxOccurrences matrix,
@@ -431,14 +432,14 @@ classdef AlignInfo < AlignDescriptor
             %
             % trials with fewer occurrences will be padded with NaNs to
             % complete the matrix form
-            
+
             ad.assertHasEvent(event);
-            
+
             if ~ischar(n) || strcmp(n, 'end')
                 % defer to simpler function when scalar or 'end'
                 timeMatrix = ad.getEventNthTimeVector(event, n, offset, roundRelativeTo);
                 counts = double(~isnan(timeMatrix));
-                
+
             else
                 % must have a colon, parse into tokens, end keyword okay
                 % before and/or after colon
@@ -448,23 +449,23 @@ classdef AlignInfo < AlignDescriptor
                 if isempty(info)
                     error('Unable to parse event index %s(%s)', event, n);
                 end
-                
-                % info.ind1 will contain the scalar offset, 
-                % info.end1 will be 'end' if end is part of the expression 
+
+                % info.ind1 will contain the scalar offset,
+                % info.end1 will be 'end' if end is part of the expression
                 % same for .ind2, .end2
 
                 % convert ind1, ind2 to doubles
                 end1 = ~isempty(info.end1);
                 if isempty(info.ind1)
-                    if end1             
+                    if end1
                         ind1 = 0; % default is end+0
                     else
-                        ind1 = 1; 
+                        ind1 = 1;
                     end
                 else
                     ind1 = str2double(info.ind1);
                 end
-                
+
                 if isempty(info.ind2)
                     % default to :end, even if not specified as 'end'
                     end2 = true;
@@ -473,12 +474,12 @@ classdef AlignInfo < AlignDescriptor
                     end2 = ~isempty(info.end2);
                     ind2 = str2double(info.ind2);
                 end
-                
+
                 countsFull = ad.eventCounts.(event);
-                nTrials = numel(countsFull);             
+                nTrials = numel(countsFull);
                 timesFull = ad.eventData.(event);
-   
-                
+
+
                 % figure out start and end columns to index into nTrials x
                 % nMaxOccurrence matrix timesFull
                 if end1
@@ -491,10 +492,10 @@ classdef AlignInfo < AlignDescriptor
                 else
                     colStop = repmat(ind2, nTrials, 1);
                 end
-                    
+
                 % compute the counts
                 counts = colStop - colStart + 1;
-                
+
                 % and populate the matrix row by row, leaving NaNs where
                 % fewer events occurred
                 timeMatrix = nan(nTrials, max(counts));
@@ -502,33 +503,33 @@ classdef AlignInfo < AlignDescriptor
                     timeMatrix(i, 1:counts(i)) = timesFull(i, colStart(i):colStop(i));
                 end
             end
-            
+
             timeMatrix = timeMatrix + offset;
-            
+
             if ~isempty(roundRelativeTo)
                 % shift event times to maintain an integer multiple of
                 % timeDelta offset from .zero
                 timeMatrix = ad.roundTimesRelativeTo(timeMatrix, roundRelativeTo);
             end
         end
-        
+
         % same as above but empty cells are filled with NaN
 %         function timeCell = getEventIndexedTimeCellFillEmptyWithNaN(ad, event, n, offset, roundRelativeTo)
 %             timeCell  = ad.getEventIndexedTimeCell(event, n, offset, roundRelativeTo);
 %             emptyMask = cellfun(@isempty, timeCell);
 %             [timeCell{emptyMask}] = deal(NaN);
 %         end
-        
+
         function times = roundTimesRelativeTo(ad, times, ref)
             % rounds time points such that they align with a time reference
             % i.e. each time lies an exact integer multiple of minTimeDelta
             % away from ref
-            
+
             if ~ad.roundTimes
                 % no rounding enabled
                 return;
             end
-            
+
             delta = ad.minTimeDelta;
             roundFn = @(times, ref) bsxfun(@plus, round(bsxfun(@minus, times, ref) / delta) * delta, ref);
             if isnumeric(times)
@@ -537,10 +538,10 @@ classdef AlignInfo < AlignDescriptor
                 times = cellfun(roundFn, times, num2cell(ref), 'UniformOutput', false);
             end
         end
-        
+
         function times = filterTimesWithin(ad, times, startByTrial, stopByTrial) %#ok<INUSL>
             % filters times (numeric or cell) with size along dim1 == nTrials
-            % to include only times within the start to stop window 
+            % to include only times within the start to stop window
             if isnumeric(times)
                 % numeric --> replace invalid with NaN
                 times(times < startByTrial | times > stopByTrial) = NaN;
@@ -550,30 +551,30 @@ classdef AlignInfo < AlignDescriptor
                 times = map(filterFn, times, startByTrial, stopByTrial);
             end
         end
-        
+
         function times = filterTimesWithinStartStop(ad, times, includePadding)
             if includePadding
                 [startData, stopData] = ad.getStartStopZeroByTrial();
             else
                 [startData, stopData] = ad.getStartStopZeroByTrialWithPadding();
             end
-            
+
             times = ad.filterTimesWithin(times, startData, stopData);
         end
-        
-        % get the aligned start/stop/zero/mark time windows for each trial, 
+
+        % get the aligned start/stop/zero/mark time windows for each trial,
         % respecting all truncation and invalidation instructions
         function buildTimeInfo(ad)
             % returns a struct array with the actual time window and time of zero for trial i as
             %   timeInfo(i).start, .stop, .zero
             %
             % timeInfo(i).valid and valid(i) indicate whether trial i satisfied inclusion criteria
-            % as specified by the various means of trial invalidation 
-           
+            % as specified by the various means of trial invalidation
+
             if ~ad.applied
                 return;
             end
-            
+
             padPre = ad.padPre;
             padPost = ad.padPost;
 
@@ -590,8 +591,8 @@ classdef AlignInfo < AlignDescriptor
             noZero = isnan(t.zero);
             [t.invalidCause{noZero & valid}] = deal(sprintf('Missing zero event %s', ad.zeroUnabbreviatedLabel));
             valid(noZero) = false;
-            
-            t.trialStart = ad.getEventNthTimeVector('TrialStart', 1, 0, t.zero); 
+
+            t.trialStart = ad.getEventNthTimeVector('TrialStart', 1, 0, t.zero);
             t.trialStop = ad.getEventNthTimeVector('TrialEnd', 1, 0, t.zero);
 
             % get start event
@@ -605,11 +606,11 @@ classdef AlignInfo < AlignDescriptor
             noStop = isnan(t.stop);
             [t.invalidCause{noStop & valid}] = deal(sprintf('Missing stop event %s', ad.stopUnabbreviatedLabel));
             valid(noStop) = false;
-        
+
             % get pad window
             t.startPad = t.start - padPre;
             t.stopPad = t.stop + padPost;
-            
+
             % truncate trial end (including padding) based on truncateAfter events
             t.isTruncatedStop = falsevec(nTrials);
             for i = 1:length(ad.truncateAfterEvents)
@@ -619,7 +620,7 @@ classdef AlignInfo < AlignDescriptor
                 t.stopPad = nanmin(t.stop, times);
                 t.stop = t.stopPad - padPost;
             end
-            
+
             % truncate trial start (including padding) based on truncateBefore events
             t.isTruncatedStart = falsevec(nTrials);
             for i = 1:length(ad.truncateBeforeEvents)
@@ -634,10 +635,10 @@ classdef AlignInfo < AlignDescriptor
             for i = 1:length(ad.invalidateEvents)
                 timesMatrix = ad.getEventIndexedTimeMatrix(ad.invalidateEvents{i}, ...
                     ad.invalidateEventsIndex{i}, ad.invalidateOffsets(i), t.zero);
-                
+
                 maskInvalid = any(bsxfun(@ge, timesMatrix, t.startPad) & ...
-                                  bsxfun(@le, timesMatrix, t.stopPad), 2); 
-                
+                                  bsxfun(@le, timesMatrix, t.stopPad), 2);
+
                 valid(maskInvalid) = false;
                 [t.invalidCause{maskInvalid}] = deal(sprintf('Overlapped invalidating event %s', ad.invalidateUnabbreviatedLabels{i}));
             end
@@ -646,7 +647,7 @@ classdef AlignInfo < AlignDescriptor
             if strcmp(ad.outsideOfTrialMode, ad.TRUNCATE) || ...
                strcmp(ad.outsideOfTrialMode, ad.INVALIDATE)
 
-                if strcmp(ad.outsideOfTrialMode, ad.TRUNCATE) 
+                if strcmp(ad.outsideOfTrialMode, ad.TRUNCATE)
                     % truncate so that padded window fits within the trial
                     t.startPad(t.startPad < t.trialStart) = t.trialStart(t.startPad < t.trialStart);
                     t.stopPad(t.stopPad > t.trialStop) = t.trialStop(t.stopPad > t.trialStop);
@@ -657,7 +658,7 @@ classdef AlignInfo < AlignDescriptor
                     mask = t.startPad < t.trialStart;
                     valid(mask) = false;
                     [t.invalidCause{mask}] = deal('Start plus padding occurs before trial start');
-                    
+
                     mask = t.stopPad > t.trialStop;
                     valid(mask) = false;
                     [t.invalidCause{mask}] = deal('Stop plus padding occurs after trial end');
@@ -668,7 +669,7 @@ classdef AlignInfo < AlignDescriptor
             mask = t.stop - t.start < ad.minDuration;
             valid(mask) = false;
             [t.invalidCause{mask}] = deal(sprintf('Trial duration is less than minDuration %g', ad.minDuration));
-        
+
             % clear out values for invalid trials to avoid hard to catch bugs
             % IT IS CRITICAL THAT THIS ONLY CONSIDER computedValid, not
             % manual valid, otherwise changing the validity requires
@@ -678,23 +679,23 @@ classdef AlignInfo < AlignDescriptor
 %             t.start(~valid) = NaN;
 %             t.stop(~valid) = NaN;
 %             t.zero(~valid) = NaN;
-            
+
             % store in odc
             c = ad.odc;
             c.timeInfo = t;
             c.timeInfoValid = [];
             c.computedValid = valid;
         end
-        
+
         function buildTimeInfoValid(ad)
             % generates timeInfo, but inserts NaNs in manual valid to avoid
             % bugs down the line. timeInfo is rarely updated, timeInfoValid
-            
+
             t = ad.timeInfo;
             valid = ad.valid;
-            
+
             [t.invalidCause{ad.manualInvalid}] = deal(sprintf('Marked invalid manually'));
-        
+
             % clear out values for invalid trials to avoid hard to catch bugs
             % Here we consider computedValid AND manualValid
             t.startPad(~valid) = NaN;
@@ -702,31 +703,31 @@ classdef AlignInfo < AlignDescriptor
             t.start(~valid) = NaN;
             t.stop(~valid) = NaN;
             t.zero(~valid) = NaN;
-            
+
             c = ad.odc;
             c.timeInfoValid = t;
         end
-        
+
         function buildMarkData(ad)
             % compute the mark times and store in odc.markInfo
-            
+
             markData = cell(ad.nMarks, 1);
             markCounts = nan(ad.nTrials, ad.nMarks);
             for i = 1:length(ad.markEvents)
                 [markData{i}, markCounts(:, i)] = ...
                     ad.getEventIndexedTimeMatrix(ad.markEvents{i}, ...
                     ad.markEventsIndex{i}, ad.markOffsets(i), ad.timeInfo.zero);
-                
+
                 %markData{i}(~ad.computedValid, :) = NaN;
             end
 
             %markCounts(~ad.computedValid, :) = NaN;
-            
+
             c = ad.odc;
             c.markData = markData;
             c.markCounts = markCounts;
         end
-        
+
         function buildMarkDataValid(ad)
             markDataValid = ad.markData;
             markCountsValid = ad.markCounts;
@@ -739,17 +740,17 @@ classdef AlignInfo < AlignDescriptor
             c.markDataValid = markDataValid;
             c.markCountsValid = markCountsValid;
         end
-        
+
         function buildIntervalData(ad)
             % compute the interval times by trial and store in
             % odc.intervalStartData and odc.intervalStopData
-            
+
             % contents of each cell will be nTrials x nMaxOccurrence
             [intervalStartData, intervalStopData] = deal(cell(ad.nIntervals, 1));
-            
+
             intervalStartCounts = nan(ad.nTrials, ad.nIntervals);
             intervalStopCounts = nan(ad.nTrials, ad.nIntervals);
-            
+
             % collect the interval times
             for iInt = 1:ad.nIntervals
                 [intervalStartData{iInt}, intervalStartCounts(:, iInt)] = ad.getEventIndexedTimeMatrix(...
@@ -758,39 +759,39 @@ classdef AlignInfo < AlignDescriptor
                 [intervalStopData{iInt}, intervalStopCounts(:, iInt)] = ad.getEventIndexedTimeMatrix(...
                     ad.intervalEventsStop{iInt}, ad.intervalEventsIndexStop{iInt},  ...
                     ad.intervalOffsetsStop(iInt), ad.timeInfo.zero);
-                
+
                 %intervalStartData{iInt}(~ad.computedValid, :) = NaN;
                 %intervalStopData{iInt}(~ad.computedValid, :) = NaN;
             end
-            
+
             mismatch = intervalStartCounts ~= intervalStopCounts;
             if any(mismatch(:))
                 warning('Encountered mismatched interval start / stop events');
             end
             intervalCounts = min(intervalStartCounts, intervalStopCounts);
             %intervalCounts(~ad.computedValid, :) = NaN;
-            
+
             c = ad.odc;
             c.intervalStartData = intervalStartData;
             c.intervalStopData = intervalStopData;
             c.intervalCounts = intervalCounts;
         end
-        
+
         function buildIntervalDataValid(ad)
             intervalStartDataValid = ad.intervalStartData;
             intervalStopDataValid = ad.intervalStopData;
             intervalCountsValid = ad.intervalCounts;
-            
+
             for iInt = 1:ad.nIntervals
                 intervalStartDataValid{iInt}(~ad.valid, :) = NaN;
                 intervalStopDataValid{iInt}(~ad.valid, :) = NaN;
             end
             intervalCountsValid(~ad.valid, :) = NaN;
-            
+
             c = ad.odc;
             c.intervalStartDataValid = intervalStartDataValid;
             c.intervalStopDataValid = intervalStopDataValid;
-            c.intervalCountsValid = intervalCountsValid; 
+            c.intervalCountsValid = intervalCountsValid;
         end
     end
 
@@ -798,7 +799,7 @@ classdef AlignInfo < AlignDescriptor
         function assertApplied(ad)
             assert(ad.applied, 'Call .applyToTrialData first');
         end
-        
+
         function nt = get.nTrials(ad)
             if ~ad.applied
                 nt = 0;
@@ -806,31 +807,31 @@ classdef AlignInfo < AlignDescriptor
                 nt = numel(ad.eventCounts.(ad.zeroEvent));
             end
         end
-       
+
         function n = get.markMaxCounts(ad)
             % markCounts is nTrials x nMarks
             n = max(ad.markCounts, [], 1)';
         end
-        
+
         function n = get.intervalMaxCounts(ad)
             % intervalCounts is nTrials x nMarks
             n = max(ad.intervalCounts, [], 1)';
         end
-       
-       function lengths = getValidDurationByTrial(ad) 
+
+       function lengths = getValidDurationByTrial(ad)
             ad.assertApplied();
             ti = ad.timeInfoValid;
             lengths = makecol([ti.stop] - [ti.start] + 1);
        end
-        
+
        function [start, stop, zero] = getStartStopZeroByTrial(ad)
            ad.assertApplied();
-           
+
            start = makecol([ad.timeInfoValid.start]);
            stop = makecol([ad.timeInfoValid.stop]);
            zero = makecol([ad.timeInfoValid.zero]);
        end
-       
+
        function [startPad, stopPad, zero] = getStartStopZeroByTrialWithPadding(ad)
            ad.assertApplied();
 
@@ -844,41 +845,42 @@ classdef AlignInfo < AlignDescriptor
             ad.assertApplied();
             zero = makecol([ad.timeInfoValid.zero]);
        end
-       
+
        function [startRel, stopRel, zeroRel] = getStartStopZeroRelativeToTrialStartByTrial(ad)
            ad.assertApplied();
-           
+
            startRel = makecol([ad.timeInfoValid.start]) - makecol(ad.timeInfoValid.trialStart);
            stopRel = makecol([ad.timeInfoValid.stop]) - makecol(ad.timeInfoValid.trialStart);
            zeroRel = makecol([ad.timeInfoValid.zero]) - makecol(ad.timeInfoValid.trialStart);
        end
     end
-    
+
     methods % Trial validity
         function ad = markInvalid(ad, invalid)
             ad.warnIfNoArgOut(nargout);
             ad.manualInvalid(invalid) = false;
             ad = ad.updateManualInvalid();
-            % IT IS PERFORMANCE-CRITICAL THAT WE ONLY UPDATE TIMEINFOVALID HERE, 
+            % IT IS PERFORMANCE-CRITICAL THAT WE ONLY UPDATE TIMEINFOVALID HERE,
             % do not call .update() here
         end
 
-        function ad = setInvalid(ad, mask)
+        function ad = setManualValidTo(ad, mask)
             ad.warnIfNoArgOut(nargout);
-            ad.manualInvalid = mask;
+            assert(isvector(mask) && islogical(mask) && numel(mask) == ad.nTrials);
+            ad.manualInvalid = ~mask;
             ad = ad.updateManualInvalid();
-            % IT IS PERFORMANCE-CRITICAL THAT WE ONLY UPDATE TIMEINFOVALID HERE, 
+            % IT IS PERFORMANCE-CRITICAL THAT WE ONLY UPDATE TIMEINFOVALID HERE,
             % do not call .update() here
         end
-        
+
         function valid = get.valid(ad)
             if isempty(ad.timeInfo)
                 valid = [];
             else
                 valid = ad.computedValid & ~ad.manualInvalid;
             end
-        end 
-        
+        end
+
         function cause = get.invalidCause(ad)
             if isempty(ad.timeInfo)
                 cause = {};
@@ -886,17 +888,17 @@ classdef AlignInfo < AlignDescriptor
                 cause = ad.timeInfo.invalidCause;
             end
         end
-        
+
         function ad = selectTrials(ad, mask)
             ad.warnIfNoArgOut(nargout);
-            
+
             flds = fieldnames(ad.eventData);
             for iF = 1:numel(flds)
                 fld = flds{iF};
                 ad.eventData.(fld) = ad.eventData.(fld)(mask, :);
                 ad.eventCounts.(fld) = ad.eventCounts.(fld)(mask);
             end
-            
+
             ad.timeInfo = [];
             ad.timeInfoValid = [];
 %             flds = fieldnames(ad.timeInfo);
@@ -905,14 +907,14 @@ classdef AlignInfo < AlignDescriptor
 %                 ad.timeInfo.(fld) = ad.timeInfo.(fld)(mask);
 %                 ad.timeInfoValid.(fld) = ad.timeInfoValid.(fld)(mask);
 %             end
-%            
+%
             if ~isempty(ad.odc.markData)
                 for iM = 1:ad.nMarks
                     ad.markData{iM} = ad.markData{iM}(mask, :);
                 end
                 ad.markCounts = ad.markCounts(mask, :);
             end
-            
+
             if ~isempty(ad.odc.intervalStartData)
                 for iI = 1:ad.nIntervals
                     ad.intervalStartData{iI} = ad.intervalStartData{iI}(mask, :);
@@ -920,18 +922,18 @@ classdef AlignInfo < AlignDescriptor
                 end
                 ad.intervalCounts = ad.intervalCounts(mask, :);
             end
-            
+
             ad.manualInvalid = ad.manualInvalid(mask);
             ad.computedValid = ad.computedValid(mask);
         end
     end
-    
+
     methods % Time-Aligning data transformations
         function [alignedTimes, rawTimesMask] = getAlignedTimesMatrix(ad, rawTimesMatrix, includePadding, beforeStartReplaceStart, afterStopReplaceStop)
             if nargin < 3
                 includePadding = false;
             end
-            if nargin < 4 
+            if nargin < 4
                 beforeStartReplaceStart = false;
             end
             if nargin < 5
@@ -939,7 +941,7 @@ classdef AlignInfo < AlignDescriptor
             end
 
             assert(size(rawTimesMatrix, 1) == ad.nTrials, 'Size(1) must match nTrials');
-            
+
             % filter the spikes within the window and recenter on zero
             if includePadding
                 start = ad.timeInfoValid.startPad;
@@ -949,7 +951,7 @@ classdef AlignInfo < AlignDescriptor
                 stop = ad.timeInfoValid.stop;
             end
             zero = ad.timeInfoValid.zero;
-            
+
             beforeStartMask = bsxfun(@le, rawTimesMatrix, start);
             afterStopMask = bsxfun(@ge, rawTimesMatrix, stop);
             if beforeStartReplaceStart
@@ -962,14 +964,14 @@ classdef AlignInfo < AlignDescriptor
                 rawTimesMatrix(mask) = repmat(stop(mask), 1, size(rawTimesMatrix, 2));
                 afterStopMask(:) = false;
             end
-               
+
             rawTimesMask = ~beforeStartMask & ~afterStopMask;
-            alignedTimes = bsxfun(@minus, rawTimesMatrix, zero);  
+            alignedTimes = bsxfun(@minus, rawTimesMatrix, zero);
 
             rawTimesMask(~ad.valid, :) = false;
             alignedTimes(~rawTimesMask) = NaN;
         end
-        
+
         % use the alignment to shift the times in rawTimesCell to be zero relative
         % and filter by time window determined by getTimeInfo for each trial
         % if includePadding is true, will additional times found in the padWindow, see .setPadWindow
@@ -978,18 +980,18 @@ classdef AlignInfo < AlignDescriptor
             p.addOptional('includePadding', false, @islogical);
             p.addParameter('singleTimepointTolerance', NaN, @isscalar);
             p.parse(varargin{:});
-            
+
             singleTimepointTolerance = p.Results.singleTimepointTolerance;
             if isnan(singleTimepointTolerance)
                 % if a single timepoint is requested, grab the closest
                 % sample in time provided it's within tolerance of the
-                % requested time. 
+                % requested time.
                 % if no tolerance is provided, set it as twice the average
                 % sampling rate
-                
+
                 singleTimepointTolerance = 2* nanmean(cellfun(@(times) nanmean(diff(times)), rawTimesCell));
             end
-            
+
             if isempty(rawTimesCell)
                 alignedTimes = rawTimesCell;
                 rawTimesMask = rawTimesCell;
@@ -997,7 +999,7 @@ classdef AlignInfo < AlignDescriptor
             end
 
             assert(numel(rawTimesCell) == ad.nTrials, 'Size must match nTrials');
-            
+
             % filter the spikes within the window and recenter on zero
             if p.Results.includePadding
                 start = ad.timeInfoValid.startPad;
@@ -1007,9 +1009,9 @@ classdef AlignInfo < AlignDescriptor
                 stop = ad.timeInfoValid.stop;
             end
             zero = ad.timeInfoValid.zero;
-            
+
             [alignedTimes, rawTimesMask] = deal(cell(ad.nTrials, 1));
-            valid = ad.valid;
+            valid = ad.valid; %#ok<*PROPLC>
             for i = 1:ad.nTrials
                 if valid(i)
                     raw = rawTimesCell{i};
@@ -1027,7 +1029,7 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
         end
-        
+
         function [alignedData, alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, includePadding, varargin)
             % align timeseries where trials are along dimension 1
             [alignedTime, rawTimesMask] = ad.getAlignedTimesCell(timeCell, includePadding, varargin{:});
@@ -1040,21 +1042,21 @@ classdef AlignInfo < AlignDescriptor
                 dataCell(nonEmpty), rawTimesMask(nonEmpty), ...
                 'UniformOutput', false);
         end
-        
+
         function [startRel, stopRel] = getStartStopRelativeToZeroByTrial(ad)
            ad.assertApplied();
            [start, stop, zero] = ad.getStartStopZeroByTrial();
            startRel = start - zero;
            stopRel = stop - zero;
         end
-        
+
          function [startRel, stopRel] = getStartStopRelativeToZeroByTrialWithPadding(ad)
            ad.assertApplied();
            [start, stop, zero] = ad.getStartStopZeroByTrialWithPadding();
            startRel = start - zero;
            stopRel = stop - zero;
         end
-       
+
         function [markData, markDataMask] = getAlignedMarkData(ad, includePadding)
             if nargin < 2
                 includePadding = false;
@@ -1062,7 +1064,7 @@ classdef AlignInfo < AlignDescriptor
             [markData, markDataMask] = ...
                 cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding), ad.markDataValid, 'UniformOutput', false);
         end
-        
+
         function [intervalStartData, intervalStopData, intervalStartMask, intervalStopMask] = ...
                 getAlignedIntervalData(ad, includePadding)
             if nargin < 2
@@ -1074,7 +1076,7 @@ classdef AlignInfo < AlignDescriptor
                 cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding, false, true), ad.intervalStopDataValid, 'UniformOutput', false);
         end
     end
-    
+
     methods % Time-Aligning data transformations to individual marks and intervals
         % use the alignment to shift the times in rawTimesCell to be zero relative
         % to EACH mark and filter by time window determined by getTimeInfo for each trial
@@ -1084,7 +1086,7 @@ classdef AlignInfo < AlignDescriptor
                 includePadding = false;
             end
             assert(markIdx >= 1 && markIdx <= ad.nMarks, 'Mark idx out of range');
-            
+
             if isempty(rawTimesCell)
                 alignedTimes = rawTimesCell;
                 rawTimesMask = rawTimesCell;
@@ -1095,15 +1097,15 @@ classdef AlignInfo < AlignDescriptor
             assert(numel(rawTimesCell) == ad.nTrials, 'Size must match nTrials');
             markDataAll = ad.getAlignedMarkData(includePadding);
             alignedMarkMat = markDataAll{markIdx};
-           
+
             % align the raw
             [alignedTimesTrial, rawTimesMaskTrial] = ad.getAlignedTimesCell(rawTimesCell, includePadding);
-            
+
             % filter the spikes within the window and recenter on zero
             startMat = alignedMarkMat + window(1);
             stopMat = alignedMarkMat + window(2);
             zeroMat = alignedMarkMat;
-           
+
             nMarkOccur = ad.markMaxCounts(markIdx);
             [alignedTimes, rawTimesMask] = deal(cell(ad.nTrials, nMarkOccur));
             %valid = ad.valid;
@@ -1121,10 +1123,10 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
         end
-        
+
     end
-    
-    methods % Drawing on data 
+
+    methods % Drawing on data
         function [hMarks, hIntervals] = drawOnDataByTrial(ad, varargin)
             % annotate data time-series with markers according to the labels indicated
             % by this align descriptor. Similar to AlignSummary's version
@@ -1149,7 +1151,7 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('showInLegend', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
             p.parse(varargin{:});
-            
+
             data = p.Results.data;
             time = p.Results.time;
 
@@ -1161,11 +1163,11 @@ classdef AlignInfo < AlignDescriptor
             N = numel(trialIdx);
             assert(N == size(data, 1), 'size(data, 1) must match nTrials');
             %assert(N == size(time, 1), 'size(timeData, 1) must match nTrials');
-            
+
             % grab information about the mark times relative to the trial
             nOccurByMark = ad.markMaxCounts;
             markData = ad.getAlignedMarkData();
-            
+
             if iscell(data)
                  emptyMask = cellfun(@isempty, data);
                 if all(emptyMask), return; end
@@ -1174,23 +1176,23 @@ classdef AlignInfo < AlignDescriptor
             else
                 D = size(data, 3);
             end
-            
+
             % plot intervals
             hIntervals = cell(ad.nIntervals, 1);
             nOccurByInterval = ad.intervalMaxCounts;
             [intStartData, intStopData] = ad.getAlignedIntervalData();
             for iInterval = 1:ad.nIntervals
                 if ~ad.intervalShowOnData(iInterval), continue, end
-                
+
                 % gather mark locations
                 % nOccur x nTrials cell of T x D data in interval
-                intLoc = cell(nOccurByInterval(iInterval), N); 
-                
+                intLoc = cell(nOccurByInterval(iInterval), N);
+
                 for iTrial = 1:N
                     % filter by the time window specified (for this trial)
                     tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
                     tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
-                    
+
                     % tvec should T vector, dmat should be T x D
                     if iscell(time)
                         tvec = time{iTrial};
@@ -1203,25 +1205,25 @@ classdef AlignInfo < AlignDescriptor
                         % data is N x T x D matrix
                         dmat = TensorUtils.squeezeDims(data(iTrial, :, :), 1);
                     end
-                    
+
                     % constrain the time window to the interval being
                     % plotted as defined by tvec
                     valid = ~isnan(tStart) & ~isnan(tStop);
                     valid(tStart > max(tvec)) = false;
                     valid(tStop < min(tvec)) = false;
-                    
+
                     if ~any(valid), continue; end
-                    
+
                     tStart(tStart < min(tvec)) = min(tvec);
                     tStop(tStop > max(tvec)) = max(tvec);
-                    
+
                      % and slice the interval location
                     % tStart, tStop is nOccur x 1
                     % dError will be nOccur cell with T x D values
                     dInterval = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
                     intLoc(:, iTrial) = dInterval;
                 end
- 
+
                  % add the time offset if plotting against time
                 if D == 1
                     for i = 1:numel(intLoc)
@@ -1229,9 +1231,9 @@ classdef AlignInfo < AlignDescriptor
                         intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
                     end
                 end
-                
+
                 app = ad.intervalAppear{iInterval};
-                
+
                 hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
                     app, p.Results.intervalThickness, p.Results.markAlpha);
                 if p.Results.showInLegend
@@ -1240,20 +1242,20 @@ classdef AlignInfo < AlignDescriptor
                     TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
                 end
             end
-            
+
             % plot marks
             hMarks = cell(ad.nMarks, 1);
             for iMark = 1:ad.nMarks
                 if ~ad.markShowOnData(iMark), continue, end
-                
+
                 % gather mark locations
                 % nOccur x D x N
                 markLoc = nan(nOccurByMark(iMark), max(2, D), N);
-                
+
                 for t = 1:N
                     % get the mark times on this trial
                     tMark = markData{iMark}(trialIdx(t));
-                    
+
                     if iscell(time)
                         tvec = time{t};
                     else
@@ -1266,11 +1268,11 @@ classdef AlignInfo < AlignDescriptor
                         dmat = TensorUtils.squeezeDims(data(t, :, :), 1);
                     end
                     % tvec should T vector, dmat should be T x D
-                    
+
                     % filter by the time window specified (for this trial)
                     maskInvalid = tMark < min(tvec) | tMark > max(tvec);
                     tMark(maskInvalid) = NaN;
-                    
+
                     if all(isnan(tMark))
                         % none found in this time window for this condition
                         continue;
@@ -1278,21 +1280,21 @@ classdef AlignInfo < AlignDescriptor
                     if isempty(dmat)
                         continue;
                     end
-                    
+
                     % dMean will be nOccurThisTrial x max(2,D)
                     % since time will become dMean(:, 1, :) if D == 1
                     dMark = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(tvec, dmat, tMark);
-                    
+
                     markLoc(1:size(dMark, 1), :, t) = dMark;
                 end
-                
+
                 % add the time offset to time column if plotting against time
                 if D == 1
                     markLoc(:, 1, :) = markLoc(:, 1, :) + tOffsetZero;
                 end
-                
+
                 app = ad.markAppear{iMark};
-                
+
                 % plot mark and provide legend hint
                 hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
                     p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
@@ -1305,13 +1307,13 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
         end
-        
+
         function [hMarks, hIntervals] = drawOnRasterByTrial(ad, varargin)
             % annotate per-trial raster plots with markers according to the labels indicated
-            % by this align descriptor. 
+            % by this align descriptor.
             %
             % timeCell is nTrials x 1 cell of time vectors
-            % it is assumed that each row is drawn below the last, such that timeCell{1} is drawn from 
+            % it is assumed that each row is drawn below the last, such that timeCell{1} is drawn from
             % yOffsetTop to yOffsetTop + 1, with timeCell{2} drawn 1 below that
             %
             p = inputParser();
@@ -1321,13 +1323,15 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('tOffsetZero', 0, @isscalar);
             p.addParameter('yOffsetTop', 0, @isscalar);
             p.addParameter('tickHeight', 1, @isscalar);
-            p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals wider than they really are to be more readily visible 
-            
+            p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals wider than they really are to be more readily visible
+
             p.addParameter('markAsTicks', true, @islogical);
             p.addParameter('markAlpha', 0.5, @isscalar);
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParameter('showInLegend', true, @islogical);
+
+            p.addParameter('shadeStartStopInterval', false, @islogical);
             p.parse(varargin{:});
 
             axh = p.Results.axh;
@@ -1342,7 +1346,22 @@ classdef AlignInfo < AlignDescriptor
             N = numel(trialIdx);
             assert(N == size(startByTrial, 1), 'numel(startByTrial) must match nTrials');
             assert(N == size(stopByTrial, 1), 'numel(startByTrial) must match nTrials');
-            
+
+            % optionally shade start:stop interval to visualize valid data
+            % region
+            if p.Results.shadeStartStopInterval
+                % must be row vectors because expects nOccurrences x
+                % nTrials
+                h = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, startByTrial', stopByTrial', ...
+                    AppearanceSpec('Color', [0.5 0.5 0.5]), p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', 0);
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, 'Valid time region');
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+            end
+
             % plot intervals
             hIntervals = cell(ad.nIntervals, 1);
             nOccurByInterval = ad.intervalMaxCounts;
@@ -1351,31 +1370,31 @@ classdef AlignInfo < AlignDescriptor
                 if ~ad.intervalShowOnData(iInterval), continue; end
                 % gather interval locations
                 % nOccur x nTrials set of start, stop by in interval
-                [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N)); 
-                
+                [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N));
+
                 for iTrial = 1:N
                     % filter by the time window specified (for this trial)
                     tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
                     tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
-                    
+
                     % constrain the time window to the interval being
                     % plotted as defined by tvec. not valid if it lies entirely outside
                     % the interval for this trial defined by start/stopByTrial
                     valid = ~isnan(tStart) & ~isnan(tStop);
                     valid(tStart > stopByTrial(iTrial)) = false;
                     valid(tStop < startByTrial(iTrial)) = false;
-                    
+
                     if ~any(valid), continue; end
-                    
+
                     tStart(tStart < startByTrial(iTrial)) = startByTrial(iTrial);
                     tStop(tStop > stopByTrial(iTrial)) = stopByTrial(iTrial);
-                    
+
                     intStart(:, iTrial) = tStart;
                     intStop(:, iTrial) = tStop;
                 end
- 
+
                 app = ad.intervalAppear{iInterval};
-                
+
                 hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
                     app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
                     'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', p.Results.intervalMinWidth);
@@ -1386,37 +1405,37 @@ classdef AlignInfo < AlignDescriptor
                     TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
                 end
             end
-            
+
             % plot marks
             % grab information about the mark times relative to the trial
             nOccurByMark = ad.markMaxCounts;
             markData = ad.getAlignedMarkData();
-            
+
             hMarks = cell(ad.nMarks, 1);
             for iMark = 1:ad.nMarks
                 if ~ad.markShowOnData(iMark), continue; end
                 % gather mark locations
-                % nOccur x N 
+                % nOccur x N
                 markLoc = nan(nOccurByMark(iMark), N);
-                
+
                 for t = 1:N
                     % get the mark times on this trial
                     tMark = markData{iMark}(trialIdx(t), :);
-                    
+
                     % filter by the time window specified (for this trial)
                     maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(t);
                     tMark(maskInvalid) = NaN;
-                    
+
                     if all(isnan(tMark))
                         % none found in this time window for this condition
                         continue;
                     end
-                    
+
                     markLoc(:, t) = tMark;
                 end
-                
+
                 app = ad.markAppear{iMark};
-                
+
                 % plot mark and provide legend hint
                 hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
                     p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
@@ -1431,7 +1450,7 @@ classdef AlignInfo < AlignDescriptor
             end
         end
     end
-    
+
     methods(Static) % Default accessor methods
         function [eventData, eventCounts] = defaultGetEventTimesFn(td, ~)
             % default function for accessing event times
@@ -1439,7 +1458,7 @@ classdef AlignInfo < AlignDescriptor
             % with each containing all events for event i, trial j
             % unless either 'takeFirst', or 'takeLast' is true, in which case not
             % regardless, if no events are found, the cell will contain a NaN rather than be empty
-            
+
             if isa(td, 'TrialData')
                 eventData = td.eventData;
                 eventCounts = td.eventCounts;
@@ -1449,4 +1468,3 @@ classdef AlignInfo < AlignDescriptor
         end
     end
 end
-

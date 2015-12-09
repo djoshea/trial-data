@@ -54,7 +54,13 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         end
     end
 
-    methods(Access=protected)
+    methods(Access=protected)     
+        function checkTimeDeltaOkay(sf, timeDelta)
+            % doesn't make sense to sample more finely than the
+            % spikeBinWidth used
+            assert(timeDelta >= sf.binWidthMs, 'TimeDelta is shorter than spike filter binWidthMs. Filter output should not be sampled more finely than the spike bin resolution');
+        end
+        
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
         function t = getPreWindow(sf)

@@ -1,4 +1,4 @@
-function exportForSorting(td, outDir, varargin)
+function [outData] = exportForSorting(td, outDir, varargin)
 % artifactThresh (optional) specifies how big a point in a waveform is
 % allowed to be before we consider it an artifact and throw it away. Sign
 % does not matter, specify in mV. Default is Inf.
@@ -15,6 +15,8 @@ p = inputParser;
 % p.addParamValue('conserveMemory', true, @islogical);
 p.addParamValue('maxUnits', 4, @isscalar);
 p.addParamValue('lockoutMs', 1.6, @isscalar);
+p.addParamValue('spikeChannelList', {}, @iscellstr); % if specified, restrict the export to a specific set of spike Channels 
+p.addParamValue('writeToDisk', true, @islogical);
 p.parse(varargin{:});
 
 if ~isa(td, 'TrialDataConditionAlign')
@@ -24,12 +26,16 @@ end
 maxUnits = p.Results.maxUnits;
 lockout = p.Results.lockoutMs;
 
-if ~exist(outDir, 'dir')
+if p.Results.writeToDisk && ~exist(outDir, 'dir')
     mkdirRecursive(outDir);
 end
 
 % Gather spike channels from this TrialData
-spikeChannels = td.listSpikeChannels();
+if isempty(p.Results.spikeChannelList)
+    spikeChannels = td.listSpikeChannels();
+else
+    spikeChannels = p.Results.spikeChannelList;
+end
 nS = numel(spikeChannels);
 arrays = cellfun(@(ch) td.channelDescriptorsByName.(ch).array, spikeChannels, 'UniformOutput', false);
 electrodes = cellfun(@(ch) td.channelDescriptorsByName.(ch).electrode, spikeChannels);
@@ -66,7 +72,7 @@ durationsByTrial = tdReset.getDurationsRaw();
 cumDurations = cumsum(durationsByTrial);
 offsetByTrial = [0; cumDurations(1:end-1)];
 
-exportMeta.offsetByTrial = offsetByTrial; %#ok<STRNU> % later saved to disk
+exportMeta.offsetByTrial = offsetByTrial; % later saved to disk
 
 % figure out trial info for waveforms struct, this is used to display
 % consistency of tuning over time. we'll condition using the present
@@ -84,6 +90,7 @@ else
 end
 
 prog = ProgressBar(nS, 'Extracting spikes for each unit');
+
 for iAE = 1:size(uniqAE, 1)
     % find spike channels on this array, electrode
     matchingIdx = find(whichAE == iAE);
@@ -162,23 +169,38 @@ for iAE = 1:size(uniqAE, 1)
     end
     
     if ~isempty(waveforms.waves)
-      %% Save channel
-      waveFilename = makeWaveFilename(alpha(thisArray), thisElectrode);
-      save(fullfile(outDir, waveFilename), 'waveforms', '-v7');
-      
-      %% Generate this channel's worth of previews and sorts
-      chWithSpikesCounter = chWithSpikesCounter + 1;
-      [previews(chWithSpikesCounter), sorts(chWithSpikesCounter)] = generateSortsAndPreviews(waveforms, maxUnits, lockout); %#ok<AGROW,NASGU>
+        waveFilename = makeWaveFilename(alpha(thisArray), thisElectrode);
+          
+        %% Save channel
+        if p.Results.writeToDisk
+          save(fullfile(outDir, waveFilename), 'waveforms', '-v7');
+        end
+        
+        if nargout > 0
+          outData.waveforms(iAE) = waveforms;
+          outData.wavefileNameShort{iAE} = waveFilename;
+        end
+
+        %% Generate this channel's worth of previews and sorts
+        chWithSpikesCounter = chWithSpikesCounter + 1;
+        [previews(chWithSpikesCounter), sorts(chWithSpikesCounter)] = generateSortsAndPreviews(waveforms, maxUnits, lockout); %#ok<AGROW,NASGU>
     end
 end
 prog.finish();
 
 %% Save previews and sorts
-debug('Saving sorts, previews, and exportMeta files\n');
-save(fullfile(outDir, 'previews.mat'), 'previews', '-v6');
-save(fullfile(outDir, 'sorts.mat'), 'sorts', '-v6');
+if p.Results.writeToDisk
+    debug('Saving sorts, previews, and exportMeta files\n');
+    save(fullfile(outDir, 'previews.mat'), 'previews', '-v6');
+    save(fullfile(outDir, 'sorts.mat'), 'sorts', '-v6');
+    save(fullfile(outDir, 'exportMeta.mat'), 'exportMeta', '-v6');
+end
 
-save(fullfile(outDir, 'exportMeta.mat'), 'exportMeta', '-v6');
+if nargout > 0
+    outData.previews = previews;
+    outData.sorts = sorts;
+    outData.exportMeta = exportMeta;
+end
 
 return;
 

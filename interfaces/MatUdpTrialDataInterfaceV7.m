@@ -1,18 +1,25 @@
-classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
+classdef MatUdpTrialDataInterfaceV7 < TrialDataInterface
+    % adding LFP continuous channels
     properties
-        includeWaveforms = false;
+        includeSpikeData = true;
+        includeWaveforms = true;
+        includeContinuousNeuralData = true;
+
+        waveformTvec = (-10:37)' / 30; % 48 sample waveform
     end
-    
+
     % like V3, but uses millisecond timestamps as doubles
     properties(SetAccess=protected)
         trials % original struct array over trials
         meta % meta data merged over all trials
         nTrials
-        timeUnits 
+        timeUnits
 
         channelUnits % col 1 is channel, col 2 is units
         unitFieldNames
         waveFieldNames
+
+        nContinuousNeuralChannels
 
         % these are used for streaming mode, where new trials, possibly with new channels are loaded in dynamically
         newR
@@ -21,7 +28,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
 
     methods
         % Constructor : bind to MatUdp R struct and parse channel info
-        function td = MatUdpTrialDataInterfaceV6(trials, meta)
+        function td = MatUdpTrialDataInterfaceV7(trials, meta)
             assert(isvector(trials) && ~isempty(trials) && isstruct(trials), 'Trial data must be a struct vector');
             assert(isstruct(meta) && ~isempty(meta) && isvector(meta), 'Meta data must be a vector struct');
             td.trials = makecol(trials);
@@ -31,7 +38,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
             td.timeUnits = trials(1).timeUnits;
         end
     end
-    
+
     % TrialDataInterface implementation
     methods
         % return a string describing the data set wrapped by this TDI
@@ -54,8 +61,8 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
             timeUnitName = tdi.timeUnits;
         end
 
-        % Describe the channels present in the dataset 
-        % channelDescriptors: scalar struct. fields are channel names, values are ChannelDescriptor 
+        % Describe the channels present in the dataset
+        % channelDescriptors: scalar struct. fields are channel names, values are ChannelDescriptor
         function channelDescriptors = getChannelDescriptors(tdi, varargin)
             channelDescriptors = tdi.getChannelDescriptorsForTrials(tdi.trials, tdi.meta, false, varargin{:});
         end
@@ -69,28 +76,28 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
             p = inputParser();
             p.addParamValue('suppressWarnings', false, @islogical);
             p.parse(varargin{:});
-            suppressWarnings = p.Results.suppressWarnings; 
+            suppressWarnings = p.Results.suppressWarnings;
 
             iChannel = 1;
             groups = meta(1).groups;
             signals = meta(1).signals;
             groupNames = fieldnames(groups);
             nGroups = numel(groupNames);
-            
+
             nChannels = sum(cellfun(@(name) numel(groups.(name).signalNames), groupNames));
-            
+
             if newOnly
                 prog = ProgressBar(nChannels, 'Checking for new channels');
             else
                 prog = ProgressBar(nChannels, 'Inferring channel data characteristics');
             end
-        
+
             iSignal = 0;
             for iG = 1:nGroups
                 group = groups.(groupNames{iG});
 
-                if strcmpi(group.name, 'spikeData')
-                    continue;
+                if ismember(group.name, {'spikeData', 'continuousData'})
+                    continue; % handled specially below
                 end
 
                 if strcmpi(group.type, 'event')
@@ -106,7 +113,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     iSignal = iSignal + 1;
                     prog.update(iSignal);
                     name = group.signalNames{iS};
-                      
+
                     % this is a bug with meta building in the data logger
                     % as of version 6. this field is used internally to add
                     % offsets to the analo gsignal, but it won't actually
@@ -126,19 +133,14 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                         signalInfo = signals.(name);
                     end
                     dataFieldMain = name;
-                   
+
                     % skip this field if already processed
                     if newOnly && isfield(tdi.trials, dataFieldMain)
                         continue;
                     end
-                    
-                     if ~isfield(trials, dataFieldMain)
-                        warning('Missing field %s for signal %s', dataFieldMain, name);
-                        continue
-                    end
-                    
+
                     dataCell = {trials.(dataFieldMain)};
-                    
+
                     switch(lower(group.type))
                         case 'analog'
                             timeField = signalInfo.timeFieldName;
@@ -160,25 +162,25 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     cd.meta.originalField = dataFieldMain;
 
                     channelDescriptors(iChannel) = cd; %#ok<AGROW>
-                    
+
                     iChannel = iChannel + 1;
                 end
             end
             prog.finish();
-            
+
             if ~newOnly
                 % now detect units
                 channelDescriptors(iChannel) = ParamChannelDescriptor.buildBooleanParam('hasNeuralData');
             end
-            
+
             if isfield(trials, 'spikeChannels') && isfield(trials, 'spikeUnits')
-                channelUnits = unique([cat(1, trials.spikeChannels), cat(1, trials.spikeUnits)], 'rows'); %#ok<*PROP>
+                channelUnits = unique([cat(1, trials.spikeChannels), cat(1, trials.spikeUnits)], 'rows'); %#ok<*PROPLC,*PROP>
                 nUnits = size(channelUnits, 1);
 
                 unitFieldNames = cell(nUnits, 1);
                 waveFieldNames = cell(nUnits, 1);
                 maskKeep = falsevec(nUnits);
-            
+
                 prog = ProgressBar(nUnits, 'Adding spike units and waveforms');
                 for iU = 1:nUnits
                     prog.update(iU);
@@ -190,13 +192,13 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
 
                     cd = SpikeChannelDescriptor.build(unitName);
                     unitFieldNames{iU} = unitName;
-                        
-                    % note that this assumes a homogenous scale factor of 250 (or divide by 0.25 to get uV) 
+
+                    % note that this assumes a homogenous scale factor of 250 (or divide by 0.25 to get uV)
                     if tdi.includeWaveforms && isfield(tdi.trials, 'spikeWaveforms')
                         wavefield = sprintf('%s_waveforms', unitName);
                         waveFieldNames{iU} = wavefield;
-                        cd = cd.addWaveformsField(wavefield, 'time', (-10:21)' / 30, ...
-                            'scaleFromLims', [-32768 32767], 'scaleToLims', [-32768 32767] / 0.25);
+                        cd = cd.addWaveformsField(wavefield, 'time', tdi.waveformTvec); %, ...
+%                             'scaleFromLims', [-32768 32767], 'scaleToLims', [-32768 32767]);
                     end
 
                     maskKeep(iU) = true;
@@ -207,8 +209,8 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
 
                 if newOnly
                     tdi.channelUnits = cat(1, tdi.channelUnits, channelUnits(maskKeep, :));
-                    tdi.unitFieldNames = cat(1, tdi.unitFieldNames, unitFieldNames(maskKeep)); 
-                    tdi.waveFieldNames = cat(1, tdi.waveFieldNames, waveFieldNames(maskKeep)); 
+                    tdi.unitFieldNames = cat(1, tdi.unitFieldNames, unitFieldNames(maskKeep));
+                    tdi.waveFieldNames = cat(1, tdi.waveFieldNames, waveFieldNames(maskKeep));
                 else
                     tdi.channelUnits = channelUnits;
                     tdi.unitFieldNames = unitFieldNames;
@@ -219,13 +221,46 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                 tdi.waveFieldNames = {};
                 tdi.channelUnits = {};
             end
-            
+
+            if isfield(trials, 'continuousData') && ...
+                    tdi.includeContinuousNeuralData
+                % load the continuous data as LFP channels
+
+                % if the number of continuous channels changes in mid
+                % trial, the field will be a cell array since concatenation
+                % doesn't make sense. just throw away that trial
+                hasValidContinuousData = arrayfun(@(t) ~iscell(t.continuousData) && numel(t.continuousData) > 0, trials);
+                % how many channels?              
+                nCh = max(arrayfun(@(t) size(t.continuousData, 1), trials(hasValidContinuousData)));
+
+                % save this so we can check later
+                tdi.nContinuousNeuralChannels = nCh;
+
+                % here we build each continuous channel as a shared matrix
+                % column of the field .continuousData, which we'll
+                % transpose to have each channel along a column when we provide the .trials struct
+                prog = ProgressBar(nCh, 'Adding continuous neural channels');
+                for iCh = 1:nCh
+                    prog.update(iCh);
+                    chName = sprintf('continuous%03d', iCh);
+                    cd = ContinuousNeuralChannelDescriptor.buildSharedMatrixColumnAnalog(chName, ...
+                        'continuousData', iCh, ... % shared field name, column index
+                        'continuousData_time', 'uV', 'ms', ... % timeField, units, timeUnits,
+                        'scaleFromLims', [-32768 32767], ...
+                        'scaleToLims', [-8191 8191]);
+
+                    channelDescriptors(iChannel) = cd;
+                    iChannel = iChannel + 1;
+                end
+                prog.finish();
+            end
+
             if ~exist('channelDescriptors', 'var')
                 channelDescriptors = [];
             end
         end
-        
-        % return a nTrials x 1 struct with all the data for each specified channel 
+
+        % return a nTrials x 1 struct with all the data for each specified channel
         % in channelNames cellstr array
         %
         % the fields of this struct are determined as:
@@ -252,35 +287,69 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
 
         function channelData = getChannelDataForTrials(tdi, trials, channelDescriptors, varargin) %#ok<INUSD>
             %debug('Converting / repairing channel data...\n');
-            channelData = rmfield(trials, intersect(fieldnames(trials), {'spikeUnits', 'spikeChannels', 'spikeData_time', 'spikeWaveforms'}));
-            
+            fieldsToRemove = {'spikeUnits', 'spikeChannels', 'spikeData_time', ...
+                'spikeWaveforms', 'continuousData'};
+            channelData = rmfield(trials, intersect(fieldnames(trials), fieldsToRemove));
+
             % rename special channels
             for i = 1:numel(channelData)
                 channelData(i).timeStartWallclock = channelData(i).wallclockStart;
                 channelData(i).TrialStart = 0;
                 channelData(i).TrialEnd = channelData(i).duration;
             end
-            
-            nUnits = size(tdi.channelUnits, 1);
-            prog = ProgressBar(numel(channelData), 'Extracting spike data for trials');
-            for iT = 1:numel(channelData)
-                prog.update(iT);
-                % mark as zero if no spikes at all occurred on this trial,
-                % USE CAUTION IF FIRING RATES ARE VERY LOW!!
-                channelData(iT).hasNeuralData = nUnits > 0 && ~isempty(trials(iT).spikeChannels);
-                for iU = 1:nUnits
-                    mask = trials(iT).spikeChannels == tdi.channelUnits(iU, 1) & ...
-                        trials(iT).spikeUnits == tdi.channelUnits(iU, 2);
-                    
-                    fld = tdi.unitFieldNames{iU};
-                    channelData(iT).(fld) = trials(iT).spikeData_time(mask);
-                    if tdi.includeWaveforms
-                        wfld = tdi.waveFieldNames{iU};
-                        channelData(iT).(wfld) = trials(iT).spikeWaveforms(:, mask)' / 4; % over 4 is because I forgot to normalize the voltages
+
+            % add spike data
+            if tdi.includeSpikeData
+                nUnits = size(tdi.channelUnits, 1);
+                prog = ProgressBar(numel(channelData), 'Extracting spike data for trials');
+                for iT = 1:numel(channelData)
+                    prog.update(iT);
+                    % mark as zero if no spikes at all occurred on this trial,
+                    % USE CAUTION IF FIRING RATES ARE VERY LOW!!
+                    channelData(iT).hasNeuralData = nUnits > 0 && ~isempty(trials(iT).spikeChannels);
+                    for iU = 1:nUnits
+                        mask = trials(iT).spikeChannels == tdi.channelUnits(iU, 1) & ...
+                            trials(iT).spikeUnits == tdi.channelUnits(iU, 2);
+
+                        fld = tdi.unitFieldNames{iU};
+                        channelData(iT).(fld) = trials(iT).spikeData_time(mask);
+                        if tdi.includeWaveforms
+                            wfld = tdi.waveFieldNames{iU};
+                            channelData(iT).(wfld) = trials(iT).spikeWaveforms(:, mask)' / 4; % over 4 is because I forgot to normalize the voltages
+                        end
                     end
                 end
+                prog.finish();
             end
-            prog.finish();
+
+            % add continuous datas
+            if tdi.includeContinuousNeuralData && isfield(trials, 'continuousData')
+                assert(isfield(trials, 'continuousData_time'), 'Missing continuous neural data time field continuousData_time');
+                prog = ProgressBar(numel(channelData), 'Extracting continuous neural data for trials');
+                for iT = 1:numel(channelData)
+                    prog.update(iT);
+                    % if continuousData is a cell, the number of
+                    % trials changed mid trial and we discard
+                    if iscell(trials(iT).continuousData)
+                        channelData(iT).continuousData = nan(tdi.nContinuousNeuralChannels, 0);
+                        continue;
+                    end
+                        
+                    nChThisTrial = size(trials(iT).continuousData, 1);
+                    nSamples = size(trials(iT).continuousData, 2);
+                    if nChThisTrial ~= tdi.nContinuousNeuralChannels
+                        warning('Trial %d has %d continuous neural channels, other trials have %d', iT, nChThisTrial, tdi.nContinuousNeuralChannels);
+                    
+                        channelData(iT).continuousData = nan(tdi.nContinuousNeuralChannels, nSamples);
+                        channelData(iT).continuousData(1:nChThisTrial, :) = trials(iT).continuousData';
+                    else
+                        % transpose so that each channel is along a column, not
+                        % a row. 
+                        channelData(iT).continuousData = trials(iT).continuousData';
+                    end
+                end
+                prog.finish()
+            end
         end
     end
 
@@ -306,7 +375,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
         function channelData = getNewChannelData(tdi, channelDescriptors, varargin)
             channelData = tdi.getChannelDataForTrials(tdi.newR, channelDescriptors, varargin{:});
         end
-        
+
         function markNewChannelDataAsReceived(tdi)
             tdi.trials = TrialDataUtilities.Data.structcat(tdi.trials, tdi.newR);
             tdi.meta = TrialDataUtilities.Data.structcat(tdi.meta, tdi.newMeta);

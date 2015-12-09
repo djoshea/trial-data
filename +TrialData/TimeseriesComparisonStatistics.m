@@ -6,76 +6,94 @@ classdef TimeseriesComparisonStatistics
     end
     
     methods(Static) % Effect size methods
-        function [dprimeTensor, dprimeCI, tvec] = dPrimeAlongAxisVsTime(tdca, varargin)
+        function [dprimeTensor, dprimeCI, tvec, conditionDescriptorSansAxis] = dPrimeAlongAxisVsTime(tdca, varargin)
             import(getPackageImportString);
             p = inputParser;
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             alpha = p.Results.alpha;
             
-            [misc, dprimeTensor, dprimeHigh, dprimeLow] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
-                tdca, @(in) TimeseriesComparisonStatistics.dprimeFn(alpha, in), p.Unmatched);
+            [misc, dprimeTensor, dprimeHigh, dprimeLow] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
+                tdca, @(in) TrialData.TimeseriesComparisonStatistics.dprimeFn(alpha, in), p.Unmatched);
             tvec = misc.tvec;
             
             dprimeCI = cat(1, shiftdim(dprimeLow, -1), shiftdim(dprimeHigh, -1));   
+            conditionDescriptorSansAxis = misc.conditionDescriptorSansAxis;
         end
         
-        function [gTensor, gCI, tvec] = hedgesGAlongAxisVsTime(tdca, varargin)
+        function [gTensor, gCI, tvec, conditionDescriptorSansAxis] = hedgesGAlongAxisVsTime(tdca, varargin)
             import(getPackageImportString);
             p = inputParser;
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             alpha = p.Results.alpha;
             
-            [misc, gTensor, gHigh, gLow] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
-                tdca, @(in) TimeseriesComparisonStatistics.hedgesGFn(alpha, in), p.Unmatched);
+            [misc, gTensor, gHigh, gLow] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
+                tdca, @(in) TrialData.TimeseriesComparisonStatistics.hedgesGFn(alpha, in), p.Unmatched);
             tvec = misc.tvec;
             
             gCI = cat(1, shiftdim(gLow, -1), shiftdim(gHigh, -1));  
+            
+            conditionDescriptorSansAxis = misc.conditionDescriptorSansAxis;
         end
         
-        function [gTensor, gCI, tvec] = meanDifferenceAlongAxisVsTime(tdca, varargin)
+        function [gTensor, gCI, tvec, conditionDescriptorSansAxis] = meanDifferenceAlongAxisVsTime(tdca, varargin)
             import(getPackageImportString);
             p = inputParser;
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             alpha = p.Results.alpha;
             
-            [misc, gTensor, gHigh, gLow] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
-                tdca, @(in) TimeseriesComparisonStatistics.meanDiffFn(alpha, in), p.Unmatched);
+            [misc, gTensor, gHigh, gLow] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(...
+                tdca, @(in) TrialData.TimeseriesComparisonStatistics.meanDiffFn(alpha, in), p.Unmatched);
             tvec = misc.tvec;
             
             gCI = cat(1, shiftdim(gLow, -1), shiftdim(gHigh, -1));    
+            conditionDescriptorSansAxis = misc.conditionDescriptorSansAxis;
         end
     end
     
     methods(Static) % difference of means hypothesis testing 
-        function [pValTensor, tvec] = kruskalWallisAlongAxisVsTime(tdca, varargin)
+        function [pValTensor, tvec, conditionDescriptorSansAxis] = kruskalWallisAlongAxisVsTime(tdca, varargin)
+            % pValTensor will be T x size(other condition axes)
             import(getPackageImportString);
             p = inputParser;
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [misc, pValTensor] = TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(tdca, @TimeseriesComparisonStatistics.kwFun, p.Unmatched);
-            tvec = misc.tvec;  
+            [misc, pValTensor] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(tdca, @TrialData.TimeseriesComparisonStatistics.kwFun, p.Unmatched);
+            tvec = misc.tvec;
+            conditionDescriptorSansAxis = misc.conditionDescriptorSansAxis;
+        end
+        
+        function [pValTensor, tvec, conditionDescriptorSansAxis] = anovaAlongAxisVsTime(tdca, varargin)
+            % pValTensor will be T x size(other condition axes)
+            import(getPackageImportString);
+            p = inputParser;
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [misc, pValTensor] = TrialData.TimeseriesComparisonStatistics.evaluateComparisonAlongAxisVsTime(tdca, @TrialData.TimeseriesComparisonStatistics.anova1Fun, p.Unmatched);
+            tvec = misc.tvec;
+            conditionDescriptorSansAxis = misc.conditionDescriptorSansAxis;
         end
     end
     
     methods(Static) % find first time of effect size divergence above threshold
-        function [crossTimes, gTensor, gCI, tvec] = findTimeHedgesGAboveThreshold(tdca, varargin)
+        function [crossTimes, gTensor, gCI, tvec, conditionDescriptorSansAxis] = findTimeHedgesGAboveThreshold(tdca, varargin)
             import(getPackageImportString);
             p = inputParser();
             p.addParameter('thresh', 1, @isscalar);
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar);
-            p.addParameter('nConsecutive', TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
+            p.addParameter('nConsecutive', TrialData.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             % will be T x size(other condition axes)
-            [gTensor, gCI, tvec] = TimeseriesComparisonStatistics.hedgesGAlongAxisVsTime(tdca, 'alpha', p.Results.alpha, p.Unmatched);
+            [gTensor, gCI, tvec, conditionDescriptorSansAxis] = TrialData.TimeseriesComparisonStatistics.hedgesGAlongAxisVsTime(tdca, 'alpha', p.Results.alpha, p.Unmatched);
             if isempty(tvec)
                 error('tvec parameter must be provided if data passed in as parameter');
             end
@@ -85,19 +103,20 @@ classdef TimeseriesComparisonStatistics
 
             crossTimes = TensorUtils.selectAlongDimensionWithNaNs(makecol(tvec), 1, changeIdx);
             crossTimes = reshape(crossTimes, size(changeIdx));
-        end   
+        end
         
-        function [crossTimes, pValTensor, tvec] = findTimeKruskalWallisSignificantAlongAxis(tdca, varargin)
+        function [crossTimes, pValTensor, tvec, conditionDescriptorSansAxis] = findTimeKruskalWallisSignificantAlongAxis(tdca, varargin)
             import(getPackageImportString);
             
             p = inputParser();
-            p.addParameter('alpha', TimeseriesComparisonStatistics.alphaDefault, @isscalar);
-            p.addParameter('nConsecutive', TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
+            p.addParameter('nConsecutive', TrialData.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('axis', 1, @(x) true);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             % will be T x size(other condition axes)
-            [pValTensor, tvec] = TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime(...
+            [pValTensor, tvec, conditionDescriptorSansAxis] = TrialData.TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime(...
                 tdca, p.Unmatched);
             if isempty(tvec)
                 error('tvec parameter must be provided if data passed in as parameter');
@@ -107,7 +126,7 @@ classdef TimeseriesComparisonStatistics
             changeIdx = TrialDataUtilities.Data.findFirstConsecutiveRun(isSignificant, p.Results.nConsecutive, 1);
 
             crossTimes = TensorUtils.selectAlongDimensionWithNaNs(makecol(tvec), 1, changeIdx);
-            crossTimes = reshape(crossTimes, size(changeIdx));      
+            crossTimes = reshape(crossTimes, size(changeIdx));    
         end
         
     end
@@ -125,12 +144,21 @@ classdef TimeseriesComparisonStatistics
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            axisIdx = tdca.conditionInfo.axisLookupByAttributes(p.Results.axis);
+            if ~isscalar(p.Results.axis) || ~isempty(tdca)
+                axisIdx = tdca.conditionInfo.axisLookupByAttributes(p.Results.axis);
+            else
+                axisIdx = p.Results.axis;
+            end
             
             % dataAxisFirst is permuted from conditionsSize to put selected
             % axis first
             if isempty(p.Results.data)
-                [data, misc.tvec] = tdca.getAnalogAsMatrixGrouped(p.Results.name, p.Unmatched);
+                cdesc = tdca.channelDescriptorsByName.(p.Results.name);
+                if isa(cdesc, 'AnalogChannelDescriptor')
+                    [data, misc.tvec] = tdca.getAnalogAsMatrixGrouped(p.Results.name, p.Unmatched);
+                else
+                    [data, misc.tvec] = tdca.getSpikeRateFilteredAsMatrixGrouped(p.Results.name, p.Unmatched);
+                end
             else
                 data = p.Results.data;
                 misc.tvec = p.Results.tvec;
@@ -157,9 +185,16 @@ classdef TimeseriesComparisonStatistics
                 [argThis{1:nArg}] = fn(dataThis);
                 
                 for iArg = 1:nArg
+                    argPerm = ipermute(argThis{iArg}, dimPerm); % reorient the way it was
                     varargout{iArg}(:, iOtherAxes) = argThis{iArg};
                 end
-            end        
+            end  
+            
+            if ~isempty(tdca)
+                misc.conditionDescriptorSansAxis = tdca.conditionInfo.getConditionDescriptor.removeAxis(axisIdx);
+            else
+                misc.conditionDescriptorSansAxis = [];
+            end
         end
         
      
@@ -207,6 +242,16 @@ classdef TimeseriesComparisonStatistics
                 pValVsTime(iT) = kruskalwallis(dataCat(keep, iT), group(keep), 'off');
             end
         end     
+        
+        function pValVsTime = anova1Fun(inCell)
+            [dataCat, group] = TensorUtils.catWhich(1, inCell{:});
+            T = size(dataCat, 2);
+            pValVsTime = nanvec(T);
+            for iT = 1:T
+                keep = ~isnan(dataCat(:, iT));
+                pValVsTime(iT) = anova1(dataCat(keep, iT), group(keep), 'off');
+            end
+        end 
     end
     
 end

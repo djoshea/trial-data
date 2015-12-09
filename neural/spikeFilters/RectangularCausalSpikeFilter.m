@@ -17,6 +17,7 @@ classdef RectangularCausalSpikeFilter < ConvolutionSpikeFilter
             p.parse(varargin{:});
 
             sf.widthMs = p.Results.widthMs;
+            sf.binAlignmentMode = SpikeBinAlignmentMode.Causal;
         end
         
         % filter used for convolution, as an impulse response which may 

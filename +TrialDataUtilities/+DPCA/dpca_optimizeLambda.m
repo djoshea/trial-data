@@ -1,6 +1,10 @@
-function [optimalLambda, optimalLambdas] = dpca_optimizeLambda(Xfull, ...
-    XrandomTrials, numOfTrials, varargin)
-% optimalLambda = dpca_optimizeLambda(X, Xtrial, numOfTrials, ...)
+function [optimalLambda, optimalLambdas, stats] = dpca_optimizeLambda(Xfull, ...
+    trials_NbyTAbyAttrbyR, meansExcluding_NbyTAbyAttrbyR, varargin)
+% Xfull is N x T x ConditionAttr
+% XrandomTrials is N x T x ConditionAttr x R where R is the number of
+% trials to iterate over for cross-validation
+% numOfTrials is N x ConditionAttr
+% 
 % computes optimal regularization parameter. X is the data array. Xtrial 
 % is an array storing single trials. It has one extra dimension as compared 
 % with X and stores individual single trial firing rates, as opposed to the 
@@ -56,7 +60,8 @@ function [optimalLambda, optimalLambdas] = dpca_optimizeLambda(Xfull, ...
 import(getPackageImportString);
 
 % default input parameters
-options = struct('numComps',       25,                  ...   
+options = struct('nBasesKeep', NaN, ...
+                 'nBasesPerMarginalization', NaN, ...
                  'lambdas',        1e-07 * 1.5.^(0:25), ...
                  'numRep',         10,                  ...
                  'display',        'yes',               ...
@@ -77,33 +82,45 @@ for pair = reshape(varargin,2,[])    % pair is {propName; propValue}
 	end
 end
 
-assert(size(XrandomTrials, ndims(XrandomTrials)) >= options.numRep, ...
+assert(~isnan(options.nBasesKeep));
+assert(~any(isnan(options.nBasesPerMarginalization)));
+
+assert(size(trials_NbyTAbyAttrbyR, ndims(trials_NbyTAbyAttrbyR)) >= options.numRep, ...
     'Number of random trials provided must be greater than or equal to numRep');
 
-tic
-Xsum = bsxfun(@times, Xfull, numOfTrials);
+% numComps = options.nBasesPerMarginalization;
+
+% tic
+% numOfTrials is N x CondAttr, need it to look like Xfull which is N x T x
+% condAttr
+% szNumTrials = size(numOfTrials);
+% N = szNumTrials(1);
+% condSize = szNumTrials(2:end);
+% numOfTrials = reshape(numOfTrials, [N 1 condSize]);
+% Xsum = bsxfun(@times, Xfull, numOfTrials);
 %Xsum = nansum(Xtrial,5);
 
-
-prog = ProgressBar(options.numRep, 'Optimizating lambda');
+prog = ProgressBar(options.numRep, 'Optimizing lambda');
 for rep = 1:options.numRep
     prog.update(rep);
     %fprintf(['Repetition #' num2str(rep) ' out of ' num2str(options.numRep)])
     
 %     Xtest = TrialDataUtilities.DPCA.dpca_getTestTrials(Xtrial, numOfTrials);
-    Xtest = TensorUtils.selectAlongDimension(XrandomTrials, ndims(XrandomTrials), rep);
-    Xtrain = bsxfun(@times, Xsum - Xtest, 1./(numOfTrials-1));
+    Xtest = TensorUtils.selectAlongDimension(trials_NbyTAbyAttrbyR, ndims(trials_NbyTAbyAttrbyR), rep);
+    Xtrain = TensorUtils.selectAlongDimension(meansExcluding_NbyTAbyAttrbyR, ndims(meansExcluding_NbyTAbyAttrbyR), rep);
     
     XtestCen = bsxfun(@minus, Xtest, mean(Xtest(:,:),2));
-    XtestMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtestCen, 'combinedParams', options.combinedParams, ...
-                    'ifFlat', 'yes');
+    XtestMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtestCen, ...
+        'combinedParams', options.combinedParams, 'ifFlat', 'yes');
+    margTestVar = nan(length(XtestMargs), 1);
     for i=1:length(XtestMargs)
         margTestVar(i) = sum(XtestMargs{i}(:).^2);
     end
     
     XtrainCen = bsxfun(@minus, Xtrain, mean(Xtrain(:,:),2));
-    XtrainMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtrainCen, 'combinedParams', options.combinedParams, ...
-                    'ifFlat', 'yes');
+    XtrainMargs = TrialDataUtilities.DPCA.dpca_marginalize(XtrainCen, ...
+        'combinedParams', options.combinedParams, 'ifFlat', 'yes');
+    margTrainVar = nan(length(XtrainMargs), 1);
     for i=1:length(XtrainMargs)
         margTrainVar(i) = sum(XtrainMargs{i}(:).^2);
     end
@@ -113,12 +130,19 @@ for rep = 1:options.numRep
     else
         margVar_toNormalize = margTrainVar;
     end
+    
+    if rep == 1
+        errorsMarg = nan(numel(XtestMargs), length(options.lambdas), options.numRep);
+        errors = nan(length(options.lambdas), options.numRep);
+    end
 
     progInner = ProgressBar(length(options.lambdas), 'Testing lambda values');
     for l = 1:length(options.lambdas)
         progInner.update(l);
         
-        [W,V,whichMarg] = TrialDataUtilities.DPCA.dpca(Xtrain, options.numComps, ...
+        [W,V,whichMarg] = TrialDataUtilities.DPCA.dpca(Xtrain, ...
+            'nBasesKeep', options.nBasesKeep, ...
+            'nBasesPerMarginalization', options.nBasesPerMarginalization, ..., ...
             'combinedParams', options.combinedParams, ...
             'lambda', options.lambdas(l));
         
@@ -158,8 +182,6 @@ for rep = 1:options.numRep
 end
 prog.finish();
 
-timeTaken = toc;
-
 meanError = mean(errors,2);
 [~, ind] = min(meanError);
 optimalLambda = options.lambdas(ind);
@@ -168,11 +190,15 @@ meanErrorMarg = mean(errorsMarg(:, :,:), 3);
 [~, indm] = min(meanErrorMarg, [], 2);
 optimalLambdas = options.lambdas(indm);
 
-if ~isempty(options.filename)
-    lambdas = options.lambdas;
-    numComps = options.numComps;
-    save(options.filename, 'lambdas', 'errors', 'errorsMarg', 'optimalLambda', 'optimalLambdas', 'numComps', 'timeTaken')
-end
+stats.meanErrorMarg = meanErrorMarg;
+stats.rawErrorsMarg = errorsMarg;
+stats.lambdas = options.lambdas;
+
+% if ~isempty(options.filename)
+%     lambdas = options.lambdas;
+%     numComps = options.numComps;
+%     save(options.filename, 'lambdas', 'errors', 'errorsMarg', 'optimalLambda', 'optimalLambdas', 'numComps', 'timeTaken')
+% end
 
 if strcmp(options.display, 'yes')
     figure
@@ -202,11 +228,11 @@ if strcmp(options.display, 'yes')
         plot(log(options.lambdas(indm(i))), meanErrorMarg(i,indm(i)), '.k', 'MarkerSize', 20)
     end
     
-    legendText = {};
+    legendText = cell(length(hh)+1, 1);
     for i = 1:length(hh)
         legendText{i} = ['Marginalization #' num2str(i)];
     end
-    legendText{end+1} = 'Overall';
+    legendText{length(hh)+1} = 'Overall';
     legend([hh; h1], legendText, 'Location', 'East')
     
     xticks = [1e-07:1e-07:1e-06 2e-06:1e-06:1e-05 2e-05:1e-05:1e-04 2e-04:1e-04:1e-03];

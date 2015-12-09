@@ -182,6 +182,7 @@ classdef ConditionInfo < ConditionDescriptor
         
         % compute which condition each trial falls into, without writing
         % NaNs for manualInvalid marked trials and without applying randomization along each axis
+        % do remove trials where conditionIncludeMask == false
         function [subsMat, reasonInvalid] = buildConditionSubsRaw(ci)
             % filter out any that don't have a valid attribute value
             % along the other non-axis attributes which act as a filter
@@ -224,8 +225,15 @@ classdef ConditionInfo < ConditionDescriptor
               
                 subsMat(~matchesFilters, :) = NaN;
             else
-                subsMat = nan(ci.nTrials, 1);
+                subsMat = nan(ci.nTrials, ci.nAxes);
             end
+            
+            % remove trials where conditionIncludeMask is false
+            conditionIdx = TensorUtils.subMat2Ind(ci.conditionsSize, subsMat); %#ok<*PROP>
+            removeMask = ~isnan(conditionIdx); % only consider trials still valid
+            removeMask(~isnan(conditionIdx)) = ~ci.conditionIncludeMask(conditionIdx(~isnan(conditionIdx)));
+            subsMat(removeMask, :) = NaN;
+            reasonInvalid(removeMask) = {'condition marked ignored by conditionIncludeMask'};
         end
         
         function valueList = buildAttributeFilterValueListStruct(ci)
@@ -522,6 +530,7 @@ classdef ConditionInfo < ConditionDescriptor
         end
         
         function valueListByAxes = buildAxisValueLists(ci)
+            % uses ConditionDescriptor's implementation but deals with 
             valueListByAxes = buildAxisValueLists@ConditionDescriptor(ci);
             if ~ci.applied
                 return;
@@ -550,7 +559,9 @@ classdef ConditionInfo < ConditionDescriptor
                        % need to filter by which values are actually
                        % occupied by at least one trial
                        maskTrialsByValues = ci.getAttributeMatchesOverTrials(valueListByAxes{iX});
-                       maskTrialsByValues(~matchesFilters, :) = false;
+                       % exclude invalid or soon-to-be invalid trials as
+                       % marked above
+                       maskTrialsByValues(~validTrials, :) = false;
                        keepValues = any(maskTrialsByValues, 1);
                        
                        valueListByAxes{iX} = makecol(valueListByAxes{iX}(keepValues));
@@ -669,15 +680,15 @@ classdef ConditionInfo < ConditionDescriptor
         
         % overwrite manualInvalid with invalid, ignoring what was already
         % marked invalid
-        function ci = setInvalid(ci, invalid)
+        function ci = setManualValidTo(ci, valid)
             % only invalidate if changing
             ci.warnIfNoArgOut(nargout);
-            assert(isvector(invalid) & numel(invalid) == ci.nTrials, 'Size mismatch');
-            if isempty(invalid)
+            assert(isvector(valid) & numel(valid) == ci.nTrials, 'Size mismatch');
+            if isempty(valid)
                 return;
             end
-            if any(ci.manualInvalid ~= invalid)
-                ci.manualInvalid = makecol(invalid);
+            if any(ci.manualInvalid ~= ~valid)
+                ci.manualInvalid = makecol(~valid);
                 ci = ci.invalidateCache();
             end
         end

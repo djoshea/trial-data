@@ -143,8 +143,9 @@ classdef TrialData
                 td.channelDescriptorsByName.(channelDescriptors(i).name) = channelDescriptors(i);
             end
             
-            % validate and replace missing values
-            data = td.validateData(data, td.channelDescriptorsByName, 'suppressWarnings', p.Results.suppressWarnings);
+            % validate and replace missing values, update data classes
+            % inside channelDescriptors
+            [data, td.channelDescriptorsByName] = td.validateData(data, td.channelDescriptorsByName, 'suppressWarnings', p.Results.suppressWarnings);
             td.data = data;
 
             td.manualValid = truevec(td.nTrials);
@@ -237,8 +238,10 @@ classdef TrialData
         end
 
         % performs a validation of all channel data against the specified channelDescriptors,
-        % also fixing empty values appropriately
-        function data = validateData(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
+        % also fixing empty values appropriately. We will also adjust
+        % channelDescriptors whose data classes do not match the data in
+        % data (having convert data to match that class)
+        function [data, channelDescriptorsByName] = validateData(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
             p = inputParser();
             p.addParameter('addMissingFields', false, @islogical); % if true, don't complain about missing channels, just add the missing fields
             p.addParamValue('suppressWarnings', false, @islogical); % don't warn about any minor issues
@@ -246,7 +249,7 @@ classdef TrialData
             suppressWarnings = p.Results.suppressWarnings;
 
             names = fieldnames(channelDescriptorsByName);
-            nChannels = numel(names);
+            nChannels = numel(names); %#ok<*PROPLC>
 
             % loop over channels and verify
             %fprintf('Validating channel data...\n');
@@ -292,12 +295,15 @@ classdef TrialData
                 error('Required channel data fields not provided by getChannelData');
             end
 
+            % here we both change classes of data in memory and update
+            % channelDescriptors depending on what we find
             prog = ProgressBar(nChannels, 'Repairing and converting channel data');
             for iChannel = 1:nChannels
                 prog.update(iChannel);
                 chd = channelDescriptorsByName.(names{iChannel}); 
-                data = chd.repairData(data); 
+                [data, chd] = chd.repairData(data); 
                 data = chd.convertDataToMemoryClass(data);
+                channelDescriptorsByName.(names{iChannel}) = chd;
             end
             prog.finish();
         end
@@ -428,11 +434,11 @@ classdef TrialData
         end
         
         function printChannelInfo(td)
-            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(td.listNonLFPAnalogChannels(), ', '));
+            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(td.listNonContinuousNeuralAnalogChannels(), ', '));
             tcprintf('inline', '{yellow}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
             tcprintf('inline', '{yellow}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
             tcprintf('inline', '{yellow}Spike: {none}%s\n', strjoin(td.listSpikeChannels(), ', '));
-            tcprintf('inline', '{yellow}LFP: {none}%s\n', strjoin(td.listLFPChannels(), ', '));
+            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', strjoin(td.listContinuousNeuralChannels(), ', '));
         end
 
         function disp(td)
@@ -546,9 +552,10 @@ classdef TrialData
             td = td.invalidateValid();
         end
         
-        function td = setInvalid(td, mask)
-            td.manualValid = true(td.nTrials, 1);
-            td.manualValid(mask) = false;
+        function td = setManualValidTo(td, mask)
+            td.warnIfNoArgOut(nargout);
+            assert(isvector(mask) && islogical(mask) && numel(mask) == td.nTrials);
+            td.manualValid = makecol(mask);
             td = td.invalidateValid();
         end
         
@@ -814,7 +821,7 @@ classdef TrialData
             p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x)); % char or time cell
             p.addParameter('timeField', '', @ischar);
             p.addParameter('units', '', @ischar);
-            p.addParameter('isLFP', false, @islogical); % shortcut for making LFP channels since they're identical
+            p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
             p.addParameter('isAligned', true, @islogical);
             p.addParameter('clearForInvalid', false, @islogical);
             p.addParameter('scaleFromLims', [], @isvector);
@@ -880,8 +887,8 @@ classdef TrialData
             end
                 
             % build a channel descriptor for the data
-            if p.Results.isLFP
-                cd = LFPChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName, values, ties);
+            if p.Results.isContinuousNeural
+                cd = ContinuousNeuralChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName, values, ties);
             else
                 cd = AnalogChannelDescriptor.buildVectorAnalogFromValues(name, timeField, units, td.timeUnitName, values, times);
             end
@@ -901,10 +908,10 @@ classdef TrialData
             end
         end
         
-        function td = addLFP(td, name, varargin)
+        function td = addContinuousNeural(td, name, varargin)
             % see addAnalog, same signature
             td.warnIfNoArgOut(nargout);
-            td = td.addAnalog(name, varargin{:}, 'isLFP', true);
+            td = td.addAnalog(name, varargin{:}, 'isContinuousNeural', true);
         end
         
         function td = setAnalog(td, name, values, varargin)
@@ -948,6 +955,12 @@ classdef TrialData
                 [~, times] = td.getAnalog(name);
             end
             
+            % check that times have same length as data
+            assert(numel(times) == numel(values), 'Times and values must have same number of trials');
+            nTimes = cellfun(@numel, times);
+            nValues = cellfun(@numel, values);
+            assert(all(nTimes == nValues), 'Mismatch between number of times and values. If the number of times has changed be sure to specify times parameter');
+            
             % add the zero offset to the time vector for each trial
             % this is mostly for TDCA, so that alignments info is
             % preserved
@@ -959,6 +972,27 @@ classdef TrialData
             end
             times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
 
+            cd = td.channelDescriptorsByName.(name);
+            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix
+                % need to rename this column since we'll potentially be
+                % breaking the matrix format otherwise if different time
+                % vectors are used
+                oldData = td.getAnalogRaw(name);
+                
+                cd = cd.separateFromColumnOfSharedMatrix();
+                
+                % we also need to copy the data field over, since we may
+                % only be updating valid trials
+                [td.data.(cd.primaryDataField)] = deal(oldData{:});
+            end
+            
+            % data being passed in is now in original units
+            % so change scaling factors
+            cd = cd.withNoScaling();
+            
+            % update the channel descriptor accordingly
+            td.channelDescriptorsByName.(name) = cd;
+            
             td = td.setChannelData(name, {values, times}, p.Unmatched);
         end
 
@@ -980,17 +1014,17 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
-        function names = listNonLFPAnalogChannels(td)
-            names = setdiff(td.listAnalogChannels(), td.listLFPChannels());
+        function names = listNonContinuousNeuralAnalogChannels(td)
+            names = setdiff(td.listAnalogChannels(), td.listContinuousNeuralChannels());
         end
         
-        function names = listLFPChannels(td)
+        function names = listContinuousNeuralChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             if isempty(channelDescriptors)
                 names = {};
                 return;
             end
-            mask = arrayfun(@(cd) isa(cd, 'LFPChannelDescriptor'), channelDescriptors);
+            mask = arrayfun(@(cd) isa(cd, 'ContinuousNeuralChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
         
@@ -1021,9 +1055,16 @@ classdef TrialData
         end
         
         function [data, time] = getAnalogRaw(td, name)
+            td.assertHasChannel(name);
             cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
             
-            data = {td.data.(cd.dataFields{1})}';
+            if cd.isColumnOfSharedMatrix
+                data = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
+                    td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
+            else
+                data = {td.data.(cd.dataFields{1})}';
+            end
             time = {td.data.(cd.dataFields{2})}';
             for i = 1:numel(data)
                 if numel(data{i}) == numel(time{i}) - 1
@@ -1283,9 +1324,10 @@ classdef TrialData
 
             p = inputParser;
             p.addRequired('name', @ischar);
-            p.addOptional('values', @isvector);
+            p.addOptional('values', '', @(x) true);
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
-            p.addParamValue('like', '', @ischar);
+            p.addParameter('like', '', @ischar);
+            p.KeepUnmatched = true;
             p.parse(name, varargin{:});
             
             name = p.Results.name;
@@ -1294,7 +1336,15 @@ classdef TrialData
 %             if td.hasChannel(name)
 %                 warning('Overwriting existing param channel with name %s', name);
 %             end
+
             if ~isempty(values)
+                % expand scalar values to be nTrials x 1
+                if ischar(values)
+                    values = repmat({values}, td.nTrials, 1);
+                elseif numel(values) == 1
+                    values = repmat(values, td.nTrials, 1);
+                end
+                    
                 assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
             end
             
@@ -1310,7 +1360,7 @@ classdef TrialData
             end
             cd = cd.rename(name);
 
-            td = td.addChannel(cd, {values});
+            td = td.addChannel(cd, {values}, p.Unmatched);
         end
         
         function td = addScalarParam(td, name, varargin)
@@ -1419,9 +1469,10 @@ classdef TrialData
         
         function values = getParamUnique(td, name)
             vals = td.getParam(name);
-            if ~iscell(vals)
-                vals = removenan(vals);
-            end
+            vals = vals(td.valid);
+%             if ~iscell(vals)
+%                 vals = removenan(vals);
+%             end
             values = unique(vals);
         end
 
@@ -1506,9 +1557,10 @@ classdef TrialData
             
             p = inputParser();
             p.addOptional('spikes', {}, @isvector);
+            p.addParameter('isAligned', true, @isscalar);
             p.addParameter('waveforms', [], @iscell);
-            p.addParameter('waveformsField', sprintf('%s_waveforms', unitStr), @ischar);
             p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
+            p.addParameter('waveformsField', sprintf('%s_waveforms', unitStr), @ischar);
             p.addParameter('sortQuality', NaN, @isscalar); % numeric scalar metric of sort quality
             p.addParameter('sortMethod', '', @ischar);
             p.addParameter('sortQualityEachTrial', [], @isvector);
@@ -1519,7 +1571,18 @@ classdef TrialData
             cd.sortQuality = p.Results.sortQuality;
             cd.sortMethod = p.Results.sortMethod;
             
-            channelData = {p.Results.spikes};
+            % add the zero offset to the time vector for each trial
+            % this is mostly for TDCA, so that alignments info is
+            % preserved
+            if p.Results.isAligned
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+            else
+                % consider it aligned to trial start
+                offsets = zerosvec(td.nTrials);
+            end
+            spikes = cellfun(@plus, p.Results.spikes, num2cell(offsets), 'UniformOutput', false);
+
+            channelData = {spikes};
             
             if ~isempty(p.Results.waveforms)
                 cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime);
@@ -1536,6 +1599,10 @@ classdef TrialData
         end
 
         function td = setSpikeChannel(td, name, times, varargin)
+            % td = setSpikeChannel(td, name, times, varargin)
+            % options:
+            %  isAligned
+            %  waveforms
             p = inputParser();
             p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('waveforms', [], @iscell);
@@ -1874,12 +1941,14 @@ classdef TrialData
                 td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}(updateMask, :), updateMask);
             end 
             
-            td.data = cd.repairData(td.data);
+            % convert data, also give cd a chance to update its memory
+            % storage class for the data to reflect what was passed in
+            [td.data, cd] = cd.repairData(td.data);
 
             td.channelDescriptorsByName.(cd.name) = cd;
             td = td.updatePostDataChange();
         end
-    end 
+    end
 
     methods % Plotting functions
         function str = getAxisLabelForChannel(td, name)
