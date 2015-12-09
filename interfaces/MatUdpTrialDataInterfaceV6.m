@@ -106,7 +106,7 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     iSignal = iSignal + 1;
                     prog.update(iSignal);
                     name = group.signalNames{iS};
-                    
+                      
                     % this is a bug with meta building in the data logger
                     % as of version 6. this field is used internally to add
                     % offsets to the analo gsignal, but it won't actually
@@ -130,6 +130,11 @@ classdef MatUdpTrialDataInterfaceV6 < TrialDataInterface
                     % skip this field if already processed
                     if newOnly && isfield(tdi.trials, dataFieldMain)
                         continue;
+                    end
+                    
+                     if ~isfield(trials, dataFieldMain)
+                        warning('Missing field %s for signal %s', dataFieldMain, name);
+                        continue
                     end
                     
                     dataCell = {trials.(dataFieldMain)};
