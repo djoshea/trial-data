@@ -419,7 +419,7 @@ classdef StateSpaceProjection
             
             % copy basic settings from pset 
             b = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(pset);
-            b.dataUnits = ''; % clear by default, since we're not necessarily willing to call them the same units anymore
+            b.dataUnits = pset.dataUnits; % user may may want to clear this later, but keep them by default
 
             b.basisNames = proj.generateBasisNamesProj(pset);
             

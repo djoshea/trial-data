@@ -888,7 +888,7 @@ classdef TrialData
                 
             % build a channel descriptor for the data
             if p.Results.isContinuousNeural
-                cd = ContinuousNeuralChannelDescriptor.buildVectorAnalogFromData(name, timeField, units, td.timeUnitName, values, ties);
+                cd = ContinuousNeuralChannelDescriptor.buildVectorAnalogFromValues(name, timeField, units, td.timeUnitName, values, times);
             else
                 cd = AnalogChannelDescriptor.buildVectorAnalogFromValues(name, timeField, units, td.timeUnitName, values, times);
             end

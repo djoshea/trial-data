@@ -65,7 +65,8 @@ function hs = errorshadeInterval(x, lo, hi, color, varargin)
         
         hs = shadeSimple(axh, x(mask), y1(mask), y2(mask), z, 'FaceColor', shadeColor, ...
             'alpha', p.Results.alpha, p.Results.shadeArgs{:});
-       
+        TrialDataUtilities.Plotting.hideInLegend(hs);
+        
         offset = regionEnd + 1;
     end
 end

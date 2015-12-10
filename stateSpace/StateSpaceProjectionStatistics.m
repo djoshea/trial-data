@@ -487,7 +487,7 @@ classdef StateSpaceProjectionStatistics
            end
             
             if showQuantiles
-                debug('Plotting randomization quantiles using .computeQuantilesForRandomizedStatistics');
+                debug('Plotting randomization quantiles using .computeQuantilesForRandomizedStatistics\n');
                 quantileAlpha = 0.5;
                 if p.Results.showPCABound
                     % 1 x K x 2

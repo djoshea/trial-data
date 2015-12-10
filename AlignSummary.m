@@ -1084,7 +1084,6 @@ classdef AlignSummary
         %   N is the number of traces to be annotated (with the same time)
         
             p = inputParser();
-            p.addParameter('includeInLegend', false, @islogical);
             p.addParameter('tOffsetZero', 0, @isscalar);
             p.addParameter('conditionIdx', truevec(as.conditionDescriptor.nConditions), @isvector);
             p.addParameter('axh', gca, @ishandle);
@@ -1309,7 +1308,11 @@ classdef AlignSummary
                     h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
                         p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
                         'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
-                    TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
+                    if p.Results.showInLegend
+                        TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
+                    else
+                        TrialDataUtilities.Plotting.hideInLegend(h);
+                    end
                 end
             end
         end

@@ -182,10 +182,21 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             p = inputParser();
             p.addParameter('scaleFromLims', [], @isvector);
             p.addParameter('scaleToLims', [], @isvector);
+            p.addParameter('channelDescriptor', [], @(x) isa(x, 'AnalogChannelDescriptor')); % used by subclasses
             p.parse(varargin{:});
             
-            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits);
+            if isempty(p.Results.channelDescriptor)
+                cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits);
+            else
+                cd = p.Results.channelDescriptor;
+            end
             cd = cd.inferAttributesFromData(dataCell, timeCell);
+            
+            if nargin > 3
+                cd.unitsByField = {units, timeUnits};
+            elseif nargin > 2
+                cd.unitsByField = {units, ''};
+            end
             
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;

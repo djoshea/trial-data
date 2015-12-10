@@ -19,7 +19,7 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
     end
    
     hold(axh, 'on');
-    hs = TrialDataUtilities.Plotting.errorshadeInterval(x, ym, y1, y2, color, 'axh', axh, p.Unmatched);
+    hs = TrialDataUtilities.Plotting.errorshadeInterval(x, y1, y2, color, 'axh', axh, p.Unmatched);
     
     if p.Results.showLine
         if p.Results.lineAlpha < 1
@@ -27,6 +27,7 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
             hl = TrialDataUtilities.Plotting.patchline(x, ym, ...
                'EdgeColor', color, 'EdgeAlpha', p.Results.lineAlpha, ...
                'z', z, p.Results.lineArgs{:});
+            TrialDataUtilities.Plotting.hideInLegend(hl);
         else
             % use plot for opaque lines
             if z ~=0

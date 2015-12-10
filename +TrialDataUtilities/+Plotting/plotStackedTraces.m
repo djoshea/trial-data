@@ -10,6 +10,7 @@ p = inputParser();
 p.addParamValue('normalize', false, @islogical);
 p.addParamValue('intercalate', true, @islogical);
 p.addParamValue('spacingFraction', 1.05, @isscalar);
+p.addParamValue('colorByTrace', [], @ismatrix);
 p.KeepUnmatched = true;
 p.parse(varargin{:});
 
@@ -45,7 +46,16 @@ traceCenters = (traceOffsets + ranges / 2)';
 
 matShift = bsxfun(@plus, matShift, traceOffsets);
 
-hLines = plot(tvec, matShift, '-', 'Color', 'k', p.Unmatched);
+if isempty(p.Results.colorByTrace)
+    hLines = plot(tvec, matShift, '-', 'Color', 'k', p.Unmatched);
+else
+    nTraces = size(matShift, 2);
+    hLines = nanvec(nTraces);
+    hold on;
+    for i = 1:nTraces
+        hLines(i) = plot(tvec, matShift(:, i), '-', 'Color', p.Results.colorByTrace(i, :), p.Unmatched);
+    end
+end
 ylim([0 traceOffsets(end) + ranges(end)]);
 
 end

@@ -3832,6 +3832,7 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('markShowOnAxis', true, @islogical);
+            p.addParameter('markShowOnLegend', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 4, @isscalar);
             
@@ -3974,7 +3975,7 @@ classdef TrialDataConditionAlign < TrialData
                     if D == 1
                         tOffset = timeOffsetByAlign(iAlign);
                         if plotErrorY
-                            hShade = errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
+                            hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
                                 errmat, app(iCond).Color, 'axh', axh, ...
                                 'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false);
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
@@ -4017,7 +4018,9 @@ classdef TrialDataConditionAlign < TrialData
                     
                     % update name for inclusion in legend
                     if iAlign == 1
-                        TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, cd.names{iCond});
+                        TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, cd.namesShort{iCond});
+                    else
+                        TrialDataUtilities.Plotting.hideInLegend(hData{iCond, iAlign});
                     end
                 end
                 
@@ -4037,6 +4040,7 @@ classdef TrialDataConditionAlign < TrialData
                         'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
                         'intervalAlpha', p.Results.intervalAlpha, ...
                         'showRanges', p.Results.showRangesOnData, ...
+                        'showInLegend', p.Results.markShowOnLegend', ...
                         'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
                 end
             end
