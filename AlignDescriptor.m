@@ -878,11 +878,11 @@ classdef AlignDescriptor
        
         function ad = lag(ad, tDelay)
             % shift the alignment tDelay forward in time, instead of
-            % start/stop at Event, start/stop at Event+tDelay. keeps zero
+            % start/stop at Event, start/stop at Event-tDelay. keeps zero
             % the same so that the time vector shifts according to the lag
             ad.warnIfNoArgOut(nargout);
-            ad.startOffset = ad.startOffset + tDelay;
-            ad.stopOffset = ad.stopOffset + tDelay;
+            ad.startOffset = ad.startOffset - tDelay;
+            ad.stopOffset = ad.stopOffset - tDelay;
             ad = ad.update();
         end
     end
