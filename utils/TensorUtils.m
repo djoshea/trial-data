@@ -291,7 +291,7 @@ classdef TensorUtils
         end
     end
     
-    methods(Static) % masks
+    methods(Static) % Mask generation and mask utilities
        function idx = vectorMaskToIndices(mask)
             if islogical(mask);
                 idx = makecol(find(mask));
@@ -393,6 +393,20 @@ classdef TensorUtils
                 t = TensorUtils.mapToSizeFromSubs(sz, @(varargin) [varargin{:}]', true);
             end
         end
+
+        function subsCell = ndgridCell(sz)
+            % works like ndgrid except captures all outputs
+            
+            args = arrayfun(@(s) 1:s, sz, 'UniformOutput', false);
+            [subsCell{1:ndims(sz)}] = ndgrid(args{:});
+        end
+        
+        function t = containingSubscriptsCatAlongFirstDimension(sz)
+            % t is a tensor whose size is [numel(sz) sz]
+            % t(dim, i, j, k) is the subscript of i,j,k on dimension dim.
+            % e.g. if dim == 2, t(2, i, j, k, ...) == j
+            t = cell2mat(shiftdim(TensorUtils.containingSubscripts(sz), -1));
+        end
         
         function mat = ind2subAsMat(sz, inds)
             sz = TensorUtils.expandScalarSize(sz);
@@ -409,11 +423,14 @@ classdef TensorUtils
         end
         
         function inds = subMat2Ind(sz, mat)
-            sz = TensorUtils.expandScalarSize(sz);
-            
+            % inds = subMat2Ind(sz, mat)
             % sz is the size of the tensor
-            % mat is length(inds) x length(sz) where each row contains ind2sub(sz, inds(i))
-            % converts back to linear indices using sub2ind
+            % mat is length(inds) x length(sz) where each row contains a set of subscripts
+            % as would be returned by ind2sub(sz, inds(i))
+            % subMat2Ind essentially converts back to linear indices using
+            % sub2ind and is the inverse of ind2subAsMat
+            
+            sz = TensorUtils.expandScalarSize(sz);
             
             ndims = length(sz);
             % DO NOT UNCOMMENT. THIS WILL BREAK THINGS SINCE SZ CAN HAVE
@@ -827,6 +844,7 @@ classdef TensorUtils
             % be swept with the later dimensions constant. This is the
             % reverse of how you would implement this using nested for loops,
             % i.e. [1 2] means for j = 1:size(in, 2), for i = 1:size(in, 1)
+            % and is ultimately because Matlab uses column major matrices
             %
             % LabelsByDimOut allows the user to keep track of what pieces
             % of in end up at which positions in out. LabelsByDimIn
@@ -873,38 +891,13 @@ classdef TensorUtils
             % order dimensions of out according to whichDims
             out = reshape(permute(in, allDims), szOut);
             
-            
-            % flattenEachAlong = @(y, n) cellfun(@(x) shiftdim(x(:), -n+1), y, 'UniformOutput', false);%
-            %
-            %            % start building out in successive dimensions after nDimsIn
-            %            % making use of mat2cell to do our slicing for us, flattenAlong to
-            %            % flatten and orient the vectors and then cell2mat to reassemble
-            %            out = in;
-            %            for iDimOut = 1:ndimsOut
-            %                wdims = whichDims{iDimOut};
-            %
-            %                % permute the wdims dimensions of out, such that the dimensions
-            %                % inside wdims are in the same order as they appear in the
-            %                % permuted out
-            %                permuteOrder = 1:ndims(out);
-            %                [wdimsSorted, sortIdx] = sort(wdims);
-            %                permuteOrder(wdimsSorted) = wdims;
-            %                out = permute(out, permuteOrder);
-            %
-            %                args = arrayfun(@(s) ones(s, 1), size(out), 'UniformOutput', false);
-            %                for iDimSel = 1:numel(wdims)
-            %                    % wdims(i) ends up being placed at wdimsSorted(i) by
-            %                    % permute above
-            %                     args{wdimsSorted(iDimSel)} = szIn(wdims(iDimSel));
-            %                end
-            %                z = flattenEachAlong(mat2cell(out, args{:}), ndimsIn+iDimOut);
-            %                out = cell2mat(z);
-            %            end
-            %
-            %            out = squeeze(out);
-            
             % build labels for output dimensions
             if nargout > 1
+                if ~exist('labelsByDim', 'var')
+                    szInExpand = TensorUtils.expandScalarSize(szIn);
+                    labelsByDim = arrayfun(@(dim) 1:szInExpand(dim), 1:numel(szInExpand), 'UniformOutput', false);
+                end
+                
                 szOut = size(out);
                 labelsByDimOut = cellvec(ndimsOut);
                 for iDimOut = 1:ndimsOut
@@ -966,6 +959,19 @@ classdef TensorUtils
                 'UniformOutput', false);
             out = cat(dim, each{:});
         end
+        
+        function out = selectSpecificIndicesAlongDimensionEachPosition(in, dim, idxForEachOtherDim)
+            % typically we do a selection along dim e.g. where dim = 2, using in(:, idx, :) 
+            % this function enables idx to vary with the position along the
+            % other dimensions. If size(in) = in szIn, and
+            % idxForEachOtherDim has szIdx, which matches szIn except on
+            % dimension dim.
+            % for example, if in = [1 2; 3 4], dim = 1, and
+            % idxForEachOtherDim = [1 2], out is [1 4]
+        
+            out = cell2mat(TensorUtils.mapSlices(@(slice, idx) slice(idx), dim, in, idxForEachOtherDim));
+        end
+        
     end
     
     methods(Static) % Slice orienting and repmat
