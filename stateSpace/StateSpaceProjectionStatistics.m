@@ -1325,8 +1325,9 @@ classdef StateSpaceProjectionStatistics
                                 % project marginalized noise into SVD bases found
                                 % on the full noise matrix and compute the noise
                                 % variance in those bases
-                                s.cumMargNoiseVarByBasis_shared(m, d) = sum(sum((Vnoise_shared(:, 1:d)' * noiseMarg_NxTxC{m}(:,:)).^2)) * noiseVarMultiplier_shared;
-
+                                if ~all(nanMaskT)    
+                                    s.cumMargNoiseVarByBasis_shared(m, d) = sum(sum((Vnoise_shared(:, 1:d)' * noiseMarg_NxTxC{m}(:,:)).^2)) * noiseVarMultiplier_shared;
+                                end
         %                        s.cumMargSignalVarByBasis_shared(m, d) = max(0, ...
         %                            sum(dataMargTensors_shared{m}(:).^2) - sum(sum((dataMargTensors_shared{m} - encoderNbyK(:,1:d)*Z(1:d,:)).^2)) - ...
         %                            s.cumMargNoiseVarByBasis_shared(m, d));

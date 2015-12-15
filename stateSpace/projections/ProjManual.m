@@ -55,10 +55,11 @@ classdef ProjManual < StateSpaceProjection
       
         function proj = buildWithPseudoinverseEncoderForDecoderAndPset(pset, projOrDecoderKbyN, varargin)
             % This builds an encoder matrix based on the equation:
-            % (X' * D') * E = X'
-            % where X and Xhat is N x CTA, D is K x N, E is N x K
+            % (X * D') * E' = X
+            % where X and Xhat is CTA x N, D is K x N, E is N x K
             % where E will be estimated by least squares:
-            % E = (X'*D') \ X'
+            % E' = (X*D') \ X
+            % E = ((X*D') \ X)'
             if isa(projOrDecoderKbyN, 'StateSpaceProjection')
                 decoderKbyN = projOrDecoderKbyN.decoderKbyN;
             elseif isnumeric(projOrDecoderKbyN)
@@ -67,10 +68,10 @@ classdef ProjManual < StateSpaceProjection
                 error('Second arg must be StateSpaceProjection or decoderKbyN');
             end
             
-            Xv = psetTask.buildCTAbyN('basisValid', true);
+            Xv = pset.buildCTAbyN('validBasesOnly', true);
             
             decoderKbyNv = decoderKbyN(:, pset.basisValid);
-            encoderNvbyK = (Xv'*decoderKbyNv') \ (Xv');
+            encoderNvbyK = ((Xv*decoderKbyNv') \ (Xv))';
 
             encoderNbyK = TensorUtils.inflateMaskedTensor(encoderNvbyK, 1, pset.basisValid, NaN);
             

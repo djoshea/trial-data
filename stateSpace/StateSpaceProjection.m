@@ -793,8 +793,8 @@ classdef StateSpaceProjection
                 tr = projCell{iProj}.translationNormalization;
                 if ~isempty(tr)
                     bias = tr.normalizationByBasis .* (bias + tr.translationByBasis);
+                    decoder = diag(tr.normalizationByBasis) * decoder;
                 end
-                decoder = diag(tr.normalizationByBasis) * decoder;
                 
                 % then handle decoder projection
                 decoder = projCell{iProj}.decoderKbyN * decoder;

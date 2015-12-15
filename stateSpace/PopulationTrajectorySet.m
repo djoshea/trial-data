@@ -4263,6 +4263,7 @@ classdef PopulationTrajectorySet
             p.addParameter('markShowOnAxis', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 2, @isscalar);
+            p.addParameter('markShowInLegend', true, @islogical);
             
             p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalShowOnAxis', true, @islogical);
@@ -4465,6 +4466,8 @@ classdef PopulationTrajectorySet
                     
                     if iAlign==1
                         TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, conditionNames{iCond});
+                    else
+                        TrialDataUtilities.Plotting.hideInLegend(hData{iCond, iAlign});
                     end
                 end
                 
@@ -4484,6 +4487,7 @@ classdef PopulationTrajectorySet
                             'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
                             'intervalAlpha', p.Results.intervalAlpha, ...
                             'showRanges', p.Results.showRangesOnData, ...
+                            'showInLegend', p.Results.markShowInLegend, ...
                             'tMin', min(tvecOrig), 'tMax', max(tvecOrig));
                     end
                 end
