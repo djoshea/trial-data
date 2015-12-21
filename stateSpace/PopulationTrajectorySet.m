@@ -37,6 +37,11 @@ classdef PopulationTrajectorySet
         datasetName
         
         dataUnits = '';
+        
+        % Set this to true to keep all comute-on-demand properties when
+        % using .saveFast or caching via CacheManger
+        % Setting it to false will save space on disk
+        keepComputedOnSaveFast = false;
     end
 
     properties(SetAccess=protected, Hidden)
@@ -513,20 +518,35 @@ classdef PopulationTrajectorySet
     
     % Saving and loading piecemeal
     methods
+        function pset = precomputeProperties(pset)
+            pset.dataMean;
+            pset.alignSummaryData;
+            pset.alignSummaryAggregated;
+            pset.dataNTrials;
+            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
+        end
+        
         function saveFast(pset, location, varargin)
             p = inputParser();
             p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
+            p.addParameter('keepComputed', false, @islogical); % drop everything that can later be computed to save space
             p.parse(varargin{:});
             
             sources = pset.dataSources;
             
             if ~pset.dataSourceManual
-                pset.dataSources = 'saved separately, use loadFast';
+                pset.dataSources = 'saved separately, use PopulationTrajectorySet.loadFast to load';
             end
             
-            % comment this out to not clear this to save the alignment we've done
-            pset.odc = [];
+            if ~p.Results.keepComputed && ~pset.keepComputedOnSaveFast
+                % comment this out to not clear this to save the alignment we've done
+                pset.odc = [];
+            end
 
+            if ~exist('location', 'var') || isempty(location)
+                location = pwd;
+            end
+            
             mkdirRecursive(location);
             savefast(fullfile(location, 'pset.mat'), 'pset');
 
@@ -554,6 +574,9 @@ classdef PopulationTrajectorySet
             p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
             p.parse(varargin{:});
             
+            if ~exist('location', 'var') || isempty(location) 
+                location = pwd;
+            end
             if ~exist(location, 'dir')
                 error('Directory %s not found. Did you save with saveFast?', location);
             end
@@ -667,9 +690,11 @@ classdef PopulationTrajectorySet
                 pset.basisDataSourceChannelNames = {};
             end
             
-            pset = pset.updateValid();
+            % don't want to call update valid since it will 
+            % pset = pset.updateValid();
             
-            pset = pset.invalidateCache('clearDataRandom', false);
+            % don't want to clear computed entities on load
+            % pset = pset.invalidateCache('clearDataRandom', false);
         end
             
         % flush the contents of odc as they are invalid
@@ -876,52 +901,76 @@ classdef PopulationTrajectorySet
         
         function pset = set.timeDelta(pset, v)
             % changing timeDelta invalidates everything
+            old = pset.timeDelta;
             pset.timeDelta = v;
-            pset = pset.invalidateCache();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateCache();
+            end
         end
         
         function pset = set.minTrialsForTrialAveraging(pset, v)
             % only affects trial averaging
+            old = pset.minTrialsForTrialAveraging;
             pset.minTrialsForTrialAveraging = v;
-            pset = pset.invalidateTrialAveragedData();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateTrialAveragedData();
+            end
         end
         
         function pset = set.ignoreAllZeroSpikeTrials(pset, tf)
             % only affects trial averaging
             assert(islogical(tf) && isscalar(tf));
+            old = pset.ignoreAllZeroSpikeTrials;
             pset.ignoreAllZeroSpikeTrials = tf;
-            pset = pset.invalidateTrialAveragedData();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateTrialAveragedData();
+            end
         end
         
         function pset = set.ignoreLeadingTrailingZeroSpikeTrials(pset, tf)
             % only affects trial averaging
             assert(islogical(tf) && isscalar(tf));
+            old = pset.ignoreLeadingTrailingZeroSpikeTrials;
             pset.ignoreLeadingTrailingZeroSpikeTrials = tf;
-            pset = pset.invalidateTrialAveragedData();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateTrialAveragedData();
+            end
         end
         
         function pset = set.minFractionTrialsForTrialAveraging(pset, v)
             % only affects trial averaging
+            old = pset.minFractionTrialsForTrialAveraging;
             pset.minFractionTrialsForTrialAveraging = v;
-            pset = pset.invalidateTrialAveragedData();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateTrialAveragedData();
+            end
         end
         
         function pset = set.dataIntervalQuantileLow(pset, v)
+            old = pset.dataIntervalQuantileLow;
             pset.dataIntervalQuantileLow = v;
-            pset = pset.invalidateRandomizedTrialAveragedData();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateRandomizedTrialAveragedData();
+            end
         end
 
         function pset = set.dataIntervalQuantileHigh(pset, v)
+            old = pset.dataIntervalQuantileHigh;
             pset.dataIntervalQuantileHigh = v;
-            pset = pset.invalidateRandomizedTrialAveragedData();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateRandomizedTrialAveragedData();
+            end
         end
         
         function pset = set.conditionIncludeMask(pset, v)
             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
                 'conditionIncludeMask must be logical vector with length nConditions');
             
+            old = pset.conditionIncludeMaskManual;
             pset.conditionIncludeMaskManual = v;
-            pset = pset.invalidateTrialAveragedData();
+            if ~isempty(old) % no need to invalidate on initialization
+                pset = pset.invalidateTrialAveragedData();
+            end
         end
         
         function v = get.conditionIncludeMask(pset)
@@ -1025,6 +1074,11 @@ classdef PopulationTrajectorySet
                 end
             else
                 v = pset.dataByTrialManual;
+            end
+            
+            % clear out data for invalid bases
+            if ~isempty(v)
+                v = TensorUtils.assignValueMaskedSelectionAlongDimension(v, 1, ~pset.basisValid, []);
             end
         end 
         
@@ -2617,7 +2671,8 @@ classdef PopulationTrajectorySet
             % computes and stores dataNTrials and dataValid into odc
             
             trialLists = cell(pset.nBases, pset.nConditions);
-            [dataValid, dataNTrials] = deal(nan(pset.nAlign, pset.nBases, pset.nConditions));
+            dataNTrials = nan(pset.nAlign, pset.nBases, pset.nConditions);
+            dataValid = false(pset.nAlign, pset.nBases, pset.nConditions);
             
             hasSpikesByBasis = pset.trialHasSpikesMaskByBasis;
             prog = ProgressBar(pset.nBases, 'Computing trial-counts by condition');
@@ -3336,10 +3391,11 @@ classdef PopulationTrajectorySet
             % build the aggregated data across all bases too, for each alignment
             alignSummaryAggregated = cell(pset.nAlign, 1);
             alignSummaryData = pset.alignSummaryData;
+            dsMask = unique(pset.basisAlignSummaryLookup(pset.basisValid));
             prog = ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
             for iAlign = 1:pset.nAlign
                 prog.update(iAlign);
-                alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(:, iAlign));
+                alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(dsMask, iAlign));
             end 
             prog.finish();
             
@@ -3446,9 +3502,6 @@ classdef PopulationTrajectorySet
             maskDim2 = {'dataValid', 'dataNTrials', 'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition'};
             maskCellDim1 = {'dataMean', 'dataSem', 'dataMeanRandomized', 'dataSemRandomized', ...
                 'dataIntervalHigh', 'dataIntervalLow'}; 
-
-            % essential that we copy before write
-%             c = pset.odc.copy();
 
             for i = 1:numel(maskDim1)
                 fld = maskDim1{i};
@@ -3565,9 +3618,9 @@ classdef PopulationTrajectorySet
     methods(Access=protected)
         % utility method to subselect conditions from data for a manual
         % data source
-        function pset = manualApplyConditionMask(pset, maskC)
+        function pset = manualApplyConditionMask(pset, maskC) %#ok<INUSD>
             pset.warnIfNoArgOut(narout);
-        
+            error('Not implemented');
         end
     end
     
@@ -3579,10 +3632,64 @@ classdef PopulationTrajectorySet
                 pset.odc.flushValid();
                 pset.odc.flushTrialAveragedData();
             end
+            if pset.dataSourceManual
+                mask = ~pset.basisValid;
+                clearFn = @(in, dim) TensorUtils.assignValueMaskedSelectionAlongDimension(in, dim, mask, NaN);
+                
+                % mask out data from every invalid basis
+                 maskDim1 = {'basisNames', 'basisUnits', ...
+                'dataByTrial', 'tMinForDataByTrial', ...
+                'tMaxForDataByTrial', 'tMinByTrial', 'tMaxByTrial', 'alignValidByTrial', ...
+                'dataCachedSampledTrialsTensor', 'dataCachedSampledTrialCounts', 'dataCachedMeanExcludingSampledTrialsTensor', ...
+                'dataDifferenceOfTrialsScaledNoiseEstimate', 'dataDifferenceOfTrialsScaledNoiseEstimateRandomized'};
+                maskDim2 = {'dataNTrials', 'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition'};
+                maskCellDim1 = {'dataMean', 'dataSem', 'dataMeanRandomized', 'dataSemRandomized', ...
+                    'dataIntervalHigh', 'dataIntervalLow'}; 
+
+                for i = 1:numel(maskDim1)
+                    fld = maskDim1{i};
+                    if ~isempty(pset.(fld))
+                        % some have up to 4 dimensions, add a couple of extra
+                        % colons just in case
+                        pset.(fld) = clearFn(pset.(fld), 1);
+                    end
+                end
+
+                for i = 1:numel(maskDim2)
+                    fld = maskDim2{i};
+                    if ~isempty(pset.(fld))
+                        pset.(fld) = clearFn(pset.(fld), 2);
+                    end
+                end
+
+                for i = 1:numel(maskCellDim1)
+                    fld = maskCellDim1{i};
+                    if ~isempty(pset.(fld))
+                        for j = 1:numel(pset.(fld))
+                            pset.(fld){j} = clearFn(pset.(fld){j}, 1);
+                        end
+                    end
+                end
+
+                % filter alignSummaryData
+                if ~isempty(pset.alignSummaryData)
+                    dsMaskKeep = TensorUtils.vectorIndicesToMask(pset.basisAlignSummaryLookup(pset.basisValid), pset.nAlignSummaryData);
+                    pset.alignSummaryData(~dsMaskKeep, :) = {[]};
+                end
+                pset.alignSummaryAggregated = [];
+               
+                % filter translationNormalization
+                if ~isempty(pset.translationNormalization)
+                    pset.translationNormalization = pset.translationNormalization.setBasesInvalid(mask);
+                end
+            end
         end
         
         function pset = resetBasisValid(pset)
             pset.warnIfNoArgOut(nargout);
+            if pset.dataSourceManual
+                error('Data source has manually-provided data. Bases can only be marked invalid; basisValid cannot be reset');
+            end
             pset.basisValidManual = truevec(pset.nBases);
             pset = pset.updateValid();
         end
@@ -3663,6 +3770,15 @@ classdef PopulationTrajectorySet
                 varargout{i} = pset.setBasesInvalid(~mask, cause(~mask));
             end
         end 
+        
+        function tf = checkSameBasesValid(varargin)
+            nBasesVec = cellfun(@(pset) pset.nBases, varargin);
+            assert(numel(unique(nBasesVec)) == 1, 'All inputs must have the same nBases');
+            
+            basisValidMat = cell2mat(cellfun(@(pset) pset.basisValid, makerow(varargin), 'UniformOutput', false));
+            
+            tf = all(all(basisValidMat, 2) | all(~basisValidMat, 2));
+        end
     end
 
     methods % Compute on-the-fly Dependent properties
@@ -3830,58 +3946,84 @@ classdef PopulationTrajectorySet
     end
 
     methods % Simple statistics, should be NaN for invalid bases
+        % some of the coding here is designed to accept the arguments 
+        % 'type', 'meanRandom', which will mean the results will operate on
+        % dataMeanRandomized, and thus have size nRandomSamples along the
+        % last dimension, just like the buildCTAbyN-like methods
+        
         function snrByBasis = computeSnrByBasis(pset, varargin)
-            semCTAbyN = pset.buildCTAbyN('type', 'sem');
-            noiseByBasis = nanmax(semCTAbyN, [], 1)';
-            rangeByBasis = pset.computeRangeByBasis();
+            semCTAbyN = pset.buildCTAbyN(varargin{:}, 'type', 'sem');
+            noiseByBasis = TensorUtils.squeezeDims(nanmax(semCTAbyN, [], 1), 1);
+            rangeByBasis = pset.computeRangeByBasis(varargin{:}, 'type', 'mean');
             
             snrByBasis = rangeByBasis ./ noiseByBasis;
-            snrByBasis(~pset.basisValid) = NaN;
+            snrByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(snrByBasis, 1, ~pset.basisValid, NaN);
         end
         
         function minByBasis = computeMinByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
-            minByBasis = nanmin(CTAbyN, [], 1)';
-            minByBasis(~pset.basisValid) = NaN;
+            minByBasis = TensorUtils.squeezeDims(nanmin(CTAbyN, [], 1), 1);
+            minByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(minByBasis, 1, ~pset.basisValid, NaN);
         end
         
         function maxByBasis = computeMaxByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
-            maxByBasis = nanmax(CTAbyN, [], 1)';
-            maxByBasis(~pset.basisValid) = NaN;
+            maxByBasis = TensorUtils.squeezeDims(nanmax(CTAbyN, [], 1), 1);
+            maxByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(maxByBasis, 1, ~pset.basisValid, NaN);
         end
         
         function meanByBasis = computeMeanByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
-            meanByBasis = nanmean(CTAbyN, 1)';
-            meanByBasis(~pset.basisValid) = NaN;
+            meanByBasis = TensorUtils.squeezeDims(nanmean(CTAbyN, 1), 1);
+            meanByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(meanByBasis, 1, ~pset.basisValid, NaN);
         end
         
-        function varByBasis = computeVarByBasis(pset, varargin)
-            varByBasis = nanvar(pset.buildCTAbyN(varargin{:}), 0, 1)';
-            varByBasis(~pset.basisValid) = NaN;
+        function varByBasis = computeVarUncorrectedByBasis(pset, varargin)
+            varByBasis = TensorUtils.squeezeDims(nanvar(pset.buildCTAbyN(varargin{:}), 0, 1), 1);
+            varByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(varByBasis, 1, ~pset.basisValid, NaN);
+        end
+        
+        function varPerCTA = computeTotalVarUncorrectedPerCTA(pset, varargin)
+            % note, this should be the same as doing
+            % pset.meanSubtractBases.computeTotalSSPerCTA
+            
+            ctaByN = pset.buildCTAbyN(varargin{:});
+            ctaByN_meanSub = bsxfun(@minus, ctaByN, nanmean(ctaByN, 1));
+            varPerCTAByBasis = nanmean(ctaByN_meanSub.^2, 1);
+            varPerCTA = squeeze(nansum(varPerCTAByBasis, 2)); 
         end
         
         function ssq = computeTotalSS(pset, varargin)
             tensor = pset.buildCTAbyN(varargin{:});
-            ssq = nansum(tensor(:).^2);
+            ssq = squeeze(TensorUtils.nansumMultiDim(tensor.^2, [1 2])); 
+        end
+        
+        function ssq = computeTotalSSPerCTA(pset, varargin)
+            tensor = pset.buildCTAbyN(varargin{:});            
+            ssq = squeeze(nansum(nanmean(tensor.^2, 1), 2));
+        end
+        
+        function ssqPer = computeTotalSSPerNCTA(pset, varargin)
+            % take squared values averaged over neurons and time
+            tensor = pset.buildCTAbyN(varargin{:});
+            ssqPer = squeeze(TensorUtils.nanmeanMultiDim(tensor.^2, [1 2]));
         end
         
         function normByBasis = computeNormByBasis(pset, varargin)
             ctaByN = pset.buildCTAbyN(varargin{:});
-            normByBasis = nansum(ctaByN.^2, 1)';
-            normByBasis(~pset.basisValid) = NaN;
+            normByBasis = TensorUtils.squeezeDims(nansum(ctaByN.^2, 1), 1);
+            normByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(normByBasis, 1, ~pset.basisValid, NaN);
         end
         
         function stdByBasis = computeStdByBasis(pset, varargin)
-            stdByBasis = nanstd(pset.buildCTAbyN(varargin{:}), 0, 1)';
-            stdByBasis(~pset.basisValid) = NaN;
+            stdByBasis = TensorUtils.squeezeDims(nanstd(pset.buildCTAbyN(varargin{:}), 0, 1), 1);
+            stdByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(stdByBasis, 1, ~pset.basisValid, NaN);
         end
         
         function rangeByBasis = computeRangeByBasis(pset, varargin)
             CTAbyN = pset.buildCTAbyN(varargin{:});
-            rangeByBasis = nanmax(CTAbyN, [], 1)' - nanmin(CTAbyN, [], 1)';
-            rangeByBasis(~pset.basisValid) = NaN;
+            rangeByBasis = TensorUtils.squeezeDims(nanmax(CTAbyN, [], 1) - nanmin(CTAbyN, [], 1), 1);
+            rangeByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(rangeByBasis, 1, ~pset.basisValid, NaN);
         end
   
 %         function [maxValues maxTimes] = getMaximumByBasisEachConditionEachAlign(pset, varargin)
@@ -4770,13 +4912,15 @@ classdef PopulationTrajectorySet
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.addParameter('validBasesOnly', false, @islogical);
             p.addParameter('type', 'mean', @ischar); % mean, sem, meanRandom
-            p.addParameter('dataRandomIndex', 1, @isscalar);
+            p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
             p.parse(varargin{:});
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             conditionIdx = makecol(p.Results.conditionIdx);
-            
+            dataRandomIndex = TensorUtils.vectorMaskToIndices(p.Results.dataRandomIndex);
+            checkDataRandomIndex = @() assert(all(dataRandomIndex >= 1 & dataRandomIndex <= pset.nRandomSamples), ...
+                 'dataRandomIndex must be in range 1:%d (nRandomSamples)', pset.nRandomSamples);
             if p.Results.validBasesOnly
                 mask = pset.basisValid(basisIdx);
                 basisIdx = basisIdx(mask);
@@ -4792,11 +4936,11 @@ classdef PopulationTrajectorySet
                         data{iAlign} = pset.dataSem{idxAlign}(basisIdx, conditionIdx, :);
                     case 'meanRandom'
                         assert(pset.hasDataRandomized, 'Must generate randomized data using storeDataMean* method first');
-                        assert(p.Results.dataRandomIndex >= 1 && p.Results.dataRandomIndex <= pset.nRandomSamples, ...
-                            'dataRandomIndex must be in range 1:%d (nRandomSamples)', pset.nRandomSamples);
-                        data{iAlign} = pset.dataMeanRandomized{idxAlign}(basisIdx, conditionIdx, :, p.Results.dataRandomIndex);
+                        checkDataRandomIndex();
+                        data{iAlign} = pset.dataMeanRandomized{idxAlign}(basisIdx, conditionIdx, :, dataRandomIndex);
                     case 'semRandom'
                         assert(pset.hasDataRandomized, 'Must generate randomized data using storeDataMean* method first');
+                        checkDataRandomIndex();
                         assert(p.Results.dataRandomIndex >= 1 && p.Results.dataRandomIndex <= pset.nRandomSamples, ...
                             'dataRandomIndex must be in range 1:%d (nRandomSamples)', pset.nRandomSamples);
                         data{iAlign} = pset.dataSemRandomized{idxAlign}(basisIdx, conditionIdx, :, p.Results.dataRandomIndex);
@@ -4822,7 +4966,7 @@ classdef PopulationTrajectorySet
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.addParameter('validBasesOnly', false, @islogical);
             p.addParameter('type', 'mean', @ischar);
-            p.addParameter('dataRandomIndex', 1, @isscalar);
+            p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
             p.parse(varargin{:});
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             conditionIdx = TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
@@ -4831,6 +4975,7 @@ classdef PopulationTrajectorySet
             nvec = basisIdx;
             cvec = conditionIdx;
             labels = {nvec, cvec, [tvec, avec]};
+            % we include dim 4 as this would hold randomized samples
             [CTAbyN, labelsOut] = TensorUtils.reshapeByConcatenatingDims(NbyCbyTA, {[3 2], 1}, labels);
 
             cvec = labelsOut{1}(:, 1);

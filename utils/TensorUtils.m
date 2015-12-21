@@ -510,7 +510,7 @@ classdef TensorUtils
                 t = all(t, dims(iD));
             end
         end
-        
+
         function idxTensor = findNAlongDim(t, dim, N, direction)
             % idxTensor = findNAlongDim(t, dim, N, direction)
             % finds the first/last N non-zero values in t along dimension t
@@ -867,11 +867,10 @@ classdef TensorUtils
             % The format of labelsByDimIn and labelsByDimOut is that the
             % output can be used as a input to this function again.
             
-            ndimsOut = length(whichDims);
-            
             if ~iscell(whichDims)
                 whichDims = {whichDims};
             end
+            whichDims = makecol(whichDims);
             
             allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
             allDims = cat(1, allDims{:});
@@ -879,10 +878,19 @@ classdef TensorUtils
             szIn = TensorUtils.sizeNDims(in, max(allDims));
             ndimsIn = max(max(allDims), ndims(in));
             
-            assert(length(allDims) == ndimsIn && ...
-                all(ismember(1:ndimsIn, allDims)), ...
-                'whichDims must contain each dim in 1:ndims(in)');
-            
+            assert(all(ismember(1:numel(allDims), allDims)), ...
+                'whichDims must contain each dim in 1:length(whichDims)');
+            % add any trailing dimensions which are missing from the list
+            % automatically
+            if max(allDims) < ndimsIn;
+                whichDims = cat(1, whichDims, num2cell(max(allDims)+1:ndimsIn));
+                % recompute allDims in case trailing dims were added
+                allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
+                allDims = cat(1, allDims{:});
+            end
+
+            ndimsOut = length(whichDims);
+           
             szOut = nan(1, ndimsOut);
             for iDimOut = 1:ndimsOut
                 szOut(iDimOut) = prod(szIn(whichDims{iDimOut}));
@@ -893,9 +901,14 @@ classdef TensorUtils
             
             % build labels for output dimensions
             if nargout > 1
+                szInExpand = TensorUtils.expandScalarSize(szIn);
+                labelsByDimTemplate = arrayfun(@(dim) 1:szInExpand(dim), 1:numel(szInExpand), 'UniformOutput', false);
                 if ~exist('labelsByDim', 'var')
-                    szInExpand = TensorUtils.expandScalarSize(szIn);
-                    labelsByDim = arrayfun(@(dim) 1:szInExpand(dim), 1:numel(szInExpand), 'UniformOutput', false);
+                    labelsByDim = labelsByDimTemplate;
+                else
+                    % extend labelsByDim to the full length ndims if necessary
+                    labelsByDimTemplate(1:numel(labelsByDim)) = labelsByDim;
+                    labelsByDim = labelsByDimTemplate;
                 end
                 
                 szOut = size(out);
@@ -1207,6 +1220,12 @@ classdef TensorUtils
             t = cell2mat(TensorUtils.mapSlicesInPlace(@(slice) nanmean(slice(:)), dims, t));
         end
         
+        function t = nansumMultiDim(t, dims)
+            for iD = 1:numel(dims)
+                t = nansum(t, dims(iD));
+            end
+        end
+        
         function t = varMultiDim(t, dims, varargin)
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
             % will compute the mean in slices along dims 2 and 3. the
@@ -1360,6 +1379,34 @@ classdef TensorUtils
                 parts{iNew} = TensorUtils.mapSlices(fnSelect, dim, t);
             end
             newTensor = cell2mat(cat(dim, parts{:}));  
+        end
+        
+        function in = assignValueMaskedSelectionAlongDimension(in, dims, mask, value)
+            % in = assignValueMaskedSelectionAlongDimension(in, dims, mask, value=NaN)
+            % 
+            % Assign value at each location where mask is true along dimension dim 
+            % if dims is scalar assign in(..., mask, ...) = value
+            % if dims is a vector of dimensions, then mask must be a cell,
+            % in which case the assignment is
+            % in(..., mask{1}, ..., mask{2}, ...) = value
+            %
+            
+            if ~exist('value', 'var')
+                if iscell(in)
+                    value = {[]};
+                elseif islogical(in)
+                    value = false;
+                else
+                    value = NaN;
+                end
+            end
+            if iscell(in) && ~iscell(value)
+                value = {value};
+            end
+            
+            assert(isscalar(value), 'Value must be scalar');
+            maskByDim = TensorUtils.maskByDimCellSelectAlongDimension(size(in), dims, mask);
+            in(maskByDim{:}) = value;
         end
     end
 end

@@ -427,7 +427,7 @@ classdef StateSpaceProjectionStatistics
             end
             
             % Collect for later
-            [data_mainVar, data_margVar, data_pcaVar] = deal([]);
+            data_margVar = [];
             
             hold(axh, 'on');
             
@@ -447,10 +447,10 @@ classdef StateSpaceProjectionStatistics
 %                     data_pcaVar = vp;
                 else
 %                     data_pcaVar = [];
-                    pcaFieldName = ''; %#ok<NASGU>
+                    pcaFieldName = ''; 
                 end
             else
-                pcaFieldName = ''; %#ok<NASGU>
+                pcaFieldName = '';
             end
             
             mainFieldName = sprintf('cum%s%sByBasis_%s', fracStr, varStr, timeStr);
@@ -563,9 +563,7 @@ classdef StateSpaceProjectionStatistics
                 
                 % calculate number of bases required to reach threshold
                 nMain = find(data_mainVar > thresh, 1);
-                if isempty(nMain)
-                    nMain = NaN;
-                else
+                if ~isempty(nMain)
                     h = plot(axh, [nMain nMain], [0 data_mainVar(nMain)], '-', 'Color', [0.3 0.3 0.3]);
                     TrialDataUtilities.Plotting.hideInLegend(h);
                     debug('%d bases required to explain %g%% of total variance\n', nMain, thresh*100);
@@ -720,6 +718,8 @@ classdef StateSpaceProjectionStatistics
             p = inputParser();
             p.addParameter('meanSubtract', true, @islogical); % setting this to false only makes sense for situations where the data is already normalized relative to some absolute baseline, such as a difference between two conditions
             p.addParameter('computeForRandomized', true, @islogical);
+            p.addParameter('showWarnings', true, @islogical);
+            p.addParameter('showWarningsForRandomized', false, @islogical);
             p.addParameter('axesIgnore', {}, @(x) true);
             p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
             p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
@@ -789,11 +789,13 @@ classdef StateSpaceProjectionStatistics
                 s = s.computeStatistics(NvbyTAbyAttr, ...
                     decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams, ...
                     'scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', scaledNoiseEstimate_NvbyTAbyAttr, ...
-                    'meanSubtract', p.Results.meanSubtract);
+                    'meanSubtract', p.Results.meanSubtract, ...
+                    'showWarnings', p.Results.showWarnings);
             else
                 s = s.computeStatistics(NvbyTAbyAttr, ...
                     decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams, ...
-                    'meanSubtract', p.Results.meanSubtract);
+                    'meanSubtract', p.Results.meanSubtract, ...
+                    'showWarnings', p.Results.showWarnings);
             end
             
             if pset.hasDataRandomized && p.Results.computeForRandomized
@@ -809,6 +811,7 @@ classdef StateSpaceProjectionStatistics
                         decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams, ...
                         'meanSubtract', p.Results.meanSubtract, ...
                         'verbose', false, ...
+                        'showWarnings', p.Results.showWarningsForRandomized, ...
                         'scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(:, :, :, iR)); %#ok<AGROW>
                 end
                 prog.finish();
@@ -850,7 +853,7 @@ classdef StateSpaceProjectionStatistics
 
             % utility fn
             ssqAlongDim = @(data, dim) nansum(data.^2, dim);
-            ssq = @(data) nansum(data(:).^2);
+%             ssq = @(data) nansum(data(:).^2);
             
             % restore original input shape
             N = size(decoderKbyN,2);
@@ -869,6 +872,7 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('combinedParams', {}, @(x) true);
             p.addParameter('scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', [], @(x) isempty(x) || isnumeric(x));
             p.addParameter('verbose', true, @islogical);
+            p.addParameter('showWarnings', true, @islogical);
             p.addParameter('marginalize', true, @islogical);
             p.addParameter('pcaBound', true, @islogical);
             p.parse(varargin{:});
@@ -927,12 +931,14 @@ classdef StateSpaceProjectionStatistics
             Z = decoderKbyN*dataNbyT_all;
             s.componentVarByBasis_all = sum(Z.^2, 2)';
             
-            prog = ProgressBar(size(decoderKbyN,1), 'Computing cumulative variance explained all timepoints');
+            if p.Results.verbose
+                prog = ProgressBar(size(decoderKbyN,1), 'Computing cumulative variance explained all timepoints');
+            end
             for i=1:size(decoderKbyN,1)
-                prog.update(i);
+                if p.Results.verbose, prog.update(i); end
                 s.cumVarByBasis_all(i) = s.totalVar_all - sum(sum((dataNbyT_all - encoderNbyK(:,1:i)*Z(1:i,:)).^2));    
             end
-            prog.finish();
+            if p.Results.verbose, prog.finish(); end
             s.cumVarByBasis_all = max(0, s.cumVarByBasis_all);
             s.cumFracVarByBasis_all = s.cumVarByBasis_all / s.totalVar_all;
 
@@ -986,14 +992,16 @@ classdef StateSpaceProjectionStatistics
                 end
                 
                 % explained variance along bases
-                prog = ProgressBar(size(decoderKbyN, 1), 'Computing cumulative variance explained shared timepoints');
+                if p.Results.verbose
+                    prog = ProgressBar(size(decoderKbyN, 1), 'Computing cumulative variance explained shared timepoints');
+                end
                 Z = decoderKbyN*dataNxT_shared;
                 s.componentVarByBasis_shared = sum(Z.^2, 2)'; % along each basis INDIVIDUALLY
                 for i=1:K
-                    prog.update(i);
+                    if p.Results.verbose, prog.update(i); end
                     s.cumVarByBasis_shared(i) = s.totalVar_shared - sum(sum((dataNxT_shared - encoderNbyK(:,1:i)*Z(1:i,:)).^2));    
                 end
-                prog.finish();
+                if p.Results.verbose, prog.finish(); end
                 
                 s.cumSignalVarByBasis_shared = max(0, s.cumSignalVarByBasis_shared);
                 s.cumFracVarByBasis_shared = s.cumVarByBasis_shared / s.totalVar_shared;
@@ -1047,16 +1055,18 @@ classdef StateSpaceProjectionStatistics
                         deal(nan(nMarginalizations, K));
 
                     % explained variance along cumulative sets of bases
-                    prog = ProgressBar(nMarginalizations, 'Computing variance over %d marginalizations', nMarginalizations);
+                    if p.Results.verbose
+                        prog = ProgressBar(nMarginalizations, 'Computing variance over %d marginalizations', nMarginalizations);
+                    end
                     for m=1:nMarginalizations
-                        prog.update(m);
+                        if p.Results.verbose, prog.update(m); end
 %                         thisMarg = dataMargTensors_shared{m}(:, :);
                         thisMarg = dataMarg_NxTxC{m}(:, :);
                         totalVarThisMarg = sum(thisMarg(:).^2);
                         Zmarg = decoderKbyN*thisMarg;
-                        progK = ProgressBar(K, 'Computing cum marginalized variance');
+                        if p.Results.verbose, progK = ProgressBar(K, 'Computing cum marginalized variance'); end
                         for i=1:K
-                            progK.update(i);
+                            if p.Results.verbose, progK.update(i); end
                             s.cumMargVarByBasis_shared(m, i) = totalVarThisMarg - sum(sum((thisMarg - encoderNbyK(:,1:i)*Zmarg(1:i,:)).^2));    
                         end
                         
@@ -1065,9 +1075,9 @@ classdef StateSpaceProjectionStatistics
                         s.decoderNormMargVarByBasis_shared(m, :) = ssqAlongDim(decoderKbyN_norm * thisMarg, 2)';
                         s.decoderOrthonormMargVarByBasis_shared(m, :) = ssqAlongDim(decoderKbyN_orthonorm * thisMarg, 2)';
                         
-                        progK.finish();
+                        if p.Results.verbose, progK.finish(); end
                     end
-                    prog.finish();
+                    if p.Results.verbose, prog.finish(); end
                     s.cumFracMargVarByBasis_shared = s.cumMargVarByBasis_shared / s.totalVar_shared;
                     
                     s.cumMargDecoderOrthonormVarByBasis_shared = cumsum(s.decoderOrthonormMargVarByBasis_shared, 2);
@@ -1077,7 +1087,9 @@ classdef StateSpaceProjectionStatistics
        
                 end
             else
-                warning('No shared timepoints found in PopulationTrajectorySet, skipping marginalization');
+                if p.Results.showWarnings
+                    warning('No shared timepoints found in PopulationTrajectorySet, skipping marginalization');
+                end
             end
             
             %%%%%%%
@@ -1099,10 +1111,14 @@ classdef StateSpaceProjectionStatistics
                 % to explain and need to correct for this. #todo
                 nanMaskT = any(isnan(noiseNxT_all), 1);
                 if all(nanMaskT(:))
-                    warning('Single trial data has NaN values at all timepoints where trial-averaged data did not (%d / %d time points). Noise variance will not be computed.\n', nnz(nanMaskT), numel(nanMaskT));
+                    if p.Results.showWarnings
+                        warning('Single trial data has NaN values at all timepoints where trial-averaged data did not (%d / %d time points). Noise variance will not be computed.\n', nnz(nanMaskT), numel(nanMaskT));
+                    end
                     noiseNxT_all_nonNan = noiseNxT_all(:, ~nanMaskT);
                 elseif any(nanMaskT(:))
-                    debug('Single trial data has NaN values at timepoints where trial-averaged data did not (%d / %d time points). Noise variance will be normalized accordingly.\n', nnz(nanMaskT), numel(nanMaskT));
+                    if p.Results.verbose
+                        debug('Single trial data has NaN values at timepoints where trial-averaged data did not (%d / %d time points). Noise variance will be normalized accordingly.\n', nnz(nanMaskT), numel(nanMaskT));
+                    end
                     noiseNxT_all_nonNan = noiseNxT_all(:, ~nanMaskT);
                 else
                     noiseNxT_all_nonNan = noiseNxT_all;
@@ -1204,10 +1220,14 @@ classdef StateSpaceProjectionStatistics
                     nanMaskT = makecol(squeeze(TensorUtils.anyMultiDim(isnan(noiseTensor_shared_NxTxC), [1 3])));
                     %  nanMaskT = TensorUtils.anyMultiDim(isnan(noiseTensor_shared), [1 3:ndims(noiseTensor_shared)]); % old version
                     if all(nanMaskT)
-                        warning('Single trial data has NaN values at all shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will not be computed.\n', nnz(nanMaskT), numel(nanMaskT));
+                        if p.Results.showWarnings
+                            warning('Single trial data has NaN values at all shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will not be computed.\n', nnz(nanMaskT), numel(nanMaskT));
+                        end
                         noiseTensor_shared_maskT = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
                     elseif any(nanMaskT)
-                        debug('Single trial data has NaN values at shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will be normalized accordingly.\n', nnz(nanMaskT), numel(nanMaskT));
+                        if p.Results.verbose
+                            debug('Single trial data has NaN values at shared timepoints where trial-averaged data did not (%d / %d time points). Noise variance will be normalized accordingly.\n', nnz(nanMaskT), numel(nanMaskT));
+                        end
                         noiseTensor_shared_maskT = TensorUtils.selectAlongDimension(noiseTensor_shared, 2, ~nanMaskT);
                     else
                         noiseTensor_shared_maskT = noiseTensor_shared;
@@ -1310,18 +1330,18 @@ classdef StateSpaceProjectionStatistics
                         s.totalMargNoiseVar_shared = s.totalMargVar_shared - s.totalMargSignalVar_shared; 
 
                         % cumulative marginalized signal variance
-                        prog = ProgressBar(nMarginalizations, 'Computing signal variance over %d marginalizations', nMarginalizations);
+                        if p.Results.verbose, prog = ProgressBar(nMarginalizations, 'Computing signal variance over %d marginalizations', nMarginalizations); end
                         %Snoise_marg = cell(nMarginalizations, 1);
                         s.cumMargNoiseVarByBasis_shared = nan(nMarginalizations, K);
                         for m=1:nMarginalizations
-                            prog.update(m);
+                            if p.Results.verbose, prog.update(m); end
 
         %                     Snoise_marg{m} = svd(noiseMargTensors_shared{m}(:, :)', 0);
         %                     Snoise_marg{m} = Snoise_marg{m}(1:K);
         %                     Z = decoderKbyN*dataMargTensors_shared{m};
-                            progK = ProgressBar(K, 'Computing cumulative marginalized signal variance');
+                            if p.Results.verbose, progK = ProgressBar(K, 'Computing cumulative marginalized signal variance'); end
                             for d = 1:K
-                                progK.update(d);
+                                if p.Results.verbose, progK.update(d); end
                                 % project marginalized noise into SVD bases found
                                 % on the full noise matrix and compute the noise
                                 % variance in those bases
@@ -1337,9 +1357,9 @@ classdef StateSpaceProjectionStatistics
                                     s.cumMargVarByBasis_shared(m, d) - ...
                                     s.cumMargNoiseVarByBasis_shared(m, d)));
                             end
-                            progK.finish();
+                            if p.Results.verbose, progK.finish(); end
                         end
-                        prog.finish();
+                        if p.Results.verbose, prog.finish(); end
 
                         % ensure cum signal var is non-decreasing and adjust
                         % noise var to ensure signal+noise = total
@@ -1364,36 +1384,38 @@ classdef StateSpaceProjectionStatistics
             %%%%%%%%
             % Sanity checks
             %%%%%%%%
-            if p.Results.verbose
-                debug('Running sanity checks on explained variance\n'); 
-            end
-            smallMult = 1.001;
-            small = 1e-6;
-            checkFields(s, searchFields(s, 'total.*'), @(x) x >= -small);
-            checkFields(s, searchFields(s, '.*fraction*'), @(x) x >= -small & x <= 1+small);
-            checkFields(s, searchFields(s, '.*cumSignal*'), @(x) isNonDecreasing(x, 2));
-            checkFields(s, searchFields(s, '.*cumVar*'), @(x) isNonDecreasing(x, 2));
+            if p.Results.showWarnings
+                if p.Results.verbose
+                    debug('Running sanity checks on explained variance\n'); 
+                end
+                smallMult = 1.001;
+                small = 1e-6;
+                checkFields(s, searchFields(s, 'total.*'), @(x) x >= -small);
+                checkFields(s, searchFields(s, '.*fraction*'), @(x) x >= -small & x <= 1+small);
+                checkFields(s, searchFields(s, '.*cumSignal*'), @(x) isNonDecreasing(x, 2));
+                checkFields(s, searchFields(s, '.*cumVar*'), @(x) isNonDecreasing(x, 2));
 
-            % cannot exceed total var
-            checkFields(s, searchFields(s, '.*VarByBasis_all'), ...
-                @(x) x <= s.totalVar_all * smallMult);
-            checkFields(s, searchFields(s, '.*VarByBasis_shared'), ...
-                @(x) x <= s.totalVar_shared * smallMult);
+                % cannot exceed total var
+                checkFields(s, searchFields(s, '.*VarByBasis_all'), ...
+                    @(x) x <= s.totalVar_all * smallMult);
+                checkFields(s, searchFields(s, '.*VarByBasis_shared'), ...
+                    @(x) x <= s.totalVar_shared * smallMult);
 
-            if p.Results.marginalize
-                % marginalized var total less than var total
-                checkFields(s, 'totalMargVar_shared', @(x) x <= s.totalVar_shared * smallMult);
+                if p.Results.marginalize
+                    % marginalized var total less than var total
+                    checkFields(s, 'totalMargVar_shared', @(x) x <= s.totalVar_shared * smallMult);
 
-                % marginalized vars must be less than total in that marginalization
-                checkFields(s, 'componentMargVarByBasis_shared', @(x) bsxfun(@le, x, s.totalMargVar_shared * smallMult));
-            end
-            
-            if p.Results.pcaBound
-                % check that appropriate fields are less than their pca counterparts
-                cFields = searchFields(s, 'cum.*');
-                pcaFields = cellfun(@(x) strcat('pca_', x), cFields, 'UniformOutput', false);
-                mask = isfield(s, pcaFields);
-                checkFields2(s, cFields(mask), pcaFields(mask), @(c, pc) c <= pc * smallMult); % allow small fudge for numerical error
+                    % marginalized vars must be less than total in that marginalization
+                    checkFields(s, 'componentMargVarByBasis_shared', @(x) bsxfun(@le, x, s.totalMargVar_shared * smallMult));
+                end
+
+                if p.Results.pcaBound
+                    % check that appropriate fields are less than their pca counterparts
+                    cFields = searchFields(s, 'cum.*');
+                    pcaFields = cellfun(@(x) strcat('pca_', x), cFields, 'UniformOutput', false);
+                    mask = isfield(s, pcaFields);
+                    checkFields2(s, cFields(mask), pcaFields(mask), @(c, pc) c <= pc * smallMult); % allow small fudge for numerical error
+                end
             end
             
             % Utility functions for sanity checks

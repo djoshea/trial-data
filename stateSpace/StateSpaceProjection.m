@@ -784,7 +784,7 @@ classdef StateSpaceProjection
             % apply translationNormalizationPostProject
             tr = projCell{1}.translationNormalizationPostProject;
             if ~isempty(tr)
-                bias = tr.normalizationByBasis .* (bias + tr.translationByBasis);
+                bias = tr.normalizationByBasisNonNaN .* (bias + tr.translationByBasisNonNaN);
                 decoder = diag(tr.normalizationByBasis) * decoder;
             end
           
@@ -792,8 +792,8 @@ classdef StateSpaceProjection
                 % first handle pre-project translationNormalization
                 tr = projCell{iProj}.translationNormalization;
                 if ~isempty(tr)
-                    bias = tr.normalizationByBasis .* (bias + tr.translationByBasis);
-                    decoder = diag(tr.normalizationByBasis) * decoder;
+                    bias = tr.normalizationByBasisNonNaN .* (bias + tr.translationByBasisNonNaN);
+                    decoder = diag(tr.normalizationByBasisNonNaN) * decoder;
                 end
                 
                 % then handle decoder projection

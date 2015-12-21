@@ -397,8 +397,10 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             for iSource = 1:pset.nAlignSummaryData
                 prog.update(iSource);
                 for iAlign = 1:pset.nAlign
-                    b.alignSummaryData{iSource, iAlign} = b.alignSummaryData{iSource, iAlign}.combineSetsOfConditions(...
-                        b.conditionDescriptor, conditionIdxSetsTensor(:));
+                    if ~isempty(b.alignSummaryData{iSource, iAlign})
+                        b.alignSummaryData{iSource, iAlign} = b.alignSummaryData{iSource, iAlign}.combineSetsOfConditions(...
+                            b.conditionDescriptor, conditionIdxSetsTensor(:));
+                    end
                 end
             end
             prog.finish();
@@ -418,6 +420,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             p.parse(varargin{:});
             
+            assert(PopulationTrajectorySet.checkSameBasesValid(psetCell{:}), ...
+                'Psets being concatenated do not have the same .basisValid. Use PopulationTrajectorySet.equalizeBasesValid first');
             pset = psetCell{1};
             
             b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
@@ -481,6 +485,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             prog = ProgressBar(pset.nBases, 'Aggregating AlignSummary by basis');
             for iBasis = 1:pset.nBases
                 prog.update(iBasis);
+                if ~pset.basisValid(iBasis)
+                    continue;
+                end
                 for iAlign = 1:pset.nAlign
                     clear alignSummarySet;
                     for iP = numel(psetCell):-1:1

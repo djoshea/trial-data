@@ -18,12 +18,21 @@ classdef StateSpaceTranslationNormalization
         normalizationDescription = '';
     end
     
-    properties(Dependent)
+    properties(Dependent,SetAccess=protected)
         nBases
         
         isTranslation
         
         isNormalization
+
+        % this is a shortcut to ~isnan(translationByBasis) & ~isnan(normalizationByBasis)
+        % it's primary use is to ensure consistency when taken from one
+        % pset and applied to another pset which doesn't have the same set
+        % of baes marked valid 
+        basisValid 
+        
+        translationByBasisNonNaN % replace NaN with 0
+        normalizationByBasisNonNaN % replace NaN with 0
     end
     
     methods(Access=protected) % don't call constructor, use factory methods
@@ -43,6 +52,20 @@ classdef StateSpaceTranslationNormalization
         
         function tf = get.isNormalization(obj)
             tf = any(obj.normalizationByBasis ~= 1);
+        end
+        
+        function mask = get.basisValid(obj)
+            mask = ~isnan(obj.translationByBasis) & ~isnan(obj.normalizationByBasis);
+        end
+            
+        function t = get.translationByBasisNonNaN(obj)
+            t = obj.translationByBasis;
+            t(isnan(t)) = 0;
+        end
+           
+        function n = get.normalizationByBasisNonNaN(obj)
+            n = obj.normalizationByBasis;
+            n(isnan(n)) = 0;
         end
     end
     
@@ -117,6 +140,12 @@ classdef StateSpaceTranslationNormalization
             obj.warnIfNoArgOut(nargout);
             obj.translationByBasis = obj.translationByBasis(mask);
             obj.normalizationByBasis = obj.normalizationByBasis(mask);
+        end
+        
+        function obj = setBasesInvalid(obj, mask)
+            obj.warnIfNoArgOut(nargout);
+            obj.translationByBasis(mask) = NaN;
+            obj.normalizationByBasis(mask) = NaN;
         end
         
         function obj = combineWith(obj, varargin)
