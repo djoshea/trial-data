@@ -146,7 +146,7 @@ classdef TrialData
             % validate and replace missing values, update data classes
             % inside channelDescriptors
             [data, td.channelDescriptorsByName] = td.validateData(data, td.channelDescriptorsByName, 'suppressWarnings', p.Results.suppressWarnings);
-            td.data = data;
+            td.data = makecol(data);
 
             td.manualValid = truevec(td.nTrials);
             td.initialized = true;
@@ -816,6 +816,13 @@ classdef TrialData
     
     methods % Analog channel methods
         function td = addAnalog(td, name, varargin)
+            % td = td.addAnalog(td, name, values, times)
+            % values may be cell of vectors or matrix with each row
+            % corresponding to each trial.
+            % times may be cell of vectors or single vector (for the matrix
+            % values). Alternatively, times may be blank, and then the
+            % parameter 'timeField' can specify which time field in which
+            % to find the times for this channel
             p = inputParser();
             p.addOptional('values', {}, @(x) iscell(x) || ismatrix(x));
             p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x)); % char or time cell
@@ -839,6 +846,23 @@ classdef TrialData
                 times = [];
             else
                 timeField = p.Results.timeField;
+            end
+            
+            % handle the case where values is sent in as NaNs
+            if ismatrix(values) && ~isempty(values)
+                assert(size(values, 1) == td.nTrials, 'Data matrix must be size nTrials along first dimension');
+                
+                % strip nans from values and times together
+                if ~isempty(times)
+                    if isvector(times)
+                        % same time vector for each row
+                        [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times), makecol(1:td.nTrials), 'UniformOutput', false);
+                    else
+                        [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
+                    end
+                else
+                    values = arrayfun(@(idx) removenan(values(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
+                end
             end
             
             % times can either be a field/channel name, or it can be raw
@@ -868,7 +892,8 @@ classdef TrialData
                     error('Time vector or cell of vectors must be passed in when not referencing an existing timeField');
                 end
             else
-                % times were provided, we'll set the field value
+                % times were provided
+                % we'll set the field value for the new times field
                 
                 if isempty(timeField)
                     % generate unique time field name
@@ -892,19 +917,21 @@ classdef TrialData
             else
                 cd = AnalogChannelDescriptor.buildVectorAnalogFromValues(name, timeField, units, td.timeUnitName, values, times);
             end
-%             if ~isempty(values)
-%                 cd = cd.inferAttributesFromData(values, times);
-%             end
             
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;
             
-            % AnalogChannelDescriptor declares data fields as data, times
             td = td.addChannel(cd);
             
             if ~isempty(values)
                 td = td.setAnalog(name, values, times, ...
                     'clearForInvalid', p.Results.clearForInvalid, 'isAligned', p.Results.isAligned);
+            end
+            
+            function [t, v] = removenanBoth(t, v)
+                m = ~isnan(t) & ~isnan(v);
+                t = t(m);
+                v = v(m);
             end
         end
         
@@ -1077,6 +1104,8 @@ classdef TrialData
             
             % do scaling and convert to double
             data = cd.convertDataCellOnAccess(1, data);
+            
+            data = makecol(data);
         end
         
         % same as raw, except empty out invalid trials

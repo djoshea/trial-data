@@ -1439,6 +1439,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('tvec', [], @isvector);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.parse(varargin{:});
 
             if ischar(name)
@@ -1469,8 +1470,8 @@ classdef TrialDataConditionAlign < TrialData
             % interpolate to common time vector
             % mat is nTrials x nTime
             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-                'timeDelta', timeDelta, 'timeReference', 0, 'tvec', p.Results.tvec);
-            
+                'timeDelta', timeDelta, 'timeReference', 0, 'tvec', p.Results.tvec, ...
+                'interpolate', true, 'interpolateMethod', p.Results.interpolateMethod);
         end
         
         function [mat, tvec, alignIdx] = getAnalogAsMatrixEachAlign(td, name, varargin)
@@ -2572,6 +2573,11 @@ classdef TrialDataConditionAlign < TrialData
             timesCell = cellfun(@(times, mask) times(mask), timesCell, maskCell, 'UniformOutput', false);
         end
         
+        function [wavesCell, waveTvec, timesCell] = getSpikeWaveformsGrouped(td, unitName, varargin)
+            [wavesCell, waveTvec, timesCell] = td.getSpikeWaveforms(unitName, varargin{:});
+            [wavesCell, timesCell] = td.groupElements(wavesCell, timesCell);
+        end
+        
         function plotSpikeWaveforms(td, unitName, varargin)
             p = inputParser();
             p.addParameter('maxToPlot', 200, @isscalar);
@@ -2591,7 +2597,7 @@ classdef TrialDataConditionAlign < TrialData
             
             if ~isempty(p.Results.color)
                colormap = AppearanceSpec.convertColor(p.Results.color);
-            elseif isa(p.Result.colormap, 'function_handle')
+            elseif isa(p.Results.colormap, 'function_handle')
                 colormap = p.Results.colormap(numel(unitName));
             else
                 colormap = p.Results.colormap;
@@ -2779,7 +2785,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('conditionIdx', 1:td.nConditions, @isvector);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
-            p.addParameter('colorSpikes', false, @islogical);
+            p.addParameter('spikeColor', 'k', @(x) true);
+            p.addParameter('colorSpikesLikeCondition', false, @islogical);
             p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
@@ -2800,6 +2807,11 @@ classdef TrialDataConditionAlign < TrialData
             % shade start:stop intervals in gray to show valid time interval
             p.addParameter('shadeValidIntervals', false, @islogical);
             
+            % if true, draw spike waveforms instead of ticks
+            p.addParameter('drawSpikeWaveforms', false, @islogical);
+            p.addParameter('spikeWaveformScaleHeight', 1, @isscalar);
+            p.addParameter('spikeWaveformScaleTime', 1, @isscalar);
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2818,6 +2830,9 @@ classdef TrialDataConditionAlign < TrialData
             nAlignUsed = numel(alignIdx);
             
             timesByAlign = cell(nAlignUsed, nConditionsUsed);
+            if p.Results.drawSpikeWaveforms
+                wavesByAlign = cell(nAlignUsed, nConditionsUsed);
+            end
             
             % compute x-axis offsets for each align
             timePointsCell = cell(nAlignUsed, 1);
@@ -2828,6 +2843,11 @@ classdef TrialDataConditionAlign < TrialData
                 % get grouped spike times by alignment
                 thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName);
                 timesByAlign(iAlign, :) = thisC(:);
+                
+                if p.Results.drawSpikeWaveforms
+                    [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitName);
+                    wavesByAlign(iAlign, :) = wavesC(:);
+                end
                 
                 % figure out time validity window for this alignment
                 % TODO might want to update this for the selected
@@ -2876,19 +2896,15 @@ classdef TrialDataConditionAlign < TrialData
             yLimsByCondition = nan(2, nConditionsUsed);
             currentOffset = 0;
             lastTrialCount = 0;
-            for iC = 1:nConditionsUsed
-                yOffsetByCondition(iC) = currentOffset;
-                yLimsByCondition(:, iC) = [currentOffset; currentOffset-trialCounts(iC)];
+            for iC = nConditionsUsed:-1:1
+                yOffsetByCondition(iC) = currentOffset + trialCounts(iC);
+                yLimsByCondition(:, iC) = [currentOffset; currentOffset + trialCounts(iC)];
                 if trialCounts(iC) > 0
-                    currentOffset = currentOffset - trialCounts(iC) - gap;
+                    currentOffset = currentOffset + trialCounts(iC) + gap;
                     lastTrialCount = trialCounts(iC);
                 end
             end
-            % shift to lie entirely above y = 0
-            delta = - min(yOffsetByCondition) + lastTrialCount;
-            yOffsetByCondition = yOffsetByCondition + delta;
-            yLimsByCondition = yLimsByCondition + delta;
-           
+
             % draw marks and intervals on each raster
             if p.Results.annotateAboveEachCondition
                 if p.Results.annotateUsingFirstTrialEachCondition
@@ -2938,20 +2954,47 @@ classdef TrialDataConditionAlign < TrialData
             end
             %set(gcf, 'Renderer', 'painters');
             
+            % if we're drawing waveforms, figure out the global scale and
+            % offset so that fit within a unit height row
+            if p.Results.drawSpikeWaveforms
+                [maxW, minW] = deal(nan(nAlignUsed, nConditionsUsed));
+                for iA = 1:nAlignUsed
+                    for iC = 1:nConditionsUsed
+                        waves = cat(1, wavesByAlign{iA, iC}{listByConditionMask{iC}});
+                        maxW(iA, iC) = nanmax(waves(:));
+                        minW(iA, iC) = nanmin(waves(:));
+                    end
+                end
+                
+                maxW = nanmax(maxW(:));
+                minW = nanmin(minW(:));
+                waveScale = 1 / (maxW - minW) * p.Results.spikeWaveformScaleHeight;
+            end
+            
             % draw tick rasters in a grid pattern (conditions vertically,
             % aligns horizontally)
             for iAlign = 1:nAlignUsed
                 for iC = 1:nConditionsUsed
                     app = td.conditionAppearances(conditionIdx(iC));
-                    if p.Results.colorSpikes
+                    if p.Results.colorSpikesLikeCondition
                         color = app.Color;
                     else
-                        color = 'k';
+                        color = p.Results.spikeColor;
                     end
-                        
-                    TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC}(listByConditionMask{iC}), ...
-                        'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
-                        'color', color);
+                       
+                    if p.Results.drawSpikeWaveforms
+                        % draw waveforms in lieu of ticks
+                            TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC}(listByConditionMask{iC}), ...
+                            'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
+                            'color', color, ...
+                            'waveCell', wavesByAlign{iAlign, iC}(listByConditionMask{iC}), 'waveformTimeRelative', wavesTvec, ...
+                            'waveScaleHeight', waveScale, 'waveScaleTime', p.Results.spikeWaveformScaleTime);
+                    else
+                        % draw vertical ticks
+                        TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC}(listByConditionMask{iC}), ...
+                            'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
+                            'color', color);
+                    end
                     hold(axh, 'on');
                 end
             end

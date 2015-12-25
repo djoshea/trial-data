@@ -745,6 +745,10 @@ classdef AlignDescriptor
             ad.truncateBeforeEventsIndex{end+1} = index;
             ad.truncateBeforeOffsets(end+1) = offset;
 
+            ad.truncateBeforeEvents = makecol(ad.truncateBeforeEvents);
+            ad.truncateBeforeEventsIndex = makecol(ad.truncateBeforeEventsIndex);
+            ad.truncateBeforeOffsets = makecol(ad.truncateBeforeOffsets);
+            
             ad = ad.update();
         end
 
@@ -765,6 +769,10 @@ classdef AlignDescriptor
             ad.truncateAfterEvents{end+1} = eventName;
             ad.truncateAfterEventsIndex{end+1} = index;
             ad.truncateAfterOffsets(end+1) = offset;
+            
+            ad.truncateAfterEvents = makecol(ad.truncateAfterEvents);
+            ad.truncateAfterEventsIndex = makecol(ad.truncateAfterEventsIndex);
+            ad.truncateAfterOffsets = makecol(ad.truncateAfterOffsets);
 
             ad = ad.update();
         end
@@ -786,6 +794,10 @@ classdef AlignDescriptor
             ad.invalidateEvents{end+1} = eventName;
             ad.invalidateEventsIndex{end+1} = index;
             ad.invalidateOffsets(end+1) = offset;
+            
+            ad.invalidateEvents = makecol(ad.invalidateEvents);
+            ad.invalidateEventsIndex = makecol(ad.invalidateEventsIndex);
+            ad.invalidateOffsets = makecol(ad.invalidateOffsets);
 
             ad = ad.update();
         end

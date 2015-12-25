@@ -19,6 +19,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         sortMethod = '';
         
         sortQualityEachTrialField = '';
+        
+        spikeThreshold = []; % set if known, otherwise this will be estimated from the waveforms
     end
     
     properties(SetAccess=protected)
