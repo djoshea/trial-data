@@ -1814,6 +1814,29 @@ classdef TrialData
             end
         end
         
+        function td = copyChannel(td, oldName, newName)
+            % copy channel oldName to newName
+            td.warnIfNoArgOut(nargout); 
+            
+            alreadyHasChannel = td.hasChannel(newName);
+            if alreadyHasChannel
+                warning('Overwriting existing channel with name %s', newName);
+                td = td.dropChannels(newName);
+            end
+
+            % ask the channel descriptor to rename itself and store the copy
+            [cd, dataFieldRenameMap] = td.channelDescriptorsByName.(oldName).rename(newName);            
+            td.channelDescriptorsByName.(newName) = cd;
+            
+            % then copy changed channel fields
+            flds = fieldnames(dataFieldRenameMap);
+            for iF = 1:numel(flds)
+                oldField = flds{iF};
+                newField = dataFieldRenameMap.(oldField);
+                td = td.renameDataField(oldField, newField, oldName, true); % rename but make a copy
+            end
+        end
+        
         function td = renameChannel(td, oldName, newName)
             % rename channel name to newName
             % if channel name's primary data field is also name, rename
@@ -1834,7 +1857,7 @@ classdef TrialData
             end
         end
         
-        function td = renameDataField(td, field, newFieldName, ignoreChannelList)
+        function td = renameDataField(td, field, newFieldName, ignoreChannelList, copy)
            % rename field number fieldIdx of channel name to newFieldName
            % if that field is shared by a channel not in ignoreChannelList, make a copy
            td.warnIfNoArgOut(nargout); 
@@ -1842,9 +1865,13 @@ classdef TrialData
            if nargin < 4
                ignoreChannelList = {};
            end
+           
+           if nargin < 5
+               copy = false;
+           end
 
            otherChannels = setdiff(td.getChannelsReferencingFields(field), ignoreChannelList);
-           if ~isempty(otherChannels)
+           if ~isempty(otherChannels) || copy
                % being used by other channels, make a copy
                td.data = copyStructField(td.data, td.data, field, newFieldName);
            else
