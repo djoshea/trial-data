@@ -60,7 +60,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 cd.originalDataClassByField = {cls};
 
                 if scalar
-                    if strcmp(cls, 'logical')
+                    if strcmp(cls, 'logical') || (strcmp(cls, 'uint8') && all(ismember(x, uint8([0 1]))))
                         cd.elementTypeByField = cd.BOOLEAN;
                     else
                         cd.elementTypeByField = cd.SCALAR;
