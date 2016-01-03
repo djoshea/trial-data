@@ -798,6 +798,7 @@ classdef AlignSummary
                 info(counter).maxByCondition = zeros(nConditions, 1);
                 info(counter).appear = ad.zeroAppear;
                 info(counter).fixed = true;
+                info(counter).occurrence = 1;
                 
                 counter = counter + 1;
             end
@@ -816,6 +817,7 @@ classdef AlignSummary
                     info(counter).maxByCondition = as.markMaxByCondition{iMark}(:, iOccur);
                     info(counter).appear = ad.markAppear{iMark};
                     info(counter).fixed = ad.isMarkFixedTime(iMark);
+                    info(counter).occurrence = iOccur;
                 
                     counter = counter + 1;
                 end
@@ -861,6 +863,7 @@ classdef AlignSummary
                     info(counter).stopMaxByCondition = as.intervalStopMaxByCondition{iInterval}(:, iOccur);
                     info(counter).appear = ad.intervalAppear{iInterval};
                     info(counter).fixed = ad.isIntervalFixedTime(iInterval);
+                    info(counter).occurrence = iOccur;
                     
                     if isempty(info(counter).appear)
                         info(counter).appear = AppearanceSpec();
@@ -888,6 +891,7 @@ classdef AlignSummary
             p.addParameter('tUnits', 'ms', @ischar); % units for time
             p.addParameter('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
             p.addParameter('showMarks', true, @islogical);
+            p.addParameter('labelFirstMarkOnly', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('allowedRange', 0, @isscalar); % allowed size of min - max range before surrounding label with < >
             p.parse(varargin{:});
@@ -963,7 +967,12 @@ classdef AlignSummary
                             end
                             cvec = ii.appear.Color;
                             errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
-                            au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, ii.name, ...
+                            if ii.occurrence == 1 || ~p.Results.labelFirstMarkOnly
+                                name = ii.name;
+                            else
+                                name = '';
+                            end
+                            au.addIntervalX([ii.startTime, ii.stopTime] + xOffset, name, ...
                                 'errorInterval', errorInterval, 'errorIntervalColor', errorColor, ...
                                 'color', cvec, ...
                                 'textOffsetX', ii.appear.TextOffsetX, ...
@@ -987,7 +996,12 @@ classdef AlignSummary
                             end
                             cvec = li.appear.Color;
                             errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
-                            au.addMarkerX(li.time + xOffset, li.name, ...
+                            if li.occurrence == 1 || ~p.Results.labelFirstMarkOnly
+                                name = li.name;
+                            else
+                                name = '';
+                            end
+                            au.addMarkerX(li.time + xOffset, name, ...
                                 'interval', errorInterval, ...
                                 'markerColor', cvec, 'intervalColor', errorColor, ...
                                 'textOffsetX', li.appear.TextOffsetX, ...

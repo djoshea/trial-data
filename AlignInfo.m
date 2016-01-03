@@ -1144,6 +1144,8 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('data', [], @(x) isnumeric(x) || iscell(x));
             p.addParameter('axh', gca, @ishandle);
             p.addParameter('tOffsetZero', 0, @isscalar);
+            p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showIntervals', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 4, @isscalar);
             p.addParameter('intervalThickness', 3, @isscalar);
@@ -1178,133 +1180,141 @@ classdef AlignInfo < AlignDescriptor
             end
 
             % plot intervals
-            hIntervals = cell(ad.nIntervals, 1);
-            nOccurByInterval = ad.intervalMaxCounts;
-            [intStartData, intStopData] = ad.getAlignedIntervalData();
-            for iInterval = 1:ad.nIntervals
-                if ~ad.intervalShowOnData(iInterval), continue, end
+            if p.Results.showIntervals
+                hIntervals = cell(ad.nIntervals, 1);
+                nOccurByInterval = ad.intervalMaxCounts;
+                [intStartData, intStopData] = ad.getAlignedIntervalData();
+                for iInterval = 1:ad.nIntervals
+                    if ~ad.intervalShowOnData(iInterval), continue, end
 
-                % gather mark locations
-                % nOccur x nTrials cell of T x D data in interval
-                intLoc = cell(nOccurByInterval(iInterval), N);
+                    % gather mark locations
+                    % nOccur x nTrials cell of T x D data in interval
+                    intLoc = cell(nOccurByInterval(iInterval), N);
 
-                for iTrial = 1:N
-                    % filter by the time window specified (for this trial)
-                    tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
-                    tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
+                    for iTrial = 1:N
+                        % filter by the time window specified (for this trial)
+                        tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
+                        tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
 
-                    % tvec should T vector, dmat should be T x D
-                    if iscell(time)
-                        tvec = time{iTrial};
+                        % tvec should T vector, dmat should be T x D
+                        if iscell(time)
+                            tvec = time{iTrial};
+                        else
+                            tvec = time;
+                        end
+                        if iscell(data)
+                            dmat = data{iTrial};
+                        else
+                            % data is N x T x D matrix
+                            dmat = TensorUtils.squeezeDims(data(iTrial, :, :), 1);
+                        end
+
+                        % constrain the time window to the interval being
+                        % plotted as defined by tvec
+                        valid = ~isnan(tStart) & ~isnan(tStop);
+                        valid(tStart > max(tvec)) = false;
+                        valid(tStop < min(tvec)) = false;
+
+                        if ~any(valid), continue; end
+
+                        tStart(tStart < min(tvec)) = min(tvec);
+                        tStop(tStop > max(tvec)) = max(tvec);
+
+                         % and slice the interval location
+                        % tStart, tStop is nOccur x 1
+                        % dError will be nOccur cell with T x D values
+                        dInterval = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
+                        intLoc(:, iTrial) = dInterval;
+                    end
+
+                     % add the time offset if plotting against time
+                    if D == 1
+                        for i = 1:numel(intLoc)
+                            if isempty(intLoc{i}), continue; end;
+                            intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
+                        end
+                    end
+
+                    app = ad.intervalAppear{iInterval};
+
+                    hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
+                        app, p.Results.intervalThickness, p.Results.markAlpha);
+                    if p.Results.showInLegend
+                        TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
                     else
-                        tvec = time;
-                    end
-                    if iscell(data)
-                        dmat = data{iTrial};
-                    else
-                        % data is N x T x D matrix
-                        dmat = TensorUtils.squeezeDims(data(iTrial, :, :), 1);
-                    end
-
-                    % constrain the time window to the interval being
-                    % plotted as defined by tvec
-                    valid = ~isnan(tStart) & ~isnan(tStop);
-                    valid(tStart > max(tvec)) = false;
-                    valid(tStop < min(tvec)) = false;
-
-                    if ~any(valid), continue; end
-
-                    tStart(tStart < min(tvec)) = min(tvec);
-                    tStop(tStop > max(tvec)) = max(tvec);
-
-                     % and slice the interval location
-                    % tStart, tStop is nOccur x 1
-                    % dError will be nOccur cell with T x D values
-                    dInterval = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(tvec, dmat, tStart, tStop);
-                    intLoc(:, iTrial) = dInterval;
-                end
-
-                 % add the time offset if plotting against time
-                if D == 1
-                    for i = 1:numel(intLoc)
-                        if isempty(intLoc{i}), continue; end;
-                        intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
+                        TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
                     end
                 end
-
-                app = ad.intervalAppear{iInterval};
-
-                hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
-                    app, p.Results.intervalThickness, p.Results.markAlpha);
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
-                end
+            else
+                hIntervals = {};
             end
+            
+            if p.Results.showMarks
+                % plot marks
+                hMarks = cell(ad.nMarks, 1);
+                for iMark = 1:ad.nMarks
+                    if ~ad.markShowOnData(iMark), continue, end
 
-            % plot marks
-            hMarks = cell(ad.nMarks, 1);
-            for iMark = 1:ad.nMarks
-                if ~ad.markShowOnData(iMark), continue, end
+                    % gather mark locations
+                    % nOccur x D x N
+                    markLoc = nan(nOccurByMark(iMark), max(2, D), N);
 
-                % gather mark locations
-                % nOccur x D x N
-                markLoc = nan(nOccurByMark(iMark), max(2, D), N);
+                    for t = 1:N
+                        % get the mark times on this trial
+                        tMark = markData{iMark}(trialIdx(t), :);
 
-                for t = 1:N
-                    % get the mark times on this trial
-                    tMark = markData{iMark}(trialIdx(t));
+                        if iscell(time)
+                            tvec = time{t};
+                        else
+                            tvec = time;
+                        end
+                        if iscell(data)
+                            dmat = data{t};
+                        else
+                            % data is N x T x D matrix
+                            dmat = TensorUtils.squeezeDims(data(t, :, :), 1);
+                        end
+                        % tvec should T vector, dmat should be T x D
 
-                    if iscell(time)
-                        tvec = time{t};
+                        % filter by the time window specified (for this trial)
+                        maskInvalid = tMark < min(tvec) | tMark > max(tvec);
+                        tMark(maskInvalid) = NaN;
+
+                        if all(isnan(tMark))
+                            % none found in this time window for this condition
+                            continue;
+                        end
+                        if isempty(dmat)
+                            continue;
+                        end
+
+                        % dMean will be nOccurThisTrial x max(2,D)
+                        % since time will become dMean(:, 1, :) if D == 1
+                        dMark = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(tvec, dmat, tMark);
+
+                        markLoc(1:size(dMark, 1), :, t) = dMark;
+                    end
+
+                    % add the time offset to time column if plotting against time
+                    if D == 1
+                        markLoc(:, 1, :) = markLoc(:, 1, :) + tOffsetZero;
+                    end
+
+                    app = ad.markAppear{iMark};
+
+                    % plot mark and provide legend hint
+                    hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
+                        p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
+
+                    if p.Results.showInLegend
+                        TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
+                        TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
                     else
-                        tvec = time;
+                        TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
                     end
-                    if iscell(data)
-                        dmat = data{t};
-                    else
-                        % data is N x T x D matrix
-                        dmat = TensorUtils.squeezeDims(data(t, :, :), 1);
-                    end
-                    % tvec should T vector, dmat should be T x D
-
-                    % filter by the time window specified (for this trial)
-                    maskInvalid = tMark < min(tvec) | tMark > max(tvec);
-                    tMark(maskInvalid) = NaN;
-
-                    if all(isnan(tMark))
-                        % none found in this time window for this condition
-                        continue;
-                    end
-                    if isempty(dmat)
-                        continue;
-                    end
-
-                    % dMean will be nOccurThisTrial x max(2,D)
-                    % since time will become dMean(:, 1, :) if D == 1
-                    dMark = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(tvec, dmat, tMark);
-
-                    markLoc(1:size(dMark, 1), :, t) = dMark;
                 end
-
-                % add the time offset to time column if plotting against time
-                if D == 1
-                    markLoc(:, 1, :) = markLoc(:, 1, :) + tOffsetZero;
-                end
-
-                app = ad.markAppear{iMark};
-
-                % plot mark and provide legend hint
-                hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
-                    p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
-
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
-                end
+            else
+                hMarks = {};
             end
         end
 
