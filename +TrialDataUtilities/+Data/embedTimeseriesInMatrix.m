@@ -26,20 +26,22 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %       timestamps, which can result from rounding and breaks the
 %       monotonicity required by interpolation
 %
+%    interpolateMethod: string. See interp1 help for description of 
+%       interpolation methods. default = 'pchip'.
+%
+
+% no longer used:
 %    interpolate: boolean. if false, it will be assumed that the timeStamps
 %       within each dataCell have consistent spacing and each timestamp lies
 %       an integer multiple away from timeReference. If true, data samples
 %       will be interpolated to timestamps which satisfy this requirement.
 %       default = true.
-%
-%    interpolateMethod: string. See interp1 help for description of 
-%       interpolation methods. default = 'linear'.
 
     p = inputParser();
     p.addRequired('dataCell', @(x) iscell(x));
     p.addRequired('timeCell', @(x) iscell(x));
     p.addParamValue('tvec', [], @(x) isempty(x) || isvector(x));
-    p.addParamValue('interpolateMethod', 'linear', @ischar);
+    p.addParamValue('interpolateMethod', 'pchip', @ischar);
     p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
     p.addParamValue('timeDelta', [], @isscalar);
     p.addParamValue('timeReference', 0, @isscalar);
@@ -108,7 +110,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         for i = 1:N
             if ~isnan(indStart(i,c)) && ~isnan(indStop(i,c))
                 if numel(indStart(i,c):indStop(i,c)) > 1
-                    mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}, dataCell{i, c}, ...
+                    mask = ~isnan(dataCell{i, c});
+                    mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}(mask), dataCell{i, c}(mask), ...
                         tvec(indStart(i,c):indStop(i,c)), p.Results.interpolateMethod, 'extrap');
                 else
                     mat(i, indStart(i,c), c) = dataCell{i, c};
