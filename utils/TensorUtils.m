@@ -352,7 +352,11 @@ classdef TensorUtils
             inflatedSize(dims) = nInflatedVec;
             
             if nargin < 4
-                fillWith = NaN;
+                if iscell(maskedTensor)
+                    fillWith = {[]};
+                else
+                    fillWith = NaN;
+                end
             end
             inflated = repmat(fillWith, inflatedSize);
             
