@@ -28,13 +28,21 @@ function setupAxisForChannel(channelDescriptor, varargin)
         useLabel = false;
         useScaleBar = true;
         useAutoAxis = true;
+        useTickBridge = false;
     elseif strcmp(p.Results.style, 'tickBridge')
         useLabel = true;
         useScaleBar = false;
+        useTickBridge = true;
+    elseif strcmp(p.Results.style, 'tickBridgeScaleBar')
+        useLabel = true;
+        useScaleBar = true;
+        useAutoAxis = true;
+        useTickBridge = true;
     elseif strcmp(p.Results.style, 'none')
         useLabel = false;
         useScaleBar = false;
         useAutoAxis = false;
+        useTickBridge = false;
     else
         error('Invalid axis style %s', p.Results.style);
     end
@@ -47,13 +55,13 @@ function setupAxisForChannel(channelDescriptor, varargin)
         switch which
             case 'x'
                 xlabel(axh, label);
-                set(get(axh, 'XLabel'), 'Visible', 'on');
+                set(get(axh, 'XLabel'), 'Visible', 'on', 'Interpreter', 'none');
             case 'y'
                 ylabel(axh, label);
-                set(get(axh, 'YLabel'), 'Visible', 'on');
+                set(get(axh, 'YLabel'), 'Visible', 'on', 'Interpreter', 'none');
             case 'z'
                 zlabel(axh, label);
-                set(get(axh, 'ZLabel'), 'Visible', 'on');s
+                set(get(axh, 'ZLabel'), 'Visible', 'on', 'Interpreter', 'none');
         end
     end
     
@@ -67,14 +75,16 @@ function setupAxisForChannel(channelDescriptor, varargin)
             au.xUnits = units;
             if useScaleBar
                 au.addAutoScaleBarX();
-            else
+            end
+            if useTickBridge
                 au.addAutoAxisX();
             end
         case 'y'
             au.yUnits = units;
             if useScaleBar
                 au.addAutoScaleBarY();
-            else
+            end
+            if useTickBridge
                 au.addAutoAxisY();
             end
     end
