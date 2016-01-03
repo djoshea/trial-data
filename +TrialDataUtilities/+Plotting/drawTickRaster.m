@@ -28,12 +28,17 @@ function hLine = drawTickRaster(timesCell, varargin)
         
         [waveYByTrial, waveTByTrial] = cellvec(nTrials);
         for iE = 1:nTrials
-            waves = (p.Results.waveCell{iE} - nanmin(p.Results.waveCell{iE}(:))) * p.Results.waveScaleHeight - rowHeight*(iE-1);
-            tvecMat = bsxfun(@plus, repmat(tvec, size(waves, 1), 1), timesCell{iE});
-            % cat the waveforms into one long column with NaNs inserted
-            % between
-            waveYByTrial{iE} = TensorUtils.flatten(cat(2, waves,   nan(size(waves, 1),1) )');
-            waveTByTrial{iE} = TensorUtils.flatten(cat(2, tvecMat, nan(size(waves, 1),1) )');
+            if isempty(p.Results.waveCell{iE})
+                waveYByTrial{iE} = zeros(0, 1);
+                waveTByTrial{iE} = zeros(0, 1);
+            else
+                waves = (p.Results.waveCell{iE} - nanmin(p.Results.waveCell{iE}(:))) * p.Results.waveScaleHeight - rowHeight*(iE-1);
+                tvecMat = bsxfun(@plus, repmat(tvec, size(waves, 1), 1), timesCell{iE});
+                % cat the waveforms into one long column with NaNs inserted
+                % between
+                waveYByTrial{iE} = TensorUtils.flatten(cat(2, waves,   nan(size(waves, 1),1) )');
+                waveTByTrial{iE} = TensorUtils.flatten(cat(2, tvecMat, nan(size(waves, 1),1) )');
+            end
         end
         
         X = cat(1, waveTByTrial{:}) + p.Results.xOffset;
