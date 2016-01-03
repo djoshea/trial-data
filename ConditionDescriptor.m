@@ -446,6 +446,11 @@ classdef ConditionDescriptor
                 attr = ci.axisAttributes{iX};
                 nv = ci.conditionsSize(iX);
                 vlStr = vlStrCell{iX};
+                if strcmp(vlStr, 'manual')
+                    filterStr = ' filter';
+                else
+                    filterStr = '';
+                end
                 randStr = randStrCell{iX}; 
                 if ~isempty(vlStr)
                     vlStr = [' ' vlStr]; %#ok<AGROW>
@@ -454,8 +459,8 @@ classdef ConditionDescriptor
                     randStr = [' ' randStr]; %#ok<AGROW>
                 end
                 if useColor
-                    desc{iX} = sprintf('{purple}%s {darkGray}(%d%s{bright red}%s{darkGray})', ...
-                        strjoin(attr, ' x '), nv, vlStr, randStr);
+                    desc{iX} = sprintf('{purple}%s {darkGray}(%d%s{bright red}%s%s{darkGray})', ...
+                        strjoin(attr, ' x '), nv, vlStr, filterStr, randStr);
                 else
                     desc{iX} = sprintf('%s (%d%s%s)', ...
                         strjoin(attr, ' x '), nv, vlStr, randStr);
@@ -636,13 +641,18 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
                 
-            if(numel(idx) == 1 && numel(ci.axisAttributes{idx}) == 1 && iscell(valueList) && ~isstruct(valueList{1}))
-                % for one axis with single attribute, valueList can simply be a cell
-                % array of values
-                %debug('Auto converting value list for single attribute axis\n');
-                valueCell = valueList;
-                if ~iscell(valueCell), valueCell = num2cell(valueCell); end;
-                valueList = struct(ci.axisAttributes{idx}{1}, valueCell);
+            if numel(idx) == 1 && numel(ci.axisAttributes{idx}) == 1
+                if isvector(valueList) && ~isstruct(valueList)
+                    valueList = num2cell(valueList);
+                end
+                if iscell(valueList) && ~isstruct(valueList{1})
+                    % for one axis with single attribute, valueList can simply be a cell
+                    % array of values
+                    %debug('Auto converting value list for single attribute axis\n');
+                    valueCell = valueList;
+                    if ~iscell(valueCell), valueCell = num2cell(valueCell); end;
+                    valueList = struct(ci.axisAttributes{idx}{1}, valueCell);
+                end
             end  
             
             assert(isstruct(valueList) && isvector(valueList), ....
@@ -1395,19 +1405,19 @@ classdef ConditionDescriptor
 
                 switch modes(i)
                     case ci.AttributeValueListManual
-                        suffix = sprintf('(%d)', nValues);
+                        suffix = sprintf('%d', nValues);
                     case ci.AttributeValueListAuto
-                        suffix = sprintf('(%d auto)', nValues);
+                        suffix = sprintf('%d auto', nValues);
                     case ci.AttributeValueBinsManual
-                        suffix = sprintf('(%d bins)', nValues);
+                        suffix = sprintf('%d bins', nValues);
                     case ci.AttributeValueBinsAutoUniform
-                        suffix = sprintf('(%d uniform-bins)', nAutoBins);
+                        suffix = sprintf('%d uniform-bins', nAutoBins);
                     case ci.AttributeValueBinsAutoQuantiles
-                        suffix = sprintf('(%d quantiles)', nAutoBins);
+                        suffix = sprintf('%d quantiles', nAutoBins);
                 end
                 
                 if isFilter(i)
-                    filterStr = ' [filter]';
+                    filterStr = ' filter';
                 else
                     filterStr = '';
                 end
@@ -1418,9 +1428,9 @@ classdef ConditionDescriptor
                     numericStr = '@';
                 end
                 if ~useColor
-                    desc{i} = sprintf('%s %s%s%s', name, numericStr, suffix, filterStr);
+                    desc{i} = sprintf('%s (%s%s%s)', name, numericStr, suffix, filterStr);
                 else
-                    desc{i} = sprintf('{purple}%s {darkGray}%s%s%s', name, numericStr, suffix, filterStr);
+                    desc{i} = sprintf('{purple}%s {darkGray}(%s%s{bright red}%s{darkGray})', name, numericStr, suffix, filterStr);
                 end
             end
         end 
