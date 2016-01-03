@@ -1439,7 +1439,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('tvec', [], @isvector);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
-            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('interpolateMethod', 'pchip', @ischar); % see interp1 for details
             p.parse(varargin{:});
 
             if ischar(name)
@@ -1688,7 +1688,7 @@ classdef TrialDataConditionAlign < TrialData
             % in order to normalize appropriately
             p = inputParser;
             p.addParameter('delta', [], @isscalar);
-            p.addParameter('interpolationMethod', 'linear', @ischar);
+            p.addParameter('interpolationMethod', 'pchip', @ischar);
             p.addParameter('smoothing', 7, @(x) isscalar(x) && mod(x, 2) == 1);
             p.addParameter('order', 1, @isscalar);
             p.addParameter('polynomialOrder', 2, @isscalar);
@@ -1745,6 +1745,20 @@ classdef TrialDataConditionAlign < TrialData
             td.eventCounts = [];
             td = td.applyAlignInfoSet();
             
+        end
+        
+        function td = addEventByThresholdingAnalogChannel(td, eventChName, analogChName, level, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser;
+            p.addParameter('lockoutPeriod', 0, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [data, time] = td.getAnalog(analogChName);
+            thresholdTimes = TrialDataUtilities.Data.findThresholdCrossings(data, time, level, p.Results.lockoutPeriod);
+            
+            td = td.addEvent(eventChName, thresholdTimes, p.Unmatched);
         end
     end
 
@@ -2523,7 +2537,11 @@ classdef TrialDataConditionAlign < TrialData
             names = names(mask);
         end
         
-        function [names, units] = listSpikeChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+        function [names, units] = listSpikeChannelsOnArrayElectrode(td, arrayName, electrodeNum, varargin)
+            p = inputParser();
+            p.addParameter('ignoreZeroUnit', false, @islogical);
+            p.parse(varargin{:});
+            
             % [names, channelDescriptors] = getChannelsOnArrayElectrode(td, arrayName, electrodeNum)
             names = td.listSpikeChannels();
             units = nanvec(numel(names));
@@ -2534,6 +2552,9 @@ classdef TrialDataConditionAlign < TrialData
                 units(iC) = cd.unit;
             end
                 
+            if p.Results.ignoreZeroUnit
+                mask = mask & units ~= 0;
+            end
             names = names(mask);
             units = units(mask);
         end
@@ -2550,11 +2571,11 @@ classdef TrialDataConditionAlign < TrialData
             names = names(mask);
         end
         
-        function [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName)
+        function [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName, varargin)
             % [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName)
             % chName is spike channel or continuous neural channel name
             cd = td.channelDescriptorsByName.(chName);
-            [names, units] = td.listSpikeChannelsOnArrayElectrode(cd.array, cd.electrode);
+            [names, units] = td.listSpikeChannelsOnArrayElectrode(cd.array, cd.electrode, varargin{:});
         end
         
          function [names] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
@@ -2583,7 +2604,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('maxToPlot', 200, @isscalar);
             p.addParameter('alpha', 0.5, @isscalar);
             p.addParameter('color', [], @(x) true);
-            p.addParameter('colormap', @distinguishable_colors, @(x) isa(x, 'function_handle') || ismatrix(x));
+            p.addParameter('colormap', [], @(x) isa(x, 'function_handle') || ismatrix(x) || isempty(x));
             p.addParameter('showThreshold', false, @islogical);
             p.addParameter('showMean', false, @islogical);
             p.KeepUnmatched = true;
@@ -2594,21 +2615,30 @@ classdef TrialDataConditionAlign < TrialData
             if ~iscell(unitName)
                 unitName = {unitName};
             end
+            nUnits = numel(unitName);
             
             if ~isempty(p.Results.color)
                colormap = AppearanceSpec.convertColor(p.Results.color);
             elseif isa(p.Results.colormap, 'function_handle')
                 colormap = p.Results.colormap(numel(unitName));
+            elseif ~isempty(p.Results.colormap) && ismatrix(p.Results.colormap)
+                colormap = repmat(p.Results.colormap, ceil(nUnits / size(p.Results.colormap, 1)), 1);
+            elseif nUnits == 1
+                colormap = [0 0 0];
             else
-                colormap = p.Results.colormap;
+                colormap = distinguishable_colors(max(nUnits, 6));
             end
            
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
-            for iU = 1:numel(unitName)
+            for iU = 1:nUnits
                 [wavesCell, waveTvec] = td.getSpikeWaveforms(unitName{iU}, unmatched);
                 wavesMat = cat(1, wavesCell{:});
-                % wavesmat is nSamples x nSpikes;
+                % wavesmat is nSpikes x nSamples;
 
+                if isempty(wavesMat)
+                    continue;
+                end
+                
                 maxToPlot = p.Results.maxToPlot;
                 if maxToPlot < size(wavesMat, 1)
                     s = RandStream('mt19937ar','Seed',1);
@@ -2624,7 +2654,7 @@ classdef TrialDataConditionAlign < TrialData
                 hold on;
                 
                 if p.Results.showMean
-                    hMean(iU) = plot(waveTvec, nanmean(wavesMat, 2), '-', 'Parent', axh, ...
+                    hMean(iU) = plot(waveTvec, nanmean(wavesMat, 1), '-', 'Parent', axh, ...
                         'Color', colormap(iU, :), 'LineWidth', 2);
                 end
             end
@@ -2647,16 +2677,24 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function plotSpikeWaveformsWithOtherUnits(td, unitName, varargin)
-            otherUnits = setdiff(td.listSpikeChannelsOnSameArrayElectrodeAs(unitName), unitName);
+            p = inputParser();
+            p.addParameter('ignoreZeroUnit', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            otherUnits = setdiff(td.listSpikeChannelsOnSameArrayElectrodeAs(unitName), unitName, p.Results);
             unitNames = cat(1, otherUnits, unitName);
             cmap = [0.2*ones(numel(otherUnits), 3); 1, 0, 0];
             
-            td.plotSpikeWaveforms(unitNames, 'colormap', cmap, varargin{:});
+            td.plotSpikeWaveforms(unitNames, 'colormap', cmap, p.Unmatched);
         end
         
         function plotSpikeWaveformsOnSameElectrodeArrayAs(td, chName, varargin)
-            unitNames = td.listSpikeChannelsOnSameArrayElectrodeAs(chName);
-            td.plotSpikeWaveforms(unitNames, varargin{:});
+            p = inputParser();
+            p.addParameter('ignoreZeroUnit', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            unitNames = td.listSpikeChannelsOnSameArrayElectrodeAs(chName, p.Results);
+            td.plotSpikeWaveforms(unitNames, p.Unmatched);
         end
         
         function [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
@@ -2797,7 +2835,7 @@ classdef TrialDataConditionAlign < TrialData
             % for plotting interval and marks above each condition
             p.addParameter('annotateAboveEachCondition', false, @islogical);
             p.addParameter('annotationHeight', 2, @islogical);
-            p.addParameter('annotateUsingFirstTrialEachCondition', false, @islogical);
+            p.addParameter('annotateUsingFirstTrialEachCondition', true, @islogical);
             
             % make room for labels using AutoAxis
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
@@ -2961,6 +2999,9 @@ classdef TrialDataConditionAlign < TrialData
                 for iA = 1:nAlignUsed
                     for iC = 1:nConditionsUsed
                         waves = cat(1, wavesByAlign{iA, iC}{listByConditionMask{iC}});
+                        if isempty(waves)
+                            continue;
+                        end
                         maxW(iA, iC) = nanmax(waves(:));
                         minW(iA, iC) = nanmin(waves(:));
                     end
@@ -3155,8 +3196,17 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alignIdx', [], @isnumeric);
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.addParameter('alpha', 1, @isscalar);
+            
+            p.addParameter('markShowOnData', true, @islogical);
+            p.addParameter('markShowOnAxis', true, @islogical);
+            p.addParameter('markShowInLegend', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
-            p.addParameter('markSize', 5, @isscalar);
+            p.addParameter('markSize', 4, @isscalar);
+            
+            p.addParameter('intervalShowOnData', true, @islogical);
+            p.addParameter('intervalShowOnAxis', true, @islogical);
+            p.addParameter('intervalAlpha', 1, @isscalar);
+
             p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
@@ -3479,8 +3529,10 @@ classdef TrialDataConditionAlign < TrialData
                     
                     td.alignInfoSet{idxAlign}.drawOnDataByTrial('time', timeC, 'data', dataC, ...
                         'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
-                        'showInLegend', iCond == 1, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
-                        'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize);
+                        'showInLegend', p.Results.markShowInLegend && iCond == 1, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
+                        'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
+                        'showMarks', p.Results.markShowOnData, ...
+                        'showIntervals', p.Results.intervalShowOnData);
                 end
 
                 % setup time axis for this align
@@ -3875,7 +3927,7 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('markShowOnAxis', true, @islogical);
-            p.addParameter('markShowOnLegend', true, @islogical);
+            p.addParameter('markShowInLegend', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 4, @isscalar);
             
@@ -4083,7 +4135,7 @@ classdef TrialDataConditionAlign < TrialData
                         'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
                         'intervalAlpha', p.Results.intervalAlpha, ...
                         'showRanges', p.Results.showRangesOnData, ...
-                        'showInLegend', p.Results.markShowOnLegend', ...
+                        'showInLegend', p.Results.markShowInLegend', ...
                         'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
                 end
             end
