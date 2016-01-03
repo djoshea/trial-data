@@ -7,7 +7,11 @@ function threshEst = estimateThresholdFromSpikeWaveforms(tdca, chName, varargin)
 %     electrode as this channel. this is necessarily the case for when chName
 %     is a continuous neural channel
 
-spikeChList = tdca.listSpikeChannelsOnSameArrayElectrodeAs(chName);
+p = inputParser();
+p.addParameter('ignoreZeroUnit', false, @islogical);
+p.parse(varargin{:});
+            
+spikeChList = tdca.listSpikeChannelsOnSameArrayElectrodeAs(chName, 'ignoreZeroUnit', p.Results.ignoreZeroUnit);
 valAtThreshCell = cellvec(numel(spikeChList));
 
 for iC = 1:numel(spikeChList)

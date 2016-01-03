@@ -1,4 +1,4 @@
-function [timeCellByTrial, waveformsByTrial] = thresholdExtractSnippets(data, tvec, thresh, snippetWindow)
+function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractSnippets(data, time, thresh, snippetWindow)
 % [timeCellByTrial, waveformsByTrial] = thresholdExtractSnippets(data, thresh, snippetWindow)
 % either: 
 %   data is time x trials, time is vector
@@ -8,6 +8,7 @@ function [timeCellByTrial, waveformsByTrial] = thresholdExtractSnippets(data, tv
 % snippetWindow is [samplesPreCrossing, samplesPostCrossing]
 % total snippet
 % length will be sum(snippetWindow)
+% waveformsByTrial will be trials x 1 cell, each is nSpikes x nSamples
 
     if iscell(data)
         nTrials = numel(data);
@@ -38,6 +39,7 @@ function [timeCellByTrial, waveformsByTrial] = thresholdExtractSnippets(data, tv
     
     % ensure they are spaced by at least 1 waveform
     % loop through and extract snippets
+    idxCellByTrial = cell(nTrials, 1);
     timeCellByTrial = cell(nTrials, 1);
     waveformsByTrial = cell(nTrials, 1);
     prog = ProgressBar(nTrials, 'Extracting threhold crossings from continuous data');
@@ -46,7 +48,7 @@ function [timeCellByTrial, waveformsByTrial] = thresholdExtractSnippets(data, tv
         lastCrossing = -Inf;
         nCrossingsKept = 0;
         mask = true(size(crossings{iR}));
-        waveMat = nan(snippetLength, numel(crossings{iR}));
+        waveMat = nan(numel(crossings{iR}), snippetLength);
         
         if iscell(data)
             nTimeThisTrial = numel(data{iR});
@@ -64,15 +66,21 @@ function [timeCellByTrial, waveformsByTrial] = thresholdExtractSnippets(data, tv
                 lastCrossing = thisCross;
                 nCrossingsKept = nCrossingsKept + 1;
                 if iscell(data)
-                    waveMat(:, nCrossingsKept) = data{iR}(thisCross + (-snippetPre : snippetPost-1));
+                    waveMat(nCrossingsKept, :) = data{iR}(thisCross + (-snippetPre : snippetPost-1))';
                 else
-                    waveMat(:, nCrossingsKept) = data(thisCross + (-snippetPre : snippetPost-1), iR);
+                    waveMat(nCrossingsKept, :) = data(thisCross + (-snippetPre : snippetPost-1), iR)';
                 end
             end
         end
         
+        if iscell(time)
+            tvec = time{iR};
+        else
+            tvec = time;
+        end
+        idxCellByTrial{iR} = makecol(crossings{iR}(mask));
         timeCellByTrial{iR} = makecol(tvec(crossings{iR}(mask)));
-        waveformsByTrial{iR} = waveMat(:, 1:nCrossingsKept);
+        waveformsByTrial{iR} = waveMat(1:nCrossingsKept, :);
     end
     prog.finish();
 end
