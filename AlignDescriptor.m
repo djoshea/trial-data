@@ -661,6 +661,12 @@ classdef AlignDescriptor
             ad = ad.postUpdateInterval();
         end
         
+        function idx = findMarkByString(ad, str)
+            [eventName, index, offset] = ad.parseEventOffsetString(str, ...
+                'mark', 'defaultIndex', ':');
+            idx = ad.findMark(eventName, index, offset);
+        end
+        
         function idx = findMark(ad, eventName, index, offset)
             if ad.nMarks == 0
                 idx = [];
