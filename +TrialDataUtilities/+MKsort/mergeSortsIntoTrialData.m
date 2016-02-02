@@ -19,6 +19,8 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
         'TrialData has %d trials but sort data has %d trials', td.nTrials, exportMeta.nTrials);
     nTrials = td.nTrials;
 
+    td = td.reset();
+    
     td = td.dropChannels(td.listSpikeChannels());
 
     % build list of array/electrodes saved into waveform files
@@ -51,14 +53,14 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
         arrayName = exportMeta.arrayNames{arrayIdx};
 
         % for generating new channel names for these units
-        spikeChNameFn = @(unit) sprintf('%s%d_%d', arrayName, electrode, unit);
+        spikeChNameFn = @(unit) sprintf('%s%02d_%d', arrayName, electrode, unit);
 
         units = unique(w.units);
         if ~p.Results.keepUnsortedUnit
             units = setdiff(units, 0);
         end
 
-        if p.Results.useAlignedWaves
+        if p.Results.useAlignedWaves && ~isempty(w.alignedWaves)
             waves = w.alignedWaves;
         else
             waves = w.waves;
@@ -96,8 +98,8 @@ end
 function ratingsByTrial = convertRatingsByEpochToRatingsByTrial(unit, ratings, offsetsByTrial)
     ratingsByTrial = nanvec(numel(offsetsByTrial));
     for iR = 1:numel(ratings)
-        if isempty(ratings.epoch)
-            ratingsByTrial(:) = ratings.ratings(unit);
+        if isempty(ratings(iR).epoch)
+            ratingsByTrial(:) = ratings(iR).ratings(unit);
         else
             tStart = ratings(iR).epoch(1);
             tStop = ratings(iR).epoch(2);

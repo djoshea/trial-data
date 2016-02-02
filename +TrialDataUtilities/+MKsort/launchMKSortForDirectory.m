@@ -6,5 +6,5 @@ function launchMKSortForDirectory(d)
     set(h, 'CurrentAxes', handles.axMulti);
     handles.dataDir = d;
     mksort('loadDirectory', handles);
-    
+
 end
