@@ -412,7 +412,11 @@ classdef AlignInfo < AlignDescriptor
                     n = 1;
                 end
 
-                times = timesMat(:, n);
+                if n > size(timesMat, 2)
+                    times = nanvec(ad.nTrials);
+                else
+                    times = timesMat(:, n);
+                end
             end
 
             times = times + offset;
@@ -982,16 +986,7 @@ classdef AlignInfo < AlignDescriptor
             p.parse(varargin{:});
 
             singleTimepointTolerance = p.Results.singleTimepointTolerance;
-            if isnan(singleTimepointTolerance)
-                % if a single timepoint is requested, grab the closest
-                % sample in time provided it's within tolerance of the
-                % requested time.
-                % if no tolerance is provided, set it as twice the average
-                % sampling rate
-
-                singleTimepointTolerance = 2* nanmean(cellfun(@(times) nanmean(diff(times)), rawTimesCell));
-            end
-
+            
             if isempty(rawTimesCell)
                 alignedTimes = rawTimesCell;
                 rawTimesMask = rawTimesCell;
@@ -1020,6 +1015,16 @@ classdef AlignInfo < AlignDescriptor
                         % point if it's nearby
                         rawTimesMask{i} = falsevec(numel(raw));
                         [closestTime, closestIdx] = min(abs(raw - start(i)));
+                        
+                        if isnan(singleTimepointTolerance)
+                            % if a single timepoint is requested, grab the closest
+                            % sample in time provided it's within tolerance of the
+                            % requested time.
+                            % if no tolerance is provided, set it as twice the average
+                            % sampling rate
+
+                            singleTimepointTolerance = 2* nanmean(cellfun(@(times) nanmean(diff(times)), rawTimesCell));
+                        end
                         rawTimesMask{i}(closestIdx) = closestTime < singleTimepointTolerance;
                     else
                         % for time intervals, take only that interval
@@ -1027,6 +1032,47 @@ classdef AlignInfo < AlignDescriptor
                     end
                     alignedTimes{i} = raw(rawTimesMask{i}) - zero(i);
                 end
+            end
+        end
+        
+        function intervalCell = getAlignedIntervalCell(ad, intervalCell, includePadding)
+            % take data in interval cell (nTrials x 1) with nIntervals x 2
+            % start stop matrices inside
+            if nargin < 2
+                includePadding = false;
+            end
+            assert(numel(intervalCell) == ad.nTrials);
+            
+            if includePadding
+                start = ad.timeInfoValid.startPad;
+                stop = ad.timeInfoValid.stopPad;
+            else
+                start = ad.timeInfoValid.start;
+                stop = ad.timeInfoValid.stop;
+            end
+            zero = ad.timeInfoValid.zero;
+
+            for iT = 1:ad.nTrials
+                % filter the spikes within the window and recenter on zero
+                rawTimesMatrix = intervalCell{iT};
+                
+                removeMask = falsevec(size(rawTimesMatrix, 1));
+                for iR = 1:size(rawTimesMatrix, 1)
+                    if any(isnan(rawTimesMatrix(iR, :)))
+                        removeMask(iR) = true;
+                        
+                    elseif rawTimesMatrix(iR, 2) < start(iT) || rawTimesMatrix(iR, 1) > stop(iT)
+                        % not within start:stop, remove
+                        removeMask(iR) = true;
+                        
+                    else
+                        % constrain the edges within start:stop
+                        rawTimesMatrix(iR, 1) = max(start(iT), rawTimesMatrix(iR, 1));
+                        rawTimesMatrix(iR, 2) = min(stop(iT),  rawTimesMatrix(iR, 2));
+                    end
+                end
+                
+                intervalCell{iT} = rawTimesMatrix(~removeMask, :) - zero(iT);
             end
         end
 
@@ -1084,6 +1130,10 @@ classdef AlignInfo < AlignDescriptor
         function [alignedTimes, rawTimesMask] = getMarkAlignedTimesCell(ad, rawTimesCell, markIdx, window, includePadding)
             if nargin < 5
                 includePadding = false;
+            end
+            
+            if ischar(markIdx)
+                markIdx = ad.findMarkByString(markIdx);
             end
             assert(markIdx >= 1 && markIdx <= ad.nMarks, 'Mark idx out of range');
 
