@@ -79,7 +79,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     else
         tvec = p.Results.tvec;
         % compute the global min / max timestamps or each trial
-        [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
+        [tMinRaw, tMaxRaw] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
+%         [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
         
         % then shift these to lie within tvec, without overwriting nans
         tMin = max(min(tvec), tMinRaw);
@@ -88,6 +89,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         tMax = min(max(tvec), tMaxRaw);
         tMax(isnan(tMaxRaw)) = NaN;
     end
+    
+    % tMin and tMax are now vectors of the start and stop times of each
+    % trial
+    
+    tvec = makecol(tvec);
     
     tMinGlobal = nanmin(tvec);
     if numel(tvec) == 1

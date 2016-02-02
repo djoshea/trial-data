@@ -1,11 +1,11 @@
-function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(timeCell, varargin)
+function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, varargin)
 % Determines a time vector that can be used to interpolate data from
 % one or more cells of timeseries data. This vector will have evenly spaced
 % timepoints that span the minimum and maximum of the widest (if 'tight' is
 % false) or the narrowest (if tight is 'true', default) time window across
 % all of the data sets, e.g. timeCellCell{i} and dataCellCell{i}. 
 %
-% timeCellCell is a nTrials x nChannels cell matrix of time vectors
+% timeCell is a nTrials x nChannels cell matrix of time vectors
 %
 %    timeDelta: scalar indicating the time delta between successive
 %       timestamps. if not provided, will be inferred from the minimum 
@@ -36,7 +36,8 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
     %interpolateMethod = p.Results.interpolateMethod;
    
      % compute the global min / max timestamps or each trial
-     [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
+     [tMinRaw, tMaxRaw] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
+%      [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
 
      if isempty(timeDelta)
          % auto-compute time delta
@@ -73,7 +74,7 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
     % build the global time vector
     tMinGlobal = nanmin(tMin);
     tMaxGlobal = nanmax(tMax);
-    tvec = tMinGlobal:timeDelta:tMaxGlobal;
+    tvec = makecol(tMinGlobal:timeDelta:tMaxGlobal);
     tMinCell = tMin;
     tMaxCell = tMax;
 end

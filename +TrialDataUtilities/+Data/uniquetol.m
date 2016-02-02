@@ -4,6 +4,12 @@ function [c, ia, ic] = uniquetol(a, tol)
         tol = 1e-6 * nanmax(abs(a(:)));
     end
 
+    if isempty(a)
+        c = [];
+        ia = [];
+        ic = [];
+        return;
+    end
     if verLessThan('matlab', '8.5')
         c = builtin('_mergesimpts',makecol(a(:)),tol);
         if nargout > 1
