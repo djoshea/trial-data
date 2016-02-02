@@ -34,6 +34,9 @@ function hLine = drawTickRaster(timesCell, varargin)
             else
                 waves = (p.Results.waveCell{iE} - nanmin(p.Results.waveCell{iE}(:))) * p.Results.waveScaleHeight - rowHeight*(iE-1);
                 tvecMat = bsxfun(@plus, repmat(tvec, size(waves, 1), 1), timesCell{iE});
+                if size(waves, 2) < size(tvecMat, 2)
+                    tvecMat = tvecMat(:, 1:size(waves, 2));
+                end
                 % cat the waveforms into one long column with NaNs inserted
                 % between
                 waveYByTrial{iE} = TensorUtils.flatten(cat(2, waves,   nan(size(waves, 1),1) )');

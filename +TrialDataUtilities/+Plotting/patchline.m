@@ -106,7 +106,7 @@ if rem(numel(PVs),2) ~= 0
 end
 
 nTraces = size(ys, 2);
-hvec = nanvec(nTraces);
+hvec = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nTraces);
 if isvector(xs)
     xs = repmat(makecol(xs), 1, nTraces);
 end
