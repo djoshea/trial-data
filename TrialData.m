@@ -180,16 +180,26 @@ classdef TrialData
             td = td.addNewTrialsRaw(newData, 'suppressWarnings', p.Results.suppressWarnings);
         end
 
-        function td = addTrialsFromTrialData(td, varargin)
+        function td = addTrialsFromTrialData(td, trialData, varargin)
             td.warnIfNoArgOut(nargout);
             
+            if ~iscell(trialData)
+                trialData = {trialData};
+            end
+           
+            if ~isempty(varargin) && isa(varargin{1}, 'TrialData')
+                error('Pass all TrialData as a cell array to .addTrialsFromTrialData');
+            end
+            
             % add the channels
-            for i = 1:numel(varargin)
-                td = td.addChannels(varargin{i}.channelDescriptorsByName);
+            for i = 1:numel(trialData)
+                td = td.addChannelsMissing(trialData{i}.channelDescriptorsByName);
             end
             
             % add the data
-            td = td.addNewTrialsRaw(varargin{:});
+            for i = 1:numel(trialData)
+                td = td.addNewTrialsRaw(trialData{i}, varargin{:});
+            end
         end
 
         function td = addNewTrialsRaw(td, dataOrTrialData, varargin)
@@ -203,7 +213,7 @@ classdef TrialData
 
             if isa(dataOrTrialData, 'TrialData')
                 tdNew = dataOrTrialData;
-                newData = td.data;
+                newData = tdNew.data;
             else
                 tdNew = [];
                 newData = dataOrTrialData;
@@ -413,7 +423,8 @@ classdef TrialData
             end
             tdCombined = varargin{1};
             if numel(varargin) > 1
-                tdCombined = tdCombined.addTrialsFromTrialData(varargin{2:end});
+                % pass as a cell array of trial data
+                tdCombined = tdCombined.addTrialsFromTrialData(varargin(2:end));
             end
         end
     end
@@ -546,7 +557,7 @@ classdef TrialData
              td = td.selectTrials(td.valid);
         end
 
-        function td = markInvalid(td, mask)
+        function td = markTrialsInvalid(td, mask)
             td.warnIfNoArgOut(nargout);
             td.manualValid(mask) = false;
             td = td.invalidateValid();
@@ -566,7 +577,9 @@ classdef TrialData
         
         function td = reset(td)
             td.warnIfNoArgOut(nargout);
-            td = td.setAllValid();
+            % don't do this. this is not consistent with what reset means
+            % for TrialDataConditionAlign
+%             td = td.setAllValid();
         end
     end
     
@@ -696,6 +709,30 @@ classdef TrialData
             durations = ends-starts;
             durations = td.replaceInvalidMaskWithValue(durations, NaN);
         end
+             
+        function durations = getValidDurationsForSpikeChannel(td, unitName)
+            % similar to getValidDurations, except factors in the blanking
+            % region
+            durations = td.getValidDurations();
+            
+            blankIntervals = td.getSpikeBlankingRegions(unitName);
+            
+            % blankIntervals are guaranteed to be non-overlapping and lie
+            % within the alignment window, so we can just add up the
+            % individual intervals
+            totalFn = @(mat) sum(mat(:, 2) - mat(:, 1), 1);
+            blankDurations = zerosvec(td.nTrials);
+            for iT = 1:td.nTrials
+                if ~isempty(blankIntervals{iT})
+                    blankDurations(iT) = totalFn(blankIntervals{iT});
+                end
+            end
+            
+            durations = durations - blankDurations;
+            if any(durations < 0)
+                error('Internal issue with blanking region durations');
+            end
+        end 
         
         function cds = getChannelDescriptorArray(td)
             % this sort operation is what puts channel names in order
@@ -728,7 +765,10 @@ classdef TrialData
             
             namesByField = cellvec(numel(fields));
             for iF = 1:numel(fields)
-                assert(isfield(td.data, fields{iF}), 'TrialData does not have data field %s', fields{iF});
+                % don't need the assert since this might be called before
+                % the field is written
+                if ~isfield(td.data, fields{iF}), continue; end
+%                 assert(isfield(td.data, fields{iF}), 'TrialData does not have data field %s', fields{iF});
                 mask = structfun(@(chFields) ismember(fields{iF}, chFields), fieldsByChannel);
                 namesByField{iF} = channels(mask);
             end
@@ -797,7 +837,7 @@ classdef TrialData
             fieldsRemove = fieldsRemove(maskRemove);
             
             td.data = rmfield(td.data, fieldsRemove);
-            td = td.updatePostDataChange();
+            td = td.updatePostDataChange(fieldsRemove);
         end
     end
     
@@ -848,22 +888,22 @@ classdef TrialData
                 timeField = p.Results.timeField;
             end
             
-            % handle the case where values is sent in as NaNs
-            if ismatrix(values) && ~isempty(values)
-                assert(size(values, 1) == td.nTrials, 'Data matrix must be size nTrials along first dimension');
-                
-                % strip nans from values and times together
-                if ~isempty(times)
-                    if isvector(times)
-                        % same time vector for each row
-                        [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times), makecol(1:td.nTrials), 'UniformOutput', false);
-                    else
-                        [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
-                    end
-                else
-                    values = arrayfun(@(idx) removenan(values(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
-                end
-            end
+            % remove NaN values from analog signals?
+%             if ~iscell(values) && ismatrix(values) && ~isempty(values)
+%                 assert(size(values, 1) == td.nTrials, 'Data matrix must be size nTrials along first dimension');
+%                 
+%                 % strip nans from values and times together
+%                 if ~isempty(times)
+%                     if isvector(times)
+%                         % same time vector for each row
+%                         [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times), makecol(1:td.nTrials), 'UniformOutput', false);
+%                     else
+%                         [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
+%                     end
+%                 else
+%                     values = arrayfun(@(idx) removenan(values(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
+%                 end
+%             end
             
             % times can either be a field/channel name, or it can be raw
             % time values
@@ -957,6 +997,7 @@ classdef TrialData
                 % values must be nTrials x nTimes
                 assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
                 values = mat2cell(values', size(values, 2), onesvec(td.nTrials))';
+                
             elseif iscell(values)
                 assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
             else
@@ -976,7 +1017,10 @@ classdef TrialData
                 else
                     error('Times must be numeric matrix or cell array');
                 end
+                updateTimes = true;
             else
+                updateTimes = false;
+                
                 % pass along the current times since the data is coming in with the
                 % existing alignment
                 [~, times] = td.getAnalog(name);
@@ -1000,13 +1044,21 @@ classdef TrialData
             times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
 
             cd = td.channelDescriptorsByName.(name);
-            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix
+            valueClassConvertedOnAccess = strcmp(cd.memoryClassByField{1}, cd.accessClassByField{1});
+            
+            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ...
+                    (valueClassConvertedOnAccess || updateTimes)
                 % need to rename this column since we'll potentially be
                 % breaking the matrix format otherwise if different time
-                % vectors are used
+                % vectors are used or different data classes are used
                 oldData = td.getAnalogRaw(name);
                 
-                cd = cd.separateFromColumnOfSharedMatrix();
+                assert(~isfield(td.data, name), 'Issue with creating field %s already found in td.data', name); 
+                
+                % being used by other channels, rename and copy
+                newTimeField = matlab.lang.makeUniqueStrings([name '_time'], fieldnames(td.data));
+                td.data = copyStructField(td.data, td.data, cd.timeField, newTimeField);
+                cd = cd.separateFromColumnOfSharedMatrix(newTimeField);
                 
                 % we also need to copy the data field over, since we may
                 % only be updating valid trials
@@ -1020,7 +1072,12 @@ classdef TrialData
             % update the channel descriptor accordingly
             td.channelDescriptorsByName.(name) = cd;
             
-            td = td.setChannelData(name, {values, times}, p.Unmatched);
+            if updateTimes
+                fieldMask = truevec(2);
+            else
+                fieldMask = [true; false];
+            end
+            td = td.setChannelData(name, {values, times}, 'fieldMask', fieldMask, p.Unmatched);
         end
 
         function tf = hasAnalogChannel(td, name) 
@@ -1136,14 +1193,20 @@ classdef TrialData
             [data, time] = td.getAnalogRaw(name);  %#ok<*PROP>
             
             [dataUnif, timeUnif] = cellvec(td.nTrials);
+            
+            % get first and last valid sample for all trials
+            % very important to use this in case data has NaN samples
+            [tmins, tmaxs] = TrialDataUtilities.Data.getValidTimeExtents(time, data);
             for iT = 1:td.nTrials
                 if isempty(time{iT}) || isempty(data{iT})
                     continue;
                 end
-                tmin = nanmin(time{iT});
-                tmax = nanmax(time{iT});
-                timeUnif{iT} = tmin:delta:tmax;
-                dataUnif{iT} = interp1(time{iT}, data{iT}, timeUnif{iT}, p.Results.method);
+                timeUnif{iT} = tmins(iT):delta:tmaxs(iT);
+                if any(~isnan(data{iT}))
+                    dataUnif{iT} = interp1(time{iT}, data{iT}, timeUnif{iT}, p.Results.method);
+                else
+                    dataUnif{iT} = nan(size(timeUnif{iT}));
+                end
             end
         end
         
@@ -1161,14 +1224,21 @@ classdef TrialData
             
             p = inputParser;
             p.addRequired('name', @ischar);
-            p.addRequired('times', @isvector);
+            p.addRequired('times', @(x) isempty(x) || isvector(x));
             %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.parse(name, times, varargin{:});
             %cd = p.Results.channelDescriptor;
             
+            if isempty(times)
+                times = cellvec(td.nTrials);
+            end
+            if isscalar(times)
+                times = repmat(times, td.nTrials, 1);
+            end
+            
             assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
             times = makecol(times);
-                
+            
             if iscell(times)
                 % multiple occurrence event
                 cd = EventChannelDescriptor.buildMultipleEvent(name, td.timeUnitName);
@@ -1593,6 +1663,7 @@ classdef TrialData
             p.addParameter('sortQuality', NaN, @isscalar); % numeric scalar metric of sort quality
             p.addParameter('sortMethod', '', @ischar);
             p.addParameter('sortQualityEachTrial', [], @isvector);
+            p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -1615,13 +1686,29 @@ classdef TrialData
             
             if ~isempty(p.Results.waveforms)
                 cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime);
-                channelData{end+1} = p.Results.waveforms;
+                channelData{end+1} = makecol(p.Results.waveforms);
             end
             
             if ~isempty(p.Results.sortQualityEachTrial)
                 assert(numel(p.Results.sortQualityEachTrial) == td.nTrials);
                 cd = cd.addSortQualityEachTrialField();
-                channelData{end+1} = p.Results.sortQualityEachTrial;
+                channelData{end+1} = makecol(p.Results.sortQualityEachTrial);
+            end
+            
+            if ~isempty(p.Results.blankingRegions)
+                blanking = p.Results.blankingRegions;
+                assert(numel(blanking) == td.nTrials);
+                assert(all(cellfun(@(x) isempty(x) || (ismatrix(x) && size(x, 2) == 2), blanking)), 'Blanking regions must be nTrials cellvec with nRegions x 2 matrices');
+                
+                cd = cd.addBlankingRegionsField();
+                
+                % align the blanking regions
+                blanking = cellfun(@plus, blanking, num2cell(offsets), 'UniformOutput', false);
+                
+                % manually blank the spike times in the appropriate trials
+                channelData{1} = TrialDataUtilities.SpikeData.blankRegionsEachTrial(channelData{1}, channelData{1}, blanking);
+                
+                channelData{end+1} = makecol(blanking);
             end
             
             td = td.addChannel(cd, channelData);
@@ -1633,61 +1720,238 @@ classdef TrialData
             %  isAligned
             %  waveforms
             p = inputParser();
-            p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('waveforms', [], @iscell);
-            p.KeepUnmatched = true;
+            p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
+            p.addParameter('sortQualityByTrial', [], @isvector); % nTrials x 1 vector of per-trial ratings
+            p.KeepUnmatched = true; % we don't want to capture a fieldMask because this would necessitate thinking about the logic of whether to apply the blanking 
             p.parse(varargin{:});
             
             td.warnIfNoArgOut(nargout);
             
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'SpikeChannelDescriptor'));
+
             if p.Results.isAligned
                 % add the zero offset to the time vector for each trial
                 % this is mostly for TDCA, so that alignments info is
                 % preserved
                 offsets = td.getTimeOffsetsFromZeroEachTrial();
-                if iscell(times)
-                    times = cellfun(@plus, makecol(times), num2cell(offsets), 'UniformOutput', false);
-                else
-                    times = makecol(times) + offsets;
-                end
+            else
+                % consider it aligned to trial start
+                offsets = zerosvec(td.nTrials);
             end
             
-            if ~isempty(p.Results.waveforms)
-                td = td.setChannelData(name, {times, p.Results.waveforms}, p.Unmatched);
+            if iscell(times)
+                times = cellfun(@plus, makecol(times), num2cell(offsets), 'UniformOutput', false);
             else
-                if td.hasSpikeWaveforms(name)
-                    % no waveforms provided, check that number of spikes
-                    % isn't changing
-                    nSpikesProvided = cellfun(@numel, times);
-                    nSpikesWave = cellfun(@(w) size(w, 2), td.getRawSpikeWaveforms(chName));
-                    assert(all(isequaln(nSpikesProvided, nSpikesWave), 'Number of spikes cannot change unless waveforms are also provided'));
+                times = makecol(times) + offsets;
+            end
+            
+            channelData = {times};
+            channelFieldMask = true;
+            
+            % next field is waveforms if present
+            if ~isempty(p.Results.waveforms)
+                newWaves = p.Results.waveforms; % newWaves needed below
+                channelData = cat(1, channelData, {newWaves});
+                channelFieldMask(end+1) = true;
+                
+                if ~cd.hasWaveforms
+                    error('Channel %s does not have waveforms, use addSpikeChannel to include waveforms', name);
                 end
                 
-                td = td.setChannelData(name, {times}, p.Unmatched);
+                nSpikesProvided = cellfun(@numel, times);
+                nSpikesWave = cellfun(@(w) size(w, 1), newWaves);
+                assert(all(isequaln(nSpikesProvided, nSpikesWave)), 'Number of spikes in each trial must match number of waveforms');
+            
+            else
+                % no waveforms provided
+                if cd.hasSpikeWaveforms
+                    % no waveforms provided, but channel has waveforms
+                    % check that number of spikes isn't changing so that
+                    % the correspondence is maintained
+                    nSpikesProvided = cellfun(@numel, times);
+                    newWaves = td.getRawSpikeWaveforms(chName);
+                    nSpikesWave = cellfun(@(w) size(w, 1), newWaves);
+                    assert(all(isequaln(nSpikesProvided, nSpikesWave), 'Number of spikes in each trial cannot change unless waveforms are also provided'));
+                    
+                    channelData = cat(1, channelData, {{}});
+                    channelFieldMask(end+1) = false;
+                end
             end
             
+            if ~isempty(p.Results.sortQualityByTrial)
+                if cd.hasSortQualityEachTrial
+                    channelData = cat(1, channelData, {p.Results.sortQualityByTrial});
+                    channelFieldMask(end+1) = true;
+                else
+                    error('Channel %s does not have sortQualityByTrial, use addSpikeChannel to add these', name);
+                end
+            else
+                if cd.hasSortQualityEachTrial
+                    channelData = cat(1, channelData, {{}});
+                    channelFieldMask(end+1) = false;
+                end
+            end
+                
+            if ~isempty(p.Results.blankingRegions)
+                blanking = p.Results.blankingRegions;
+                
+                assert(numel(blanking) == td.nTrials);
+                %assert(all(cellfun(@(x) isempty(x) || (ismatrix(x) && size(x, 2) == 2), blanking)), 'Blanking regions must be nTrials cellvec with nRegions x 2 matrices');
+                
+                % align the blanking regions with the zero offset to
+                % unalign the blanking regions specified
+                blanking = cellfun(@plus, blanking, num2cell(offsets), 'UniformOutput', false);
+                
+                % add field if not found
+                if ~cd.hasBlankingRegions
+                    cd = cd.addBlankingRegionsField();
+                    td.channelDescriptorsByName.(name) = cd;
+                    
+                    blanking = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blanking);
+                else
+                    % need to merge with existing blanking regions
+                    blankingExisting = td.getSpikeBlankingRegions(spikeCh);
+                    % these will be aligned, so we unalign them to match
+                    % new blanking
+                    alignedOffsets = td.getTimeOffsetsFromZeroEachTrial();
+                    
+                    blankingExisting = cellfun(@plus, blankingExisting, num2cell(alignedOffsets), 'UniformOutput', false);
+                    
+                    % combine new with existing now that they are both
+                    % unaligned
+                    blanking = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blanking, blankingExisting);
+                end
+                
+            elseif td.channelDescriptorsByName.(name).hasBlankingRegions
+                % need to blank new times with old blanking regions
+                blanking = td.getSpikeBlankingRegions(name);
+                % these will be aligned, so we unalign them to match
+                % new blanking
+                alignedOffsets = td.getTimeOffsetsFromZeroEachTrial();
+
+                blanking = cellfun(@plus, blanking, num2cell(alignedOffsets), 'UniformOutput', false);
+            else
+                blanking = {};
+            end
+                
+            if ~isempty(blanking)
+                % manually blank the spike times in the appropriate trials
+                oldSpikeTimes = channelData{1};
+                channelData{1} = TrialDataUtilities.SpikeData.blankRegionsEachTrial(channelData{1}, oldSpikeTimes, blanking);
+                
+                if cd.hasWaveforms
+                    % manually blank the spike waveforms too
+                    % be sure to use the oldSpikeTimes to maintain the
+                    % correspondence
+                    newWaves = TrialDataUtilities.SpikeData.blankRegionsEachTrial(newWaves, oldSpikeTimes, blanking);
+                    
+                    if ~isempty(p.Results.waveforms)
+                        % waveforms provided, replace channelData{2}
+                        channelData{2} = newWaves;
+                    else
+                        % no waveforms provided, now we need to add them to
+                        % channelData so they get blanked
+                        channelData = cat(1, channelData(1), {newWaves}, channelData(2:end));
+                        channelFieldMask = cat(1, channelFieldMask(1), true, makecol(channelFieldMask(2:end)));
+                    end
+                end
+                
+                % and add the blanking info as the last channel data
+                channelData = cat(1, channelData, {blanking});
+                channelFieldMask(end+1) = true;
+            else
+                if cd.hasBlankingRegions
+                    channelData = cat(1, channelData, {{}});
+                    channelFieldMask(end+1) = false;
+                end
+            end
+
+            % make the final update
+            td = td.setChannelData(name, channelData, 'fieldMask', channelFieldMask, p.Unmatched);
         end
-%         
-%         function td = selectSpikeChannels(td, names)
-%             td.warnIfNoArgOut(nargout);
-%             full = td.listSpikeChannels();
-%             assert(all(ismember(names, full)), 'Missing spike channels %s', ...
-%                 strjoin(setdiff(names, full), ', ')); 
-%             td = td.dropChannels(setdiff(full, names));
-%         end
         
-        function timesCell = getRawSpikeTimes(td, unitName)
-            name = unitName;
-            timesCell = {td.data.(name)}';
+        function td = blankSpikesInTimeIntervals(td, name, intervalCell, varargin)
+            % adds a blanking region to the spiking data
+            % this both removes the spikes from that period of time each
+            % trial, and will inform the spike rate filtering that this
+            % time interval is not observed, rather than simply has no
+            % spikes
+            
+            td.warnIfNoArgOut(nargout);
+            
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'SpikeChannelDescriptor'));
+            
+            p = inputParser();
+            p.addParameter('isAligned', true, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            % need to request all spike times
+            [rawWaves, ~, rawTimes] = td.getRawSpikeWaveforms(name);
+            
+            if ismatrix(intervalCell)
+                % assume same for all trials
+                assert(size(intervalCell, 2) == 2);
+                intervalCell = repmat({intervalCell}, td.nTrials, 1);
+            end
+            assert(iscell(intervalCell));
+            intervalCell = makecol(intervalCell);
+            
+            % then we need to unalign the intervals to match the raw times
+            if p.Results.isAligned
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+                intervalCell = cellfun(@plus, intervalCell, num2cell(offsets), 'UniformOutput', false);
+            end
+            
+            % setSpikeChannel will take care of blanking the waveforms
+            % be sure we specify that the data are no longer aligned
+            td = td.setSpikeChannel(name, rawTimes, 'isAligned', false, ...
+                'blankingRegions', intervalCell, 'waveforms', rawWaves);
+        end
+        
+        function intervalCell = getSpikeBlankingRegions(td, unitName)
+            cd = td.channelDescriptorsByName.(unitName);
+            fld = cd.blankingRegionsField;
+            if isempty(fld)
+                % no blanking regions, just return blank
+                intervalCell = cellvec(td.nTrials);
+            else
+                intervalCell = makecol({td.data.(fld)});
+                intervalCell = td.replaceInvalidMaskWithValue(intervalCell, []);
+                intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCell);
+            end
+        end
+        
+        function timesCell = getRawSpikeTimes(td, unitNames)
+            if ischar(unitNames)
+                timesCell = {td.data.(unitNames)}';
+            elseif iscellstr(unitNames)
+                nUnits = numel(unitNames);
+                timesCellByUnit = cell(td.nTrials, nUnits);
+                for iU = 1:nUnits
+                    timesCellByUnit(:, iU) = {td.data.(unitNames{iU})}';
+                end
+                timesCell = cellvec(td.nTrials);
+                for iT = 1:td.nTrials
+                    timesCell{iT} = cat(1, timesCellByUnit{iT, :});
+                end
+            else
+                error('Unsupported unit name argument');
+            end
         end
 
-        function timesCell = getSpikeTimes(td, unitName, varargin) 
-            timesCell = td.getRawSpikeTimes(unitName);
-            timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
+        function timesCell = getSpikeTimes(td, unitNames, varargin) 
+            timesCell = td.getSpikeTimesUnaligned(unitNames);
         end
         
-        function timesCell = getSpikeTimesUnaligned(td, unitName)
-            timesCell = td.getRawSpikeTimes(unitName);
+        function timesCell = getSpikeTimesUnaligned(td, unitNames)
+            timesCell = td.getRawSpikeTimes(unitNames);
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
             
@@ -1698,8 +1962,17 @@ classdef TrialData
         
         function rates = getSpikeMeanRate(td, unitName)
             counts = td.getSpikeCounts(unitName);
-            durations = td.getValidDurations();
+            durations = td.getValidDurationsForSpikeChannel(unitName);
             rates = counts ./ durations * td.timeUnitsPerSecond;
+        end
+        
+        function [tf, blankingRegionsField] = hasBlankingRegions(td, unitName)
+            if ~td.hasSpikeChannel(unitName)
+                tf = false;
+                return;
+            end
+            tf = td.channelDescriptorsByName.(unitName).hasBlankingRegions;
+            blankingRegionsField = td.channelDescriptorsByName.(unitName).blankingRegionsField;
         end
         
         function tf = hasSpikeWaveforms(td, unitName)
@@ -1730,8 +2003,16 @@ classdef TrialData
     end
 
     methods % Generic add data methods
-        function td = updatePostDataChange(td)
+        
+        function td = updatePostDataChange(td, fieldsAffected)
+            % call this after any changes to td.data.(fieldsAffected)
             td.warnIfNoArgOut(nargout);
+        end
+        
+        function td = updatePostChannelDataChange(td, chName)
+            td.warnIfNoArgOut(nargout);
+            fields = td.channelDescriptorsByName.(chName).dataFields;
+            td = td.updatePostDataChange(fields);
         end
         
         function offsets = getTimeOffsetsFromZeroEachTrial(td)
@@ -1759,6 +2040,23 @@ classdef TrialData
             for iC = 1:nChannels
             	cd = getFn(iC);
                 td = td.addChannel(cd, varargin{:});
+            end
+        end
+        
+        function td = addChannelsMissing(td, cds)
+            td.warnIfNoArgOut(nargout);
+            if iscell(cds)
+                has = cellfun(@(cd) td.hasChannel(cd.name), cds);
+                cds = cds(~has);
+            elseif isstruct(cds)
+                flds = fieldnames(cds);
+                has = structfun(@(cd) td.hasChannel(cd.name), cds);
+                cds = rmfield(cds, flds(has));
+            else
+                error('Must be cell array or struct of ChannelDescriptors');
+            end
+            if any(~has)
+                td = td.addChannels(cds);
             end
         end
         
@@ -1835,6 +2133,8 @@ classdef TrialData
                 newField = dataFieldRenameMap.(oldField);
                 td = td.renameDataField(oldField, newField, oldName, true); % rename but make a copy
             end
+            
+            td = td.updatePostChannelDataChange(newName);
         end
         
         function td = renameChannel(td, oldName, newName)
@@ -1919,10 +2219,13 @@ classdef TrialData
             if isempty(fieldMask)
                 fieldMask = true(cd.nFields, 1);
             end
+            if ~any(p.Results.fieldMask)
+                return;
+            end
             
             td.warnIfNoArgOut(nargout);
             td.assertHasChannel(name);
-            
+           
             % avoid clearing data that other channels reference 
             td = td.copyRenameSharedChannelFields(name, p.Results.fieldMask);
 
@@ -1935,15 +2238,21 @@ classdef TrialData
             for iF = 1:nFields
                 if ~fieldMask(iF), continue; end
                 val = cd.missingValueByField{iF};
-                for iT = 1:td.nTrials
-                    td.data(iT).(dataFields{iF}) = val;
-                end
+                td.data = assignIntoStructArray(td.data, dataFields{iF}, val);
+%                 for iT = 1:td.nTrials
+%                     td.data(iT).() = val;
+%                 end
             end
+            
         end
         
-        function td = setChannelData(td, name, valueCell, varargin)
+        function [td, trialsUpdated, fieldsUpdated] = setChannelData(td, name, valueCell, varargin)
             % note that by default, updateValidOnly is true, meaning that
             % the values on invalid trials will not be updated
+            % trialsUpdated is a mask indicating which trials were changed
+            % (or cleared)
+            % fieldsUpdated is a mask indicating which of the data fields
+            % were updated as well
             p = inputParser();
             p.addParameter('fieldMask', [], @islogical);
             p.addParameter('clearForInvalid', false, @islogical);
@@ -1968,13 +2277,21 @@ classdef TrialData
             else
                 assert(numel(fieldMask) == cd.nFields);
             end
+            fieldMask = makecol(fieldMask);
+                          
+            dataFields = cd.dataFields;
+            nFields = numel(dataFields);
+            
+            % check for fields that don't exist and clear them so that they
+            % do exist
+            fieldMissing = makecol(~ismember(dataFields, fieldnames(td.data)));
+            td = td.clearChannelData(cd.name, 'fieldMask', fieldMissing & fieldMask);
             
             % avoid overwriting data shared by other channels
             td = td.copyRenameSharedChannelFields(cd.name, fieldMask);
             cd = td.channelDescriptorsByName.(name);
-            
             dataFields = cd.dataFields;
-            nFields = numel(dataFields);
+            
             
             % check that one value list was provided for each data field
             % referenced by the ChannelDescriptor
@@ -1982,18 +2299,27 @@ classdef TrialData
                 'Channel Descriptor references %d fields but only %d field value lists provided', ...
                 numel(nFields), numel(valueCell));
             
+            updateMask = updateMaskManual;
+            if p.Results.updateValidOnly
+                updateMask = updateMask & td.valid;
+            end
+                    
             for iF = 1:nFields
                 % only touch specified fields
                 if ~fieldMask(iF), continue; end
                 
-                % IMPORTANT: DO NOT ACCEPT DATA ON INVALID TRIALS
-                updateMask = updateMaskManual;
-                if p.Results.updateValidOnly
-                    updateMask = updateMask & td.valid;
-                elseif p.Results.clearForInvalid
+                if p.Results.clearForInvalid
+                    % here we want the update mask to stay the same as
+                    % updateMaskManual so that everything gets updated with
+                    % the cleared value
                     valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
                 end
                
+%                 for iT = 1:numel(td.data)
+%                     if updateMask(iT)
+%                         td.data(iT).(dataFields{iF}) = valueCell{iF}{iT};
+%                     end
+%                 end
                 td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}(updateMask, :), updateMask);
             end 
             
@@ -2002,7 +2328,10 @@ classdef TrialData
             [td.data, cd] = cd.repairData(td.data);
 
             td.channelDescriptorsByName.(cd.name) = cd;
-            td = td.updatePostDataChange();
+            td = td.updatePostDataChange(dataFields(fieldMask));
+            
+            fieldsUpdated = fieldMask;
+            trialsUpdated = updateMask;
         end
     end
 
