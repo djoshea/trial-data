@@ -9,8 +9,10 @@ if iscell(data)
     for i = 1:numel(time)
         if ~isempty(data{i}) && ~isempty(time{i})
             mask = ~isnan(data{i});
-            tMin(i) = nanmin(time{i}(mask));
-            tMax(i) = nanmax(time{i}(mask));
+            if any(mask)
+                tMin(i) = nanmin(time{i}(mask));
+                tMax(i) = nanmin(time{i}(mask));
+            end
         end
     end
     
@@ -20,8 +22,10 @@ else
     
     for i = 1:numel(time)
         mask = ~isnan(data(i, :));
-        tMin(i) = time(find(mask, 1, 'first'));
-        tMax(i) = time(find(mask, 1, 'last'));
+        if any(mask)
+            tMin(i) = time(find(mask, 1, 'first'));
+            tMax(i) = time(find(mask, 1, 'last'));
+        end
     end
 end
     
