@@ -35,13 +35,15 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
         
-        function cd = separateFromColumnOfSharedMatrix(cd)
+        function cd = separateFromColumnOfSharedMatrix(cd, newTimeField)
             % transform this cd so that it's not a column of a shared
             % matrix anymore
             cd.warnIfNoArgOut(nargout);
             cd.isColumnOfSharedMatrix = false;
             cd.primaryDataFieldColumnIndex = 1;
             cd.primaryDataFieldManual = '';
+            
+            cd.dataFields{2} = newTimeField;
             cd = cd.initialize();
         end
         
@@ -115,7 +117,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             oldTimeField = sprintf('%s_time', oldName);
             if strcmp(cd.dataFields{2}, oldTimeField)
                 newTimeField = sprintf('%s_time', newName);
-                dataFieldRenameStruct.(cd.dataField{2}) = newTimeField;
+                dataFieldRenameStruct.(cd.dataFields{2}) = newTimeField;
                 cd.dataFields{2} = newTimeField;
             end
         end 
