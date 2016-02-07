@@ -2,6 +2,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
     properties(Dependent)
         hasWaveforms
         hasSortQualityEachTrial
+        hasBlankingRegions
         array
         electrode
         unit
@@ -15,10 +16,12 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         waveformsOriginalDataClass = '';
         waveformsTime = []; % common time vector to be shared for ALL waveforms for this channel
         
+        sortQualityEachTrialField = '';
+        
+        blankingRegionsField = ''; % refers to a field which conveys times where spikes from this channel are to be considered "unobserved"
+        
         sortQuality = NaN; % numeric scalar metric of sort quality
         sortMethod = '';
-        
-        sortQualityEachTrialField = '';
         
         spikeThreshold = []; % set if known, otherwise this will be estimated from the waveforms
     end
@@ -53,6 +56,13 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             
             if cd.hasSortQualityEachTrial
                 cd.dataFields{end+1} = cd.sortQualityEachTrialField;
+                cd.elementTypeByField(end+1) = cd.NUMERIC;
+                cd.originalDataClassByField{end+1} = 'double';
+                cd.unitsByField{end+1} = '';
+            end
+            
+            if cd.hasBlankingRegions
+                cd.dataFields{end+1} = cd.blankingRegionsField;
                 cd.elementTypeByField(end+1) = cd.NUMERIC;
                 cd.originalDataClassByField{end+1} = 'double';
                 cd.unitsByField{end+1} = '';
@@ -97,6 +107,15 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 field = sprintf('%s_sortQualityByTrial', cd.name);
             end
             cd.sortQualityEachTrialField = field;
+            cd = cd.initialize();
+         end
+        
+         function cd = addBlankingRegionsField(cd, field)
+            cd.warnIfNoArgOut(nargout);
+            if nargin < 2 || isempty(field)
+                field = sprintf('%s_blankingRegions', cd.name);
+            end
+            cd.blankingRegionsField = field;
             cd = cd.initialize();
         end
         
@@ -165,6 +184,10 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         
         function tf = get.hasSortQualityEachTrial(cd)
             tf = ~isempty(cd.sortQualityEachTrialField);
+        end
+        
+        function tf = get.hasBlankingRegions(cd)
+            tf = ~isempty(cd.blankingRegionsField);
         end
         
         function type = getType(~)
