@@ -125,7 +125,8 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
             
-            pset = pset.setConditionDescriptor(tdca.conditionInfo);
+            ci = tdca.conditionInfo.fixAllValueLists();
+            pset = pset.setConditionDescriptor(ci);
             pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
             pset = pset.initialize();
         end
