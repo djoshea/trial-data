@@ -10,6 +10,7 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
     
     methods
         function sf = NonOverlappingSpikeBinFilter(varargin)
+            % args: 'binWidthMs', #, binAlignmentMode, SpikeBinAlignmentMode.Acausal
             sf = sf@ConvolutionSpikeFilter(varargin{:});
         end
         

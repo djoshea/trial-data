@@ -30,6 +30,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     methods(Abstract)
         % filter used for convolution, as an impulse response which may 
         % have acausal elements if indZero > 0
+        % doesn't need to be normalized, we'll take care of that
         [filt, indZero] = getFilter(sf);
     end
     
@@ -45,9 +46,9 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         end
         
         function plotFilter(sf)
-            [filt, indZero] = sf.getFilter();
+            [filt, indZero] = sf.getFilter(); %#ok<PROP>
             filt = filt ./ sum(filt);
-            tvec = (1:numel(filt))' - indZero;
+            tvec = (1:numel(filt))' - indZero; %#ok<PROP>
             plot(tvec, filt, '-.', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
             xlabel('Time (ms)');
             ylabel('Filter');
@@ -96,6 +97,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             end
             
             filt = sf.filter;
+            % normalization is critical
             filt = filt ./ sum(filt);
             
             tPadPre = sf.preWindow;
