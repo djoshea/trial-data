@@ -457,10 +457,14 @@ classdef ConditionInfo < ConditionDescriptor
             
             vals = ci.getAttributeValues(attrIdx);
             if ci.attributeNumeric(attrIdx)
-                valueList = TrialDataUtilities.Data.uniquetol(removenan(vals));
-                % include NaN in the list if one is found
-                if any(isnan(vals))
-                    valueList(end+1) = NaN;
+                if all(isnan(vals))
+                    valueList = NaN;
+                else
+                    valueList = TrialDataUtilities.Data.uniquetol(removenan(vals));
+                    % include NaN in the list if one is found
+                    if any(isnan(vals))
+                        valueList(end+1) = NaN;
+                    end
                 end
             elseif iscellstr(vals)
                 % include empty values in the list if found
