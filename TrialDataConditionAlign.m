@@ -1526,6 +1526,10 @@ classdef TrialDataConditionAlign < TrialData
             tvec = cat(2, tvecCell{:});
         end
         
+        function tf = checkAnalogChannelsShareTimeVector(td, names)
+            timeFields = cellfun(@(name) td.channelDescriptorsByName.(name).timeField, names, 'UniformOutput', false);
+            tf = numel(unique(timeFields)) == 1;
+        end
 
         function [data, tvec] = getMultiAnalogAsMatrix(td, name, varargin)
             p = inputParser;
@@ -1744,8 +1748,13 @@ classdef TrialDataConditionAlign < TrialData
                     continue;
                 end
                 
-                diffData{iT} = w * TrialDataUtilities.Data.savitzkyGolayFilt( ...
-                    data{iT}, p.Results.polynomialOrder, p.Results.order, p.Results.smoothing)'; 
+                if nnz(~isnan(data{iT})) < p.Results.smoothing
+                    % too few samples
+                    diffData{iT} = nan(size(time{iT}));
+                else
+                    diffData{iT} = w * TrialDataUtilities.Data.savitzkyGolayFilt( ...
+                        data{iT}, p.Results.polynomialOrder, p.Results.order, p.Results.smoothing)'; 
+                end
             end
             prog.finish();
             
@@ -3324,7 +3333,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
-            p.KeepUnmatched = true;
+            p.KeepUnmatched = false;
             p.parse(varargin{:});
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
