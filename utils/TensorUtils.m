@@ -304,6 +304,7 @@ classdef TensorUtils
             if islogical(idx)
                 mask = makecol(idx);
             else
+                if ~isscalar(len) && isvector(len), len = numel(len); end % assume its a mask of the same size
                 mask = falsevec(len);
                 mask(idx) = true;
             end
@@ -501,6 +502,12 @@ classdef TensorUtils
     end
     
     methods(Static) % Multi-dim extensions of any, all, find etc.
+        function t = applyFunctionComposedOverSuccessiveDimensions(t, fn, dims)
+            for iD = 1:numel(dims)
+                t = fn(t, dims(iD));
+            end
+        end
+        
         function t = anyMultiDim(t, dims)
             % works like any, except operates on multiple dimensions
             for iD = 1:numel(dims)
@@ -512,6 +519,20 @@ classdef TensorUtils
             % works like any, except operates on multiple dimensions
             for iD = 1:numel(dims)
                 t = all(t, dims(iD));
+            end
+        end
+        
+        function t = nanmaxMultiDim(t, dims)
+            % works like any, except operates on multiple dimensions
+            for iD = 1:numel(dims)
+                t = nanmax(t, [], dims(iD));
+            end
+        end
+        
+        function t = nanminMultiDim(t, dims)
+            % works like any, except operates on multiple dimensions
+            for iD = 1:numel(dims)
+                t = nanmin(t, [], dims(iD));
             end
         end
 
@@ -1269,7 +1290,7 @@ classdef TensorUtils
             % for each subscript in dimension(s) alongDims, computes the mean 
             % along all other dimensions and subtracts it. this ensures
             % that the mean along any slice in alongDims will have zero
-            % mean.
+            % mean. Then normalizes by the std along all other dimensions.
             t = TensorUtils.centerSlicesSpanningDimension(t, alongDims);
             stdTensor = TensorUtils.stdMultiDim(t, alongDims);
             t = bsxfun(@rdivide, t, stdTensor);
