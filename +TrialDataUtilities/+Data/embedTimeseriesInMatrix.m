@@ -74,7 +74,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 
     if isempty(p.Results.tvec)
         % auto-compute appropriate time vector
-        [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, ...
+        [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
             'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, p.Unmatched);
     else
         tvec = p.Results.tvec;
