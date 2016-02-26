@@ -1192,7 +1192,7 @@ classdef ConditionDescriptor
         
         function ci = colorByAttributes(ci, attributes, varargin)
             p = inputParser();
-            p.addOptional('cmapFn', @TrialDataUtilities.Colormaps.linspecer, ...
+            p.addOptional('cmapFn', @TrialDataUtilities.Color.linspecer, ...
                 @(x) ismatrix(x) || isa(x, 'function_handle'));
             p.parse(varargin{:});
             
@@ -1207,7 +1207,7 @@ classdef ConditionDescriptor
         
         function ci = colorByAxes(ci, axesSpec, varargin)
             p = inputParser();
-            p.addOptional('cmapFn', @TrialDataUtilities.Colormaps.linspecer, ...
+            p.addOptional('cmapFn', @TrialDataUtilities.Color.linspecer, ...
                 @(x) ismatrix(x) || isa(x, 'function_handle'));
             p.parse(varargin{:});
             
@@ -2123,7 +2123,12 @@ classdef ConditionDescriptor
 
                 appearances = ci.defaultAppearanceFn();
                 if ~isempty(appearFn)
-                    appearances = appearFn(ci, appearances);
+                    try
+                        appearances = appearFn(ci, appearances);
+                    catch exc
+                        warning('Error calling conditionAppearance function. Test this function directly using testConditionAppearanceFn');
+                        disp(exc);
+                    end
                 end
                 
                 appearances = ci.applyAppearanceModifications(appearances);
