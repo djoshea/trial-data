@@ -11,7 +11,7 @@ if iscell(data)
             mask = ~isnan(data{i});
             if any(mask)
                 tMin(i) = nanmin(time{i}(mask));
-                tMax(i) = nanmin(time{i}(mask));
+                tMax(i) = nanmax(time{i}(mask));
             end
         end
     end
