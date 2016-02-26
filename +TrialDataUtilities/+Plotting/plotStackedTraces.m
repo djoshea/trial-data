@@ -18,23 +18,58 @@ function [traceCenters, hLines] = plotStackedTraces(tvec, mat, varargin)
 %     trace's range
 
 p = inputParser();
+p.addParamValue('evenSpacing', false, @islogical);
 p.addParamValue('normalize', false, @islogical);
-p.addParamValue('intercalate', true, @islogical);
+p.addParamValue('intercalate', false, @islogical);
 p.addParamValue('spacingFraction', 1.2, @isscalar);
 p.addParamValue('colormap', @TrialDataUtilities.Color.hslmap, @(x) isa(x, 'function_handle') || ismatrix(x));
-p.addParamValue('maintainScale', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
-p.addParameter('labels', {}, @iscell);
-p.addParameter('showLabels', size(mat, 2) < 25, @islogical);
+p.addParamValue('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
+p.addParameter('labels', {}, @isvector);
+p.addParameter('labelsLinesWithinEachTrace', {}, @iscell);
+p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x));
+p.addParameter('clickable', true, @islogical);
 p.KeepUnmatched = true;
 p.parse(varargin{:});
 
-oldhold = ishold;
+if ~iscell(mat)
+    % all traces share common time vector
+    nTraces = size(mat, 2);
+    nSuperimposed =size(mat, 3);
+    nTime = size(mat, 1);
+    if isempty(tvec)
+        tvec = makecol(1:nTime);
+    end
+    assert(numel(tvec) == nTime, 'Time vector must match size(mat, 1)');
+    
+    if ~isfloat(mat)
+        mat = single(mat);
+    end
+else
+    % everytraces has different time vector
+    nTraces = size(mat, 1);
+    nSuperimposed = size(mat, 2);
+end
+   
+% construct labels by traces
+if isempty(p.Results.labels)
+    labels = arrayfun(@num2str, 1:nTraces, 'UniformOutput', false);
+elseif isnumeric(p.Results.labels)
+    labels = arrayfun(@num2str, p.Results.labels, 'UniformOutput', false);
+else
+    labels = p.Results.labels;
+end
+labels = makecol(labels);
+
+% construct labels for each superimposed line within each trace
+if isempty(p.Results.labelsLinesWithinEachTrace)
+    labelsLinesWithinEachTrace = arrayfun(@num2str, 1:nSuperimposed, 'UniformOutput', false);
+else
+    labelsLinesWithinEachTrace = p.Results.labelsLinesWithinEachTrace;
+end
 
 if ~iscell(mat)
     % invert the order of the traces so the first is plotted at the top
-    mat = fliplr(mat);
-
-    if p.Results.maintainScale
+    if p.Results.maintainScaleSuperimposed
         % subtract the min so each group of traces has min == 0
         minEachGroup = TensorUtils.nanminMultiDim(mat, [1 3]);
         matShift = bsxfun(@minus, mat, minEachGroup);
@@ -44,7 +79,6 @@ if ~iscell(mat)
             matShift = bsxfun(@rdivide, matShift, maxEachGroup);
         end
     else
-        
         % subtract the min so each trace has min at zero
         matShift = bsxfun(@minus, mat, nanmin(mat, [], 1));
 
@@ -57,33 +91,42 @@ if ~iscell(mat)
     ranges = TensorUtils.nanmaxMultiDim(matShift, [1 3]);
 
     % figure out where each trace should start
-    if p.Results.intercalate
-        % the offsets should be set so that pairs of points across
-        % all time points should satisfy:
-        %   trace1(t) * spacingFraction <= trace(2) + offset
-        % or:
-        %   offset = max_t (trace1(t) * spacingFraction - trace2(t)
+    if p.Results.evenSpacing
+        % trace(k) will be offset by spacing * k
+        if p.Results.intercalate
+            deltas = matShift(:, 2:end, :) * p.Results.spacingFraction - matShift(:, 1:end-1, :);
+            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]); % max over time and superimposed traces
+            traceOffsets = (nTraces-1:-1:0) * nanmax(maxDeltas);
+        else
+            rangesPadded = makerow(ranges * (p.Results.spacingFraction));
+            traceOffsets = (nTraces-1:-1:0) * nanmax(rangesPadded);
+        end
+    else
+        if p.Results.intercalate
+            % the offsets should be set so that pairs of points across
+            % all time points should satisfy:
+            %   traceN+1(t) * spacingFraction <= traceN(t) + offset
+            % or:
+            %   offset = max_t (traceN+1(t) * spacingFraction - traceN(t))
 
-        deltas = matShift(:, 1:end-1, :) * p.Results.spacingFraction - matShift(:, 2:end, :);
-        maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]); % max over time and superimposed traces
-        traceOffsets = [0, cumsum(maxDeltas)];
+            deltas = matShift(:, 2:end, :) * p.Results.spacingFraction - matShift(:, 1:end-1, :);
+            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]); % max over time and superimposed traces
+            cs = fliplr(cumsum(fliplr(maxDeltas)));
+            traceOffsets = [cs, 0];
 
-    else 
-        rangesPadded = ranges * (p.Results.spacingFraction);
-        cs = cumsum(rangesPadded);
-        traceOffsets = [0, cs(1:end-1)];
+        else 
+            rangesPadded = makerow(ranges * (p.Results.spacingFraction));
+            cs = fliplr(cumsum(fliplr(rangesPadded)));
+            traceOffsets = [cs(2:end), 0];
+        end
     end
-
     traceCenters = (traceOffsets + ranges / 2)';
 
     matShift = bsxfun(@plus, matShift, traceOffsets);
 
-    nTraces = size(matShift, 2);
-    nSuperimposed =size(matShift, 3);
-
     % expand colormap to be exactly nSuperimposed long
-    map = expandWrapColormap(p.Results.colormap, nSuperimposed);
-    
+    map = TrialDataUtilities.Plotting.expandWrapColormap(p.Results.colormap, nSuperimposed);
+
     if nSuperimposed == 1
         % plot simultaneously
         hLines = plot(tvec, matShift, '-', 'Color', map(1, :), p.Unmatched);
@@ -96,25 +139,25 @@ if ~iscell(mat)
         matShiftCat = TensorUtils.reshapeByConcatenatingDims(matShift, {1 [3 2]});
 
         hLines = plot(tvec, matShiftCat, '-', p.Unmatched);
+        hLines = reshape(hLines, [nSuperimposed nTraces])';
     end
-    
+
 else
     % cell mode - everyone has a different time vector
-    nTraces = size(mat, 1);
-    nSuperimposed = size(mat, 2);
     if ~iscell(tvec)
         tvec = repmat({tvec}, nTraces, nSuperimposed);
     end
     
-    map = expandWrapColormap(p.Results.colormap, nSuperimposed);
+    map = TrialDataUtilities.Plotting.expandWrapColormap(p.Results.colormap, nSuperimposed);
     
     % invert the order of the traces so the first is plotted at the top
-    mat = flipud(mat);
-    tvec = flipud(tvec);
+%     mat = flipud(mat);
+%     labels = flipud(labels);
+%     tvec = flipud(tvec);
 
-    if p.Results.maintainScale
+    if p.Results.maintainScaleSuperimposed
         % subtract the min so each group trace has min at zero
-        minEachRow = nanmin(cellfun(@(mat) nanminNanEmpty(mat(:)), mat), [], 2);
+        minEachRow = double(nanmin(cellfun(@(mat) nanminNanEmpty(mat(:)), mat), [], 2));
         minCell = num2cell(repmat(minEachRow, 1, size(mat, 2)));
         cellShift = cellfun(@(mat, min) mat - min, mat, minCell, 'UniformOutput', false);
 
@@ -140,16 +183,22 @@ else
     
     % can't intercalate without doing time consuming interpolation
     rangesPadded = ranges * (p.Results.spacingFraction);
-    cs = cumsum(rangesPadded);
-    traceOffsets = [0; makecol(cs(1:end-1))];
+    cs = flipud(cumsum(flipud(rangesPadded)));
+    traceOffsets = [cs(2:end); 0];
 
+    traceOffsets = traceOffsets - min(traceOffsets);
     traceCenters = (traceOffsets + ranges / 2)';
 
     hLines = cell(nTraces, nSuperimposed);
+    %lineDescriptionsCell = cell(nTraces, nSuperimposed);
     for iT = 1:nTraces
         for iS = 1:nSuperimposed
             matShift = cellShift{iT, iS} + traceOffsets(iT);
-            tvecThis = tvec{iT, iS};
+            if isempty(tvec)
+                tvecThis = 1:numel(matShift);
+            else
+                tvecThis = tvec{iT, iS};
+            end
 
             hLines{iT, iS} = plot(tvecThis, matShift, '-', 'Color', map(iS, :), p.Unmatched);
             hold on;
@@ -157,15 +206,15 @@ else
     end
 end
 
-ylim([0 traceOffsets(end) + ranges(end)]);
+ylim([0 traceOffsets(1) + ranges(1)]);
 
-if isempty(p.Results.labels)
-    labels = arrayfun(@num2str, 1:nTraces, 'UniformOutput', false);
+if strcmp(p.Results.showLabels, 'auto')
+    showLabels = nTraces < 25;
 else
-    labels = p.Results.labels;
+    showLabels = p.Results.showLabels;
 end
 
-if p.Results.showLabels
+if showLabels
     au = AutoAxis(gca);
     spans = fliplr([makerow(traceOffsets); makerow(traceOffsets + ranges)]);
     au.addLabeledSpan('y', 'span', spans, 'label', labels);
@@ -174,7 +223,30 @@ if p.Results.showLabels
     au.update();
 end
 
-hold(ifelse(oldhold, 'on', 'off'));
+if p.Results.clickable
+    % build line handle descriptions
+    lineDescriptions = cell(nTraces, nSuperimposed);
+    if iscell(hLines)
+        for iT = 1:nTraces
+            for iS = 1:nSuperimposed
+                set(hLines{iT, iS}, 'Description', sprintf('Trace %s, Line %s', labels{iT}, labelsLinesWithinEachTrace{iS}));
+            end
+        end
+        hvec = cat(1, hLines{:});
+    else
+        for iT = 1:nTraces
+            for iS = 1:nSuperimposed
+                set(hLines(iT, iS), 'Description', sprintf('Trace %s, Line %s', labels{iT}, labelsLinesWithinEachTrace{iS}));
+            end
+        end
+        hvec = hLines(:);
+    end
+
+    TrialDataUtilities.Plotting.makeClickableShowDescription(hvec);
+end
+
+% hold(ifelse(oldhold, 'on', 'off'));
+hold off;
 
 end
 
@@ -186,13 +258,3 @@ function r = nanmaxNanEmpty(v1, varargin)
     end
 end
 
-function map = expandWrapColormap(map, n)
-    if isa(map, 'function_handle')
-        map = map(n);
-    elseif size(map, 1) < n
-        % make at least big enough
-        map = repmat(map, ceil(n / size(map, 1)), 1);
-        % cut it down to size
-        map = map(1:n, :);
-    end
-end

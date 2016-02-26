@@ -1814,7 +1814,7 @@ classdef TrialData
                     blanking = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blanking);
                 else
                     % need to merge with existing blanking regions
-                    blankingExisting = td.getSpikeBlankingRegions(spikeCh);
+                    blankingExisting = td.getSpikeBlankingRegions(name);
                     % these will be aligned, so we unalign them to match
                     % new blanking
                     alignedOffsets = td.getTimeOffsetsFromZeroEachTrial();
@@ -1874,6 +1874,75 @@ classdef TrialData
             td = td.setChannelData(name, channelData, 'fieldMask', channelFieldMask, p.Unmatched);
         end
         
+        function td = mergeSpikeChannels(td, chList, varargin)
+            assert(iscell(chList));
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addParameter('as', chList{1}, @ischar);
+            p.parse(varargin{:});
+            
+            % gather all spike times and waveforms
+            nCh = numel(chList);
+            [wavesCell, timesCell] = deal(cell(nCh, td.nTrials));
+            waveTvecCell = cell(nCh, 1);
+            [idxZero, nTimeWave] = nanvec(nCh);
+            blankingRegionsCell = cell(nCh, 1);
+            
+            for c = 1:nCh
+                [wavesCell(c, :), waveTvecCell{c}, timesCell(c, :)] = ...
+                    td.getRawSpikeWaveforms(chList{c});
+                [~, idxZero(c)] = min(abs(waveTvecCell{c}));
+                nTimeWave(c) = numel(waveTvecCell{c});
+                deltaTimeWave(c) = mean(diff(waveTvecCell{c}));
+                blankingRegionsCell{c} = td.getRawSpikeBlankingRegions(chList{c});
+            end
+            
+            if max(deltaTimeWave) - min(deltaTimeWave) > median(deltaTimeWave) * 0.05
+                warning('Spike channel waveforms have different sampling rates. Using median');
+            end
+            deltaTimeWave = median(deltaTimeWave);
+            
+            % figure out how to match the waveform time vectors
+            zeroInd = max(idxZero);
+            nRightZeroGlobal = max(nTimeWave - idxZero);
+            waveTvecGlobal = -deltaTimeWave*(zeroInd-1) : deltaTimeWave : deltaTimeWave*nRightZeroGlobal;
+            
+            % pad the waveforms to the left or right with NaNs to match sizes
+            for c = 1:nCh
+                padLeft = zeroInd - idxZero(c);
+                padRight = nRightZeroGlobal - (nTimeWave(c) - idxZero(c));
+                if padLeft > 0 || padRight > 0
+                    debug('Padding waveforms for %s to match new combined waveforms time vector\n', chList{c});          
+                    for t = 1:size(wavesCell, 2)
+                        nWaves = size(wavesCell{c, t}, 1);
+                        wavesCell{c, t} = cat(2, zeros(nWaves, padLeft), wavesCell{c, t}, zeros(nWaves, padRight));
+                    end
+                end
+            end
+            
+            % combine the data across channels
+            [wave, times] = cellvec(td.nTrials);
+            prog = ProgressBar(td.nTrials, 'Combining spike data');
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                wave{iT} = cat(1, wavesCell{:, iT});
+                times{iT} = cat(1, timesCell{:, iT});  
+            end
+            prog.finish();
+            
+            % combine blanking regions, add spike channel will take care of
+            % blanking the data in times and waves for us
+            blankingRegions = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blankingRegionsCell{:});
+            
+            % add the new channel with combined data
+            td = td.dropChannels(chList);
+            td = td.addSpikeChannel(p.Results.as, times, 'waveforms', wave, ...
+                'waveformsTime', waveTvecGlobal, ...
+                'isAligned', false, ...
+                'blankingRegions', blankingRegions);
+        end
+        
         function td = blankSpikesInTimeIntervals(td, name, intervalCell, varargin)
             % adds a blanking region to the spiking data
             % this both removes the spikes from that period of time each
@@ -1915,7 +1984,7 @@ classdef TrialData
                 'blankingRegions', intervalCell, 'waveforms', rawWaves);
         end
         
-        function intervalCell = getSpikeBlankingRegions(td, unitName)
+        function intervalCell = getRawSpikeBlankingRegions(td, unitName)
             cd = td.channelDescriptorsByName.(unitName);
             fld = cd.blankingRegionsField;
             if isempty(fld)
@@ -1923,9 +1992,13 @@ classdef TrialData
                 intervalCell = cellvec(td.nTrials);
             else
                 intervalCell = makecol({td.data.(fld)});
-                intervalCell = td.replaceInvalidMaskWithValue(intervalCell, []);
                 intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCell);
             end
+        end
+        
+        function intervalCell = getSpikeBlankingRegions(td, unitName)
+            intervalCell = td.getRawSpikeBlankingRegions(unitName);
+            intervalCell = td.replaceInvalidMaskWithValue(intervalCell, []);
         end
         
         function timesCell = getRawSpikeTimes(td, unitNames)
@@ -1992,6 +2065,16 @@ classdef TrialData
             % scale to appropriate units
             wavesCell = cd.scaleWaveforms(wavesCell);
             waveTvec = td.channelDescriptorsByName.(unitName).waveformsTime;
+            
+            % check number of timepoints 
+            waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(wavesCell);
+            nSampleWave = size(waveMat, 2);
+            if nSampleWave < numel(waveTvec)
+                warning('Waveforms have %d samples but waveformsTime has %d samples. Shortening waveforms to match', nSampleWave, numel(waveTvec));
+                waveTvec = waveTvec(1:nSampleWave);
+            elseif nSampleWave > numel(waveTvec)
+                error('Waveforms have %d samples but waveformsTime has %d samples. Provide new waveform time vector', nSampleWave, numel(waveTvec));
+            end
             timesCell = td.getRawSpikeTimes(unitName);
         end
         

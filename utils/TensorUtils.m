@@ -1066,6 +1066,28 @@ classdef TensorUtils
             
             out = repmat(sliceOrient, repCounts);
         end
+        
+        function t = unshiftdim(t, nshift, ndimsOrig)
+            % t = unshiftdim(t, nshift, ndimsOrig)
+             if nshift > 0
+                 % shiftdim did permute(t,[n+1:ndims(x),1:n])
+                 t = ipermute(t, [nshift+1:ndimsOrig,1:nshift]);
+             elseif nshift < 0
+                 % shiftdim just did a reshape, so we can just shiftdim
+                 % back
+                 t = shiftdim(t, -nshift);
+             end
+        end
+        
+        function t = shiftdimToFirstDim(t, dim)
+            if dim ~= 1
+                t = shiftdim(t, dim-1);
+            end
+        end
+        
+        function t = unshiftdimToFirstDim(t, dim, ndimsOrig)
+            t = TensorUtils.unshiftdim(t, dim-1, ndimsOrig);
+        end   
     end
     
     methods(Static) % Size expansion

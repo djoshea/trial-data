@@ -1353,14 +1353,16 @@ classdef AlignInfo < AlignDescriptor
                     app = ad.markAppear{iMark};
 
                     % plot mark and provide legend hint
-                    hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
-                        p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
+                    if ~isempty(markLoc)
+                        hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
+                            p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
 
-                    if p.Results.showInLegend
-                        TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
-                        TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
-                    else
-                        TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
+                        if p.Results.showInLegend
+                            TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
+                            TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
+                        else
+                            TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
+                        end
                     end
                 end
             else
@@ -1375,7 +1377,7 @@ classdef AlignInfo < AlignDescriptor
             % timeCell is nTrials x 1 cell of time vectors
             % it is assumed that each row is drawn below the last, such that timeCell{1} is drawn from
             % yOffsetTop to yOffsetTop + 1, with timeCell{2} drawn 1 below that
-            %
+            % yOffsetTop refers to the top of the first trial's spikes
             p = inputParser();
             p.addParameter('startByTrial', [], @(x) isnumeric(x) && isvector(x));
             p.addParameter('stopByTrial', [], @(x) isnumeric(x) && isvector(x));

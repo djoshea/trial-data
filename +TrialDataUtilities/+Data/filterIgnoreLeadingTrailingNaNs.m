@@ -21,13 +21,12 @@ function out = filterIgnoreLeadingTrailingNaNs(B, A, mat, varargin)
         if isempty(dim)
             % auto choose first non singular dimension
             dim = TensorUtils.firstNonSingletonDim(mat);
-        else
-            dim = 1;
         end
         
         if dim ~= 1
             % place dim at second dimension slot
-            mat = shiftdim(mat, dim - 1);
+            ndimsOrig = ndims(mat);
+            mat = TensorUtils.shiftdimToFirstDim(mat, dim);
         end
         
         nCol = size(mat(:, :), 2);
@@ -57,7 +56,7 @@ function out = filterIgnoreLeadingTrailingNaNs(B, A, mat, varargin)
 
         if dim ~= 1
             % place dim at second dimension slot
-            mat = shiftdim(mat, 1 - dim);
+            mat = TensorUtils.unshiftdimToFirstDim(mat, dim, ndimsOrig);
         end
     end
 end

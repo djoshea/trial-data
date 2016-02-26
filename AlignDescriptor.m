@@ -40,7 +40,7 @@ classdef AlignDescriptor
         eventAbbrevLookup
     end
 
-    properties(Hidden, SetAccess=protected) % SetAccess=protected
+    properties(SetAccess=protected) % SetAccess=protected
         % slice times >= t_startEvent + startOffset
         startEvent;
         startEventIndex = 1;
@@ -1420,6 +1420,17 @@ classdef AlignDescriptor
         end
     end
 
+    methods % Utilities for building string descriptors, misc
+        function str = buildStringForOffsetFromZero(ad, offset, units)
+            if nargin < 3
+                units = '';
+            else
+                units = [' ' units];
+            end
+            str = sprintf('%s%+g%s', ad.zeroEvent, offset + ad.zeroOffset, units);
+        end
+    end
+    
     methods(Static) % construct from another align descriptor, used primarily by AlignInfo
         function adNew = fromAlignDescriptor(ad, adNew)
             if nargin < 2

@@ -6,8 +6,6 @@ function showInLegend(h, names)
 
     if nargin >= 2 && ~isempty(names) && ischar(names)
         names = repmat({names}, numel(h), 1);
-    else
-        names = [];
     end
 
     for i = 1:numel(h)

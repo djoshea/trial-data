@@ -54,7 +54,7 @@ function hLine = drawTickRaster(timesCell, varargin)
             if ~isempty(timesCell{iE})
                 XByTrial{iE} = repmat(makerow(timesCell{iE}), 3, 1);
                 XByTrial{iE}(3, :) = NaN;
-                YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)+tickHeight; NaN], 1, numel(timesCell{iE}));
+                YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)-tickHeight; NaN], 1, numel(timesCell{iE}));
             end
         end
 
