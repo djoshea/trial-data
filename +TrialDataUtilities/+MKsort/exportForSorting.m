@@ -124,11 +124,11 @@ for iAE = 1:size(uniqAE, 1)
         [timesCell{iM}, trialIdxCell{iM}] = TensorUtils.catWhich(1, timesByTrialOffset{:});
         
         % compare waveTimeVecs to make sure they stay constant
-        if isempty(waveTimeVec)
+%         if isempty(waveTimeVec)
             waveTimeVec = thisWaveTimeVec;
-        else
-            assert(isequal(waveTimeVec, thisWaveTimeVec), 'Wave time vector for %s is not consistent with other spike channels', chName);
-        end
+%         else
+%             assert(isequal(waveTimeVec, thisWaveTimeVec), 'Wave time vector for %s is not consistent with other spike channels', chName);
+%         end
         
         if addTrialInfo
             % build a cell which identifies the trial for each spike, or

@@ -491,6 +491,9 @@ classdef TrialDataConditionAlign < TrialData
         function td = setConditionAppearanceFn(td, fn)
             % Update the appearanceFn callback of conditionDescriptor
             % without invalidating any of the other cached info
+            if nargin < 2
+                fn = [];
+            end
             assert(isempty(fn) || isa(fn, 'function_handle'));
             td.warnIfNoArgOut(nargout);
             td.conditionInfo.appearanceFn = fn;
@@ -1378,8 +1381,12 @@ classdef TrialDataConditionAlign < TrialData
             
             % subtract baseline on condition by condition
             if ~isempty(p.Results.subtractConditionBaselineAt)
-                tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
-                tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                if strcmp(p.Results.subtractConditionBaselineAt, '*')
+                    tdBaseline = td;
+                else
+                    tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
+                    tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                end
                 baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name);
                 baselineForTrial = nanvec(tdBaseline.nTrials);
                 mask = ~isnan(tdBaseline.conditionIdx);
@@ -1389,8 +1396,12 @@ classdef TrialDataConditionAlign < TrialData
             
             % subtract baseline on trial by trial basis
             if ~isempty(p.Results.subtractTrialBaselineAt)
-                tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
-                tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                if strcmp(p.Results.subtractTrialBaselineAt, '*')
+                    tdBaseline = td;
+                else
+                    tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
+                    tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                end
                 baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name);
                 data = cellfun(@minus, data, num2cell(baseline), 'UniformOutput', false);
             end
@@ -1529,6 +1540,21 @@ classdef TrialDataConditionAlign < TrialData
         function tf = checkAnalogChannelsShareTimeVector(td, names)
             timeFields = cellfun(@(name) td.channelDescriptorsByName.(name).timeField, names, 'UniformOutput', false);
             tf = numel(unique(timeFields)) == 1;
+        end
+        
+        function [dataCell, timeCell] = getMultiAnalog(td, name, varargin)
+            % [data, time] = getMultiAnalog(td, chNames, varargin)
+            % data and time are cell(nTrials, nChannels)
+            if ischar(name)
+                name = {name};
+            end
+            
+            % build nTrials x nChannels cell of data/time vectors
+            C = numel(name);
+            [dataCell, timeCell] = deal(cell(td.nTrials, C));
+            for c = 1:C
+                [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, varargin{:});
+            end
         end
 
         function [data, tvec] = getMultiAnalogAsMatrix(td, name, varargin)
@@ -1993,6 +2019,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % add as the last axis
             td = td.addAxis(nameX);
+            td = td.setAxisValueListAutoAll(nameX); % important to match attribute values in the axis list
             
             % put nameX as axis 1, combine other axes as axis 2
             if td.nAxes > 1
@@ -2640,7 +2667,7 @@ classdef TrialDataConditionAlign < TrialData
             mask = falsevec(numel(names));
             for iC = 1:numel(names)
                 cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = strcmp(cd.array, arrayName) && cd.electrode == electrodeNum;
+                mask(iC) = any(strcmp(cd.array, arrayName)) && any(cd.electrode == electrodeNum);
                 units(iC) = cd.unit;
             end
                 
@@ -2693,14 +2720,16 @@ classdef TrialDataConditionAlign < TrialData
         
         function plotSpikeWaveforms(td, unitName, varargin)
             p = inputParser();
-            p.addParameter('maxToPlot', 200, @isscalar);
+            p.addParameter('maxToPlot', 500, @isscalar);
             p.addParameter('alpha', 0.2, @isscalar);
             p.addParameter('color', [], @(x) true);
             p.addParameter('colormap', [], @(x) isa(x, 'function_handle') || ismatrix(x) || isempty(x));
             p.addParameter('showThreshold', false, @islogical);
             p.addParameter('showMean', false, @islogical);
+            p.addParameter('clickable', true, @islogical); % add interactive clicking to identify waveforms
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            clickable = p.Results.clickable;
             
             [axh, unmatched] = td.getRequestedPlotAxis(p.Unmatched);
             
@@ -2723,9 +2752,14 @@ classdef TrialDataConditionAlign < TrialData
            
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
             for iU = 1:nUnits
-                [wavesCell, waveTvec] = td.getSpikeWaveforms(unitName{iU}, unmatched);
+                [wavesCell, waveTvec, waveTimeCell] = td.getSpikeWaveforms(unitName{iU}, unmatched);
                 wavesMat = cat(1, wavesCell{:});
                 % wavesmat is nSpikes x nSamples;
+                
+                if clickable
+                    % keep track of the details on each waveform
+                    [timeInTrial, whichTrial] = TensorUtils.catWhich(1, waveTimeCell{:});
+                end
 
                 if isempty(wavesMat)
                     continue;
@@ -2736,11 +2770,16 @@ classdef TrialDataConditionAlign < TrialData
                     s = RandStream('mt19937ar','Seed',1);
                     idx = randsample(s, size(wavesMat, 1), maxToPlot);
                     wavesMat = wavesMat(idx, :);
+                    if clickable
+                        timeInTrial = timeInTrial(idx);
+                        whichTrial = whichTrial(idx);
+                    end
                 end
-                
-                if size(wavesMat, 2) < numel(waveTvec)
-                    waveTvec = waveTvec(1:size(wavesMat, 2));
-                end
+                   
+                % should now be handled in TrialData getRawSpikeWaveforms
+%                 if size(wavesMat, 2) < numel(waveTvec)
+%                     waveTvec = waveTvec(1:size(wavesMat, 2));
+%                 end
 
 %                 h = TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat', ...
 %                     'Parent', axh, 'EdgeColor', colormap(iU, :), 'EdgeAlpha', p.Results.alpha);
@@ -2748,6 +2787,17 @@ classdef TrialDataConditionAlign < TrialData
                 h = plot(waveTvec, wavesMat', 'Parent', axh, 'Color', colormap(iU, :));
                 TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
                 TrialDataUtilities.Plotting.showFirstInLegend(h, unitName{iU});
+                
+                if clickable
+                    % generate description for each waveform
+                    waveDesc = cellvec(size(wavesMat, 1));
+                    for iW = 1:size(wavesMat, 1)
+                        waveDesc{iW} = sprintf('Unit %s\nTrial %d\nTime %s', unitName{iU}, whichTrial(iW), ...
+                            td.alignInfoActive.buildStringForOffsetFromZero(timeInTrial(iW)));
+                    end
+                    TrialDataUtilities.Plotting.makeClickableShowDescription(h, waveDesc);
+                end
+                
                 hold on;
                 
                 if p.Results.showMean
@@ -3027,25 +3077,33 @@ classdef TrialDataConditionAlign < TrialData
                 listByConditionMask = cellfun(@(x) true(size(x)), listByCondition, 'UniformOutput', false);
             end
             
+            trialCounts = cellfun(@nnz, listByConditionMask);
+            nTrialsTotal = sum(trialCounts);
+            
             % default gap depends on presence of annotations between conditions
+            % it is set such that 10% of the space is split among the gaps
+            % equally
             if isempty(p.Results.gapBetweenConditions)
+                gap = nTrialsTotal * 0.1 / nConditionsUsed;
                 if p.Results.annotateAboveEachCondition
-                    gap = p.Results.annotationHeight + 3; % 2 above, 1 below
-                else
-                    gap = 3;
+                    gap = gap + 3; % 2 above, 1 below
                 end
             else
                 gap = p.Results.gapBetweenConditions;
             end
                     
             % compute y-axis offsets for each condition
-            trialCounts = cellfun(@nnz, listByConditionMask);
+            % note that trials proceed from the top downwards, and the
+            % offsets here refer to the top of the first trial's spikes
+
             yOffsetByCondition = zeros(nConditionsUsed, 1);
             yLimsByCondition = nan(2, nConditionsUsed);
             currentOffset = 0;
             lastTrialCount = 0;
             for iC = nConditionsUsed:-1:1
+                % top of this block of trials occurs here
                 yOffsetByCondition(iC) = currentOffset + trialCounts(iC);
+                % min max (for last, first trials)
                 yLimsByCondition(:, iC) = [currentOffset; currentOffset + trialCounts(iC)];
                 if trialCounts(iC) > 0
                     currentOffset = currentOffset + trialCounts(iC) + gap;
@@ -3999,6 +4057,16 @@ classdef TrialDataConditionAlign < TrialData
                     end
                 end
             end
+        end
+    end
+    
+    % Plotting single trials
+    methods
+        function plotSingleTrialAnalogChannels(td, trialInd)
+            chList = td.listAnalogChannels();
+            [data, time] = td.selectTrials(trialInd).getMultiAnalog(chList);
+            
+            TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList);
         end
     end
     
