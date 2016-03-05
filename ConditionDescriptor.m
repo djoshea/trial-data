@@ -44,7 +44,7 @@ classdef ConditionDescriptor
         
         % nConditions x 1 mask which indicates which conditions will be
         % suppressed in the final grouping into conditions
-        % this is set using .setconditionIncludeMask after all grouping is
+        % this is set using .setConditionIncludeMask after all grouping is
         % taken care of. the only effect will be to ignore trials that fall
         % into the specific conditions where conditionIncludeMask is true
         conditionIncludeMask
@@ -190,7 +190,14 @@ classdef ConditionDescriptor
     end
 
     methods % General methods, setters and getters
-        
+        function ci = notifyConditionsChanged(ci)
+            % when the condition tensor's shape or size changes, we need to
+            % reset the condition include mask
+            ci.warnIfNoArgOut(nargout);
+            ci.conditionIncludeMaskManual = [];
+            ci = ci.invalidateCache();
+        end
+            
         % flush the contents of odc as they are invalid
         % call this at the end of any methods which would want to
         % regenerate these values
@@ -334,6 +341,7 @@ classdef ConditionDescriptor
         end
 
         function disp(ci)
+            return;
             ci.printDescription();
             fprintf('\n');
             builtin('disp', ci);
@@ -550,7 +558,7 @@ classdef ConditionDescriptor
             
             ci.axisValueListsOccupiedOnly(idx) = true;
 
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function ci = maskAxes(ci, mask)
@@ -563,7 +571,7 @@ classdef ConditionDescriptor
             ci.axisRandomizeResampleFromList = ci.axisRandomizeResampleFromList(mask);
             ci.axisValueListsOccupiedOnly = ci.axisValueListsOccupiedOnly(mask);
             
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function ci = removeAxis(ci, axisSpec)
@@ -593,7 +601,7 @@ classdef ConditionDescriptor
 
             ci = ci.maskAxes([]);
 
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function ci = removeAttributesFromAxes(ci, namesOrIdx)
@@ -661,7 +669,7 @@ classdef ConditionDescriptor
                 'Value list fields must match axis attributes');
             ci.axisValueListsManual{idx} = valueList;
             
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function ci = fixAxisValueList(ci, axisSpec)
@@ -690,7 +698,7 @@ classdef ConditionDescriptor
             
             ci.axisValueListsManual(idx) = {[]};
             ci.axisValueListsOccupiedOnly(idx) = false;
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function ci = setAxisValueListAutoOccupied(ci, axisSpec)
@@ -700,7 +708,7 @@ classdef ConditionDescriptor
             [ci.axisValueListsManual{idx}]= deal({});
             ci.axisValueListsOccupiedOnly(idx) = true;
             
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function nv = get.conditionsSize(ci)
@@ -774,6 +782,12 @@ classdef ConditionDescriptor
             assert(islogical(mask) && numel(mask) == ci.nConditions, 'conditionIncludeMask must be nConditions x 1 logical vector');
             ci.assertAllAxisValueListsManual();
             ci.conditionIncludeMaskManual = makecol(mask(:));
+            ci = ci.invalidateCache();
+        end
+        
+        function ci = resetConditionIncludeMask(ci)
+            ci.warnIfNoArgOut(nargout);
+            ci.conditionIncludeMaskManual = [];
             ci = ci.invalidateCache();
         end
         
@@ -1065,7 +1079,7 @@ classdef ConditionDescriptor
                         ci = ci.setAxisValueListAutoOccupied(iArg);
                 end
             end
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function ci = flattenAxes(ci)
@@ -1478,7 +1492,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
 
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
 
         function ci = addAttributes(ci, names)
@@ -1558,7 +1572,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function ci = setAttributeNumeric(ci, attr, tf)
@@ -1583,7 +1597,7 @@ classdef ConditionDescriptor
             
             %ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
 
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
 
         % manually set attribute bins
@@ -1614,7 +1628,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
 
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
 
         % automatically set attribute binned uniformly by range
@@ -1629,7 +1643,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsAutoCount(iAttr) = nBins;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoUniform;
 
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
 
         % automatically set attribute binned into quantiles
@@ -1643,7 +1657,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsAutoCount(iAttr) = nQuantiles;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoQuantiles;
 
-            ci = ci.invalidateCache();
+            ci = ci.notifyConditionsChanged();
         end
         
         function values = generateConditionsAsStrings(ci, varargin)

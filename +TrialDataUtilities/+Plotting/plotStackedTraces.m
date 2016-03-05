@@ -194,7 +194,7 @@ else
     for iT = 1:nTraces
         for iS = 1:nSuperimposed
             matShift = cellShift{iT, iS} + traceOffsets(iT);
-            if isempty(tvec)
+            if isempty(tvec{iT, iS})
                 tvecThis = 1:numel(matShift);
             else
                 tvecThis = tvec{iT, iS};

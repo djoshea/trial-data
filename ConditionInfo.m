@@ -229,11 +229,13 @@ classdef ConditionInfo < ConditionDescriptor
             end
             
             % remove trials where conditionIncludeMask is false
-            conditionIdx = TensorUtils.subMat2Ind(ci.conditionsSize, subsMat); %#ok<*PROP>
-            removeMask = ~isnan(conditionIdx); % only consider trials still valid
-            removeMask(~isnan(conditionIdx)) = ~ci.conditionIncludeMask(conditionIdx(~isnan(conditionIdx)));
-            subsMat(removeMask, :) = NaN;
-            reasonInvalid(removeMask) = {'condition marked ignored by conditionIncludeMask'};
+            if ci.nConditions > 0
+                conditionIdx = TensorUtils.subMat2Ind(ci.conditionsSize, subsMat); %#ok<*PROP>
+                removeMask = ~isnan(conditionIdx); % only consider trials still valid
+                removeMask(~isnan(conditionIdx)) = ~ci.conditionIncludeMask(conditionIdx(~isnan(conditionIdx)));
+                subsMat(removeMask, :) = NaN;
+                reasonInvalid(removeMask) = {'condition marked ignored by conditionIncludeMask'};
+            end
         end
         
         function valueList = buildAttributeFilterValueListStruct(ci)
