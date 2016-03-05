@@ -60,7 +60,8 @@ function makeClickableShowDescription(hvec, varargin)
         end
         if ~isempty(get(h, 'Description'))
             hText = text(pt(1), pt(2), pt(3), get(h, 'Description'), ...
-                'Interpreter', 'none', 'VerticalAlignment', 'top', 'Margin', 10);
+                'Interpreter', 'none', 'VerticalAlignment', 'top', ...
+                'Margin', 10, 'BackgroundColor', [1 1 1 0.8]);
         end
     end
 end

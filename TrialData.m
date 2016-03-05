@@ -991,7 +991,7 @@ classdef TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
-            
+          
             % check the values and convert to nTrials cellvec
             if ismatrix(values) && isnumeric(values)
                 % values must be nTrials x nTimes
@@ -1000,6 +1000,7 @@ classdef TrialData
                 
             elseif iscell(values)
                 assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
+                values = makecol(values);
             else
                 error('Values must be numeric matrix or cell array');
             end
@@ -1201,8 +1202,8 @@ classdef TrialData
                 if isempty(time{iT}) || isempty(data{iT})
                     continue;
                 end
-                timeUnif{iT} = tmins(iT):delta:tmaxs(iT);
-                if any(~isnan(data{iT}))
+                timeUnif{iT} = (tmins(iT):delta:tmaxs(iT))';
+                if nnz(~isnan(data{iT})) > 5
                     dataUnif{iT} = interp1(time{iT}, data{iT}, timeUnif{iT}, p.Results.method);
                 else
                     dataUnif{iT} = nan(size(timeUnif{iT}));
@@ -1225,6 +1226,7 @@ classdef TrialData
             p = inputParser;
             p.addRequired('name', @ischar);
             p.addRequired('times', @(x) isempty(x) || isvector(x));
+            p.addParameter('isAligned', true, @islogical);
             %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.parse(name, times, varargin{:});
             %cd = p.Results.channelDescriptor;
@@ -1256,15 +1258,44 @@ classdef TrialData
             % for TDCA, assume events come in aligned to the current 'zero' time
             % we add the zero offset to the times so that they are stored
             % as absolute time points
-            offsets = td.getTimeOffsetsFromZeroEachTrial();
-            
-            if iscell(times)
-                times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
-            else
-                times = times + offsets;
+            if p.Results.isAligned
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+                if iscell(times)
+                    times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+                else
+                    times = times + offsets;
+                end
             end
             
             td = td.addChannel(cd, {times});
+        end
+        
+        function td = addEventOccurrence(td, name, times, varargin)
+            p = inputParser;
+            p.addRequired('name', @ischar);
+            p.addRequired('times', @(x) isempty(x) || isvector(x));
+            p.addParameter('isAligned', true, @islogical);
+            p.parse(name, times, varargin{:});
+            
+            assert(td.hasEventChannel(name), 'Event channel %s not found', name);
+            
+            % make times unaligned
+            if p.Results.isAligned
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+                if iscell(times)
+                    times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+                else
+                    times = times + offsets;
+                end
+            end
+           
+            % append the new time
+            fullTimes = td.getEventRaw(name);
+            for iT = 1:td.nTrials
+                fullTimes{iT} = cat(1, fullTimes{iT}, times{iT});
+            end
+            
+            td = td.setEvent(name, fullTimes, 'isAligned', false);
         end
         
         function tf = hasEventChannel(td, name) 
@@ -1413,6 +1444,12 @@ classdef TrialData
                     times = makecol(times) + offsets;
                 end
             end
+            
+            % sort and makecol
+            if iscell(times)
+                times = cellfun(@(x) makecol(sort(times)), times, 'UniformOutput', false);
+            end
+            
             td = td.setChannelData(name, {times}, varargin{:});
         end
     end
