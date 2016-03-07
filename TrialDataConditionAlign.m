@@ -790,6 +790,13 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
+        function td = filter(td, attrName, valueList)
+            % td = filter(td, attr, valueList)
+            % shortcut for setAttributeValueList
+            td.warnIfNoArgOut(nargout);
+            td = td.setAttributeValueList(attrName, valueList);
+        end
+        
         function valueList = getAttributeValueList(td, attrName)
             td = td.addAttribute(attrName);
             valueList = td.conditionInfo.getAttributeValueList(attrName);
