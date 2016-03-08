@@ -1139,6 +1139,10 @@ classdef TrialData
             delta = nanmin(delta);
         end
         
+        function fsHz = getAnalogSamplingRateHz(td, name)
+            fsHz = td.timeUnitsPerSecond / td.getAnalogTimeDelta(name);
+        end
+        
         function [data, time] = getAnalogRaw(td, name)
             td.assertHasChannel(name);
             cd = td.channelDescriptorsByName.(name);

@@ -30,6 +30,7 @@ function makeClickableShowDescription(hvec, varargin)
 
     % default activate function multiplies line width by 10
     function h = select(h, pt) %#ok<INUSD>
+        if ~ishandle(h) || ~isvalid(h), return; end
         isLine = strcmp(get(h, 'Type'), 'line');
         if isLine
             set(h, 'LineWidth',  get(h, 'LineWidth') * 10);
@@ -39,7 +40,7 @@ function makeClickableShowDescription(hvec, varargin)
     end
 
     function clickFn(h, eventData)
-        if ~isempty(hSelected)
+        if ~isempty(hSelected) && isvalid(hSelected)
             delete(hSelected);
         end
         
