@@ -216,7 +216,7 @@ end
 
 if showLabels
     au = AutoAxis(gca);
-    spans = fliplr([makerow(traceOffsets); makerow(traceOffsets + ranges)]);
+    spans = [makerow(traceOffsets); makerow(traceOffsets + ranges)];
     au.addLabeledSpan('y', 'span', spans, 'label', labels);
     au.addAutoAxisX();
     au.xlabel('Time');
