@@ -3401,6 +3401,10 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = false;
             p.parse(varargin{:});
             
+            if td.nTrialsValid == 0
+                error('No valid trials to plot');
+            end
+            
             axh = td.getRequestedPlotAxis(p.Unmatched);
             
             conditionIdx = p.Results.conditionIdx;

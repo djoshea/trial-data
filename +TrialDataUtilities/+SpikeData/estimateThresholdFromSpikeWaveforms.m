@@ -6,6 +6,9 @@ function threshEst = estimateThresholdFromSpikeWaveforms(tdca, chName, varargin)
 %     SpikeChannelDescriptor, look at all channels on the same array,
 %     electrode as this channel. this is necessarily the case for when chName
 %     is a continuous neural channel
+%
+% Does not touch tdca.valid (does not call reset), and so only uses spikes
+% on the trials currently valid.
 
 p = inputParser();
 p.addParameter('ignoreZeroUnit', false, @islogical);
