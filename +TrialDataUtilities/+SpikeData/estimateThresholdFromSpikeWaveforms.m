@@ -12,18 +12,20 @@ p.addParameter('ignoreZeroUnit', false, @islogical);
 p.parse(varargin{:});
             
 spikeChList = tdca.listSpikeChannelsOnSameArrayElectrodeAs(chName, 'ignoreZeroUnit', p.Results.ignoreZeroUnit);
-valAtThreshCell = cellvec(numel(spikeChList));
 
-for iC = 1:numel(spikeChList)
-    [waveMat, waveTvec] = tdca.getSpikeWaveformMatrix(spikeChList{iC});
-
-    % we take the timepoint one after zero, right after the threshold is
-    % crossed
-    [~, idxThreshCross] = min(abs(waveTvec));
-    valAtThreshCell{iC} = waveMat(:, idxThreshCross+1);
+if isempty(spikeChList)
+    threshEst = NaN;
+    return;
 end
 
-valAtThresh = cat(1, valAtThreshCell{:});
+[waveMat, waveTvec] = tdca.getSpikeWaveformMatrix(spikeChList);
+
+% we take the timepoint one after zero, right after the threshold is
+% crossed
+[~, idxThreshCross] = min(abs(waveTvec));
+
+valAtThresh = waveMat(:, idxThreshCross+1);
+
 if nanmean(valAtThresh) < 0
     % negative threshold
     threshEst = nanmax(valAtThresh);
