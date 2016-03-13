@@ -25,10 +25,13 @@ function makeClickableShowDescription(hvec, varargin)
 
     set(hvec,  'PickableParts', 'visible', 'HitTest', 'on', 'ButtonDownFcn', @clickFn, 'SelectionHighlight', 'on');
 
-    hSelected = [];
+    hSelected = []; % handle to copy of that object displayed
     hText = [];
 
     % default activate function multiplies line width by 10
+    % this will receive a copy of the original object that will later be
+    % deleted, so it can modify the properties of that object without
+    % worrying about restoring them
     function h = select(h, pt) %#ok<INUSD>
         if ~ishandle(h) || ~isvalid(h), return; end
         isLine = strcmp(get(h, 'Type'), 'line');
@@ -39,12 +42,35 @@ function makeClickableShowDescription(hvec, varargin)
         set(h, 'Selected', 'on');
     end
 
-    function clickFn(h, eventData)
+    function clearSelection(~, ~)
         if ~isempty(hSelected) && isvalid(hSelected)
             delete(hSelected);
+            hSelected = [];
         end
+        if ~isempty(hText) && isvalid(hText)
+            delete(hText);
+            hText = [];
+        end
+    end
+
+    function dispDescription(~, ~)
+        % prints the contents of the text box to the command line
+        desc = get(hText, 'String');
+        fprintf('\n');
+        if ischar(desc)
+            fprintf('%s\n', desc);
+        elseif iscell(desc)
+            for iL = 1:numel(desc)
+                fprintf('%s\n', desc{iL});
+            end
+        end
+        fprintf('\n');
+    end
+
+    function clickFn(h, eventData)
+        clearSelection();
         
-        % make a copy and pass to activateFn
+        % make a copy of the object and pass to activateFn
         hSelected = copy(h);
         hSelected.Parent = h.Parent;
         pt = eventData.IntersectionPoint;
@@ -55,14 +81,19 @@ function makeClickableShowDescription(hvec, varargin)
             hSelected = activateFn(hSelected, pt);
         end
         
+        % make the hSelected copy clickable so we can clear the selection
+        set(hSelected,  'PickableParts', 'visible', 'HitTest', 'on', ...
+            'ButtonDownFcn', @clearSelection, 'SelectionHighlight', 'off');
+        
         % draw the text box annotation with the 'Description'
-        if ~isempty(hText)
-            delete(hText);
-        end
         if ~isempty(get(h, 'Description'))
             hText = text(pt(1), pt(2), pt(3), get(h, 'Description'), ...
                 'Interpreter', 'none', 'VerticalAlignment', 'top', ...
-                'Margin', 10, 'BackgroundColor', [1 1 1 0.8]);
+                'Margin', 10, 'BackgroundColor', [1 1 1 0.9]);
+        
+            % make the hSelected copy clickable so we can clear the selection
+            set(hText,  'PickableParts', 'visible', 'HitTest', 'on', ...
+                'ButtonDownFcn', @dispDescription, 'SelectionHighlight', 'off');
         end
     end
 end

@@ -390,6 +390,11 @@ classdef TrialDataConditionAlign < TrialData
                 desc{i} = strjoin(lines, sep);
             end
         end
+        
+        function descByGroup = getTrialDescriptionsGrouped(td, varargin)
+            desc = td.getTrialDescriptions(varargin{:});
+            descByGroup = td.groupElements(desc);
+        end
     end
     
     methods % Low-level add and remove channels. Probably don't want to use addChannel directly
@@ -3457,6 +3462,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
+            
+            p.addParameter('clickable', false, @islogical); % make interactive and clickable
             p.KeepUnmatched = false;
             p.parse(varargin{:});
             
@@ -3694,7 +3701,7 @@ classdef TrialDataConditionAlign < TrialData
                         end
                     else
                         % plot each trial from this condition individually
-                        hData{iCond, iAlign} = nan(nTrialsC, 1);
+                        hData{iCond, iAlign} = gobjects(nTrialsC, 1);
                         for iTrial = 1:nTrialsC
                             if D == 1
                                 tvec = timeC{iTrial};
@@ -3712,16 +3719,19 @@ classdef TrialDataConditionAlign < TrialData
                                 end                         
 
                                 if ~isempty(tvec) && ~isempty(dvec)
-                                    if p.Results.alpha < 1
-                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec + yOffset, ...
-                                           ones(size(yvec)) * zlevel, ...
-                                           'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                           'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
-                                    else
+%                                     if p.Results.alpha < 1
+%                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec + yOffset, ...
+%                                            ones(size(yvec)) * zlevel, ...
+%                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+%                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+%                                     else
                                         plotArgs = app(iCond).getPlotArgs();
                                         hData{iCond, iAlign}(iTrial) = plot(axh, xvec + tOffset, yvec + yOffset, '-', ...
                                             plotArgs{:}, p.Results.plotOptions{:});
-                                    end
+                                        if p.Results.alpha < 1
+                                            TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}(iTrial), p.Results.alpha);
+                                        end
+%                                     end
                                 end
 
                             elseif D==2
@@ -3849,6 +3859,27 @@ classdef TrialDataConditionAlign < TrialData
                     axis(axh, 'off');
                     axis(axh, 'vis3d');
                 end                   
+            end
+            
+            % make plot interactive if requested
+            if p.Results.clickable
+                descGrouped = td.getTrialDescriptionsGrouped('multiline', true);
+                descGrouped = descGrouped(conditionIdx);
+                
+                for iAlign = 1:nAlignUsed
+                    for iCond = 1:nConditionsUsed
+                        hThis = hData{iCond, iAlign};
+                        descThis = descGrouped{iCond};
+                        assert(numel(hThis) == numel(descThis), 'Internal issue with condition descriptions - count does not match');
+                        
+                        for iH = 1:numel(hThis)
+                            set(hThis(iH), 'Description', descThis{iH});
+                        end
+                    end
+                end
+                
+                hSetFull = cat(1, hData{:});
+                TrialDataUtilities.Plotting.makeClickableShowDescription(hSetFull);
             end
 
             box(axh, 'off');
