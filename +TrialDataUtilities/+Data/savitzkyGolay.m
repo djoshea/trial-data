@@ -83,7 +83,7 @@ function [fc, df] = savitzkyGolay(x,n,dn,x0,W,flag)
 %       sgolay, savitzkyGolayFilt
 
 % Check if the input arguments are valid and apply defaults
-error(nargchk(2,6,nargin,'struct'));
+narginchk(2,6);
 
 if round(n) ~= n, error(generatemsgid('MustBeInteger'),'Polynomial order (n) must be an integer.'), end
 if round(dn) ~= dn, error(generatemsgid('MustBeInteger'),'Differentiation order (dn) must be an integer.'), end

@@ -1,7 +1,7 @@
 function [timeCellByTrial] = findThresholdCrossings(data, timeCell, thresh, lockoutPeriod)
-% timeCellByTrial = thresholdExtractSnippets(data, tvec, thresh, lockoutPeriod)
+% timeCellByTrial = findThresholdCrossings(data, timeCell, thresh, lockoutPeriod)
 % either: 
-%   data is time x trials, time is vector
+%   data is trials x time, time is vector
 %   data is trials cell of vectors, time is cell of time vectors
 %
 % thresh is threshold
@@ -10,7 +10,7 @@ function [timeCellByTrial] = findThresholdCrossings(data, timeCell, thresh, lock
     if iscell(data)
         nTrials = numel(data);
     elseif ismatrix(data)
-        nTrials = size(data, 2);
+        nTrials = size(data, 1);
         assert(isvector(timeCell));
     end
      
@@ -33,7 +33,7 @@ function [timeCellByTrial] = findThresholdCrossings(data, timeCell, thresh, lock
     if iscell(data)
         crossings = cellfun(@findCrossings, data, timeCell, 'UniformOutput', false);
     else
-        crossings = arrayfun(@(trial) findCrossings(data(:, trial), timeCell), 1:nTrials, 'UniformOutput', false);
+        crossings = arrayfun(@(trial) findCrossings(data(trial, :), timeCell), 1:nTrials, 'UniformOutput', false);
     end
     
     % ensure they are spaced by at least 1 waveform
