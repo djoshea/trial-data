@@ -33,6 +33,8 @@ classdef TrialDataConditionAlign < TrialData
 
     % Properties which read through to ConditionInfo
     properties(Dependent, SetAccess=protected)
+        attributeParams % feeds thru to .conditionInfo.attributeRequestAs
+        
         nConditions
         listByCondition
         conditionIdx
@@ -73,6 +75,11 @@ classdef TrialDataConditionAlign < TrialData
     % Properties which read through to AlignInfo
     properties(Dependent, SetAccess=protected)
         minTimeDelta
+    end
+    
+    % Simple properties related to how trial descriptions are generated
+    properties(SetAccess=protected)
+        trialDescriptionExtraParams
     end
     
     % Initializing and building
@@ -341,7 +348,18 @@ classdef TrialDataConditionAlign < TrialData
             td.printChannelInfo();
             fprintf('\n');
         end
-
+        
+        % generates a short description of each trial 
+        function strCell = getDescriptionEachTrial(td, varargin)
+            p = inputParser();
+            p.addParameter('includeAttributes', true, @islogical);
+            p.parse(varargin{:});
+            % builds a description of a given trial 
+            
+        end
+    end
+    
+    methods % Low-level add and remove channels. Probably don't want to use addChannel directly
         function td = addChannel(td, varargin)
             td.warnIfNoArgOut(nargout);
             td = addChannel@TrialData(td, varargin{:});
@@ -942,6 +960,10 @@ classdef TrialDataConditionAlign < TrialData
         
         function m = get.conditionIncludeMask(td)
             m = td.conditionInfo.conditionIncludeMask;
+        end
+        
+        function list = get.attributeParams(td)
+            list = td.conditionInfo.attributeRequestAs;
         end
         
         function n = get.nAxes(td)
@@ -2093,7 +2115,7 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
 
-    % Spike data
+    % Spike data related
     methods
         % return aligned unit spike times
         function [timesCell] = getSpikeTimes(td, unitNames, includePadding)
@@ -3106,7 +3128,7 @@ classdef TrialDataConditionAlign < TrialData
             yOffsetByCondition = zeros(nConditionsUsed, 1);
             yLimsByCondition = nan(2, nConditionsUsed);
             currentOffset = 0;
-            lastTrialCount = 0;
+%             lastTrialCount = 0;
             for iC = nConditionsUsed:-1:1
                 % top of this block of trials occurs here
                 yOffsetByCondition(iC) = currentOffset + trialCounts(iC);
@@ -3114,7 +3136,7 @@ classdef TrialDataConditionAlign < TrialData
                 yLimsByCondition(:, iC) = [currentOffset; currentOffset + trialCounts(iC)];
                 if trialCounts(iC) > 0
                     currentOffset = currentOffset + trialCounts(iC) + gap;
-                    lastTrialCount = trialCounts(iC);
+%                     lastTrialCount = trialCounts(iC);
                 end
             end
 
@@ -3353,12 +3375,16 @@ classdef TrialDataConditionAlign < TrialData
             % specifying parameter 'alignIdx'. If nAlign alignments are
             % specified, uses all of them.
             % 
+            % Assumes that data are grouped according to the current
+            % grouping of td, that is, the configuration of the data
+            % matches the current state of td.
+            % 
             % time is either:
             %     common time vector
             %     cell with size (nConditions or 1) x nAlign cell containing either
             %       nTrials x 1 cell of time vectors or 
             %       time vector for all trials in that condition / alignment. 
- 
+            %
             % for D==1: 1-D data vs. time as matrix
             %   data is nConditions x nAlign cell containing nTrials x 1
             %     cell of T x D matrices, or is nTrials x T x D data matrix
@@ -3588,40 +3614,50 @@ classdef TrialDataConditionAlign < TrialData
                         hold(axh, 'on');
                         if D == 1 
                             tOffset = timeOffsetByAlign(iAlign);
+                            timeC = timeC + tOffset;
                             dataC = bsxfun(@plus, dataC, yOffsets);
-                            if p.Results.alpha < 1
-                               hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(timeC' + tOffset, dataC', ...
-                                   ones(size(timeC)) * zlevel, ...
-                                   'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                   'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
-                            else
+%                             if p.Results.alpha < 1
+%                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(timeC', dataC', ...
+%                                    ones(size(timeC)) * zlevel, ...
+%                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+%                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+%                             else
                                 plotArgs = app(iCond).getPlotArgs();
                                 hData{iCond, iAlign} = plot(axh, timeC', dataC', '-', ...
                                     plotArgs{:}, p.Results.plotOptions{:});
-                            end
+                                if p.Results.alpha < 1
+                                    TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
+                                end
+%                             end
 
                         elseif D == 2
-                            if p.Results.alpha < 1
-                               hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', ...
-                                   ones(size(dataC(:, :, 1)')) * zlevel, ...
-                                   'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                   'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
-                            else
+%                             if p.Results.alpha < 1
+%                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', ...
+%                                    ones(size(dataC(:, :, 1)')) * zlevel, ...
+%                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+%                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+%                             else
                                 plotArgs = app(iCond).getPlotArgs();
                                 hData{iCond, iAlign} = plot(axh, dataC(:, :, 1)', dataC(:, :, 2)', '-', ...
                                     plotArgs{:}, p.Results.plotOptions{:});
-                            end
+                                if p.Results.alpha < 1
+                                    TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
+                                end
+%                             end
 
                         elseif D == 3
-                            if p.Results.alpha < 1
-                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', ... 
-                                   'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                   'LineWidth', app(iCond).LineWidth, 'Parent', axh, p.Results.plotOptions{:});
-                            else
+%                             if p.Results.alpha < 1
+%                                 hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', ... 
+%                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+%                                    'LineWidth', app(iCond).LineWidth, 'Parent', axh, p.Results.plotOptions{:});
+%                             else
                                 plotArgs = app(iCond).getPlotArgs();
                                 hData{iCond, iAlign} = plot3(axh, dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', '-', ...
                                     plotArgs{:}, p.Results.plotOptions{:});
-                            end
+                                if p.Results.alpha < 1
+                                    TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
+                                end
+%                             end
                         end
                     else
                         % plot each trial from this condition individually

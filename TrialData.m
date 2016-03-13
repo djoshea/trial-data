@@ -602,13 +602,14 @@ classdef TrialData
         end
         
         function vals = replaceInvalidMaskWithValue(td, vals, value)
+            % (valid, :) notation is to allow vals to be high dimensional
             if iscell(vals)
-                [vals{~td.valid}] = deal(value);
+                [vals{~td.valid, :}] = deal(value);
             else
                 if isempty(value)
                     value = NaN;
                 end
-                vals(~td.valid) = value;
+                vals(~td.valid, :) = value;
             end
         end
         
@@ -1600,11 +1601,78 @@ classdef TrialData
                 error('Only valid for parameter or analog channels');
             end
         end
+        
         % Basic access methods, very fast
         function values = getParam(td, name)
             cd = td.channelDescriptorsByName.(name);
             values = td.getParamRaw(name);
             values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
+        end
+        
+        % return nTrials x nParams cell of raw values
+        function valueCell = getParamRawMultiAsCell(td, names)
+            if ischar(names)
+                names = {names};
+            end
+            
+            nC = numel(names);
+            valueCell = cell(td.nTrials, nC);
+            for iC = 1:nC
+                vals = td.getParamRaw(names{iC});
+                if ~iscell(vals), vals = num2cell(vals); end
+                valueCell(:, iC) = vals;
+            end
+        end
+        
+        % return nTrials x 1 cell with nParams fields
+        function valueStruct = getParamRawMultiAsStruct(td, names)
+            c = td.getParamRawMultiAsCell(names);
+            valueStruct = cell2struct(c, names, 2);
+        end
+        
+        % used primarily by condition info when fetching attribute data
+        function paramStruct = getRawParamStruct(td)
+            paramStruct = td.getParamRawMultiAsStruct(td.listParamChannels());
+        end
+        
+        % return nTrials x nParams cell of valid values only
+        function valueCell = getParamMultiAsCell(td, names)
+            if ischar(names)
+                names = {names};
+            end
+            
+            nC = numel(names);
+            valueCell = cell(td.nTrials, nC);
+            for iC = 1:nC
+                vals = td.getParam(names{iC});
+                if ~iscell(vals), vals = num2cell(vals); end
+                valueCell(:, iC) = vals;
+            end
+        end
+        
+        % return nTrials x 1 cell with nParams fields, valid values only
+        function valueStruct = getParamMultiAsStruct(td, names)
+            c = td.getParamMultiAsCell(names);
+            valueStruct = cell2struct(c, names, 2);
+        end
+        
+        function valueTable = getParamMultiAsTable(td, names, varargin)
+            p = inputParser();
+            p.addParameter('includeValidColumn', false, @islogical);
+            p.parse(varargin{:});
+            
+            valueCell = td.getParamMultiAsCell(names);
+            
+            if p.Results.includeValidColumn
+                valueCell = horzcat( num2cell(td.valid), valueCell );
+                names = vertcat({'valid'}, makecol(names));
+            end
+            
+            numWidth = ceil(log(td.nTrials)/log(10));
+            trialNames = arrayfun(@(ind) sprintf('trial%0*d', numWidth, ind), (1:td.nTrials)', 'UniformOutput', false);
+            
+            valueTable = cell2table(valueCell, 'VariableNames', names, ...
+                'RowNames', trialNames);
         end
         
         function values = getParamUnique(td, name)
@@ -1616,12 +1684,12 @@ classdef TrialData
             values = unique(vals);
         end
 
+        % this does no data transformations at all, just copies out fields
+        % from td.data. this will not do any data class or scaling
+        % conversions for you, so be careful. use getParamMultiAsStruct
+        % instead
         function paramStruct = getRawChannelDataAsStruct(td, names)
             paramStruct = copyStructField(td.data, [], names);
-        end
-        
-        function paramStruct = getParamStruct(td)
-            paramStruct = copyStructField(td.data, [], td.listParamChannels());
         end
         
         function td = setParam(td, name, vals, varargin)
