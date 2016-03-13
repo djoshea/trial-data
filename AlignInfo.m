@@ -594,7 +594,7 @@ classdef AlignInfo < AlignDescriptor
             t.zero = ad.getEventNthTimeVector(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, []);
             noZero = isnan(t.zero);
             [t.invalidCause{noZero & valid}] = deal(sprintf('Missing zero event %s', ad.zeroUnabbreviatedLabel));
-            valid(noZero) = false;
+            valid(noZero & valid) = false;
 
             t.trialStart = ad.getEventNthTimeVector('TrialStart', 1, 0, t.zero);
             t.trialStop = ad.getEventNthTimeVector('TrialEnd', 1, 0, t.zero);
@@ -602,7 +602,7 @@ classdef AlignInfo < AlignDescriptor
             % get start event
             t.start = ad.getEventNthTimeVector(ad.startEvent, ad.startEventIndex, ad.startOffset, t.zero);
             noStart = isnan(t.start);
-            [t.invalidCause{noStart}] = deal(sprintf('Missing start event %s', ad.startUnabbreviatedLabel));
+            [t.invalidCause{noStart & valid}] = deal(sprintf('Missing start event %s', ad.startUnabbreviatedLabel));
             valid(noStart & valid) = false;
 
             % get stop event
