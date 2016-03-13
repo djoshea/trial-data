@@ -14,7 +14,7 @@ classdef TrialData
 
     % Internal data storage
     properties(SetAccess=protected)
-        trialDataVersion = 20150716; % used for backwards compatibility
+        trialDataVersion = 20160313; % used for backwards compatibility
         
         datasetMeta = struct(); % arbitrary, user determined data, use setMetaByKey and getMetaByKey to access
 
@@ -31,6 +31,8 @@ classdef TrialData
         timeUnitsPerSecond = 1000;
 
         channelDescriptorsByName  = struct(); % struct with ChannelDescriptor for each channel, by name
+        
+        trialDescriptionExtraParams = {} % used in generating descriptions of each trial
     end
 
     properties(Access=protected, Hidden)
@@ -457,6 +459,20 @@ classdef TrialData
             fprintf('\n');
             td.printChannelInfo();
             fprintf('\n');
+        end
+        
+        function td = setTrialDescriptionExtraParams(td, params)
+            td.warnIfNoArgOut(nargout);
+            if isempty(params)
+                td.trialDescriptionExtraParams = {};
+            else
+                if ischar(params)
+                    params = {params};
+                end
+                assert(iscellstr(params));
+                params = makecol(params);
+                td.trialDescriptionExtraParams = params;
+            end
         end
     end
     
@@ -1673,6 +1689,18 @@ classdef TrialData
             
             valueTable = cell2table(valueCell, 'VariableNames', names, ...
                 'RowNames', trialNames);
+        end
+        
+        function valueStrings = getParamMultiAsStrings(td, names, varargin)
+            p = inputParser();
+            p.addParameter('separator', ' ', @ischar);
+            p.addParameter('includeParamNames', true, @islogical);
+            p.parse(varargin{:});
+            
+            valueStruct = td.getParamMultiAsStruct(names);
+            
+            valueStrings = TrialDataUtilities.Data.structArrayToStrings(valueStruct, ...
+                p.Results.separator, 'includeFieldNames', p.Results.includeParamNames);
         end
         
         function values = getParamUnique(td, name)

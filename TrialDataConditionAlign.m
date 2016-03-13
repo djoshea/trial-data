@@ -77,11 +77,6 @@ classdef TrialDataConditionAlign < TrialData
         minTimeDelta
     end
     
-    % Simple properties related to how trial descriptions are generated
-    properties(SetAccess=protected)
-        trialDescriptionExtraParams
-    end
-    
     % Initializing and building
     methods
         function td = TrialDataConditionAlign(varargin)
@@ -350,12 +345,50 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         % generates a short description of each trial 
-        function strCell = getDescriptionEachTrial(td, varargin)
+        function desc = getTrialDescriptions(td, varargin)
             p = inputParser();
             p.addParameter('includeAttributes', true, @islogical);
+            p.addParameter('multiline', true, @islogical);
             p.parse(varargin{:});
-            % builds a description of a given trial 
             
+            % builds a description of a given trial 
+            desc = cellvec(td.nTrials);
+            valid = td.valid;
+            cIdx = td.conditionIdx;
+            cSubs = td.conditionSubs;
+            cNames = cellvec(td.nTrials);
+            cNames(valid) = td.conditionNames(cIdx(valid));
+            
+            if p.Results.multiline
+                sep = char(10); % newline
+            else
+                sep = ' ';
+            end
+            
+            if p.Results.includeAttributes
+                % include values of condition related params and
+                % manually include trialDescriptionExtraParams
+                attr = union(td.trialDescriptionExtraParams, td.attributeParams);
+                valueStrings = td.getParamMultiAsStrings(attr, 'separator', sep, 'includeParamNames', true);
+            else
+                valueStrings = cellvec(td.nTrials);
+            end
+            
+            for i = 1:td.nTrials
+                if valid(i)
+                    validStr = '';
+                else
+                    validStr = ' (invalid)';
+                end
+                lines = {};
+                lines{1} = sprintf('Trial %d%s', i, validStr);
+                if valid(i)
+                    lines{2} = sprintf('Condition %d (%s): %s', cIdx(i), strjoin(cSubs(i, :), ','), cNames{i});
+                    lines{3} = valueStrings{i};
+                end
+                
+                desc{i} = strjoin(lines, sep);
+            end
         end
     end
     

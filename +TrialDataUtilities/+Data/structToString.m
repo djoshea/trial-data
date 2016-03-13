@@ -35,7 +35,11 @@ function str = structToString(s, varargin)
         elseif isempty(v)
             str = '[]';
         elseif isnumeric(v) || islogical(v)
-            str = mat2str(v, 3);
+            if int32(v) == v
+                str = mat2str(v);
+            else
+                str = mat2str(v, 3);
+            end
         elseif iscellstr(v)
             str = ['{', strjoin(v, ','), '}'];
         else
