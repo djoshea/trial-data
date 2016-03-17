@@ -13,6 +13,8 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         primaryDataField
         
         timeField
+        
+        hasScaling
     end
     
     properties(Hidden)
@@ -35,6 +37,10 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
         
+        function tf = get.hasScaling(cd)
+            tf = ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims) && ~isequal(cd.scaleFromLims, cd.scaleToLims);
+        end
+        
         function cd = separateFromColumnOfSharedMatrix(cd, newTimeField)
             % transform this cd so that it's not a column of a shared
             % matrix anymore
@@ -43,7 +49,9 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.primaryDataFieldColumnIndex = 1;
             cd.primaryDataFieldManual = '';
             
-            cd.dataFields{2} = newTimeField;
+            if nargin > 1
+                cd.dataFields{2} = newTimeField;
+            end
             cd = cd.initialize();
         end
         
@@ -203,6 +211,13 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;
             cd = cd.initialize();
+        end
+        
+        function tf = testChannelsShareTimeField(cdCell)
+            assert(iscell(cdCell));
+            
+            timeField = cellfun(@(cd) cd.timeField, cdCell, 'UniformOutput', false);
+            tf = numel(unique(timeField)) == 1;
         end
     end
 

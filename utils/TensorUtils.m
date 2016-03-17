@@ -948,7 +948,7 @@ classdef TensorUtils
                     % get subscripts for each element in the dimsFromIn slice
                     [subsCell{1:numel(dimsFromIn)}] = ind2sub(szIn(dimsFromIn), 1:szOut(iDimOut));
                     for iDimFromIn = 1:numel(dimsFromIn)
-                        % check whether it's a coorectly sized row vector and convert to
+                        % check whether it's a correctly sized row vector and convert to
                         % column vector
                         labelsThisIn = labelsByDim{dimsFromIn(iDimFromIn)};
                         if isvector(labelsThisIn) && length(labelsThisIn) == size(in, dimsFromIn(iDimFromIn))
@@ -963,6 +963,39 @@ classdef TensorUtils
                 end
             end
             
+        end
+        
+        function out = undoReshapeByConcatenatingDims(in, whichDims, szOrig)
+            % if is passed in {[1 2]} and orig has 3 dims, whichDims would
+            % become {[1 2] 3}
+            
+            ndimsOrig = numel(szOrig);
+            
+            % process whichDims as in reshapeByConcatenatingDims
+            if ~iscell(whichDims)
+                whichDims = {whichDims};
+            end
+            whichDims = makecol(whichDims);
+            allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
+            allDims = cat(1, allDims{:});
+            assert(all(ismember(1:numel(allDims), allDims)), ...
+                'whichDims must contain each dim in 1:length(whichDims)');
+            % add any trailing dimensions which are missing from the list
+            % automatically
+            if max(allDims) < ndimsOrig
+                whichDims = cat(1, whichDims, num2cell(max(allDims)+1:ndimsOrig));
+                % recompute allDims in case trailing dims were added
+                allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
+                allDims = cat(1, allDims{:});
+            end
+
+            % intermediate size to "unconcatenate" the dims that were
+            % concatenated
+            szExpand = szOrig(allDims(1:numel(szOrig)));
+            expand = reshape(in, szExpand); 
+            
+            % reorder dimensions
+            out = ipermute(expand, allDims);
         end
         
         function [out, newDims] = reshapeDimsInPlace(in, whichDims, newSizeInThoseDims)

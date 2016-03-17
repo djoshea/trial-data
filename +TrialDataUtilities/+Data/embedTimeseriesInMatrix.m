@@ -1,6 +1,13 @@
 function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 % [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeData, varargin)
 % 
+% N is trial count, C is channel count
+% dataCell is N x C cell of vectors
+% timeCell is N x C cell of vectors with same length
+% 
+% mat will be N x T x C, where T is the length of the time vector tvec to
+% which all data have been interpolated
+% 
 % Combines a cell of N timeseries into a matrix with size N x T with a
 % common time vector tvec. dataCell is a N x 1 cell of numeric vectors.
 % timeData is either a N x 1 cell of corresponding time vectors.
@@ -48,7 +55,6 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.KeepUnmatched = true;
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
-    
     
     % check sizes match
     % okay to have one empty and the other not, simply ignore

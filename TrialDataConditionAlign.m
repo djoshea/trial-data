@@ -1539,7 +1539,7 @@ classdef TrialDataConditionAlign < TrialData
             % if name is a cellstr of multiple channels, mat will be nTrials x nTime x nChannels
             % tensor of values, but this will fail if the channels do not
             % share a common time vector to begin with. If this is not the
-            % case, use getMultiAnalogAsMatrix
+            % case, use getAnalogMultiAsMatrix
             %
             % 'subtractTrialBaselineAt' : provide an alignment string that will
             %   optionally be used to estimate a 'baseline' value to subtract
@@ -1555,7 +1555,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('tvec', [], @isvector);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
-            p.addParameter('interpolateMethod', 'pchip', @ischar); % see interp1 for details
+            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.parse(varargin{:});
 
             if ischar(name)
@@ -1608,42 +1608,36 @@ classdef TrialDataConditionAlign < TrialData
             timeFields = cellfun(@(name) td.channelDescriptorsByName.(name).timeField, names, 'UniformOutput', false);
             tf = numel(unique(timeFields)) == 1;
         end
-        
-        function [dataCell, timeCell] = getMultiAnalog(td, name, varargin)
-            % [data, time] = getMultiAnalog(td, chNames, varargin)
-            % data and time are cell(nTrials, nChannels)
-            if ischar(name)
-                name = {name};
-            end
+ 
+        function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
+            % dataCell is cell(nTrials, 1) containing nTime x nChannels mat
+            % timeCell is cell(nTrials, 1) containing nTime x 1 vectors
+            % All data vectors will be interpolated to a
+            % common time vector independently on each trial. Use
+            % getAnalogMultiAsMatrix to register to a common time vector
+            % across all trials.
             
-            % build nTrials x nChannels cell of data/time vectors
-            C = numel(name);
-            [dataCell, timeCell] = deal(cell(td.nTrials, C));
-            for c = 1:C
-                [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, varargin{:});
-            end
-        end
-
-        function [data, tvec] = getMultiAnalogAsMatrix(td, name, varargin)
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('tvec', [], @isvector);
+            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-
-            if ischar(name)
-                name = {name};
-            end
             
-            % build nTrials x nChannels cell of data/time vectors
-            C = numel(name);
-            [dataCell, timeCell] = deal(cell(td.nTrials, C));
-            for c = 1:C
-                [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, p.Unmatched);
-            end
-            
-            if isempty(p.Results.tvec)
-                % infer timeDelta to use
+            assert(iscellstr(names));
+            shareTime = td.checkAnalogChannelsShareTimeVector(names);
+            [dataCellRaw, timeCellRaw] = td.getAnalogMulti(names, p.Unmatched);
+            [dataCell, timeCell] = deal(cell(td.nTrials, 1));
+                
+            if shareTime
+                for iT = 1:td.nTrials
+                    % cell selected is 1 x nChannels with nTime x 1 vectors
+                    % this makes each dataCell{:} nTime x nChannels
+                    dataCell{iT} = cell2mat(dataCellRaw(iT, :));
+                end
+                timeCell = timeCellRaw(:, 1);
+                
+            else
+                % need to interpolate each trial to a common time vector
                 timeDelta = p.Results.timeDelta;
                 if isempty(timeDelta)
                     timeDelta = td.alignInfoActive.minTimeDelta;
@@ -1653,25 +1647,68 @@ classdef TrialDataConditionAlign < TrialData
                     end
                 end
                 
+                prog = ProgressBar(td.nTrials, 'Interpolating analog channels to common time vectors');
+                for iT = 1:td.nTrials
+                    prog.update(iT);
+                    % build matrix from all data on this trial
+                    [dataCell{iT}, timeCell{iT}] = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
+                        dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
+                        'timeDelta', timeDelta, 'timeReference', 0, ...
+                        'interpolate', true, 'interpolateMethod', p.Results.interpolateMethod);
+                end
+                prog.finish();
+            end
+        end
+
+        function [dataTensor, tvec] = getAnalogMultiAsTensor(td, names, varargin)
+            % data is nTrials x nTime x nChannels
+            % tvec is nTime x 1 time vector
+            
+            p = inputParser;
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('tvec', [], @isvector);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            assert(iscell(names));
+               
+            % build nTrials x nTime x nChannels cell of data/time vectors
+            C = numel(names);
+                        
+            [dataCell, timeCell] = td.getAnalogMulti(names, p.Unmatched);
+            
+            % determine time vector to interpolate to
+            if ~isempty(p.Results.tvec)
+                % manually specified time vector
+                tvec = p.Results.tvec;
+            else
+                % then check whether timeDelta is specified directly
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    timeDelta = td.alignInfoActive.minTimeDelta;
+                    if isempty(timeDelta)
+                        timeDelta = td.getAnalogTimeDelta(names);
+                        warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
+                    end
+                end
+                
                 % find common time vector
                 tvec = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
                     'timeDelta', timeDelta);
-            else
-                tvec = p.Results.tvec;
             end
             
             % interpolate to common time vector
-            data = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, 'tvec', tvec);
+            [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, 'tvec', tvec);
         end
         
-        function [mat, tvec, alignIdx] = getMultiAnalogAsMatrixEachAlign(td, name, varargin)
-            % similar to getMultiAnalogAsMatrix, except each alignment will be
+        function [mat, tvec, alignIdx] = getAnalogMultiAsMatrixEachAlign(td, names, varargin)
+            % similar to getAnalogMultiAsMatrix, except each alignment will be
             % concatenated in time
             
             matCell = cellvec(td.nAlign);
             tvecCell = cellvec(td.nAlign);
             for iA = 1:td.nAlign
-                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getMultiAnalogAsMatrix(name, varargin{:});
+                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getAnalogMultiAsMatrix(names, varargin{:});
             end
             
             [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
@@ -1701,15 +1738,15 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(mat);
         end
         
-        function [dataCell, tvec] = getMultiAnalogAsMatrixGrouped(td, nameCell, varargin)
+        function [dataCell, tvec] = getAnalogMultiAsMatrixGrouped(td, nameCell, varargin)
             % dataCell will be size(td.conditions)
             % contents will be nTrials x T x nChannels
-            [data, tvec] = td.getMultiAnalogAsMatrix(nameCell, varargin{:});
+            [data, tvec] = td.getAnalogMultiAsMatrix(nameCell, varargin{:});
             dataCell = td.groupElements(data);
         end
         
-        function [dCell, tvec, alignIdx] = getMultiAnalogAsMatrixGroupedEachAlign(td, nameCell, varargin)
-            [mat, tvec, alignIdx] = td.getMultiAnalogAsMatrixEachAlign(nameCell, varargin{:});
+        function [dCell, tvec, alignIdx] = getAnalogMultiAsMatrixGroupedEachAlign(td, nameCell, varargin)
+            [mat, tvec, alignIdx] = td.getAnalogMultiAsMatrixEachAlign(nameCell, varargin{:});
             dCell = td.groupElements(mat);
         end
         
@@ -1756,7 +1793,7 @@ classdef TrialDataConditionAlign < TrialData
         end
         
          function [meanMat, semMat, tvec, nTrialsMat, stdMat] = ...
-                 getMultiAnalogGroupMeans(td, nameCell, varargin)
+                 getAnalogMultiGroupMeans(td, nameCell, varargin)
              % *Mat will be nConditions x T x nChannels tensors
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
@@ -1768,7 +1805,7 @@ classdef TrialDataConditionAlign < TrialData
             nChannels = numel(nameCell);
             
             % dCell is size(conditions) with nTrials x T x nChannels inside
-            [dCell, tvec] = td.getMultiAnalogAsMatrixGrouped(nameCell);
+            [dCell, tvec] = td.getAnalogMultiAsMatrixGrouped(nameCell);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nChannels));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
@@ -1779,7 +1816,7 @@ classdef TrialDataConditionAlign < TrialData
          end
          
          function [meanMat, semMat, tvec, nTrialsMat, stdMat, alignIdx] = ...
-                 getMultiAnalogGroupMeansEachAlign(td, nameCell, varargin)
+                 getAnalogMultiGroupMeansEachAlign(td, nameCell, varargin)
              % *Mat will be nConditions x T x nChannels tensors
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
@@ -1791,7 +1828,7 @@ classdef TrialDataConditionAlign < TrialData
             nChannels = numel(nameCell);
             
             % dCell is size(conditions) with nTrials x T x nChannels inside
-            [dCell, tvec, alignIdx] = td.getMultiAnalogAsMatrixGroupedEachAlign(nameCell);
+            [dCell, tvec, alignIdx] = td.getAnalogMultiAsMatrixGroupedEachAlign(nameCell);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nChannels));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
@@ -1816,7 +1853,9 @@ classdef TrialDataConditionAlign < TrialData
             [dataVec, timeVec] = td.getAnalogSample(name);
             [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
         end
-        
+    end
+    
+    methods % Analog channel modification
         % differentiation
         function [diffData, time, diffUnits] = differentiateAnalogChannel(td, name, varargin)
             % data will be in units / second, checking .timeUnitsPerSecond
@@ -1861,6 +1900,65 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             [diffData, time, diffUnits] = td.reset().differentiateAnalogChannel(name, varargin{:});
             td = td.addAnalog(diffName, diffData, time, 'units', diffUnits, 'isAligned', false);
+        end
+        
+        function td = replaceAnalogWithinAlignWindow(td, name, values, varargin)
+            % replace the analog data within the curr ent align window with
+            % the data in values
+            p = inputParser();
+            p.addParameter('preserveContinuity', false, @islogical);
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(name);
+          
+            % check the values and convert to nTrials cellvec
+            if ismatrix(values) && isnumeric(values)
+                % values must be nTrials x nTimes
+                assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
+                values = mat2cell(values', size(values, 2), onesvec(td.nTrials))';
+                
+            elseif iscell(values)
+                assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
+                values = makecol(values);
+            else
+                error('Values must be numeric matrix or cell array');
+            end
+            
+            % figure out where to splice in the data into the full
+            % timeseries
+            [currentData, currentTimes] = td.getAnalog(name);
+            [fullData, fullTimes] = td.getAnalogRaw(name);
+            [~, timesMask] = td.getAlignedTimesCell(fullTimes, false); % no padding
+            
+            % check that times have same length as data
+            assert(numel(values) == td.nTrials, 'Times and values must have same number of trials');
+            nTimes = cellfun(@numel, currentTimes);
+            nValues = cellfun(@numel, values);
+            assert(all(nTimes == nValues), 'Mismatch between number of times and values');
+
+            cd = td.channelDescriptorsByName.(name);
+            valueClassConvertedOnAccess = strcmp(cd.memoryClassByField{1}, cd.accessClassByField{1});
+            
+            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ...
+                    (valueClassConvertedOnAccess || updateTimes)
+                td = td.separateAnalogChannelFromColumnOfSharedMatrix(name, false);
+                cd = td.channelDescriptorsByName.(name);
+            end
+            
+            % data being passed in is now in original units
+            % so change scaling factors
+            cd = cd.withNoScaling();
+            
+            % update the channel descriptor accordingly
+            td.channelDescriptorsByName.(name) = cd;
+            
+            if updateTimes
+                fieldMask = truevec(2);
+            else
+                fieldMask = [true; false];
+            end
+            td = td.setChannelData(name, {values, times}, 'fieldMask', fieldMask, p.Unmatched);
         end
     end
 
@@ -3924,7 +4022,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getMultiAnalogAsMatrixGrouped({name1, name2}, p.Results);
+            [dataCell, tvec] = td.getAnalogMultiAsMatrixGrouped({name1, name2}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
                 'time', tvec, 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
@@ -3938,7 +4036,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getMultiAnalogAsMatrixGrouped({name1, name2}, p.Results);
+            [dataCell, tvec] = td.getAnalogMultiAsMatrixGrouped({name1, name2}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
                 'time', tvec, 'data', dataCell(:), ...
                 'axisInfoZ', 'time', ...
@@ -3953,7 +4051,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getMultiAnalogAsMatrixGrouped({name1, name2, name3}, p.Results);
+            [dataCell, tvec] = td.getAnalogMultiAsMatrixGrouped({name1, name2, name3}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(3, ...
                 'time', tvec, 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
@@ -4037,7 +4135,7 @@ classdef TrialDataConditionAlign < TrialData
             [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getMultiAnalogGroupMeans({name1, name2}, 'minTrials', p.Results.minTrials);     
+                    td.useAlign(iAlign).getAnalogMultiGroupMeans({name1, name2}, 'minTrials', p.Results.minTrials);     
                 [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
@@ -4063,7 +4161,7 @@ classdef TrialDataConditionAlign < TrialData
             [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getMultiAnalogGroupMeans({name1, name2, name3}, 'minTrials', p.Results.minTrials);     
+                    td.useAlign(iAlign).getAnalogMultiGroupMeans({name1, name2, name3}, 'minTrials', p.Results.minTrials);     
                 [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
@@ -4175,7 +4273,7 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function plotSingleTrialAnalogChannels(td, trialInd)
             chList = td.listAnalogChannels();
-            [data, time] = td.selectTrials(trialInd).getMultiAnalog(chList);
+            [data, time] = td.selectTrials(trialInd).getAnalogMulti(chList);
             
             TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList);
         end
