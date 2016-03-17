@@ -451,6 +451,7 @@ classdef TrialData
             if ~isempty(td.datasetName)
                 tcprintf('inline', '{yellow}Dataset: {none}%s\n', td.datasetName);
             end
+            
         end
         
         function printChannelInfo(td)
@@ -652,6 +653,11 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             td.temporaryValid = [];
             td = td.invalidateValid();
+        end
+        
+        function td = withAllTrials(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.clearTrialsTemporarilyInvalid();
         end
         
         function td = reset(td)

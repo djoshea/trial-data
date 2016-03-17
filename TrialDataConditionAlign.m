@@ -735,8 +735,26 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = setConditionIncludeMask(td, m)
             td.warnIfNoArgOut(nargout);
+            td = td.fixAllAxisValueLists();
             td.conditionInfo = td.conditionInfo.setConditionIncludeMask(m);
             td = td.postUpdateConditionInfo();
+        end
+        
+        function td = clearConditionIncludeMask(td)
+            % this will leave the axis value lists fixed
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.resetConditionIncludeMask();
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = withConditions(td, m)
+            td.warnIfNoArgOut(nargout);
+            td = td.setConditionIncludeMask(m);
+        end
+        
+        function td = withAllConditions(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.clearConditionIncludeMask();
         end
         
         function td = reshapeAxes(td, varargin)
@@ -1556,38 +1574,32 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('assumeUniformSampling', false, @islogical);
             p.parse(varargin{:});
-
-            if ischar(name)
-                name = {name};
-            end
+%             
+%             if isempty(p.Results.tvec)
+%                 % infer timeDelta to use
+%                 timeDelta = p.Results.timeDelta;
+%                 if isempty(timeDelta)
+%                     timeDelta = td.alignInfoActive.minTimeDelta;
+%                     if isempty(timeDelta)
+%                         timeDelta = td.getAnalogTimeDelta(name);
+%                         warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
+%                     end
+%                 end
+%             end
             
-            if isempty(p.Results.tvec)
-                % infer timeDelta to use
-                timeDelta = p.Results.timeDelta;
-                if isempty(timeDelta)
-                    timeDelta = td.alignInfoActive.minTimeDelta;
-                    if isempty(timeDelta)
-                        timeDelta = td.getAnalogTimeDelta(name);
-                        warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-                    end
-                end
-            end
-            
-            % build nTrials x nChannels cell of data/time vectors
-            C = numel(name);
-            [dataCell, timeCell] = deal(cell(td.nTrials, C));
-            for c = 1:C
-                [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, ...
-                    'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
-                    'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt);
-            end
+            % build nTrials cell of data/time vectors
+            [dataCell, timeCell] = td.getAnalog(name, ...
+                'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
+                'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt);
 
             % interpolate to common time vector
             % mat is nTrials x nTime
             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-                'timeDelta', timeDelta, 'timeReference', 0, 'tvec', p.Results.tvec, ...
-                'interpolate', true, 'interpolateMethod', p.Results.interpolateMethod);
+                'timeReference', 0, 'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
+                'interpolateMethod', p.Results.interpolateMethod, ...
+                'assumeUniformSampling', p.Results.assumeUniformSampling);
         end
         
         function [mat, tvec, alignIdx] = getAnalogAsMatrixEachAlign(td, name, varargin)
@@ -1654,7 +1666,7 @@ classdef TrialDataConditionAlign < TrialData
                     [dataCell{iT}, timeCell{iT}] = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
                         dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
                         'timeDelta', timeDelta, 'timeReference', 0, ...
-                        'interpolate', true, 'interpolateMethod', p.Results.interpolateMethod);
+                        'assumeUniformSampling', false, 'interpolateMethod', p.Results.interpolateMethod);
                 end
                 prog.finish();
             end
@@ -1667,6 +1679,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('tvec', [], @isvector);
+            p.addParameter('assumeUniformSampling', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -1677,28 +1690,30 @@ classdef TrialDataConditionAlign < TrialData
                         
             [dataCell, timeCell] = td.getAnalogMulti(names, p.Unmatched);
             
-            % determine time vector to interpolate to
-            if ~isempty(p.Results.tvec)
-                % manually specified time vector
-                tvec = p.Results.tvec;
-            else
-                % then check whether timeDelta is specified directly
-                timeDelta = p.Results.timeDelta;
-                if isempty(timeDelta)
-                    timeDelta = td.alignInfoActive.minTimeDelta;
-                    if isempty(timeDelta)
-                        timeDelta = td.getAnalogTimeDelta(names);
-                        warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-                    end
-                end
-                
-                % find common time vector
-                tvec = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
-                    'timeDelta', timeDelta);
-            end
+%             % determine time vector to interpolate to
+%             if ~isempty(p.Results.tvec)
+%                 % manually specified time vector
+%                 tvec = p.Results.tvec;
+%             else
+%                 % then check whether timeDelta is specified directly
+%                 timeDelta = p.Results.timeDelta;
+%                 if isempty(timeDelta)
+%                     timeDelta = td.alignInfoActive.minTimeDelta;
+%                     if isempty(timeDelta)
+%                         timeDelta = td.getAnalogTimeDelta(names);
+%                         warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
+%                     end
+%                 end
+%                 
+%                 % find common time vector
+%                 tvec = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
+%                     'timeDelta', timeDelta, 'interpolate', ~p.Results.assumeUniformSampling);
+%             end
             
             % interpolate to common time vector
-            [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, 'tvec', tvec);
+            [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
+                'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
+                'assumeUniformSampling', p.Results.assumeUniformSampling);
         end
         
         function [mat, tvec, alignIdx] = getAnalogMultiAsMatrixEachAlign(td, names, varargin)

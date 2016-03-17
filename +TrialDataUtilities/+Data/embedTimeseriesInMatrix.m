@@ -33,26 +33,24 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %       timestamps, which can result from rounding and breaks the
 %       monotonicity required by interpolation
 %
+%    assumeUniformSampling: if true, we will only shift adjacent trials to
+%       make the time vectors line up in the matrix. if false, interpolation
+%       will be used to ensure the signals from each trial are sampled at the
+%       correct, evenly spaced times.
+%    
 %    interpolateMethod: string. See interp1 help for description of 
 %       interpolation methods. default = 'pchip'.
 %
 
-% no longer used:
-%    interpolate: boolean. if false, it will be assumed that the timeStamps
-%       within each dataCell have consistent spacing and each timestamp lies
-%       an integer multiple away from timeReference. If true, data samples
-%       will be interpolated to timestamps which satisfy this requirement.
-%       default = true.
-
     p = inputParser();
     p.addRequired('dataCell', @(x) iscell(x));
     p.addRequired('timeCell', @(x) iscell(x));
+    p.addParameter('assumeUniformSampling', false, @islogical);
     p.addParamValue('tvec', [], @(x) isempty(x) || isvector(x));
-    p.addParamValue('interpolateMethod', 'pchip', @ischar);
+    p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
-    p.addParamValue('timeDelta', [], @isscalar);
+    p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParamValue('timeReference', 0, @isscalar);
-    p.KeepUnmatched = true;
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
     
@@ -81,7 +79,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     if isempty(p.Results.tvec)
         % auto-compute appropriate time vector
         [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
-            'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, p.Unmatched);
+            'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
+            'interpolate', ~p.Results.assumeUniformSampling);
     else
         tvec = p.Results.tvec;
         % compute the global min / max timestamps or each trial
@@ -98,7 +97,6 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     % tMin and tMax are now vectors of the start and stop times of each
     % trial
-    
     tvec = makecol(tvec);
     
     tMinGlobal = nanmin(tvec);
@@ -123,8 +121,25 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
             if ~isnan(indStart(i,c)) && ~isnan(indStop(i,c))
                 if numel(indStart(i,c):indStop(i,c)) > 1
                     mask = ~isnan(dataCell{i, c});
-                    mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}(mask), dataCell{i, c}(mask), ...
-                        tvec(indStart(i,c):indStop(i,c)), p.Results.interpolateMethod, 'extrap');
+                    if p.Results.assumeUniformSampling
+                        % in this case, we just make sure the timepoint
+                        % closest to zero ends up in gthe right place
+                        [thisTimeRef, thisIndRef] = min(abs(timeCell{i, c}));
+                        [~, tvecIndRef] = min(abs(thisTimeRef - tvec));
+                        
+                        locationInMat = (1:numel(timeCell{i, c})) + tvecIndRef-thisIndRef;
+                        locationInMat = locationInMat(mask);
+                        
+                        mask = mask(locationInMat >= 1 & locationInMat <= T);
+                        locationInMat = locationInMat(mask);
+                        
+                        mat(i, locationInMat, c) = dataCell{i, c}(mask);
+                    else
+                        % don't assume uniform sampling, just interpolate
+                        % to the right time vector
+                        mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}(mask), dataCell{i, c}(mask), ...
+                            tvec(indStart(i,c):indStop(i,c)), p.Results.interpolateMethod, 'extrap');
+                    end
                 else
                     mat(i, indStart(i,c), c) = dataCell{i, c};
                 end

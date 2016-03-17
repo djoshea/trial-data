@@ -22,7 +22,7 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
 
     p = inputParser();
     p.addRequired('timeCell', @(x) iscell(x));
-    p.addParamValue('timeDelta', [], @isscalar);
+    p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParamValue('timeReference', 0, @isscalar);
     p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
     p.addParamValue('interpolate', true, @(x) islogical(x) && isscalar(x));
@@ -41,7 +41,7 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
 
      if isempty(timeDelta)
          % auto-compute time delta
-         warning('Auto-computing time-delta from timeseries. Specify time delta for consistent results');
+         %warning('Auto-computing time-delta from timeseries. Specify time delta for consistent results');
          if fixDuplicateTimes
             timeCell = cellfun(@fixDup, timeCell, 'UniformOutput', false);
         end
@@ -65,10 +65,11 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
         tMin = tMinRaw;
         tMax = tMaxRaw;
 
-        tol = 1e-9;
-        if  (any(abs(tMin(:) - tMinRaw(:)) > tol) || any(abs(tMax(:) - tMaxRaw(:)) > tol))
-            error('Timestamps do not align with timeReference. Set ''interpolate'' to true');
-        end
+        % not sure how this was supposed to work
+%         tol = 1e-9;
+%         if  (any(abs(tMin(:) - tMinRaw(:)) > tol) || any(abs(tMax(:) - tMaxRaw(:)) > tol))
+%             error('Timestamps do not align with timeReference. Set ''interpolate'' to true');
+%         end
     end
 
     % build the global time vector

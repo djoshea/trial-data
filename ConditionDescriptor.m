@@ -213,6 +213,8 @@ classdef ConditionDescriptor
             end
             
             % clear the conditionIncludeMask if it's no longer valid
+            % no longer should need to do this, notifyConditionsChanged
+            % should do this for us, but just to be sure
             if ~ci.allAxisValueListsManual
                 ci.conditionIncludeMaskManual = [];
             end
@@ -285,8 +287,15 @@ classdef ConditionDescriptor
             end
         end
         
-        function printDescription(ci) 
-            tcprintf('yellow', '%s:\n', class(ci));
+        function printDescription(ci)
+            if any(~ci.conditionIncludeMask)
+                tcprintf('inline', '{yellow}%s: {none}%d conditions, {bright red}%d selected\n', ...
+                    class(ci), ci.nConditions, nnz(ci.conditionIncludeMask));
+            else
+                tcprintf('inline', '{yellow}%s: {none}%d conditions\n', ...
+                    class(ci), ci.nConditions);
+            end
+                
             tcprintf('inline', '  {bright blue}Attributes:\n');
             attrDesc = ci.generateAttributeDescriptions(true);
             for i = 1:ci.nAttributes
@@ -310,9 +319,6 @@ classdef ConditionDescriptor
                 tcprintf('inline', '  {bright red}%d %s with randomization applied\n', nRandom, s);
             end
             
-            if any(~ci.conditionIncludeMask)
-                tcprintf('inline', '    {bright red}%d conditions not included by conditionIncludeMask\n', nnz(~ci.conditionIncludeMask));
-            end
             if ~isempty(ci.attributeSortByList)
                 tcprintf('inline', '  {bright blue}Sort: {purple}%s\n', strjoin(ci.attributeSortByList, ', '));
             end
@@ -779,6 +785,7 @@ classdef ConditionDescriptor
         
         function ci = setConditionIncludeMask(ci, mask)
             ci.warnIfNoArgOut(nargout);
+            mask = TensorUtils.vectorIndicesToMask(mask, ci.nConditions);
             assert(islogical(mask) && numel(mask) == ci.nConditions, 'conditionIncludeMask must be nConditions x 1 logical vector');
             ci.assertAllAxisValueListsManual();
             ci.conditionIncludeMaskManual = makecol(mask(:));
@@ -1579,6 +1586,7 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             iAttr = ci.assertHasAttribute(attr);
             ci.attributeNumeric(iAttr) = tf;
+            ci = ci.notifyConditionsChanged();
         end  
 
         % manually set the attribute value list
