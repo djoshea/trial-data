@@ -197,22 +197,22 @@ classdef TrialDataConditionAlign < TrialData
             %
             % valid is the intersection of manualValid, conditionInfo valid,
             % and all AlignInfo valid
+            [tempValid, tempCause] = td.getTemporaryValid();
+            [manualValid, manualCause] = td.getManualValid();
             cvalid = td.conditionInfo.computedValid;
             avalid = truevec(td.nTrials);
             for iA = 1:td.nAlign
                 avalid = avalid & td.alignInfoSet{iA}.computedValid;
             end
 
-            if ~isempty(td.manualValid)
-                valid = td.manualValid & cvalid & avalid;
-            else
-                valid = cvalid & avalid;
-            end
-       
-            cause = cell(td.nTrials, 1);
-            explained = false(td.nTrials, 1);
+            valid = manualValid & tempValid & cvalid & avalid;
+
+            cause = manualCause;
+            explained = ~manualValid;
             
-            cause(~td.manualValid & ~explained) = {'marked invalid manually'};
+            % invalidated temporarily
+            tmask = ~tempValid & ~explained;
+            cause(tmask) = tempCause(tmask);
             
             % invalid by condition info
             cmask = ~td.conditionInfo.computedValid & ~explained;

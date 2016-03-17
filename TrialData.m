@@ -25,6 +25,10 @@ classdef TrialData
         trialDataInterfaceClass = ''; % how did we access the original data?
 
         manualValid = true(0, 1);
+        manualInvalidCause = {};
+        
+        temporaryValid = [];
+        temporaryInvalidCause = {};
 
         timeUnitName = 'ms';
 
@@ -50,6 +54,9 @@ classdef TrialData
         ch % a struct which contains all channel names as fields, whose values are the channel names. This is a hack to facilitate tab completion instead of strings.
         nTrials
         nTrialsValid
+        
+        nTrialsPermanentlyInvalid
+        
         nChannels
         channelNames % cell array of channel names
     end
@@ -435,8 +442,8 @@ classdef TrialData
     methods
         function printDescriptionShort(td)
             if td.nTrialsValid < td.nTrials
-                tcprintf('inline', '{yellow}%s: {none}%d trials {bright red}(%d valid){none} with %d channels\n', ...
-                class(td), td.nTrials, td.nTrialsValid, td.nChannels);
+                tcprintf('inline', '{yellow}%s: {none}%d trials {bright red}(%d valid){none}, %d permanently invalid, with %d channels\n', ...
+                class(td), td.nTrials, td.nTrialsValid, td.nTrialsPermanentlyInvalid, td.nChannels);
             else
                 tcprintf('inline', '{yellow}%s: {none}%d trials (%d valid) with %d channels\n', ...
                     class(td), td.nTrials, td.nTrialsValid, td.nChannels);
@@ -513,11 +520,14 @@ classdef TrialData
             % compute the valid flag considering only trials marked as
             % manually invalid to be invalid. This will be overriden in
             % TDCA to consider the condition and align invalid as well
-            valid = td.getManualValid();
+            [manualValid, manualCause] = td.getManualValid();
             
-            cause = cell(td.nTrials, 1);
-            cause(~valid) = {'marked invalid manually'};
-            cause(valid) = {''};
+            % then require the trials not be marked 'temporarily invalid'
+            [tempValid, tempCause] = td.getTemporaryValid();
+            
+            valid = manualValid & tempValid;
+            cause = manualCause;
+            cause(manualValid & ~tempValid) = tempCause(manualValid & ~tempValid);
             
             % override, don't write
             c = td.odc;
@@ -540,10 +550,14 @@ classdef TrialData
             nTrials = numel(td.data);
         end
 
+        function nTrials = get.nTrialsPermanentlyInvalid(td)
+            nTrials = nnz(~td.getManualValid);
+        end
+        
         function nTrials = get.nTrialsValid(td)
             nTrials = nnz(td.valid);
         end
-
+        
         function nChannels = get.nChannels(td)
             nChannels = numel(td.channelNames);
         end
@@ -565,6 +579,11 @@ classdef TrialData
             else
                 td.manualValid = td.manualValid(mask);
             end
+            if isempty(td.temporaryValid)
+                td.temporaryValid = [];
+            else
+                td.temporaryValid = td.temporaryValid(mask);
+            end
             td = td.invalidateValid();
         end
         
@@ -581,9 +600,13 @@ classdef TrialData
              td = td.selectTrials(maskFull);
         end
 
-        function td = markTrialsInvalid(td, mask)
+        function td = markTrialsInvalid(td, mask, reason)
             td.warnIfNoArgOut(nargout);
             td.manualValid(mask) = false;
+            if nargin > 2
+                assert(ischar(reason));
+                td.manualInvalidCause{mask} = {reason};
+            end
             td = td.invalidateValid();
         end
         
@@ -599,11 +622,44 @@ classdef TrialData
             td = td.invalidateValid();
         end
         
+        function td = markTrialsTemporarilyInvalid(td, mask, reason)
+            td.warnIfNoArgOut(nargout);
+            
+            tempValid = td.getTemporaryValid();
+            tempValid(mask) = false;
+            if nargin > 2
+                assert(ischar(reason));
+                td.temporaryInvalidCause(mask) = {reason};
+            end
+            td.temporaryValid = makecol(tempValid);
+            td = td.invalidateValid();
+        end
+        
+        function td = withTrials(td, mask)
+            td.warnIfNoArgOut(nargout);
+            mask = TensorUtils.vectorIndicesToMask(mask, td.nTrials);
+            td = td.markTrialsTemporarilyInvalid(~mask);
+        end
+        
+        function td = setTrialsTemporarilyInvalid(td, mask)
+            td.warnIfNoArgOut(nargout);
+            
+            td.temporaryValid = TensorUtils.vectorIndicesToMask(mask, td.nTrials);
+            td = td.invalideValid();
+        end
+        
+        function td = clearTrialsTemporarilyInvalid(td)
+            td.warnIfNoArgOut(nargout);
+            td.temporaryValid = [];
+            td = td.invalidateValid();
+        end
+        
         function td = reset(td)
             td.warnIfNoArgOut(nargout);
-            % don't do this. this is not consistent with what reset means
+            % don't touch .manualValid. this is not consistent with what reset means
             % for TrialDataConditionAlign
-%             td = td.setAllValid();
+            
+            td = td.clearTrialsTemporarilyInvalid();
         end
     end
     
@@ -617,11 +673,48 @@ classdef TrialData
     end
 
     methods(Access=protected) % Utility methods   
-        function valid = getManualValid(td)
+        function [valid, cause] = getManualValid(td)
             if isempty(td.manualValid)
                 valid = truevec(td.nTrials);
+                cause = cellvec(td.nTrials);
             else
                 valid = makecol(td.manualValid);
+                
+                % generate the list of causes
+                if isempty(td.manualInvalidCause)
+                    cause = cellvec(td.nTrials);
+                else
+                    cause = td.manualInvalidCause;
+                end
+                
+                emptyMask = cellfun(@isempty, cause);
+                cause(~valid & emptyMask) = {'marked invalid manually'};
+            end
+        end
+        
+        function [valid, cause] = getTemporaryValid(td)
+            if isempty(td.temporaryValid)
+                valid = truevec(td.nTrials);
+                cause = cellvec(td.nTrials);
+            else
+                valid = makecol(td.temporaryValid);
+                
+                % generate the list of causes, prefixed with (temporary)
+                if isempty(td.temporaryInvalidCause)
+                    cause = cellvec(td.nTrials);
+                else
+                    cause = td.temporaryInvalidCause;
+                end
+                
+                for iT = 1:td.nTrials
+                    if ~valid(iT)
+                        if isempty(cause{iT})
+                            cause{iT} = '(temporary) marked invalid temporarily';
+                        else
+                            cause{iT} = ['(temporary) ' cause{iT}];
+                        end
+                    end
+                end
             end
         end
         
