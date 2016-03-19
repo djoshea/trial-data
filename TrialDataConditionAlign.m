@@ -1443,6 +1443,10 @@ classdef TrialDataConditionAlign < TrialData
             offsets(~td.valid) = NaN;
         end
 
+        function tf = alignIncludesFullTrial(td)
+            tf = td.alignInfoActive.isFullTrial;
+        end 
+        
         function offsets = getTimeOffsetsFromZeroEachTrialEachAlign(td)
             offsets = nan(td.nTrials, td.nAlign);
             for iA = 1:pset.nAlign
@@ -1454,6 +1458,11 @@ classdef TrialDataConditionAlign < TrialData
 
     % Analog channel access
     methods
+        function time = getAnalogTime(td, name)
+            time = td.getAnalogTimeRaw(name);
+            time = td.alignInfoActive.getAlignedTimesCell(time, false); % no padding
+        end
+        
         % return aligned analog channel
         function [data, time] = getAnalog(td, name, varargin)
             p = inputParser;
@@ -1616,155 +1625,6 @@ classdef TrialDataConditionAlign < TrialData
             tvec = cat(2, tvecCell{:});
         end
         
-        function tf = checkAnalogChannelsShareTimeVector(td, names)
-            timeFields = cellfun(@(name) td.channelDescriptorsByName.(name).timeField, names, 'UniformOutput', false);
-            tf = numel(unique(timeFields)) == 1;
-        end
- 
-        function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
-            % dataCell is cell(nTrials, 1) containing nTime x nChannels mat
-            % timeCell is cell(nTrials, 1) containing nTime x 1 vectors
-            % All data vectors will be interpolated to a
-            % common time vector independently on each trial. Use
-            % getAnalogMultiAsMatrix to register to a common time vector
-            % across all trials.
-            
-            p = inputParser;
-            p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
-            p.KeepUnmatched = true;
-            p.parse(varargin{:});
-            
-            assert(iscellstr(names));
-            shareTime = td.checkAnalogChannelsShareTimeVector(names);
-            [dataCellRaw, timeCellRaw] = td.getAnalogMulti(names, p.Unmatched);
-            [dataCell, timeCell] = deal(cell(td.nTrials, 1));
-                
-            if shareTime
-                for iT = 1:td.nTrials
-                    % cell selected is 1 x nChannels with nTime x 1 vectors
-                    % this makes each dataCell{:} nTime x nChannels
-                    dataCell{iT} = cell2mat(dataCellRaw(iT, :));
-                end
-                timeCell = timeCellRaw(:, 1);
-                
-            else
-                % need to interpolate each trial to a common time vector
-                timeDelta = p.Results.timeDelta;
-                if isempty(timeDelta)
-                    timeDelta = td.alignInfoActive.minTimeDelta;
-                    if isempty(timeDelta)
-                        timeDelta = td.getAnalogTimeDelta(name);
-                        warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-                    end
-                end
-                
-                prog = ProgressBar(td.nTrials, 'Interpolating analog channels to common time vectors');
-                for iT = 1:td.nTrials
-                    prog.update(iT);
-                    % build matrix from all data on this trial
-                    [dataCell{iT}, timeCell{iT}] = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
-                        dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
-                        'timeDelta', timeDelta, 'timeReference', 0, ...
-                        'assumeUniformSampling', false, 'interpolateMethod', p.Results.interpolateMethod);
-                end
-                prog.finish();
-            end
-        end
-
-        function [dataTensor, tvec] = getAnalogMultiAsTensor(td, names, varargin)
-            % data is nTrials x nTime x nChannels
-            % tvec is nTime x 1 time vector
-            
-            p = inputParser;
-            p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('tvec', [], @isvector);
-            p.addParameter('assumeUniformSampling', false, @islogical);
-            p.KeepUnmatched = true;
-            p.parse(varargin{:});
-
-            assert(iscell(names));
-               
-            % build nTrials x nTime x nChannels cell of data/time vectors
-            C = numel(names);
-                        
-            [dataCell, timeCell] = td.getAnalogMulti(names, p.Unmatched);
-            
-%             % determine time vector to interpolate to
-%             if ~isempty(p.Results.tvec)
-%                 % manually specified time vector
-%                 tvec = p.Results.tvec;
-%             else
-%                 % then check whether timeDelta is specified directly
-%                 timeDelta = p.Results.timeDelta;
-%                 if isempty(timeDelta)
-%                     timeDelta = td.alignInfoActive.minTimeDelta;
-%                     if isempty(timeDelta)
-%                         timeDelta = td.getAnalogTimeDelta(names);
-%                         warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-%                     end
-%                 end
-%                 
-%                 % find common time vector
-%                 tvec = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
-%                     'timeDelta', timeDelta, 'interpolate', ~p.Results.assumeUniformSampling);
-%             end
-            
-            % interpolate to common time vector
-            [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-                'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
-                'assumeUniformSampling', p.Results.assumeUniformSampling);
-        end
-        
-        function [mat, tvec, alignIdx] = getAnalogMultiAsMatrixEachAlign(td, names, varargin)
-            % similar to getAnalogMultiAsMatrix, except each alignment will be
-            % concatenated in time
-            
-            matCell = cellvec(td.nAlign);
-            tvecCell = cellvec(td.nAlign);
-            for iA = 1:td.nAlign
-                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getAnalogMultiAsMatrix(names, varargin{:});
-            end
-            
-            [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
-            tvec = cat(2, tvecCell{:});
-        end
-        
-        function [dCell, tCell] = getAnalogGrouped(td, name)
-            [dataCell, timeCell] = td.getAnalog(name);
-            [dCell, tCell] = td.groupElements(dataCell, timeCell);
-        end
-        
-        function [dCell, tCell] = getAnalogGroupedEachAlign(td, name, varargin)
-            [dataCell, timeCell] = td.getAnalogEachAlign(name, varargin{:});
-            [dCell, tCell] = deal(cell(td.nConditions, td.nAlign));
-            for iA = 1:td.nAlign
-                [dCell(:, iA), tCell(:, iA)] = td.useAlign(iA).groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
-            end
-        end
-        
-        function [dCell, tvec] = getAnalogAsMatrixGrouped(td, name, varargin)
-            [mat, tvec] = td.getAnalogAsMatrix(name, varargin{:});
-            dCell = td.groupElements(mat);
-        end
-        
-        function [dCell, tvec, alignIdx] = getAnalogAsMatrixGroupedEachAlign(td, name, varargin)
-            [mat, tvec, alignIdx] = td.getAnalogAsMatrixEachAlign(name, varargin{:});
-            dCell = td.groupElements(mat);
-        end
-        
-        function [dataCell, tvec] = getAnalogMultiAsMatrixGrouped(td, nameCell, varargin)
-            % dataCell will be size(td.conditions)
-            % contents will be nTrials x T x nChannels
-            [data, tvec] = td.getAnalogMultiAsMatrix(nameCell, varargin{:});
-            dataCell = td.groupElements(data);
-        end
-        
-        function [dCell, tvec, alignIdx] = getAnalogMultiAsMatrixGroupedEachAlign(td, nameCell, varargin)
-            [mat, tvec, alignIdx] = td.getAnalogMultiAsMatrixEachAlign(nameCell, varargin{:});
-            dCell = td.groupElements(mat);
-        end
-        
         function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogGroupMeans(td, name, varargin)
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
@@ -1917,11 +1777,14 @@ classdef TrialDataConditionAlign < TrialData
             td = td.addAnalog(diffName, diffData, time, 'units', diffUnits, 'isAligned', false);
         end
         
-        function td = replaceAnalogWithinAlignWindow(td, name, values, varargin)
+        function td = setAnalogWithinAlignWindow(td, name, values, varargin)
             % replace the analog data within the curr ent align window with
             % the data in values
             p = inputParser();
+            p.addOptional('times', [], @(x) iscell(x) || isnumeric(x));
             p.addParameter('preserveContinuity', false, @islogical);
+            p.addParameter('clearOverlappingTimesOutsideAlignWindow', false, @islogical);
+            p.addParameter('keepScaling', false, @islogical);
             p.parse(varargin{:});
             
             td.warnIfNoArgOut(nargout);
@@ -1940,40 +1803,461 @@ classdef TrialDataConditionAlign < TrialData
                 error('Values must be numeric matrix or cell array');
             end
             
-            % figure out where to splice in the data into the full
-            % timeseries
-            [currentData, currentTimes] = td.getAnalog(name);
-            [fullData, fullTimes] = td.getAnalogRaw(name);
-            [~, timesMask] = td.getAlignedTimesCell(fullTimes, false); % no padding
+            times = p.Results.times;
+            if ~isempty(times)
+                if iscell(times)
+                    assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
+                elseif ismatrix(times)
+                    if isvector(times)
+                        times = repmat(makerow(times), td.nTrials, 1);
+                    end
+                    assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
+                    times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
+
+                else
+                    error('Times must be numeric matrix or cell array');
+                end
+                
+                % check that times have same length as data
+                assert(numel(times) == numel(values), 'Times and values must have same number of trials');
+                nTimes = cellfun(@numel, times);
+                nValues = cellfun(@numel, values);
+                assert(all(nTimes == nValues), 'Mismatch between number of times and values. If the number of times has changed be sure to specify times parameter');
+                
+                updateTimes = true;
+            else
+                % here we're only talking about the aligned region anyway,
+                % so if nothing is specified, those are the times we're
+                % using anyway
+                updateTimes = false;
+                times = td.getAnalogTime(name);
+
+            end
             
-            % check that times have same length as data
-            assert(numel(values) == td.nTrials, 'Times and values must have same number of trials');
-            nTimes = cellfun(@numel, currentTimes);
-            nValues = cellfun(@numel, values);
-            assert(all(nTimes == nValues), 'Mismatch between number of times and values');
+            % add the zero offset to the time vector for each trial
+            % this is mostly for TDCA, so that alignments info is
+            % preserved
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
 
             cd = td.channelDescriptorsByName.(name);
-            valueClassConvertedOnAccess = strcmp(cd.memoryClassByField{1}, cd.accessClassByField{1});
-            
-            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ...
-                    (valueClassConvertedOnAccess || updateTimes)
-                td = td.separateAnalogChannelFromColumnOfSharedMatrix(name, false);
-                cd = td.channelDescriptorsByName.(name);
+                        
+            % for shared column channels where the scaling or time vectors
+            % change, it needs to be separated from the shared column form
+            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && (cd.hasScaling || updateTimes)
+                error('Setting analog channel while ''keepScaling'' is false or when specifying new sample times requires this channel to be separated from its analog channel group. Use separateAnalogChannelFromGroup if you want to do this. Or use setAnalogChannelGroupWithinAlignWindow to set all channels in the group at once.');  
+%                 td = td.separateAnalogChannelFromGroup(name, false);
             end
             
             % data being passed in is now in original units
             % so change scaling factors
-            cd = cd.withNoScaling();
+            if ~p.Results.keepScaling
+                td = td.convertAnalogChannelToNoScaling(name);
+            end
+                
+            cd = td.channelDescriptorsByName.(name); %#ok<NASGU>
             
-            % update the channel descriptor accordingly
-            td.channelDescriptorsByName.(name) = cd;
+            % figure out where to splice in the data into the full timeseries
+            [fullData, fullTimes] = td.getAnalogRaw(name, 'sort', true);
+            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false); % no padding
+            
+            % splice each trial's data in
+            prog = ProgressBar(td.nTrials, 'Splicing in analog data');
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                mask = timesMask{iT}; % indicates where in fullTimes that currentTimes lives
+                first = find(mask, 1);
+                last = find(mask, 1, 'last');
+                    
+                if updateTimes
+                    % check whether the times we're writing don't exceed the
+                    % window we're aligned to
+                    
+                    preTimes = fullTimes{iT}(1:first-1);
+                    preData = fullData{iT}(1:first-1);
+                    postTimes = fullTimes{iT}(last+1:end);
+                    postData = fullData{iT}(last+1:end);
+                    
+                    % check time overlap with times outside the window
+                    maxTimePre = preTimes(end);
+                    minTimePost = postTimes(1);
+                    if p.Results.clearOverlappingTimesOutsideAlignWindow
+                        % remove overlap from the old data
+                        maxTimeNew = nanmax(times{iT});
+                        minTimeNew = nanmin(times{iT});
+                        
+                        maskRemove = falsevec(numel(times{iT}));
+                        maskRemove(1:first-1) = fullTimes{iT}(1:first-1) >= minTimeNew;
+                        maskRemove(last+1:end) = fullTimes{iT}(1:first-1) <= maxTimeNew;
+                        
+                        preTimes = preTimes(~maskRemove(1:first-1));
+                        preData = preData(~maskRemove(1:first-1));
+                        postTimes = postTimes(~maskRemove(last+1:end));
+                        postData = postData(~maskRemove(last+1:end));
+                    else
+                        % issue an error if overlap
+                        newTimeOutside = times{iT} >= minTimePost | times{iT} <= maxTimePre;
+                        if any(newTimeOutside)
+                            error('Trial %d has time values that overlap with times outside of the alignment window. Set parameter ''clearOverlappingTimesOutsideAlignWindow'' true to clear these automatically');
+                        end
+                    end
+
+                else
+                    preData = fullData{iT}(1:first-1);
+                    postData = fullData{iT}(last+1:end);
+                end
+                
+                if p.Results.preserveContinuity
+                    % offset values{iT} to match last value of preData
+                    % insert the data
+                    values{iT} = values{iT} - (values{iT}(1) - preData(end));
+                    
+                    % offset postData to match last value of values{iT}
+                    postData = postData - (postData(1) - values{iT}(1));
+                end
+                
+                fullData{iT} = cat(1, preData, values{iT}, postData);
+                if updateTimes
+                    fullTimes{iT} = cat(1, preTimes, times{iT}, postTimes);
+                end
+            end
+            prog.finish();
+            
+            % setChannelData will call repairData which will update
+            % memoryDataClassByField{1} to reflect the type of values
+            td = td.setAnalog(name, fullData, fullTimes, 'isAligned', false, 'keepScaling', p.Results.keepScaling);
+        end
+    end
+    
+    methods % Analog channel group methods
+        % return aligned analog channel
+        function [data, time] = getAnalogChannelGroup(td, groupName)            
+            [data, time] = getAnalogChannelGroup@TrialData(td, groupName);
+            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false);
+        end
+        
+        function time = getAnalogChannelGroupTime(td, groupName)
+            time = getAnalogChannelGroupTime@TrialData(td, groupName);
+            time = td.alignInfoActive.getAlignedTimesCell(time, false); % no padding
+        end
+
+        function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
+            % dataCell is cell(nTrials, 1) containing nTime x nChannels mat
+            % timeCell is cell(nTrials, 1) containing nTime x 1 vectors
+            % All data vectors will be interpolated to a
+            % common time vector independently on each trial. Use
+            % getAnalogMultiAsMatrix to register to a common time vector
+            % across all trials.
+            
+            p = inputParser;
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            assert(iscellstr(names));
+            [inGroup, groupName] = td.checkAnalogChannelsInGroup(names);
+                
+            if inGroup
+                % fetch the data as a group and rearrange the signals to
+                % match the requested order
+                
+                % this is a much faster way of fetching the data whole
+                dataCell = cellvec(td.nTrials);
+                [matCell, timeCell] = td.getAnalogChannelGroup(groupName);
+                
+                % then go and grab the correct columns
+                colIdx = td.getAnalogChannelColumnIdxInGroup(names);
+                prog = ProgressBar(td.nTrials, 'Slicing columns from analog channel group');
+                for iT = 1:td.nTrials
+                    prog.update(iT)
+                    dataCell{iT} = matCell{iT}(:, colIdx);
+                end
+                prog.finish();
+                
+            else
+                % need to interpolate each signal's data on each trial to a common per-trial  time vector
+                [dataCellRaw, timeCellRaw] = td.getAnalogMulti(names, p.Unmatched);
+                
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    timeDelta = td.alignInfoActive.minTimeDelta;
+                    if isempty(timeDelta)
+                        timeDelta = td.getAnalogTimeDelta(name);
+                        warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
+                    end
+                end
+                
+                [dataCell, timeCell] = deal(cell(td.nTrials, 1));
+                prog = ProgressBar(td.nTrials, 'Interpolating analog channels to common time vectors');
+                for iT = 1:td.nTrials
+                    prog.update(iT);
+                    % build matrix from all data on this trial
+                    [dataCell{iT}, timeCell{iT}] = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
+                        dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
+                        'timeDelta', timeDelta, 'timeReference', 0, ...
+                        'assumeUniformSampling', false, 'interpolateMethod', p.Results.interpolateMethod);
+                end
+                prog.finish();
+            end
+        end
+
+        function [dataTensor, tvec] = getAnalogMultiAsTensor(td, names, varargin)
+            % data is nTrials x nTime x nChannels
+            % tvec is nTime x 1 time vector
+            
+            p = inputParser;
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('tvec', [], @isvector);
+            p.addParameter('assumeUniformSampling', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            assert(iscell(names));
+               
+            % build nTrials x nTime x nChannels cell of data/time vectors
+            [dataCell, timeCell] = td.getAnalogMulti(names, p.Unmatched);
+            
+%             % determine time vector to interpolate to
+%             if ~isempty(p.Results.tvec)
+%                 % manually specified time vector
+%                 tvec = p.Results.tvec;
+%             else
+%                 % then check whether timeDelta is specified directly
+%                 timeDelta = p.Results.timeDelta;
+%                 if isempty(timeDelta)
+%                     timeDelta = td.alignInfoActive.minTimeDelta;
+%                     if isempty(timeDelta)
+%                         timeDelta = td.getAnalogTimeDelta(names);
+%                         warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
+%                     end
+%                 end
+%                 
+%                 % find common time vector
+%                 tvec = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
+%                     'timeDelta', timeDelta, 'interpolate', ~p.Results.assumeUniformSampling);
+%             end
+            
+            % interpolate to common time vector
+            [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
+                'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
+                'assumeUniformSampling', p.Results.assumeUniformSampling);
+        end
+        
+        function [mat, tvec, alignIdx] = getAnalogMultiAsMatrixEachAlign(td, names, varargin)
+            % similar to getAnalogMultiAsMatrix, except each alignment will be
+            % concatenated in time
+            
+            matCell = cellvec(td.nAlign);
+            tvecCell = cellvec(td.nAlign);
+            for iA = 1:td.nAlign
+                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getAnalogMultiAsMatrix(names, varargin{:});
+            end
+            
+            [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
+            tvec = cat(2, tvecCell{:});
+        end
+        
+        function [dCell, tCell] = getAnalogGrouped(td, name)
+            [dataCell, timeCell] = td.getAnalog(name);
+            [dCell, tCell] = td.groupElements(dataCell, timeCell);
+        end
+        
+        function [dCell, tCell] = getAnalogGroupedEachAlign(td, name, varargin)
+            [dataCell, timeCell] = td.getAnalogEachAlign(name, varargin{:});
+            [dCell, tCell] = deal(cell(td.nConditions, td.nAlign));
+            for iA = 1:td.nAlign
+                [dCell(:, iA), tCell(:, iA)] = td.useAlign(iA).groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
+            end
+        end
+        
+        function [dCell, tvec] = getAnalogAsMatrixGrouped(td, name, varargin)
+            [mat, tvec] = td.getAnalogAsMatrix(name, varargin{:});
+            dCell = td.groupElements(mat);
+        end
+        
+        function [dCell, tvec, alignIdx] = getAnalogAsMatrixGroupedEachAlign(td, name, varargin)
+            [mat, tvec, alignIdx] = td.getAnalogAsMatrixEachAlign(name, varargin{:});
+            dCell = td.groupElements(mat);
+        end
+        
+        function [dataCell, tvec] = getAnalogMultiAsMatrixGrouped(td, nameCell, varargin)
+            % dataCell will be size(td.conditions)
+            % contents will be nTrials x T x nChannels
+            [data, tvec] = td.getAnalogMultiAsMatrix(nameCell, varargin{:});
+            dataCell = td.groupElements(data);
+        end
+        
+        function [dCell, tvec, alignIdx] = getAnalogMultiAsMatrixGroupedEachAlign(td, nameCell, varargin)
+            [mat, tvec, alignIdx] = td.getAnalogMultiAsMatrixEachAlign(nameCell, varargin{:});
+            dCell = td.groupElements(mat);
+        end
+        
+        function td = setAnalogChannelGroupWithinAlignWindow(td, groupName, values, varargin)
+            % replace the analog data within the curr ent align window with
+            % the data in values
+            p = inputParser();
+            p.addOptional('times', [], @(x) iscell(x) || ismatrix(x));
+            p.addParameter('preserveContinuity', false, @islogical);
+            p.addParameter('clearOverlappingTimesOutsideAlignWindow', false, @islogical);
+            p.addParameter('keepScaling', false, @islogical);
+            p.parse(varargin{:});
+            times = makecol(p.Results.times);
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasAnalogChannelGroup(groupName);
+           
+            chList = td.listAnalogChannelsInGroup(groupName);
+            nCh = numel(chList);
+            
+            % check the values and convert to nTrials cellvec
+            if isnumeric(values) && isnumeric(values)
+                % values must be nTrials x nTimes x nChannels
+                assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
+                
+                % convert to cellvec
+                tensor = values;             
+                values = cellvec(td.nTrials, 1);
+                for r = 1:td.nTrials
+                    values{r} = TensorUtils.squeezeDims(tensor(r, :, :), 1);
+                end
+                clear tensor;
+                
+            elseif iscell(values)
+                assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
+                nCol = cellfun(@(x) size(x, 2), values);
+                assert(all(nCol == nCh), 'All elements of values must have same number of columns as channels (%d)', nCh);
+                values = makecol(values);
+            else
+                error('Values must be numeric tensor or cell array');
+            end
+                
+            if ~isempty(times)
+                if iscell(times)
+                    assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
+                elseif ismatrix(times)
+                    if isvector(times)
+                        times = repmat(makerow(times), td.nTrials, 1);
+                    end
+                    assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
+                    times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
+                else
+                    error('Times must be numeric matrix or cell array');
+                end
+                updateTimes = true;
+            else
+                % here we're only talking about the aligned region anyway,
+                % so if nothing is specified, those are the times we're
+                % using anyway
+                updateTimes = false; 
+                
+                % pass along the current times since the data is coming in with the
+                % existing alignment
+                times = td.getAnalogChannelGroupTime(groupName);
+            end
+            
+            % check that times have same length as data
+            assert(numel(times) == numel(values), 'Times and values must have same number of trials');
+            nTimes = cellfun(@numel, times);
+            nValues = cellfun(@(x) size(x, 1), values);
+            assert(all(nTimes == nValues), 'Mismatch between number of times and values. If the number of times has changed be sure to specify times parameter');
+            
+            % add the zero offset to the time vector for each trial
+            % this is mostly for TDCA, so that alignments info is
+            % preserved
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+
+            timeField = td.channelDescriptorsByName.(chList{1}).timeField;
+                        
+            if ~p.Results.keepScaling
+                % data being passed in is now in original units
+                % so change scaling factors of the channel and the data
+                td = td.convertAnalogChannelGroupToNoScaling(groupName);
+                % and convert back to memory anyway in case the data class
+                % has changed, although this shouldn't do any scaling
+                values = td.channelDescriptorsByName.(chList{1}).convertAccessDataCellToMemory(1, values);
+            else
+                % take new data back into scaled values to match the
+                % existing
+                values = cd.convertAccessDataCellToMemory(1, values);
+            end
+            
+            fullTimes = td.getAnalogChannelGroupTimeRaw(groupName);
+            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false); % no padding
+            
+            % splice each trial's data in
+            prog = ProgressBar(td.nTrials, 'Splicing in analog data');
+            for iT = 1:td.nTrials
+                if ~td.valid(iT), continue; end
+                prog.update(iT);
+                mask = timesMask{iT}; % indicates where in fullTimes that currentTimes lives
+                first = find(mask, 1);
+                last = find(mask, 1, 'last');
+                
+                fullDataThis = td.data(iT).(groupName);
+                
+                if updateTimes
+                    % check whether the times we're writing don't exceed the
+                    % window we're aligned to
+                    
+                    preTimes = fullTimes{iT}(1:first-1);
+                    preData = fullDataThis(1:first-1, :);
+                    postTimes = fullTimes{iT}(last+1:end);
+                    postData = fullDataThis(last+1:end, :);
+                    
+                    % check time overlap with times outside the window
+                    maxTimePre = preTimes(end);
+                    minTimePost = postTimes(1);
+                    if p.Results.clearOverlappingTimesOutsideAlignWindow
+                        % remove overlap from the old data
+                        maxTimeNew = nanmax(times{iT});
+                        minTimeNew = nanmin(times{iT});
+                        
+                        maskRemove = falsevec(numel(times{iT}));
+                        maskRemove(1:first-1) = fullTimes{iT}(1:first-1) >= minTimeNew;
+                        maskRemove(last+1:end) = fullTimes{iT}(1:first-1) <= maxTimeNew;
+                        
+                        preTimes = preTimes(~maskRemove(1:first-1));
+                        preData = preData(~maskRemove(1:first-1), :);
+                        postTimes = postTimes(~maskRemove(last+1:end));
+                        postData = postData(~maskRemove(last+1:end), :);
+                    else
+                        % issue an error if overlap
+                        newTimeOutside = times{iT} >= minTimePost | times{iT} <= maxTimePre;
+                        if any(newTimeOutside)
+                            error('Trial %d has time values that overlap with times outside of the alignment window. Set parameter ''clearOverlappingTimesOutsideAlignWindow'' true to clear these automatically');
+                        end
+                    end
+                else
+                    preData = fullDataThis(1:first-1, :);
+                    postData = fullDataThis(last+1:end, :);
+                end
+                
+                if p.Results.preserveContinuity
+                    % offset values{iT} to match last value of preData
+                    % insert the data
+                    values{iT} = bsxfun(@minus, values{iT}, values{iT}(1, :) - preData(end, :));
+                    
+                    % offset postData to match last value of values{iT}
+                    postData = bsxfun(@minus, postData, postData(1, :) - values{iT}(1, :));
+                end
+                
+                fullDataThis = cat(1, preData, values{iT}, postData);
+                td.data(iT).(groupName) = fullDataThis;
+                
+                if updateTimes
+                    fullTimesThis = cat(1, preTimes, times{iT}, postTimes);
+                    td.data(iT).(timeField) = fullTimesThis;
+                end
+            end
+            prog.finish();
             
             if updateTimes
-                fieldMask = truevec(2);
+                td = td.updatePostDataChange({groupName, timeField});
             else
-                fieldMask = [true; false];
+                td = td.updatePostDataChange({groupName});
             end
-            td = td.setChannelData(name, {values, times}, 'fieldMask', fieldMask, p.Unmatched);
         end
     end
 

@@ -108,6 +108,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             % user makes changes
             cd.warnIfNoArgOut(nargout);
         end
+        
+        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
+            memClass = cd.memoryClassByField{fieldIdx};
+            accClass = cd.accessClassByField{fieldIdx};
+            if ~strcmp(memClass, accClass)
+                data = cast(data, accClass);
+            end
+        end
 
         function data = convertDataCellOnAccess(cd, fieldIdx, data)
             % when data is accessed by TrialData, this is one additional
@@ -120,16 +128,41 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 data = cellfun(@(a) cast(a, accClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
             end
         end
+        
+        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
+            memClass = cd.memoryClassByField{fieldIdx};
+            accClass = cd.accessClassByField{fieldIdx};
+            if ~strcmp(memClass, accClass)
+                data = cast(data, memClass);
+            end
+        end
+        
+        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
+            % when data is accessed by TrialData, this is one additional
+            % chance to cast or adjust the data stored in .data. This
+            % default implementation casts from the access class to the
+            % memory class on demand
+            memClass = cd.memoryClassByField{fieldIdx};
+            accClass = cd.accessClassByField{fieldIdx};
+            if ~strcmp(memClass, accClass)
+                data = cellfun(@(a) cast(a, memClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
+            end
+        end
 
         function c = getAccessClassByField(cd)
             % implements get.accessClassByField
+            memClass = cd.getMemoryClassByField();
             c = cellvec(cd.nFields);
             for iF = 1:cd.nFields
                 switch cd.elementTypeByField(iF)
                     case cd.BOOLEAN
                         c{iF} = 'logical';
                     case {cd.SCALAR, cd.VECTOR, cd.NUMERIC, cd.DATENUM}
-                        c{iF} = 'double';
+                        if ismember(memClass{iF}, {'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'single'})
+                            c{iF} = 'single';
+                        else
+                            c{iF} = 'double';
+                        end
                     case cd.STRING
                         c{iF} = 'char';
                     otherwise

@@ -451,15 +451,39 @@ classdef TrialData
             if ~isempty(td.datasetName)
                 tcprintf('inline', '{yellow}Dataset: {none}%s\n', td.datasetName);
             end
-            
         end
         
         function printChannelInfo(td)
-            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(td.listNonContinuousNeuralAnalogChannels(), ', '));
-            tcprintf('inline', '{yellow}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            % parse analog channels into grouped and non grouped
+            analogCh = td.listNonContinuousNeuralAnalogChannels();
+            continuousCh = td.listContinuousNeuralChannels();
+            groups = td.listAnalogChannelGroups();
+            groupChannels = cellvec(numel(groups));
+            for iG = 1:numel(groups)
+                groupChannels{iG} = td.listAnalogChannelsInGroup(groups{iG});
+            end
+            allGroupChannels = cat(1, groupChannels{:});
+
+            analogChNonGroup = setdiff(analogCh, allGroupChannels);
+            continuousChNonGroup = setdiff(continuousCh, allGroupChannels);
+            
             tcprintf('inline', '{yellow}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{yellow}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(analogChNonGroup, ', '));
+            for iG = 1:numel(groups)
+                isect = groupChannels{iG}(ismember(groupChannels{iG}, analogCh)); % want them in the group order
+                if ~isempty(isect)
+                    tcprintf('inline', '  {blue}%s: \{{none}%s\}\n', groups{iG}, strjoin(isect, ', '));
+                end
+            end
             tcprintf('inline', '{yellow}Spike: {none}%s\n', strjoin(td.listSpikeChannels(), ', '));
-            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', strjoin(td.listContinuousNeuralChannels(), ', '));
+            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', strjoin(continuousChNonGroup, ', '));
+            for iG = 1:numel(groups)
+                isect = groupChannels{iG}(ismember(groupChannels{iG}, continuousCh)); % want them in the group order
+                if ~isempty(isect)
+                    tcprintf('inline', '  {bright blue}%s: {none}\{%s\}\n', groups{iG}, strjoin(isect, ', '));
+                end
+            end
         end
 
         function disp(td)
@@ -956,9 +980,17 @@ classdef TrialData
             
             % first hold onto the to-be-removed channel descriptors
             cds = cellvec(numel(names));
+            groupNames = cellvec(numel(names));
+            inGroup = falsevec(numel(names));
             for i = 1:numel(names)
                 cds{i} = td.channelDescriptorsByName.(names{i});
+                if cds{i}.isColumnOfSharedMatrix
+                    groupNames{i} = cds{i}.primaryDataField;
+                    inGroup(i) = true;
+                end
             end
+            
+            groupsAffected = unique(groupNames(inGroup));
             
             % remove the channel descriptors
             td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, names);
@@ -974,6 +1006,14 @@ classdef TrialData
             fieldsRemove = fieldsRemove(maskRemove);
             
             td.data = rmfield(td.data, fieldsRemove);
+                     
+            % clean the analog channel groups
+            for iG = 1:numel(groupsAffected)
+                if isfield(td.data, groupsAffected{iG}) % could be that the whole group was dropped
+                    td = td.removeUnusedColumnsAnalogChannelGroup(groupsAffected{iG});
+                end
+            end
+            
             td = td.updatePostDataChange(fieldsRemove);
         end
     end
@@ -1105,11 +1145,11 @@ classdef TrialData
                     'clearForInvalid', p.Results.clearForInvalid, 'isAligned', p.Results.isAligned);
             end
             
-            function [t, v] = removenanBoth(t, v)
-                m = ~isnan(t) & ~isnan(v);
-                t = t(m);
-                v = v(m);
-            end
+%             function [t, v] = removenanBoth(t, v)
+%                 m = ~isnan(t) & ~isnan(v);
+%                 t = t(m);
+%                 v = v(m);
+%             end
         end
         
         function td = addContinuousNeural(td, name, varargin)
@@ -1124,7 +1164,8 @@ classdef TrialData
             
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) ||  isnumeric(x));
-            p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('keepScaling', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
@@ -1157,11 +1198,15 @@ classdef TrialData
                 end
                 updateTimes = true;
             else
-                updateTimes = false;
+                % if no times are specified, then we're only updating the
+                % timestamps if we're aligned to a subset of the trial
+                % currently, in which case we're dropping the timepoints
+                % outside the alignment window
+                updateTimes = ~td.alignIncludesFullTrial;
                 
                 % pass along the current times since the data is coming in with the
                 % existing alignment
-                [~, times] = td.getAnalog(name);
+                times = td.getAnalogTimes(name);
             end
             
             % check that times have same length as data
@@ -1186,26 +1231,27 @@ classdef TrialData
             % for shared column channels where the scaling or time vectors
             % change, it needs to be separated from the shared column form
             if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && (cd.hasScaling || updateTimes)
-                td = td.separateAnalogChannelFromColumnOfSharedMatrix(name, false);
-                cd = td.channelDescriptorsByName.(name);
+                error('Setting analog channel while ''keepScaling'' is false or when specifying new sample times requires this channel to be separated from its analog channel group. Use separateAnalogChannelFromGroup if you want to do this. Or use setAnalogChannelGroup to set all channels in the group at once.');
+%                 debug('Separating channel %s from column of shared matrix %s\n', name, cd.primaryDataField);
+%                 td = td.separateAnalogChannelFromGroup(name, false, false); % no separate time field, no copy data
+%                 cd = td.channelDescriptorsByName.(name);
             end
             
-            % data being passed in is now in original units
-            % so change scaling factors
-            cd = cd.withNoScaling();
+            if ~p.Results.keepScaling
+                % data being passed in is now in original units
+                % so change scaling factors
+                cd = cd.withNoScaling();
+            else
+                % take new data back into scaled values
+                values = cd.convertAccessDataCellToMemory(1, values);
+            end
             
             % update the channel descriptor accordingly
             td.channelDescriptorsByName.(name) = cd;
             
-            if updateTimes
-                fieldMask = truevec(2);
-            else
-                fieldMask = [true; false];
-            end
-            
             % setChannelData will call repairData which will update
             % memoryDataClassByField{1} to reflect the type of values
-            td = td.setChannelData(name, {values, times}, 'fieldMask', fieldMask, p.Unmatched);
+            td = td.setChannelData(name, {values, times}, p.Unmatched);
         end
         
         function td = convertAnalogChannelToNoScaling(td, name)
@@ -1227,7 +1273,7 @@ classdef TrialData
             % if its part of a shared column group of analog channels,
             % separate it first
             if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix
-                td = td.separateAnalogChannelFromColumnOfSharedMatrix(name, false);
+                td = td.separateAnalogChannelFromGroup(name, false);
                 cd = td.channelDescriptorsByName.(name);
             end
             
@@ -1242,96 +1288,7 @@ classdef TrialData
             
             % use setChannel data, which will call repairData to change
             % data classes of each field
-            td = td.setChannelData(name, {data, time}, 'fieldMask', [true false], p.Unmatched);
-        end
-        
-        function td = convertAnalogChannelToNoScalingWithAllSharedMatrixChannels(td, name)
-            % convert a set of channels sharing a single data field (columns in that matrix)
-            % that use scaling (representing the data in memory in a different scaling)
-            % and often a different data class like uint16) to one not using scaling
-            % (representing the data in memory in raw units). Doing this
-            % for all shared channels simultaneously allows us to preserve
-            % the shared matrix structure
-            
-            td.warnIfNoArgOut(nargout);
-            td.assertHasChannel(name);
-
-            cd = td.channelDescriptorsByName.(name);
-            
-            if ~cd.hasScaling
-                return;
-            end
-            if ~cd.isColumnOfSharedMatrix
-                % no need for special handling
-                td = td.makeAnalogChannelWithoutScaling(name);
-                return;
-            end
-            
-            chList = td.listAnalogChannelsSharingMatrixWith(name);
-            cdCell = td.getChannelDescriptorMulti(chList);
-            
-            % extract the raw data aligned to a common time vector
-            dataCellAll = td.getAnalogMultiCommonTime(chList, 'raw', true);
-            
-            % go through the channel descriptors and update primaryDataFieldColumnIndex
-            for i = 1:numel(cdCell)
-                cdCell{i}.primaryDataFieldColumnIndex = i;
-                td.channelDescriptorsByName.(cdCell{i}.name) = cdCell{i};
-            end
-            
-            % manually replace the .data matrix field with the new values
-            dataField = cd.primaryDataField;
-            for t = 1:td.nTrials
-                td.data(t).(dataField) = dataCellAll{t};
-            end
-        end
-        
-        function td = separateAnalogChannelFromColumnOfSharedMatrix(td, name, separateTimeField)
-            if nargin < 3
-                separateTimeField = false;
-            end
-            
-            td.warnIfNoArgOut(nargout);
-            td.assertHasChannel(name);
-            
-            cd = td.channelDescriptorsByName.(name);
-            
-            % need to rename this column since we'll potentially be
-            % breaking the matrix format otherwise if different time
-            % vectors are used or different data classes are used
-            oldData = td.getAnalogRaw(name);
-
-            assert(~isfield(td.data, name), 'Issue with creating field %s already found in td.data', name); 
-
-            if separateTimeField
-                newTimeField = matlab.lang.makeUniqueStrings([name '_time'], fieldnames(td.data));
-                td.data = copyStructField(td.data, td.data, cd.timeField, newTimeField);
-                cdNew = cd.separateFromColumnOfSharedMatrix(newTimeField);
-            else
-                cdNew = cd.separateFromColumnOfSharedMatrix();
-            end
-
-            % we also need to copy the data field over, since we may
-            % only be updating valid trials
-            [td.data.(cdNew.primaryDataField)] = deal(oldData{:});
-            td.channelDescriptorsByName.(name) = cdNew;
-        end
-
-        function chList = listAnalogChannelsSharingMatrixWith(td, name)
-            % chList = listAnalogChannelsSharingMatrixWith(td, name)
-            % chList includes name
-            td.assertHasChannel(name);
-            cd = td.channelDescriptorsByName.(name);
-            
-            if ~cd.isColumnOfSharedMatrix
-                chList = {name};
-            else
-                dataField = cd.primaryDataField;
-                analogCh = td.listAnalogChannels();
-                cdCell = td.getChannelDescriptorMulti(analogCh);
-                mask = cellfun(@(cd) cd.isColumnOfSharedMatrix && strcmp(cd.primaryDataField, dataField), cdCell);
-                chList = analogCh(mask);
-            end
+            td = td.setChannelData(name, {data, time}, 'fieldMask', [true false]);
         end
         
         function tf = hasAnalogChannel(td, name) 
@@ -1396,7 +1353,18 @@ classdef TrialData
             fsHz = td.timeUnitsPerSecond / td.getAnalogTimeDelta(name);
         end
         
-        function [data, time] = getAnalogRaw(td, name)
+        function time = getAnalogTimeRaw(td, name)
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
+            time = {td.data.(cd.dataFields{2})}';
+        end
+        
+        function [data, time] = getAnalogRaw(td, name, varargin)
+            p = inputParser();
+            p.addParameter('sort', false, @islogical);
+            p.parse(varargin{:});
+            
             td.assertHasChannel(name);
             cd = td.channelDescriptorsByName.(name);
             assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
@@ -1421,6 +1389,13 @@ classdef TrialData
             data = cd.convertDataCellOnAccess(1, data);
             
             data = makecol(data);
+            
+            if p.Results.sort
+                for iT = 1:td.nTrials
+                    [time{iT}, idx] = sort(time{iT}, 'ascend');
+                    data{iT} = data{iT}(idx);
+                end
+            end
         end
         
         % same as raw, except empty out invalid trials
@@ -1428,33 +1403,6 @@ classdef TrialData
             [data, time] = td.getAnalogRaw(name);
             data = td.replaceInvalidMaskWithValue(data, []);
             time = td.replaceInvalidMaskWithValue(time, []);
-        end
-        
-        function [dataCell, timeCell] = getAnalogMulti(td, name, varargin)
-            % [data, time] = getAnalogMulti(td, chNames, varargin)
-            % data and time are cell(nTrials, nChannels)
-            p = inputParser();
-            p.addParameter('raw', false, @islogical);
-            p.KeepUnmatched = true;
-            p.parse(varargin{:});
-            
-            if ischar(name)
-                name = {name};
-            end
-            
-            % build nTrials x nChannels cell of data/time vectors
-            C = numel(name);
-            [dataCell, timeCell] = deal(cell(td.nTrials, C));
-            prog = ProgressBar(C, 'Fetching analog channels');
-            for c = 1:C
-                prog.update(c);
-                if p.Results.raw
-                    [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(name{c});
-                else
-                    [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, varargin{:});
-                end
-            end
-            prog.finish();
         end
         
         function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
@@ -1501,32 +1449,512 @@ classdef TrialData
             timeUnif = td.replaceInvalidMaskWithValue(timeUnif, []);
         end
         
-        function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
-            % dataCell is cell(nTrials, 1) containing nTime x nChannels mat
-            % timeCell is cell(nTrials, 1) containing nTime x 1 vectors
-            % No interpolation will be done here, the channels must share a
-            % common time vector in for this to work. See
-            % TrialDataConditionAlign for the interpolating version with
-            % the same name
+        function [dataCell, timeCell] = getAnalogMulti(td, name, varargin)
+            % [data, time] = getAnalogMulti(td, chNames, varargin)
+            % data and time are cell(nTrials, nChannels)
             p = inputParser();
             p.addParameter('raw', false, @islogical);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            assert(iscellstr(names));
-            shareTime = td.checkAnalogChannelsShareTimeVector(names);
-            if ~shareTime
-                error('Not supported for channels which do not share a common time vector');
+            if ischar(name)
+                name = {name};
             end
             
-            [dataCellOrig, timeCellOrig] = td.getAnalogMulti(names, 'raw', p.Results.raw);
-            dataCell = cell(td.nTrials, 1);
-                
-            for iT = 1:td.nTrials
-                % cell selected is 1 x nChannels with nTime x 1 vectors
-                % this makes each dataCell{:} nTime x nChannels
-                dataCell{iT} = cell2mat(dataCellOrig(iT, :));
+            % build nTrials x nChannels cell of data/time vectors
+            C = numel(name);
+            [dataCell, timeCell] = deal(cell(td.nTrials, C));
+            prog = ProgressBar(C, 'Fetching analog channels');
+            for c = 1:C
+                prog.update(c);
+                if p.Results.raw
+                    [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(name{c});
+                else
+                    [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, varargin{:});
+                end
             end
-            timeCell = timeCellOrig(:, 1);
+            prog.finish();
+        end
+    end
+    
+    methods % Analog Group and multi-channel analog methods
+        function groupNames = listAnalogChannelGroups(td)
+            chList = td.listAnalogChannels();
+            
+            mask =falsevec(numel(chList));
+            groupNames = cellvec(numel(chList));
+            for iC = 1:numel(chList)
+                [mask(iC), groupNames{iC}] = td.isAnalogChannelInGroup(chList{iC});
+            end
+            
+            groupNames = unique(groupNames(mask));
+        end
+        
+        function tf = checkAnalogChannelGroupHasUniformScaling(td, groupName)
+            td.assertHasAnalogChannelGroup(groupName);
+            
+            chList = td.listAnalogChannelsInGroup(groupName);
+            cdCell = td.getChannelDescriptorMulti(chList);
+            
+            tf = true;
+            hasScaling = cdCell{1}.hasScaling;
+            from = cdCell{1}.scaleFromLims;
+            to = cdCell{1}.scaleToLims;
+            
+            for i = 2:numel(chList)
+                cd = cdCell{i};
+                if cd.hasScaling ~= hasScaling || ~isequal(cd.scaleFromLims, from) || ~isequal(cd.scaleToLims, to)
+                    tf = false;
+                    break;
+                end
+            end
+        end
+       
+       function td = convertAnalogChannelGroupToNoScaling(td, groupName, varargin)
+            % convert a set of channels sharing a single data field (columns in that matrix)
+            % that use scaling (representing the data in memory in a different scaling)
+            % and often a different data class like uint16) to one not using scaling
+            % (representing the data in memory in raw units). Doing this
+            % for all shared channels simultaneously allows us to preserve
+            % the shared matrix structure
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasAnalogChannelGroup(groupName);
+
+            chList = td.listAnalogChannelsInGroup(groupName);
+            cdCell = td.getChannelDescriptorMulti(chList);
+            
+            hasScaling = cellfun(@(cd) cd.hasScaling, cdCell);
+            if ~any(hasScaling)
+                % nothing to do
+                return;
+            end
+            
+            % don't want to handle the more complicated edge case where the
+            % channels don't have uniform scaling at this point
+            uniform = td.checkAnalogChannelGroupHasUniformScaling(groupName);
+            if ~uniform
+                error('Not supported for analog channel groups whose channels are not uniformly scaled');
+            end
+            
+            newCdCell = cellfun(@(cd) cd.withNoScaling(), cdCell, 'UniformOutput', false);
+            
+            % manually replace the .data field with the new values
+            % we convert memory->access using the old cd, then
+            % access->memory with the new cd.
+            cdOld = cdCell{1};
+            dataField = cdOld.primaryDataField;
+            cdNew = newCdCell{1};
+            prog = ProgressBar(td.nTrials, 'Converting %s data to unscaled form', groupName);
+            for t = 1:td.nTrials
+                prog.update(t);
+                unscaled = cdOld.convertDataSingleOnAccess(1, td.data(t).(dataField));
+                td.data(t).(dataField) = cdNew.convertAccessDataSingleToMemory(1, unscaled);
+            end
+            prog.finish();
+
+            % and replace all the channel descriptors
+            for i = 1:numel(newCdCell)
+                td.channelDescriptorsByName.(newCdCell{i}.name) = newCdCell{i};
+            end
+        end
+        
+        function [tf, groupName] = checkAnalogChannelsInSameGroup(td, names)
+            groupNames = cellfun(@(name) td.getAnalogChannelGroupName(name), names, 'UniformOutput', false);
+            tf = numel(unique(groupNames)) == 1 && ~isempty(groupNames{1});
+            if tf
+                groupName = groupNames{1};
+            else
+                groupName = '';
+            end
+        end
+        
+        function [names, colIndex] = listAnalogChannelsInGroup(td, groupName)
+            td.assertHasAnalogChannelGroup(groupName);
+            chList = td.listAnalogChannels();
+            cdCell = cellvec(numel(chList));
+            mask = falsevec(numel(chList));
+            for iC = 1:numel(chList)
+                cd = td.channelDescriptorsByName.(chList{iC});  
+                if cd.isColumnOfSharedMatrix && strcmp(cd.primaryDataField, groupName)
+                    mask(iC) = true;
+                    cdCell{iC} = cd;     
+                end
+                
+            end
+            names = chList(mask);
+            cdCell = cdCell(mask); 
+            
+            % order them by their column index
+            colIndex = cellfun(@(cd) cd.primaryDataFieldColumnIndex, cdCell);
+            [colIndex, idx] = sort(colIndex, 'ascend');
+            names = names(idx);
+        end
+        
+        function [chList, colIdx, groupName] = listAnalogChannelsInGroupWith(td, name)
+            % chList = listAnalogChannelsInGroupWith(td, name)
+            % chList includes name (or is empty if not in any group)
+            td.assertHasChannel(name);
+            groupName = td.getAnalogChannelGroupName(name);
+            if isempty(groupName)
+                chList = {};
+                colIdx = [];
+            else
+                [chList, colIdx] = td.listAnalogChannelsInGroup(groupName);
+            end
+        end
+        
+        function [colIdx, groupName] = getAnalogChannelColumnIdxInGroup(td, names)
+            [tf, groupName] = td.checkAnalogChannelsInSameGroup(names);
+            assert(tf, 'Channels are not in the same analog channel group');
+            
+            cdCell = td.getChannelDescriptorMulti(names);
+            colIdx = cellfun(@(cd) cd.primaryDataFieldColumnIndex, cdCell);
+        end
+        
+        function [tf, groupName] = isAnalogChannelInGroup(td, name, groupName)
+            % [tf, groupName] = isAnalogChannelInGroup(td, name) % in any group?
+            % tf = isAnalogChannelInGroup(td, groupName) % in specific group?
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            if nargin > 2
+                tf = cd.isColumnOfSharedMatrix & strcmp(cd.primaryDataField, groupName);
+            else
+                tf = cd.isColumnOfSharedMatrix;
+            end
+            if tf
+                groupName = cd.primaryDataField;
+            else
+                groupName = '';
+            end
+        end
+        
+        function groupName = getAnalogChannelGroupName(td, name)
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            
+            if ~cd.isColumnOfSharedMatrix
+                groupName = '';
+            else
+                groupName = cd.primaryDataField;
+            end
+        end
+
+        function td = separateAnalogChannelFromGroup(td, name, varargin)
+            p = inputParser();
+            p.addParameter('separateTimeField', false, @islogical);
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(name);
+            
+            groupName = td.getAnalogChannelGroupName(name);
+            
+            if isempty(groupName)
+                % not in group
+                return;
+            end
+            
+            cd = td.channelDescriptorsByName.(name);
+            
+            % need to rename this column since we'll potentially be
+            % breaking the matrix format otherwise if different time
+            % vectors are used or different data classes are used
+            oldData = td.getAnalogRaw(name);
+
+            assert(~isfield(td.data, name), 'Issue with creating field %s already found in td.data', name); 
+
+            if p.Results.separateTimeField
+                newTimeField = matlab.lang.makeUniqueStrings([name '_time'], fieldnames(td.data));
+                td.data = copyStructField(td.data, td.data, cd.timeField, newTimeField);
+                cdNew = cd.separateFromColumnOfSharedMatrix(newTimeField);
+            else
+                cdNew = cd.separateFromColumnOfSharedMatrix();
+            end
+
+            % we also need to copy the data field over, since we may
+            % only be updating valid trials
+            
+            % undo the conversion back to memory class (also undoes
+            % scaling)
+            oldData = cd.convertAccessDataCellToMemory(1, oldData);
+            [td.data.(cdNew.primaryDataField)] = deal(oldData{:});
+            
+            td.channelDescriptorsByName.(name) = cdNew;
+            
+            td = td.removeUnusedColumnsAnalogChannelGroup(groupName);
+        end
+        
+        function td = removeUnusedColumnsAnalogChannelGroup(td, groupName)
+            td.warnIfNoArgOut(nargout);
+            [chList, colIdx] = td.listAnalogChannelsInGroup(groupName);
+            
+            prog = ProgressBar(td.nTrials, 'Cleaning columns of analog channel group data');
+            for t = 1:td.nTrials
+                prog.update(t);
+                
+                if ~isempty(td.data(t).(groupName))
+                    td.data(t).(groupName) = td.data(t).(groupName)(:, colIdx);
+                end
+            end
+            prog.finish();
+            
+            % and update the channel descriptors
+            for c = 1:numel(chList)
+                td.channelDescriptorsByName.(chList{c}).primaryDataFieldColumnIndex = c;
+            end
+            
+            td = td.updatePostDataChange(groupName);
+        end
+        
+        function td = separateAnalogChannelsIntoSeparateGroup(td, names, newGroupName)
+            td.warnIfNoArgOut(nargout);
+            assert(td.checkAnalogChannelsInSameGroup(names), 'All channels must be part of a group already');
+            
+            [chAll, ~, groupName] = td.listAnalogChannelsInGroupWith(names{1});
+            if ~strcmp(groupName, newGroupName)
+                % name is changing
+                conflicts = td.getChannelsReferencingFields(newGroupName);
+                assert(isempty(conflicts), 'Channels %s already reference field %s', strjoin(conflicts, ', '), newGroupName);
+            
+            elseif ~isempty(setdiff(chAll, names))
+                error('When group name is not changing, all channels must be included in the new ordering');
+            end
+            
+            if isequal(names, chAll) && strcmp(groupName, newGroupName)
+                % we only do nothing if the list matches in order, since
+                % the user may expect the channels to be in this specific
+                % order from now on
+                return;
+            end
+            
+            colIdx = td.getAnalogChannelColumnIdxInGroup(names);
+            
+            prog = ProgressBar(td.nTrials, 'Splitting analog channel group %s');
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                td.data(iT).(newGroupName) = td.data(iT).(groupName)(:, colIdx);
+            end
+            prog.finish();
+            
+            % update the channel descriptors to point to the new group
+            for c = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{c});
+                cd.primaryDataField = newGroupName;
+                cd.primaryDataFieldColumnIndex = c;
+                td.channelDescriptorsByName.(names{c}) = cd;
+            end
+            
+            % clear out the old channel
+            if isempty(setdiff(chAll, names)) && ~strcmp(groupName, newGroupName)
+                % no need for old field 
+                td.data = rmfield(td.data, groupName);
+            else
+                % clean out the unused columns from the old field
+                td = td.removeUnusedColumnsAnalogChannelGroup(groupName);
+            end
+            
+            td = td.updatePostDataChange(newGroupName);
+        end
+
+        function td = renameAnalogChannelGroup(td, groupName, newGroupName)
+            td.warnIfNoArgOut(nargout);
+            chNames = td.listAnalogChannelsInGroup(groupName);
+            td = td.separateAnalogChannelsIntoSeparateGroup(chNames, newGroupName);
+        end
+        
+        function td = sortChannelsInAnalogChannelGroup(td, groupName, chNamesInOrder)
+            td.warnIfNoArgOut(nargout);
+            if nargin < 3
+                % default to alpha sort
+                chNames = td.listAnalogChannelsInGroup(groupName);
+                chNamesInOrder = sort(chNames);
+            end
+            td = td.separateAnalogChannelsIntoSeparateGroup(chNamesInOrder, groupName);
+        end
+        
+        function tf = hasAnalogChannelGroup(td, groupName)
+            if ~isfield(td.data, groupName)
+                tf = false;
+            else
+                % check if there are any channels in that group, do not
+                % call listAnalogChannelsInGroup b/c of infinite recursion
+                chList = td.listAnalogChannels();
+                for iC = 1:numel(chList)
+                    cd = td.channelDescriptorsByName.(chList{iC});  
+                    if cd.isColumnOfSharedMatrix && strcmp(cd.primaryDataField, groupName)
+                        tf = true;
+                        return;
+                    end
+                end
+                tf = false;
+            end
+        end 
+        
+        function assertHasAnalogChannelGroup(td, groupName)
+            assert(td.hasAnalogChannelGroup(groupName), 'No analog channel group %s found', groupName);
+        end
+        
+        function time = getAnalogChannelGroupTime(td, groupName)
+            time = td.getAnalogChannelGroupTimeRaw(groupName);
+            time = td.replaceInvalidMaskWithValue(time, []);
+        end
+        
+        function time = getAnalogChannelGroupTimeRaw(td, groupName)
+            td.assertHasAnalogChannelGroup(groupName);
+            chList = td.listAnalogChannelsInGroup(groupName);
+            cd = td.channelDescriptorsByName.(chList{1});
+            timeField = cd.timeField;
+            time = {td.data.(timeField)}';
+        end
+        
+        function [data, time] = getAnalogChannelGroupRaw(td, groupName)
+            td.assertHasAnalogChannelGroup(groupName);
+            
+            chList = td.listAnalogChannelsInGroup(groupName);
+            cd = td.channelDescriptorsByName.(chList{1});
+            timeField = cd.timeField;
+            
+            data = {td.data.(groupName)}';
+            time = {td.data.(timeField)}';
+            
+            for i = 1:numel(data)
+                time{i} = makecol(time{i});
+                assert(size(data{i}, 1) == numel(time{i}), 'Number of timepoints in data on trial %d does not match time', i);
+                assert(size(data{i}, 2) == numel(chList), 'Number of channels on trial %d does not match channel count', i);
+            end
+            
+            % do scaling and convert to double
+            data = cd.convertDataCellOnAccess(1, data);
+            data = makecol(data);
+        end
+        
+        function [data, time] = getAnalogChannelGroup(td, groupName)
+            [data, time] = td.getAnalogChannelGroupRaw(groupName);
+            data = td.replaceInvalidMaskWithValue(data, []);
+            time = td.replaceInvalidMaskWithValue(time, []);
+        end
+        
+        function td = setAnalogChannelGroup(td, groupName, values, varargin)
+            % values can be either
+            %   - nTrials cellvec with nTime x nChannels matrices
+            %     then 'times', should be nTrials cellvec of nTime vectors
+            %   - nTrials x nTime x nChannels tensor
+            %     then 'times' should be nTime vector
+            %
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasAnalogChannelGroup(groupName);
+            
+            p = inputParser();
+            p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
+            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('keepScaling', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            times = makecol(p.Results.times);
+            
+            chList = td.listAnalogChannelsInGroup(groupName);
+            nCh = numel(chList);
+          
+            % check the values and convert to nTrials cellvec
+            if isnumeric(values) && isnumeric(values)
+                % values must be nTrials x nTimes x nChannels
+                assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
+                
+                % convert to cellvec
+                tensor = values;             
+                values = cellvec(td.nTrials, 1);
+                for r = 1:td.nTrials
+                    values{r} = TensorUtils.squeezeDims(tensor(r, :, :), 1);
+                end
+                clear tensor;
+                
+            elseif iscell(values)
+                assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
+                nCol = cellfun(@(x) size(x, 2), values);
+                assert(all(nCol == nCh), 'All elements of values must have same number of columns as channels (%d)', nCh);
+                values = makecol(values);
+            else
+                error('Values must be numeric tensor or cell array');
+            end
+                
+            if ~isempty(times)
+                if iscell(times)
+                    assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
+                elseif ismatrix(times)
+                    if isvector(times)
+                        times = repmat(makerow(times), td.nTrials, 1);
+                    end
+                    assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
+                    times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
+                else
+                    error('Times must be numeric matrix or cell array');
+                end
+                updateTimes = true;
+            else
+                % even if we're not explicitly specifying timestamps, if
+                % we're aligned to a subset of the trial 
+                updateTimes = ~td.alignIncludesFullTrial(); 
+                % pass along the current times since the data is coming in with the
+                % existing alignment
+                times = td.getAnalogChannelGroupTime(groupName);
+            end
+            
+            % check that times have same length as data
+            assert(numel(times) == numel(values), 'Times and values must have same number of trials');
+            nTimes = cellfun(@numel, times);
+            nValues = cellfun(@(x) size(x, 1), values);
+            assert(all(nTimes == nValues), 'Mismatch between number of times and values. If the number of times has changed be sure to specify times parameter');
+            
+            % add the zero offset to the time vector for each trial
+            % this is mostly for TDCA, so that alignments info is
+            % preserved
+            if p.Results.isAligned
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+            else
+                % consider it aligned to trial start
+                offsets = zerosvec(td.nTrials);
+            end
+            times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+          
+            if ~p.Results.keepScaling
+                % data being passed in is now in original units
+                % so change scaling factors of the channel and the data
+                td = td.convertAnalogChannelGroupToNoScaling(groupName);
+                % and convert back to memory anyway in case the data class
+                % has changed, although this shouldn't do any scaling
+                values = td.channelDescriptorsByName.(chList{1}).convertAccessDataCellToMemory(1, values);
+            else
+                % take new data back into scaled values to match the
+                % existing
+                values = cd.convertAccessDataCellToMemory(1, values);
+            end
+            
+            if updateTimes
+                % avoid overwriting data shared by other channels,
+                % including time field
+                td = td.copyRenameSharedChannelFields(chList, 2);                
+                timeField = td.channelDescriptorsByName.(chList{1}).timeField;
+            end
+            
+            prog = ProgressBar(td.nTrials, 'Overwriting analog channel group data on valid trials');
+            for t = 1:td.nTrials
+                prog.update(t);
+                if ~td.valid(t), continue; end
+                
+                td.data(t).(groupName) = values{t};
+                if updateTimes
+                    td.data(t).(timeField) = times{t};
+                end
+            end
+            if updateTimes
+                td = td.updatePostDataChange({groupName, timeField});
+            else
+                td = td.updatePostDataChange({groupName});
+            end
+            
+            prog.finish();
         end
     end
     
@@ -2313,7 +2741,7 @@ classdef TrialData
             nCh = numel(chList);
             [wavesCell, timesCell] = deal(cell(nCh, td.nTrials));
             waveTvecCell = cell(nCh, 1);
-            [idxZero, nTimeWave] = nanvec(nCh);
+            [idxZero, nTimeWave, deltaTimeWave] = nanvec(nCh);
             blankingRegionsCell = cell(nCh, 1);
             
             for c = 1:nCh
@@ -2513,8 +2941,7 @@ classdef TrialData
     end
 
     methods % Generic add data methods
-        
-        function td = updatePostDataChange(td, fieldsAffected)
+        function td = updatePostDataChange(td, fieldsAffected) %#ok<INUSD>
             % call this after any changes to td.data.(fieldsAffected)
             td.warnIfNoArgOut(nargout);
         end
@@ -2533,6 +2960,10 @@ classdef TrialData
             % getting data
             offsets = zerosvec(td.nTrials);
         end
+        
+        function tf = alignIncludesFullTrial(td)
+            tf = true;
+        end 
         
         function td = addChannels(td, cds, varargin)
             td.warnIfNoArgOut(nargout);
@@ -2690,33 +3121,55 @@ classdef TrialData
            end
         end
         
-        function td = copyRenameSharedChannelFields(td, name, fieldMask)
+        function td = copyRenameSharedChannelFields(td, names, fieldMask)
             % copy all fields which belong to this channel which are shared
-            % with another channel, rename those fields, and mark the
-            % updated fields inside that fields channelDescriptor
+            % with other channes, rename those fields, and mark the
+            % updated fields inside that fields channelDescriptor. if name
+            % is a cellstr of channel names, only consider fields shared
+            % with channels not in that set of channels.
            td.warnIfNoArgOut(nargout); 
            
-           cd = td.channelDescriptorsByName.(name);
-           if nargin < 3 || isempty(fieldMask)
-               fieldMask = true(cd.nFields, 1);
+           if ischar(names)
+               names = {names};
            end
-           isShareable = cd.isShareableByField; 
+           cdCell = td.getChannelDescriptorMulti(names);
            
-            dataFields = cd.dataFields;
-            for iF = 1:cd.nFields
-                if ~isShareable(iF) || ~fieldMask(iF), continue; end
-                
-                otherChannels = setdiff(td.getChannelsReferencingFields(dataFields{iF}), cd.name);
-                if isempty(otherChannels), continue; end
-                
-                % being used by other channels, rename and copy
-                newName = matlab.lang.makeUniqueStrings([dataFields{iF} '_' name 'Copy'], fieldnames(td.data));
-                td.data = copyStructField(td.data, td.data, dataFields{iF}, newName);
-                
-                cd = cd.renameDataField(iF, newName);
-            end
-            
-            td.channelDescriptorsByName.(name) = cd;
+           for iC = 1:numel(names)
+               cd = cdCell{iC};
+               
+               if nargin < 3 || isempty(fieldMask)
+                   fieldMaskThis = true(cd.nFields, 1);
+               else
+                   fieldMaskThis = TensorUtils.vectorIndicesToMask(fieldMask, cd.nFields);
+               end
+               
+               isShareable = cd.isShareableByField; 
+               dataFields = cd.dataFields;
+               fieldsRenamed = struct();
+               for iF = 1:cd.nFields
+                   if ~isShareable(iF) || ~fieldMaskThis(iF), continue; end
+                   if ismember(dataFields{iF}, fieldnames(fieldsRenamed))
+                       % already renamed earlier, change cd to reflect that
+                       newName = fieldsRenamed.(dataFields{iF});
+                       cd = cd.renameDataField(iF, newName);
+                   end
+                       
+
+                   fullList = td.getChannelsReferencingFields(dataFields{iF});
+                   otherChannels = setdiff(fullList, names);
+                   if isempty(otherChannels), continue; end
+
+                   % being used by other channels outside of names, rename and copy
+                   newName = matlab.lang.makeUniqueStrings([dataFields{iF} '_' names{iC} 'Copy'], fieldnames(td.data));
+                   td.data = copyStructField(td.data, td.data, dataFields{iF}, newName);
+
+                   fieldsRenamed.(dataFields{iF}) = newName;
+                   cd = cd.renameDataField(iF, newName);
+               end
+               
+               td.channelDescriptorsByName.(cd.name) = cd;
+           end
+           
         end
         
         function td = clearChannelData(td, name, varargin)
@@ -2777,7 +3230,6 @@ classdef TrialData
             assert(numel(updateMaskManual) == td.nTrials, ...
                 'Size of updateMask must match nTrials');
             
-            % update the values of a given channel's data fields on 
             td.warnIfNoArgOut(nargout);
             
             cd = td.channelDescriptorsByName.(name);
@@ -2801,8 +3253,7 @@ classdef TrialData
             td = td.copyRenameSharedChannelFields(cd.name, fieldMask);
             cd = td.channelDescriptorsByName.(name);
             dataFields = cd.dataFields;
-            
-            
+                        
             % check that one value list was provided for each data field
             % referenced by the ChannelDescriptor
             assert(numel(valueCell) == nFields, ...

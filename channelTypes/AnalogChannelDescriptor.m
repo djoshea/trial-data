@@ -57,6 +57,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         
         function cd = withNoScaling(cd)
             cd.warnIfNoArgOut(nargout);
+            cd.originalDataClassByField{1} = 'single';
             cd.scaleFromLims = [];
             cd.scaleToLims = [];
         end
@@ -141,6 +142,39 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
                 data = cellfun(@(d) (d-scaleFromLow)*(scaleToRange/scaleFromRange) + scaleToLow, data, 'UniformOutput', false);
             end
+        end
+        
+        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
+            data = convertDataSingleOnAccess@ChannelDescriptor(cd, fieldIdx, data);
+            if ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
+                scaleFromLow = cd.scaleFromLims(2);
+                scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
+                scaleToLow = cd.scaleToLims(2);
+                scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
+                data = (data-scaleFromLow)*(scaleToRange/scaleFromRange) + scaleToLow;
+            end
+        end
+        
+        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
+            if ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
+                scaleFromLow = cd.scaleFromLims(2);
+                scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
+                scaleToLow = cd.scaleToLims(2);
+                scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
+                data = cellfun(@(d) (d-scaleToLow)*(scaleFromRange/scaleToRange) + scaleFromLow, data, 'UniformOutput', false);
+            end
+            data = convertAccessDataCellToMemory@ChannelDescriptor(cd, fieldIdx, data);
+        end
+        
+        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
+            if ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
+                scaleFromLow = cd.scaleFromLims(2);
+                scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
+                scaleToLow = cd.scaleToLims(2);
+                scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
+                data = (data-scaleToLow)*(scaleFromRange/scaleToRange) + scaleFromLow;
+            end
+            data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
         end
     end
     
