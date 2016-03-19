@@ -1,11 +1,13 @@
 function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 % [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeData, varargin)
 % 
-% N is trial count, C is channel count
-% dataCell is N x C cell of vectors
-% timeCell is N x C cell of vectors with same length
-% 
-% mat will be N x T x C, where T is the length of the time vector tvec to
+% N is trial count, G and C are channel counts (depending on the
+% configuration of dataCell, you can have multiple channels inside each element or
+% have dataCell be a cell matrix where each column (G) is a channel (C==1) or group of channels (C > 1))
+%   dataCell is N x G cell of T_n x C matrices
+%   timeCell is N x G cell of T_n vectors
+%
+% mat will be N x T x (C*G), where T is the length of the time vector tvec to
 % which all data have been interpolated
 % 
 % Combines a cell of N timeseries into a matrix with size N x T with a
@@ -56,14 +58,27 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     % check sizes match
     % okay to have one empty and the other not, simply ignore
-    szData = cellfun(@numel, dataCell);
+    szData = cellfun(@(x) size(x, 1), dataCell);
     szTime = cellfun(@numel, timeCell);
     empty = szData == 0 | szTime == 0;
+    
+    if all(empty)
+        mat = nan(size(dataCell), 0, size(dataCell, 2));
+        tvec = zeros(0, 1);
+        return;
+    end
+    
     szData(empty) = 0;
     szTime(empty) = 0;
     dataCell(empty) = {[]};
     timeCell(empty) = {[]};
     assert(all(szData(:) == szTime(:)), 'Sizes of dataCell and timeCell contents must match');
+    
+    % check column counts match
+    cData = cellfun(@(x) size(x, 2), dataCell);
+    uniqueColCounts = unique(cData(~empty));
+    assert(numel(uniqueColCounts) == 1, 'All entries must have ');
+    C = uniqueColCounts(1);
     
     if isempty(dataCell)
         mat = [];
@@ -111,41 +126,48 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % in the appropriate location in each row, keeping the non-spanned timepoints as NaN
     T = numel(tvec);
     N = size(dataCell, 1);
-    C = size(dataCell, 2);
-    mat = nan([N, T, C]);
+    G = size(dataCell, 2);
+    mat = nan([N, T, C, G]); % we'll reshape this later
     
     indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
-    for c = 1:C
-        for i = 1:N
-            if ~isnan(indStart(i,c)) && ~isnan(indStop(i,c))
-                if numel(indStart(i,c):indStop(i,c)) > 1
-                    mask = ~isnan(dataCell{i, c});
+    
+    prog = ProgressBar(N, 'Embedding data over trials into common time vector');
+    for i = 1:N
+        prog.update(i);
+        for g = 1:G
+            if ~isnan(indStart(i,g)) && ~isnan(indStop(i,g))
+                if numel(indStart(i,g):indStop(i,g)) > 1
+                    mask = ~all(isnan(dataCell{i, g}), 2);
                     if p.Results.assumeUniformSampling
                         % in this case, we just make sure the timepoint
                         % closest to zero ends up in gthe right place
-                        [thisTimeRef, thisIndRef] = min(abs(timeCell{i, c}));
+                        [thisTimeRef, thisIndRef] = min(abs(timeCell{i, g}));
                         [~, tvecIndRef] = min(abs(thisTimeRef - tvec));
-                        
-                        locationInMat = (1:numel(timeCell{i, c})) + tvecIndRef-thisIndRef;
+
+                        locationInMat = (1:numel(timeCell{i, g})) + tvecIndRef-thisIndRef;
                         locationInMat = locationInMat(mask);
-                        
+
                         mask = mask(locationInMat >= 1 & locationInMat <= T);
                         locationInMat = locationInMat(mask);
-                        
-                        mat(i, locationInMat, c) = dataCell{i, c}(mask);
+
+                        % data cell is T x C
+                        mat(i, locationInMat, :, g) = dataCell{i, g}(mask, :);
                     else
                         % don't assume uniform sampling, just interpolate
                         % to the right time vector
-                        mat(i, indStart(i,c):indStop(i,c), c) = interp1(timeCell{i, c}(mask), dataCell{i, c}(mask), ...
-                            tvec(indStart(i,c):indStop(i,c)), p.Results.interpolateMethod, 'extrap');
+                        mat(i, indStart(i,g):indStop(i,g), :, g) = interp1(timeCell{i, g}(mask), dataCell{i, g}(mask, :), ...
+                            tvec(indStart(i,g):indStop(i,g)), p.Results.interpolateMethod, 'extrap');
                     end
                 else
-                    mat(i, indStart(i,c), c) = dataCell{i, c};
+                    mat(i, indStart(i,g), :, g) = dataCell{i, g};
                 end
             end
         end
     end
+    prog.finish();
+    
+    mat = reshape(mat, [N T C*G]);
 end
 
 function timeDelta = inferTimeDelta(tvec)

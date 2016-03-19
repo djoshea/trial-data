@@ -2005,11 +2005,16 @@ classdef TrialDataConditionAlign < TrialData
         function [dataTensor, tvec] = getAnalogMultiAsTensor(td, names, varargin)
             % data is nTrials x nTime x nChannels
             % tvec is nTime x 1 time vector
+            %
+            % parameters:
+            %   assumeUniformScaling [false]: % assumes that all trials use consistent sampling 
+            %     relative to alignment 0, setting this true avoids an interpolation step
+            %
             
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('tvec', [], @isvector);
-            p.addParameter('assumeUniformSampling', false, @islogical);
+            p.addParameter('assumeUniformSampling', false, @islogical); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -2018,25 +2023,21 @@ classdef TrialDataConditionAlign < TrialData
             % build nTrials x nTime x nChannels cell of data/time vectors
             [dataCell, timeCell] = td.getAnalogMulti(names, p.Unmatched);
             
-%             % determine time vector to interpolate to
-%             if ~isempty(p.Results.tvec)
-%                 % manually specified time vector
-%                 tvec = p.Results.tvec;
-%             else
-%                 % then check whether timeDelta is specified directly
-%                 timeDelta = p.Results.timeDelta;
-%                 if isempty(timeDelta)
-%                     timeDelta = td.alignInfoActive.minTimeDelta;
-%                     if isempty(timeDelta)
-%                         timeDelta = td.getAnalogTimeDelta(names);
-%                         warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-%                     end
-%                 end
-%                 
-%                 % find common time vector
-%                 tvec = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
-%                     'timeDelta', timeDelta, 'interpolate', ~p.Results.assumeUniformSampling);
-%             end
+            % interpolate to common time vector
+            [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
+                'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
+                'assumeUniformSampling', p.Results.assumeUniformSampling);
+        end
+        
+        function [dataTensor, tvec] = getAnalogChannelGroupAsTensor(td, groupName, varargin)
+            p = inputParser;
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('tvec', [], @isvector);
+            p.addParameter('assumeUniformSampling', false, @islogical); 
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            [dataCell, timeCell] = td.getAnalogChannelGroup(groupName);
             
             % interpolate to common time vector
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
@@ -2094,13 +2095,18 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function td = setAnalogChannelGroupWithinAlignWindow(td, groupName, values, varargin)
-            % replace the analog data within the curr ent align window with
-            % the data in values
+            % replace the analog data within the current align window with
+            % the data in values.
+            % values is nTrials x time x channels
+            % (nTrials can be nTrialsValid if parameter
+            % ''dataSpansValidTrialsOnly'' is true
             p = inputParser();
-            p.addOptional('times', [], @(x) iscell(x) || ismatrix(x));
+            p.addOptional('times', [], @(x) ~ischar(x) && (iscell(x) || ismatrix(x)));
             p.addParameter('preserveContinuity', false, @islogical);
             p.addParameter('clearOverlappingTimesOutsideAlignWindow', false, @islogical);
             p.addParameter('keepScaling', false, @islogical);
+            p.addParameter('removeNaNSamples', true, @islogical);
+            p.addParameter('dataSpansValidTrialsOnly', false, @islogical); % values and times have size(., 1) == nTrialsValid and should be inflated
             p.parse(varargin{:});
             times = makecol(p.Results.times);
             
@@ -2110,21 +2116,27 @@ classdef TrialDataConditionAlign < TrialData
             chList = td.listAnalogChannelsInGroup(groupName);
             nCh = numel(chList);
             
+            if p.Results.dataSpansValidTrialsOnly
+                sizeDim1Expected = td.nTrialsValid;
+            else
+                sizeDim1Expected = td.nTrials;
+            end
+            
             % check the values and convert to nTrials cellvec
             if isnumeric(values) && isnumeric(values)
                 % values must be nTrials x nTimes x nChannels
-                assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
+                assert(size(values, 1) == sizeDim1Expected, 'Values as matrix must be nTrials (or nTrialsValid if ''dataSpansValidTrialsOnly'' set) along dimension 1');
                 
                 % convert to cellvec
                 tensor = values;             
-                values = cellvec(td.nTrials, 1);
-                for r = 1:td.nTrials
+                values = cellvec(sizeDim1Expected);
+                for r = 1:sizeDim1Expected
                     values{r} = TensorUtils.squeezeDims(tensor(r, :, :), 1);
                 end
                 clear tensor;
                 
             elseif iscell(values)
-                assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
+                assert(numel(values) == sizeDim1Expected, 'Values as cell must have length nTrials (or nTrialsValid if ''dataSpansValidTrialsOnly'' set)');
                 nCol = cellfun(@(x) size(x, 2), values);
                 assert(all(nCol == nCh), 'All elements of values must have same number of columns as channels (%d)', nCh);
                 values = makecol(values);
@@ -2134,13 +2146,13 @@ classdef TrialDataConditionAlign < TrialData
                 
             if ~isempty(times)
                 if iscell(times)
-                    assert(numel(times) == td.nTrials, 'numel(times) must match nTrials'); 
+                    assert(numel(times) == sizeDim1Expected, 'numel(times) must match nTrials (or nTrialsValid if ''dataSpansValidTrialsOnly'' set)'); 
                 elseif ismatrix(times)
                     if isvector(times)
-                        times = repmat(makerow(times), td.nTrials, 1);
+                        times = repmat(makerow(times), sizeDim1Expected, 1);
                     end
-                    assert(size(times,1) == td.nTrials, 'size(times, 1) must match nTrials');  
-                    times = mat2cell(times', size(times, 2), onesvec(td.nTrials))';
+                    assert(size(times,1) == sizeDim1Expected, 'size(times, 1) must match nTrials(or nTrialsValid if ''dataSpansValidTrialsOnly'' set)');  
+                    times = mat2cell(times', size(times, 2), onesvec(sizeDim1Expected))';
                 else
                     error('Times must be numeric matrix or cell array');
                 end
@@ -2154,6 +2166,10 @@ classdef TrialDataConditionAlign < TrialData
                 % pass along the current times since the data is coming in with the
                 % existing alignment
                 times = td.getAnalogChannelGroupTime(groupName);
+                
+                if p.Results.dataSpansValidTrialsOnly
+                    times = times(td.valid);
+                end
             end
             
             % check that times have same length as data
@@ -2161,6 +2177,23 @@ classdef TrialDataConditionAlign < TrialData
             nTimes = cellfun(@numel, times);
             nValues = cellfun(@(x) size(x, 1), values);
             assert(all(nTimes == nValues), 'Mismatch between number of times and values. If the number of times has changed be sure to specify times parameter');
+            
+            % now slice off NaN samples of each trial's data
+            if p.Results.removeNaNSamples
+                for iT = 1:sizeDim1Expected
+                    keep = any(~isnan(values{iT}), 2);
+                    if ~all(keep), updateTimes = true; end
+                    values{iT} = values{iT}(keep, :);
+                    times{iT} = times{iT}(keep, :);
+                end
+            end
+            
+            % now that values and times are cells, we can inflate to
+            % nTrials without wasting memory
+            if p.Results.dataSpansValidTrialsOnly
+                values = TensorUtils.inflateMaskedTensor(values, 1, td.valid);
+                times = TensorUtils.inflateMaskedTensor(times, 1, td.valid);
+            end
             
             % add the zero offset to the time vector for each trial
             % this is mostly for TDCA, so that alignments info is
@@ -2180,6 +2213,8 @@ classdef TrialDataConditionAlign < TrialData
             else
                 % take new data back into scaled values to match the
                 % existing
+                assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must have uniform scaling');
+                cd = td.channelDescriptorsByName.(chList{1});
                 values = cd.convertAccessDataCellToMemory(1, values);
             end
             
@@ -2240,7 +2275,7 @@ classdef TrialDataConditionAlign < TrialData
                     values{iT} = bsxfun(@minus, values{iT}, values{iT}(1, :) - preData(end, :));
                     
                     % offset postData to match last value of values{iT}
-                    postData = bsxfun(@minus, postData, postData(1, :) - values{iT}(1, :));
+                    postData = bsxfun(@minus, postData, postData(1, :) - values{iT}(end, :));
                 end
                 
                 fullDataThis = cat(1, preData, values{iT}, postData);

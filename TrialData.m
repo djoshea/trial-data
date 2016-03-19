@@ -1746,12 +1746,14 @@ classdef TrialData
             end
             
             % clear out the old channel
-            if isempty(setdiff(chAll, names)) && ~strcmp(groupName, newGroupName)
-                % no need for old field 
-                td.data = rmfield(td.data, groupName);
-            else
-                % clean out the unused columns from the old field
-                td = td.removeUnusedColumnsAnalogChannelGroup(groupName);
+            if ~strcmp(groupName, newGroupName)
+                if isempty(setdiff(chAll, names))
+                    % no need for old field 
+                    td.data = rmfield(td.data, groupName);
+                else
+                    % clean out the unused columns from the old field
+                    td = td.removeUnusedColumnsAnalogChannelGroup(groupName);
+                end
             end
             
             td = td.updatePostDataChange(newGroupName);

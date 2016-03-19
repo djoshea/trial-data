@@ -8,7 +8,7 @@ if iscell(data)
     % different time vector for each
     for i = 1:numel(time)
         if ~isempty(data{i}) && ~isempty(time{i})
-            mask = ~isnan(data{i});
+            mask = ~all(isnan(data{i}), 2);
             if any(mask)
                 tMin(i) = nanmin(time{i}(mask));
                 tMax(i) = nanmax(time{i}(mask));
