@@ -347,7 +347,6 @@ classdef ConditionDescriptor
         end
 
         function disp(ci)
-            return;
             ci.printDescription();
             fprintf('\n');
             builtin('disp', ci);
