@@ -8,10 +8,21 @@ function out = filterIgnoreLeadingTrailingNaNs(B, A, mat, varargin)
     % if true, the first sample will be added back on afterwards
     p.addParameter('addBackFirstSample', false, @islogical);
     p.addParameter('filtfilt', false, @islogical);
+    p.addParameter('showProgress', false, @islogical);
     p.parse(varargin{:});
     
     if iscell(mat)
-        out = cellfun(@filterMat, mat, 'UniformOutput', false);
+        if p.Results.showProgress
+            prog = ProgressBar(numel(mat), 'Applying filter to data');
+            out = cell(size(mat));
+            for i = 1:numel(mat)
+                prog.update(i);
+                out{i} = filterMat(mat{i});
+            end   
+            prog.finish();
+        else
+            out = cellfun(@filterMat, mat, 'UniformOutput', false);
+        end
     else
         out = filterMat(mat);
     end
@@ -44,9 +55,9 @@ function out = filterIgnoreLeadingTrailingNaNs(B, A, mat, varargin)
                 thisCol = thisCol - firstSample;
             end
             if p.Results.filtfilt
-                filtCol(start:stop) = filtfilt(B, A, thisCol(start:stop));
+                filtCol(start:stop) = filtfilt(B, A, double(thisCol(start:stop)));
             else
-                filtCol(start:stop) = filter(B, A, thisCol(start:stop));
+                filtCol(start:stop) = filter(B, A, double(thisCol(start:stop)));
             end
             if p.Results.subtractFirstSample && p.Results.addBackFirstSample && ~isempty(start)
                 filtCol = filtCol + firstSample;
