@@ -109,6 +109,15 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             cd.warnIfNoArgOut(nargout);
         end
         
+        % used by trial data when it needs to change field names
+        function name = suggestFieldName(cd, fieldIdx)
+            if fieldIdx == 1
+                name = cd.name;
+            else
+                name = sprintf('%s_f%d', fieldIdx);
+            end
+        end
+        
         function data = convertDataSingleOnAccess(cd, fieldIdx, data)
             memClass = cd.memoryClassByField{fieldIdx};
             accClass = cd.accessClassByField{fieldIdx};

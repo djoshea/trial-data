@@ -82,6 +82,17 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.dataFields = {cd.primaryDataField, cd.timeField};
         end
         
+        % used by trial data when it needs to change field names
+        function name = suggestFieldName(cd, fieldIdx)
+            if fieldIdx == 1
+                name = cd.name;
+            elseif fieldIdx == 2
+                name = sprintf('%s_time', cd.name);
+            else                
+                name = sprintf('%s_f%d', fieldIdx);
+            end
+        end
+        
         function f = get.timeField(cd)
             if cd.nFields < 2
                 f = '';

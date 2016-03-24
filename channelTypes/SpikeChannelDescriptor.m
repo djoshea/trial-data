@@ -69,6 +69,26 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
         end
         
+        % used by trial data when it needs to change field names
+        function name = suggestFieldName(cd, fieldIdx)
+            suggest = {cd.name};
+            if cd.hasWaveforms
+                suggest{end+1} = sprintf('%s_waveforms', cd.name);
+            end
+            if cd.hasSortQualityEachTrial
+                suggest{end+1} = sprintf('%s_sortQualityByTrial', cd.name);
+            end
+            if cd.hasBlankingRegions
+                suggest{end+1} = sprintf('%s_blankingRegions', cd.name);
+            end
+            
+            if fieldIdx <= numel(suggest)
+                name = suggest{fieldIdx};
+            else
+                name = sprintf('%s_f%d', fieldIdx);
+            end  
+        end
+        
         function cd = setArrayElectrodeUnit(cd, array, electrode, unit)
             cd.warnIfNoArgOut(nargout);
             assert(ischar('array'));
