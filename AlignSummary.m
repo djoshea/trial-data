@@ -916,12 +916,16 @@ classdef AlignSummary
                 intervalInfo = intervalInfo([intervalInfo.stopTime] >= tMin & [intervalInfo.startTime] <= tMax);
             end
             
+            au.removeAutoAxisX();
+            au.removeAutoScaleBarX();
+            
             switch style
                 case 'auto'
                     au.addAutoAxisX();
                     xlabel(sprintf('Time from %s (%s)', as.alignDescriptor.zeroLabel, as.timeUnitName));
                     
                 case 'tickBridge'      
+                    
                     % include tMin and tMax ticks
                     ticks = [tMin, tMax, labelInfo.time]' + xOffset; 
                     labels = cellvec(numel(labelInfo));

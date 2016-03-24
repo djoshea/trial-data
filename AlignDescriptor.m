@@ -815,11 +815,11 @@ classdef AlignDescriptor
             ad = ad.update();
         end
 
-        function ad = setOutsideOfTrialIgnore(ad)
-            ad.warnIfNoArgOut(nargout);
-            ad.outsideOfTrialMode = AlignDescriptor.IGNORE;
-            ad = ad.update();
-        end
+%         function ad = setOutsideOfTrialIgnore(ad)
+%             ad.warnIfNoArgOut(nargout);
+%             ad.outsideOfTrialMode = AlignDescriptor.IGNORE;
+%             ad = ad.update();
+%         end
 
         function ad = setOutsideOfTrialInvalidate(ad)
             ad.warnIfNoArgOut(nargout);

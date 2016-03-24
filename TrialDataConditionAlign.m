@@ -1412,11 +1412,8 @@ classdef TrialDataConditionAlign < TrialData
             durations(~td.valid, :) = NaN;
         end
         
-        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrial(td)
+        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrialRaw(td)
             [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
-
-            tMinByTrial(~td.valid) = NaN;
-            tMaxByTrial(~td.valid) = NaN;
         end
         
         function [tStartRelByTrial, tStopRelByTrial, tZeroRelByTrial] = getTimeStartStopZeroRelativeToTrialStartEachTrial(td)
@@ -1543,7 +1540,8 @@ classdef TrialDataConditionAlign < TrialData
         
         function [means, tvec] = getAnalogMeanOverTimeEachTrial(td, name, varargin)
             [data, tvec] = td.getAnalog(name, varargin{:});
-            means = cellfun(@nanmean, data);
+            means = nanvec(td.nTrials);
+            means(td.valid) = cellfun(@nanmean, data(td.valid));
         end
         
         function [meansCell, tvec] = getAnalogMeanOverTimeEachTrialGrouped(td, name, varargin)
@@ -1844,7 +1842,7 @@ classdef TrialDataConditionAlign < TrialData
                         
             % for shared column channels where the scaling or time vectors
             % change, it needs to be separated from the shared column form
-            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && (cd.hasScaling || updateTimes)
+            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ((cd.hasScaling && ~p.Results.keepScaling) || updateTimes)
                 error('Setting analog channel while ''keepScaling'' is false or when specifying new sample times requires this channel to be separated from its analog channel group. Use separateAnalogChannelFromGroup if you want to do this. Or use setAnalogChannelGroupWithinAlignWindow to set all channels in the group at once.');  
 %                 td = td.separateAnalogChannelFromGroup(name, false);
             end
@@ -1858,7 +1856,7 @@ classdef TrialDataConditionAlign < TrialData
             cd = td.channelDescriptorsByName.(name); %#ok<NASGU>
             
             % figure out where to splice in the data into the full timeseries
-            [fullData, fullTimes] = td.getAnalogRaw(name, 'sort', true);
+            [fullData, fullTimes] = td.getAnalogRaw(name);
             [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false); % no padding
             
             % splice each trial's data in
@@ -1925,7 +1923,12 @@ classdef TrialDataConditionAlign < TrialData
             
             % setChannelData will call repairData which will update
             % memoryDataClassByField{1} to reflect the type of values
-            td = td.setAnalog(name, fullData, fullTimes, 'isAligned', false, 'keepScaling', p.Results.keepScaling);
+            if updateTimes
+                td = td.setAnalog(name, fullData, fullTimes, 'isAligned', false, 'keepScaling', p.Results.keepScaling);
+            else
+                td = td.setAnalog(name, fullData, 'timesMatchFullTrialRaw', true, ...
+                    'isAligned', false, 'keepScaling', p.Results.keepScaling);
+            end
         end
     end
     
@@ -2201,6 +2204,16 @@ classdef TrialDataConditionAlign < TrialData
             offsets = td.getTimeOffsetsFromZeroEachTrial();
             times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
 
+            % if we're updating the times field, it's possible for other
+            % fields outside this group to reference our time field, so we
+            % request that copies be made where necessary. Since we're not
+            % going through setChannelData, we need to handle this
+            % ourselves
+            if updateTimes
+                % time field is at index 2
+                td = td.copyRenameSharedChannelFields(chList, 2);
+            end
+            
             timeField = td.channelDescriptorsByName.(chList{1}).timeField;
                         
             if ~p.Results.keepScaling
@@ -2293,6 +2306,86 @@ classdef TrialDataConditionAlign < TrialData
             else
                 td = td.updatePostDataChange({groupName});
             end
+        end
+        
+        function td = transformAnalogChannelGroupInPlace(td, groupName, transformFn, varargin)
+            % dataMat = tranformFn(dataMat, tvec, trialInd)
+            p = inputParser();
+            p.addParameter('applyScaling', true, @islogical); % hand transformFn scaled data?
+            p.addParameter('preserveContinuity', false, @islogical);
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasAnalogChannelGroup(groupName);
+            
+            assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must be uniformly scaled');
+
+            cd = td.getAnalogChannelGroupSingleChannelDescriptor(groupName);
+            timeField = cd.timeField;
+            
+            fullTrial = td.alignIncludesFullTrial();
+            if fullTrial
+                % we do this so that the timestamps match up with what
+                % we're about to replace them with
+                td = td.trimAnalogChannelGroupToTrialStartEnd(groupName);
+            end
+            
+            % figure out where to splice in the data into the full timeseries
+            fullTimes = td.getAnalogChannelGroupTimeRaw(groupName);
+            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false); % no padding
+            
+            prog = ProgressBar(td.nTrials, 'Tranforming %s in place', groupName);
+            for iT = 1:td.nTrials
+                if ~td.valid(iT), continue; end
+                prog.update(iT);
+                
+                dataFull = td.data(iT).(groupName);
+                timeFull = td.data(iT).(timeField);
+                
+                dataMat = dataFull(timesMask{iT}, :);
+                tvec = timeFull(timesMask{iT});
+                
+                if p.Results.applyScaling
+                    dataMat = cd.convertDataSingleOnAccess(1, dataMat);
+                end
+                
+                % call the supplied transform function
+                dataMatReplace = transformFn(dataMat, tvec, iT);
+                
+                assert(isequal(size(dataMat), size(dataMatReplace)), ...
+                    'TransformFn must return data the same size as input data matrix, trial %d', iT);
+                
+                % undo scaling if we applied it in the first place
+                if p.Results.applyScaling
+                    dataMatReplace = cd.convertAccessDataSingleToMemory(dataMatReplace);
+                else
+                    assert(isequal(class(dataMatReplace), class(dataMat)), 'TransformFn must preserve class of received data');
+                end
+                
+                if fullTrial
+                    % just set the new value
+                    oldVal = td.data(iT).(groupName);
+                    assert(isequal(size(oldVal), size(dataMatReplace)), ...
+                    'Internal error with data trimming on trial %d', iT);
+                
+                    td.data(iT).(groupName) = dataMatReplace;
+                else
+                    % splice in the new value
+                    if p.Results.preserveContinuity
+                        first = find(timesMask{iT}, 1, 'first');
+                        last = find(timesMask{iT}, 1, 'last');
+                        dataMatReplace = bsxfun(@minus, dataMatReplace, dataMatReplace(1, :) - dataFull(first-1, :));
+                        
+                        dataFull(timesMask{iT}, :) = dataMatReplace;
+                        
+                        dataFull(last+1, :) = bsxfun(@minus, dataFull(last+1, :), dataFull(last+1, :) - dataFull(last, :));
+                    else
+                        dataFull(timesMask{iT}, :) = dataMatReplace;
+                    end
+                    td.data(iT).(groupName) = dataFull;
+                end
+            end
+            prog.finish();
         end
     end
 
@@ -3352,6 +3445,7 @@ classdef TrialDataConditionAlign < TrialData
             % unitNames
             p = inputParser();
             p.addParameter('regexp', false, @islogical);
+            p.addParameter('alignMode', 'none', @ischar);
             p.parse(varargin{:});
             
             if ischar(units), units = {units}; end
@@ -3379,7 +3473,15 @@ classdef TrialDataConditionAlign < TrialData
                 [w, ~, t] = td.getSpikeWaveforms(units{iU});
                 [waveByU{iU}, trialByU{iU}] = TensorUtils.catWhich(1, w{:});
                 timeByU{iU} = cat(1, t{:});
+%                 
+%                 switch p.Results.alignMode
+%                     case 'none'
+%                         
+%                     case 'min'
+%                         
+                    
             end
+            
             
             [wavesMat, whichUnit] = TensorUtils.catWhich(1, waveByU{:});
             trialIdx = cat(1, trialByU{:});
@@ -4605,11 +4707,21 @@ classdef TrialDataConditionAlign < TrialData
     
     % Plotting single trials
     methods
-        function plotSingleTrialAnalogChannels(td, trialInd)
-            chList = td.listAnalogChannels();
+        function plotSingleTrialAnalogChannels(td, trialInd, varargin)
+            p = inputParser();
+            p.addOptional('channels', td.listAnalogChannels(), @iscellstr);
+            p.parse(varargin{:});
+            
+            chList = p.Results.channels;
             [data, time] = td.selectTrials(trialInd).getAnalogMulti(chList);
             
-            TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList);
+            TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList, 'showLabels', true);
+            
+            td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', 'labelFirstMarkOnly', true);
+            
+            ax = AutoAxis();
+            ax.axisMarginLeft = 5;
+            ax.update();
         end
     end
     

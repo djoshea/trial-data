@@ -584,7 +584,7 @@ classdef AlignInfo < AlignDescriptor
 
             % temporary, the dependent property .nTrials only works after this
             % is called
-            nTrials = ad.nTrials;
+            nTrials = ad.nTrials; %#ok<*PROP>
 
             valid = truevec(nTrials);
             t.invalidCause = cellvec(nTrials);
@@ -673,16 +673,6 @@ classdef AlignInfo < AlignDescriptor
             mask = t.stop - t.start < ad.minDuration;
             valid(mask) = false;
             [t.invalidCause{mask}] = deal(sprintf('Trial duration is less than minDuration %g', ad.minDuration));
-
-            % clear out values for invalid trials to avoid hard to catch bugs
-            % IT IS CRITICAL THAT THIS ONLY CONSIDER computedValid, not
-            % manual valid, otherwise changing the validity requires
-            % timeInfo to be built again
-%             t.startPad(~valid) = NaN;
-%             t.stopPad(~valid) = NaN;
-%             t.start(~valid) = NaN;
-%             t.stop(~valid) = NaN;
-%             t.zero(~valid) = NaN;
 
             % store in odc
             c = ad.odc;
