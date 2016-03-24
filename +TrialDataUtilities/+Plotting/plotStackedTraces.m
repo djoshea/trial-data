@@ -157,7 +157,7 @@ else
 
     if p.Results.maintainScaleSuperimposed
         % subtract the min so each group trace has min at zero
-        minEachRow = double(nanmin(cellfun(@(mat) nanminNanEmpty(mat(:)), mat), [], 2));
+        minEachRow = nanmin(cellfun(@(mat) double(nanminNanEmpty(mat(:))), mat), [], 2);
         minCell = num2cell(repmat(minEachRow, 1, size(mat, 2)));
         cellShift = cellfun(@(mat, min) mat - min, mat, minCell, 'UniformOutput', false);
 
@@ -177,7 +177,7 @@ else
     end
 
     % compute the max range each row
-    ranges = max(cellfun(@(matShift) nanmaxNanEmpty(matShift(:), [], 1), cellShift), [], 2);
+    ranges = max(cellfun(@(matShift) double(nanmaxNanEmpty(matShift(:), [], 1)), cellShift), [], 2);
 
     ranges(isnan(ranges)) = 0;
     
