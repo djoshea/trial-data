@@ -65,7 +65,14 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
         else
             waves = w.waves;
         end
-
+        nWaveSamples = size(waves, 1);
+        waveTvec = w.waveformsTime;
+        if numel(waveTvec) > nWaveSamples
+            waveTvec = waveTvec(1:nWaveSamples);
+        elseif numel(waveTvec) < nWaveSamples
+            error('Waveforms time vector too short');
+        end
+        
         for iU = 1:numel(units)
             spikeChName = spikeChNameFn(units(iU));
             [spikesByTrial, wavesByTrial] = cellvec(nTrials);
@@ -86,7 +93,7 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
             sortQuality = round(nanmean(ratingsByTrial), 1);
             
             td = td.addSpikeChannel(spikeChName, spikesByTrial, 'waveforms', wavesByTrial,...
-                'waveformsTime', w.waveformsTime, 'sortQuality', sortQuality, ...
+                'waveformsTime', waveTvec, 'sortQuality', sortQuality, ...
                 'sortMethod', p.Results.sortMethod, 'sortQualityEachTrial', ratingsByTrial, ...
                 'updateValidOnly', false); 
         end
