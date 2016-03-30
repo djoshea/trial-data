@@ -251,20 +251,15 @@ classdef TrialDataConditionAlign < TrialData
             
             needUpdate = false;
             
-            % check whether the cached event data will need to be updated 
-            % this needs to happen before the align info are updated
+            % check if any event fields were effected. if so, all align
+            % info's need to be reapplied since they cache all events, not
+            % just the ones they need
             eventFields = td.listEventChannels();
             if any(ismember(fieldsAffected, eventFields))
-                td = td.invalidateEventCache();
-                % this will also flush alignSummarySet
-            end
-            
-            % check whether the affected fields are needed by any alignInfo
-            for iA = 1:td.nAlign
-                alignEvents = td.alignInfoSet{iA}.getEventList();
-                if any(ismember(fieldsAffected, alignEvents))
+                needUpdate = true; % force update of .valid below
+                td = td.invalidateEventCache(); % this will also flush alignSummarySet
+                for iA = 1:td.nAlign
                     td.alignInfoSet{iA} = td.alignInfoSet{iA}.applyToTrialData(td);
-                    needUpdate = true;
                 end
             end
             
@@ -272,7 +267,7 @@ classdef TrialDataConditionAlign < TrialData
             if any(ismember(fieldsAffected, td.conditionInfo.attributeRequestAs))
                 % condition descriptor affected
                 td = td.setConditionDescriptor(td.conditionInfo);
-                % this calls update valid so we don't need to do it again
+                % this already calls update valid so we don't need to do it again
                 
             elseif needUpdate
                 td = td.invalidateValid();
@@ -3220,83 +3215,6 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
     
-    methods % spike / continuous neural channel correspondence
-            function [names, units] = listSpikeChannelsOnArray(td, arrayName)
-            % [names, channelDescriptors] = getChannelsOnArray(td, arrayName)
-            names = td.listSpikeChannels();
-            units = nanvec(numel(names));
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = strcmp(cd.array, arrayName);
-                units(iC) = cd.unit;
-            end
-                
-            names = names(mask);
-            units = units(mask);
-        end
-        
-        function [names] = listContinuousNeuralChannelsOnArray(td, arrayName)
-        % [names, channelDescriptors] = getContinuousNeuralChannelsOnArray(td, arrayName)
-            names = td.listContinuousNeuralChannels();
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = strcmp(cd.array, arrayName);
-            end
-                
-            names = names(mask);
-        end
-        
-        function [names, units] = listSpikeChannelsOnArrayElectrode(td, arrayName, electrodeNum, varargin)
-            p = inputParser();
-            p.addParameter('ignoreZeroUnit', false, @islogical);
-            p.parse(varargin{:});
-            
-            % [names, channelDescriptors] = getChannelsOnArrayElectrode(td, arrayName, electrodeNum)
-            names = td.listSpikeChannels();
-            units = nanvec(numel(names));
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = any(strcmp(cd.array, arrayName)) && any(cd.electrode == electrodeNum);
-                units(iC) = cd.unit;
-            end
-                
-            if p.Results.ignoreZeroUnit
-                mask = mask & units ~= 0;
-            end
-            names = names(mask);
-            units = units(mask);
-        end
-        
-        function [names] = listContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
-            % [names, channelDescriptors] = getContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
-            names = td.listContinuousNeuralChannels();
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = strcmp(cd.array, arrayName) && cd.electrode == electrodeNum;
-            end
-                
-            names = names(mask);
-        end
-        
-        function [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName, varargin)
-            % [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName)
-            % chName is spike channel or continuous neural channel name
-            cd = td.channelDescriptorsByName.(chName);
-            [names, units] = td.listSpikeChannelsOnArrayElectrode(cd.array, cd.electrode, varargin{:});
-        end
-        
-         function [names] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
-             % [names, units] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
-             % chName is spike channel or continuous neural channel name
-            cd = td.channelDescriptorsByName.(chName);
-            [names] = td.listContinuousNeuralChannelsOnArrayElectrode(cd.array, cd.electrode);
-         end
-    end
-    
     methods % spike waveforms
         function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName, varargin)
             [wavesCell, waveTvec, timesCell] = getSpikeWaveforms@TrialData(td, unitName);
@@ -3318,7 +3236,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('colormap', [], @(x) isa(x, 'function_handle') || ismatrix(x) || isempty(x));
             p.addParameter('showThreshold', false, @islogical);
             p.addParameter('showMean', false, @islogical);
-            p.addParameter('clickable', true, @islogical); % add interactive clicking to identify waveforms
+            p.addParameter('clickable', false, @islogical); % add interactive clicking to identify waveforms
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             clickable = p.Results.clickable;
@@ -3339,7 +3257,7 @@ classdef TrialDataConditionAlign < TrialData
             elseif nUnits == 1
                 colormap = [0 0 0];
             else
-                colormap = distinguishable_colors(max(nUnits, 6));
+                colormap = [0 0 0; distinguishable_colors(nUnits-1, {'w', 'k'})];
             end
            
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
@@ -3428,12 +3346,22 @@ classdef TrialDataConditionAlign < TrialData
             td.plotSpikeWaveforms(unitNames, 'colormap', cmap, p.Unmatched);
         end
         
-        function plotSpikeWaveformsOnSameElectrodeArrayAs(td, chName, varargin)
+        function plotSpikeWaveformsOnSameArrayElectrodeAs(td, chName, varargin)
             p = inputParser();
             p.addParameter('ignoreZeroUnit', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             unitNames = td.listSpikeChannelsOnSameArrayElectrodeAs(chName, p.Results);
+            td.plotSpikeWaveforms(unitNames, p.Unmatched);
+        end
+        
+        function plotSpikeWaveformsOnArrayElectrode(td, array, electrode, varargin)
+            p = inputParser();
+            p.addParameter('ignoreZeroUnit', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            unitNames = td.listSpikeChannelsOnArrayElectrode(array, electrode, p.Results);
             td.plotSpikeWaveforms(unitNames, p.Unmatched);
         end
         
@@ -3861,6 +3789,10 @@ classdef TrialDataConditionAlign < TrialData
 
     % Plotting Analog each trial
     methods
+        function setupTimeAxis(td, varargin)
+            td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', varargin{:});
+        end
+        
         function [offsets, lims] = getAlignPlottingTimeOffsets(td, tvecCell, varargin)
             % when plotting multiple alignments of data simultaneously,
             % timeseries are plotted side by side along an axis, separated
@@ -3982,6 +3914,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alignIdx', [], @isnumeric);
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.addParameter('alpha', 1, @isscalar);
+            
+            p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
             
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('markShowOnAxis', true, @islogical);
@@ -4342,7 +4276,8 @@ classdef TrialDataConditionAlign < TrialData
 
                 % setup time axis for this align
                 if D == 1
-                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle, 'tOffsetZero', timeOffsetByAlign(iAlign));
+                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle, ...
+                        'tOffsetZero', timeOffsetByAlign(iAlign), 'showRanges', p.Results.showRangesOnAxis);
                 end
             end
             
@@ -4710,13 +4645,17 @@ classdef TrialDataConditionAlign < TrialData
         function plotSingleTrialAnalogChannels(td, trialInd, varargin)
             p = inputParser();
             p.addOptional('channels', td.listAnalogChannels(), @iscellstr);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             chList = p.Results.channels;
+            cdCell = td.getChannelDescriptorMulti(chList);
+            dataUnits = cellfun(@(cd) cd.unitsPrimary, cdCell, 'UniformOutput', false);
             [data, time] = td.selectTrials(trialInd).getAnalogMulti(chList);
             
-            TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList, 'showLabels', true);
-            
+            TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList, ...
+                'showLabels', true, 'dataUnits', dataUnits, p.Unmatched);
+            xlabel('');
             td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', 'labelFirstMarkOnly', true);
             
             ax = AutoAxis();
