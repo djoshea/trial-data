@@ -845,6 +845,24 @@ classdef TrialData
             names = {channelDescriptors.name}';
         end
         
+        function names = listChannelsMatchingWildcard(td, varargin)
+            % search for string matching 
+            for i = 1:numel(varargin)
+                varargin{i} = regexptranslate('wildcard', varargin{i});
+            end
+            names = td.listChannelsMatchingRegexp(varargin{:});
+        end
+        
+        function names = listChannelsMatchingRegexp(td, varargin)
+            chList = td.listChannels();
+            mask = falsevec(numel(chList));
+            for i = 1:numel(varargin)
+                starts = regexp(chList, varargin{i});
+                mask = mask | ~cellfun(@isempty, starts);
+            end
+            names = chList(mask);
+        end
+        
         function names = listSpecialChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             mask = arrayfun(@(cd) cd.special, channelDescriptors);
@@ -956,6 +974,16 @@ classdef TrialData
         function td = dropChannel(td, name)
             td.warnIfNoArgOut(nargout);
             td = td.dropChannels(name);
+        end
+        
+        function td = dropAnalogChannelGroup(td, groupName)
+            td.warnIfNoArgOut(nargout);
+            if ~td.hasAnalogChannelGroup(groupName)
+                return;
+            end
+            
+            chList = td.listAnalogChannelsInGroup(groupName);
+            td = td.dropChannels(chList);
         end
         
         function td = dropChannels(td, names)
@@ -3110,6 +3138,104 @@ classdef TrialData
             wavesCell = td.replaceInvalidMaskWithValue(wavesCell, []);
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
+    end
+    
+    methods % spike / continuous neural channel correspondence
+        function info = listArrayElectrodesWithSpikeChannelsAsTable(td)
+            % info is struct with fields array (char) and electrode
+            % (numeric)
+            names = td.listSpikeChannels();
+            cdCell = td.getChannelDescriptorMulti(names);
+            
+            array = cellfun(@(cd) cd.array, cdCell, 'UniformOutput', false);
+            electrode = cellfun(@(cd) cd.electrode, cdCell);
+            
+            t = table(array, electrode);
+            [info, ~, idx] = unique(t);
+            
+            channels = cellfun(@(cd) cd.name, cdCell, 'UniformOutput', false);
+            
+            chMatch = cellvec(height(info));
+            for r = 1:height(info)
+                chMatch{r} = channels(idx == r);
+            end
+            info.channelList = chMatch;
+        end
+        
+        function [names, units] = listSpikeChannelsOnArray(td, arrayName)
+            % [names, channelDescriptors] = getChannelsOnArray(td, arrayName)
+            names = td.listSpikeChannels();
+            units = nanvec(numel(names));
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = strcmp(cd.array, arrayName);
+                units(iC) = cd.unit;
+            end
+                
+            names = names(mask);
+            units = units(mask);
+        end
+        
+        function [names] = listContinuousNeuralChannelsOnArray(td, arrayName)
+        % [names, channelDescriptors] = getContinuousNeuralChannelsOnArray(td, arrayName)
+            names = td.listContinuousNeuralChannels();
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = strcmp(cd.array, arrayName);
+            end
+                
+            names = names(mask);
+        end
+        
+        function [names, units] = listSpikeChannelsOnArrayElectrode(td, arrayName, electrodeNum, varargin)
+            p = inputParser();
+            p.addParameter('ignoreZeroUnit', false, @islogical);
+            p.parse(varargin{:});
+            
+            % [names, channelDescriptors] = getChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+            names = td.listSpikeChannels();
+            units = nanvec(numel(names));
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = any(strcmp(cd.array, arrayName)) && any(cd.electrode == electrodeNum);
+                units(iC) = cd.unit;
+            end
+                
+            if p.Results.ignoreZeroUnit
+                mask = mask & units ~= 0;
+            end
+            names = names(mask);
+            units = units(mask);
+        end
+        
+        function [names] = listContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+            % [names, channelDescriptors] = getContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
+            names = td.listContinuousNeuralChannels();
+            mask = falsevec(numel(names));
+            for iC = 1:numel(names)
+                cd = td.channelDescriptorsByName.(names{iC});
+                mask(iC) = strcmp(cd.array, arrayName) && cd.electrode == electrodeNum;
+            end
+                
+            names = names(mask);
+        end
+        
+        function [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName, varargin)
+            % [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName)
+            % chName is spike channel or continuous neural channel name
+            cd = td.channelDescriptorsByName.(chName);
+            [names, units] = td.listSpikeChannelsOnArrayElectrode(cd.array, cd.electrode, varargin{:});
+        end
+        
+         function [names] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
+             % [names, units] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
+             % chName is spike channel or continuous neural channel name
+            cd = td.channelDescriptorsByName.(chName);
+            [names] = td.listContinuousNeuralChannelsOnArrayElectrode(cd.array, cd.electrode);
+         end
     end
 
     methods % Generic add data methods
