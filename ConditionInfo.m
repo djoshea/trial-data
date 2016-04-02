@@ -12,8 +12,7 @@ classdef ConditionInfo < ConditionDescriptor
         % valuesByAttribute = getAttributeValueFn(trialData, attributeNames)
         % 
         % - trialData: typically a struct array or TrialData instance
-        % - attributeNames: cellstr of attribute names (from the
-        %     "requestAs" list)
+        % - attributeNames: cellstr of attribute names
         % - valuesByAttribute : struct array where v(iTrial).attributeName = attribute value on this trial
         getAttributeValueFn = @ConditionInfo.defaultGetAttributeFn;
         
@@ -461,6 +460,8 @@ classdef ConditionInfo < ConditionDescriptor
             if ci.attributeNumeric(attrIdx)
                 if all(isnan(vals))
                     valueList = NaN;
+                elseif islogical(vals)
+                    valueList = unique(vals);
                 else
                     valueList = TrialDataUtilities.Data.uniquetol(removenan(vals));
                     % include NaN in the list if one is found
@@ -522,14 +523,18 @@ classdef ConditionInfo < ConditionDescriptor
             valueList = ci.attributeValueLists;
             
             for i = 1:ci.nAttributes
-                switch modes(i) 
-                    case ci.AttributeValueListAuto
-                        % convert populated list to cellstr
-                        if ci.attributeNumeric(i)
-                            valueListAsStrings{i} = arrayfun(@num2str, valueList{i}, 'UniformOutput', false);
-                        else
-                            valueListAsStrings{i} = valueList{i};
-                        end
+                if isempty(ci.attributeUnits{i})
+                    unitsStr = '';
+                else
+                    unitsStr = [' ', ci.attributeUnits{i}];
+                end
+                if modes(i) == ci.AttributeValueListAuto
+                    % convert populated list to cellstr
+                    if ci.attributeNumeric(i)
+                        valueListAsStrings{i} = arrayfun(@(x) [num2str(x), unitsStr], valueList{i}, 'UniformOutput', false);
+                    else
+                        valueListAsStrings{i} = [valueList{i}, unitsStr];
+                    end
                 end
                 valueListAsStrings{i} = makecol(valueListAsStrings{i});
             end
@@ -774,7 +779,7 @@ classdef ConditionInfo < ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             
             % set trialCount to match length(trialData)
-            nTrials = ci.getNTrialsFn(td);
+            nTrials = ci.getNTrialsFn(td); %#ok<*PROPLC>
             ci = ci.initializeWithNTrials(nTrials);
 
             if ci.nAttributes > 0 && ci.nTrials > 0
@@ -810,12 +815,18 @@ classdef ConditionInfo < ConditionDescriptor
                 % check for numeric, replace empty with NaN
                 emptyMask = cellfun(@isempty, vals);
                 vals(emptyMask) = {NaN};
-                try
-                    mat = cellfun(@double, vals);
+                if ci.attributeNumeric
+                    isboolean = cellfun(@(x) isscalar(x) && islogical(x), vals);
+                    if all(isboolean)
+                        mat = cell2mat(vals);
+                    else
+                        % convert to double type
+                        mat = cellfun(@double, vals);
+                    end
                     assert(numel(vals) == numel(mat));
                     ci.values(:, i) = num2cell(mat);
-                    ci.attributeNumeric(i) = true;
-                catch
+%                     ci.attributeNumeric(i) = true;
+                else
                     % replace empty and NaN with '' (NaN for strings)
                     nanMask = cellfun(@(x) any(isnan(x)), vals);
                     vals(nanMask) = {''};
@@ -823,7 +834,7 @@ classdef ConditionInfo < ConditionDescriptor
                     % check for cellstr
                     %if iscellstr(vals)
                         ci.values(:, i) = vals;
-                        ci.attributeNumeric(i) = false;
+%                         ci.attributeNumeric(i) = false;
                     %else
                     %   error('Attribute %s values were neither uniformly scalar nor strings', ci.attributeNames{i});
                     %end
@@ -893,29 +904,26 @@ classdef ConditionInfo < ConditionDescriptor
             end
         end
         
-        function valueStruct = requestAttributeValues(ci, td, attrNames, requestAs)
+        function valueStruct = requestAttributeValues(ci, td, attrNames)
             % lookup requestAs name if not specified
-            if nargin < 4
-                requestAs = ci.attributeRequestAs(strcmp(ci.attributeNames, attrNames));
-            end
                 
             % translate into request as names
             if ci.getNTrialsFn(td) == 0
                 valueStruct = struct();
             else
-                valueStructRequestAs = ci.getAttributeValueFn(td, requestAs);
+                valueStructRequestAs = ci.getAttributeValueFn(td, attrNames);
 
                 % check the returned size and field names
                 assert(numel(valueStructRequestAs) == ci.nTrials, 'Number of elements returned by getAttributeFn must match nTrials');
-                if ~all(isfield(valueStructRequestAs, requestAs))
-                    missingFields = requestAs(~isfield(valueStructRequestAs, requestAs));
+                if ~all(isfield(valueStructRequestAs, attrNames))
+                    missingFields = attrNames(~isfield(valueStructRequestAs, attrNames));
                     error('TrialData missing fields required by ConditionInfo: %s', strjoin(missingFields, ', '));
                 end
 
                 % translate back into attribute names
-                valueStruct = mvfield(valueStructRequestAs, requestAs, attrNames);
-                valueStruct = orderfields(valueStruct, attrNames);
-                valueStruct = makecol(valueStruct);
+%                 valueStruct = mvfield(valueStructRequestAs, requestAs, attrNames);
+%                 valueStruct = orderfields(valueStruct, attrNames);
+                valueStruct = makecol(valueStructRequestAs);
             end
         end
     end

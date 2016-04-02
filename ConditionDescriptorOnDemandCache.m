@@ -29,15 +29,19 @@ classdef ConditionDescriptorOnDemandCache < handle & matlab.mixin.Copyable
             c.conditions = [];
             c.conditionsAsStrings = [];
             c.conditionsAxisAttributesOnly = [];
-            c.names = [];
-            c.namesShort = [];
-            c.namesMultiline = [];
-            c.appearances = [];
+            c.flushNames();
+            c.flushAppearanceInfo();
             c.attributeValueLists = [];
             c.attributeValueListsAsStrings = [];
             c.axisValueLists = [];
             c.axisValueListsAsStrings = [];
             c.axisValueListsAsStringsShort = [];
+        end
+        
+        function flushNames(c)
+            c.names = [];
+            c.namesShort = [];
+            c.namesMultiline = [];
         end
         
         function flushAppearanceInfo(c)

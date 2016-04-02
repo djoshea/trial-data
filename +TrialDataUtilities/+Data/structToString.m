@@ -2,12 +2,16 @@ function str = structToString(s, varargin)
     p = inputParser();
     p.addOptional('separator', ' ', @ischar);
     p.addParameter('includeFieldNames', true, @islogical);
+    p.addParameter('fieldNameSubstitutions', struct(), @isstruct); % for includeFieldNames = true or useFieldNameForBoolean, if a field is set, use that field's value as the string instead of the field name itself
     p.addParameter('useFieldNameForBoolean', true, @islogical); % if the value is true/false, then use the attribute name or ''
+    p.addParameter('suffixByField', struct(), @isstruct);
     p.parse(varargin{:});
     
     separator = p.Results.separator;
     includeFieldNames = p.Results.includeFieldNames;
-
+    suffixByField = p.Results.suffixByField;
+    fieldNameSubstitutions = p.Results.fieldNameSubstitutions;
+    
     fields = fieldnames(s);
     if isempty(fields)
         str = '';
@@ -15,33 +19,46 @@ function str = structToString(s, varargin)
     end
     vals = cellfun(@(fld) convertToString(s.(fld), fld), fieldnames(s), 'UniformOutput', false);
 
-    if includeFieldNames
-        str = strjoin(cellfun(@(fld, val) strcat(fld, '=', val), fields, vals, 'UniformOutput', false), separator);
-    else
-        str = strjoin(vals, separator);
-    end
-    
-    return;
+    str = strjoin(vals, separator);
     
     function str = convertToString(v, fld)
+        if isfield(suffixByField, fld) && ~isempty(suffixByField.(fld))
+            suffix = [' ' suffixByField.(fld)];
+        else
+            suffix = '';
+        end
+        
+        if isfield(fieldNameSubstitutions, fld) && ~isempty(isfield(fieldNameSubstitutions, fld))
+            fldSub = fieldNameSubstitutions.(fld);
+        else
+            fldSub = fld;
+        end
+        
+        if includeFieldNames
+            prefix = [fldSub '='];
+        else
+            prefix = '';
+        end
+        
         if ischar(v)
-            str = v;
-        elseif islogical(v) && p.Results.useFieldNameForBoolean && ~includeFieldNames
+            str = [prefix v suffix];
+        elseif islogical(v) && p.Results.useFieldNameForBoolean
             if v
-                str = fld;
+                str = [fldSub, suffix];
             else
-                str = strcat('~', fld);
+                str = ['~', fldSub, suffix];
             end
         elseif isempty(v)
-            str = '[]';
+            str = [prefix '[]'];
         elseif isnumeric(v) || islogical(v)
             if int32(v) == v
-                str = mat2str(v);
+                vstr = mat2str(v);
             else
-                str = mat2str(v, 3);
+                vstr = mat2str(v, 3);
             end
+            str = [prefix, vstr, suffix];
         elseif iscellstr(v)
-            str = ['{', strjoin(v, ','), '}'];
+            str = [prefix, '{', strjoin(v, [suffix ',']), '}'];
         else
             error('Could not convert struct field value');
         end

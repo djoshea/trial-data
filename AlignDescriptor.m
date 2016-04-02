@@ -328,7 +328,7 @@ classdef AlignDescriptor
         end
 
         function intervalLabels = get.intervalLabels(ad)
-            nIntervals = size(ad.intervalEventsStart, 1);
+            nIntervals = size(ad.intervalEventsStart, 1); %#ok<*PROP>
             if isempty(ad.intervalLabelsStored)
                 ad.intervalLabelsStored = cell(nIntervals, 1);
             end

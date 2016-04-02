@@ -26,6 +26,7 @@ classdef ConditionDescriptor
     % the following properties are computed dynamically on the fly as they
     % are easy to compute
     properties(Dependent, Transient)
+        attributeDisplayAs
         attributeDescriptions
         attributeAlongWhichAxis % A x 1 array indicating which axis an attribute contributes to (or NaN)
         attributeValueModes % A x 1 array of AttributeValue* constants above
@@ -79,7 +80,8 @@ classdef ConditionDescriptor
         
         % A x 1 : by attribute                       
         attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
-        attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
+%         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
+        attributeDisplayAsManual = {}; % .attributeName = attribute display name for attributeName,  
         
         axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
     
@@ -87,6 +89,7 @@ classdef ConditionDescriptor
     end
     
     properties(SetAccess=protected, Hidden)
+        attributeUnits = {}; % A x 1 cellstr array of units associated with each attribute, used for generating names
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value? 
         attributeValueListsManual = {}; % A x 1 cell array of permitted values (or cells of values) for this attribute
         attributeValueBinsManual = {}; % A x 1 cell array of value Nbins x 2 value bins to use for numeric lists
@@ -217,6 +220,18 @@ classdef ConditionDescriptor
             % should do this for us, but just to be sure
             if ~ci.allAxisValueListsManual
                 ci.conditionIncludeMaskManual = [];
+            end
+        end
+        
+        function ci = invalidateNames(ci)
+            ci.warnIfNoArgOut(nargout);
+
+            % here we precompute these things to save time, 
+            % but each of these things also has a get method that will
+            % recompute this for us
+            if ~isempty(ci.odc)
+                ci.odc  = ci.odc.copy();
+                ci.odc.flushNames();
             end
         end
         
@@ -806,7 +821,6 @@ classdef ConditionDescriptor
             end
         end
     end
-
 
     methods % Axis randomization related
         function ci = setRandomSeed(ci, seed)
@@ -1411,6 +1425,19 @@ classdef ConditionDescriptor
             desc = ci.generateAttributeDescriptions();
         end
         
+        function names = get.attributeDisplayAs(ci)
+            % when a manual name is specified in .attributeDisplayAsManual,
+            % use it, otherwise convert attributeName to Attribute Name
+            names = cellvec(ci.nAttributes);
+            for i = 1:ci.nAttributes
+                if isempty(ci.attributeDisplayAsManual{i})
+                    names{i} = TrialDataUtilities.Data.camelCaseToTitleCaseSpaced(ci.attributeNames{i});
+                else
+                    names{i} = ci.attributeDisplayAsManual{i};
+                end
+            end
+        end
+        
         function desc = generateAttributeDescriptions(ci, useColor)
             if nargin < 2
                 useColor = false;
@@ -1418,8 +1445,10 @@ classdef ConditionDescriptor
             desc = cellvec(ci.nAttributes);
             isFilter = ci.attributeActsAsFilter;
             modes = ci.attributeValueModes;
+            displayList = ci.attributeDisplayAs;
             for i = 1:ci.nAttributes
                 name = ci.attributeNames{i};  
+                displayAs = displayList{i};
                 nValues = ci.nValuesByAttribute(i);
                 nAutoBins = ci.attributeValueBinsAutoCount(i);
 
@@ -1447,10 +1476,16 @@ classdef ConditionDescriptor
                 else
                     numericStr = '@';
                 end
-                if ~useColor
-                    desc{i} = sprintf('%s (%s%s%s)', name, numericStr, suffix, filterStr);
+                
+                if isempty(ci.attributeUnits{i})
+                    unitStr = '';
                 else
-                    desc{i} = sprintf('{purple}%s {darkGray}(%s%s{bright red}%s{darkGray})', name, numericStr, suffix, filterStr);
+                    unitStr = [' in ', ci.attributeUnits{i}];
+                end
+                if ~useColor
+                    desc{i} = sprintf('%s as %s (%s%s%s)%s', name, displayAs, numericStr, suffix, filterStr, unitStr);
+                else
+                    desc{i} = sprintf('{purple}%s {darkGray}(%s%s{bright red}%s{darkGray})%s', name, numericStr, suffix, filterStr, unitStr);
                 end
             end
         end 
@@ -1461,17 +1496,14 @@ classdef ConditionDescriptor
 
             p = inputParser;
             p.addRequired('name', @ischar);
+            p.addParameter('units', '', @ischar);
             % is this attribute always numeric?
             % list of allowed values for this value (other values will be ignored)
-            p.addParameter('requestAs', '', @ischar);
+            p.addParameter('displayAs', '', @ischar);
             p.addParameter('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
             p.addParameter('valueBins', {}, @(x) isnumeric(x) || iscell(x));
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
-            requestAs = p.Results.requestAs;
-            if isempty(requestAs)
-                requestAs = name;
-            end
 
             [tf, iAttr] = ci.hasAttribute(name);
             if tf
@@ -1480,8 +1512,9 @@ classdef ConditionDescriptor
                 iAttr = ci.nAttributes + 1;
             end
             ci.attributeNames{iAttr} = name;
+            ci.attributeUnits{iAttr} = p.Results.units;
             ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList); 
-            ci.attributeRequestAs{iAttr} = requestAs;
+            ci.attributeDisplayAsManual{iAttr} = p.Results.displayAs;
 
             if isempty(valueList)
                 ci.attributeValueListsManual{iAttr} = {};
@@ -1551,7 +1584,8 @@ classdef ConditionDescriptor
 
             % then remove it from the attribute lists
             ci.attributeNames = ci.attributeNames(mask);
-            ci.attributeRequestAs = ci.attributeRequestAs(mask);
+            ci.attributeUnits = ci.attributeUnits(mask);
+            ci.attributeDisplayAsManual = ci.attributeDisplayAsManual(mask);
             ci.attributeNumeric = ci.attributeNumeric(mask);
             ci.attributeValueListsManual = ci.attributeValueListsManual(mask);
             ci.attributeValueLists = ci.attributeValueLists(mask);
@@ -1579,6 +1613,20 @@ classdef ConditionDescriptor
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
             ci = ci.notifyConditionsChanged();
+        end
+        
+        function ci = setAttributeUnits(ci, attr, units)
+            ci.warnIfNoArgOut(nargout);
+            iAttr = ci.assertHasAttribute(attr);
+            ci.attributeUnits{iAttr} = units;
+            ci = ci.invalidateNames();
+        end
+        
+        function ci = setAttributeDisplayAs(ci, attr, displayAs)
+            ci.warnIfNoArgOut(nargout);
+            iAttr = ci.assertHasAttribute(attr);
+            ci.attributeDisplayAsManual{iAttr} = displayAs;
+            ci = ci.invalidateNames();
         end
         
         function ci = setAttributeNumeric(ci, attr, tf)
@@ -1671,16 +1719,17 @@ classdef ConditionDescriptor
             % publically callable version of buildConditionsAsStrings in case build methods
             % end up having side effects
             p = inputParser();
-            p.addOptional('separator', ' ', @ischar);
-            p.addOptional('short', false, @islogical);
+            p.addParameter('separator', ' ', @ischar);
+            p.addParameter('short', false, @islogical);
+            p.addParameter('includeUnits', true, @islogical); % .attribute = units struct
             p.parse(varargin{:});
+            
             separator = p.Results.separator;
-            short = p.Results.short;
             
             if ci.nAxes == 0
                 values = {structToString(ci.conditions)};
             else
-                valueLists = ci.generateAxisValueListsAsStrings(separator, short); 
+                valueLists = ci.generateAxisValueListsAsStrings(p.Results); 
                 values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
                     valueLists, 'asCell', true);
             end
@@ -2019,24 +2068,44 @@ classdef ConditionDescriptor
         end
         
         function strCell = buildAxisValueListsAsStrings(ci)
-            strCell = ci.generateAxisValueListsAsStrings(' ');
+            strCell = ci.generateAxisValueListsAsStrings('separator', ' ');
         end
         
         function strCell = buildAxisValueListsAsStringsShort(ci)
-            strCell = ci.generateAxisValueListsAsStrings(' ', true);
+            strCell = ci.generateAxisValueListsAsStrings('separator', ' ', 'short', true);
         end
         
         
-        function strCell = generateAxisValueListsAsStrings(ci, separator, shortNames)
-            if nargin < 2
-                separator = ' ';
-            end
-            if nargin < 3
-                shortNames = false;
-            end
+        function strCell = generateAxisValueListsAsStrings(ci, varargin)
+            p = inputParser();
+            p.addParameter('separator', ' ', @ischar);
+            p.addParameter('short', false, @islogical);
+            p.addParameter('includeUnits', true, @islogical);
+            p.parse(varargin{:});
+           
+            separator = p.Results.separator;
+            shortNames = p.Results.short;
+            
             strCell = cellvec(ci.nAxes);
             valueLists = ci.axisValueLists;
             randStrCell = ci.axisRandomizeModesAsStrings;
+            
+            % build units lookup
+            if ~p.Results.includeUnits
+                unitsLookup = struct();
+            else
+                unitsLookup = struct();
+                for iA = 1:ci.nAttributes
+                    unitsLookup.(ci.attributeNames{iA}) = ci.attributeUnits{iA};
+                end
+            end
+            
+            % build display as lookup
+            displayAsLookup = struct();
+            displayAsList = ci.attributeDisplayAs;
+            for iA = 1:ci.nAttributes
+                displayAsLookup.(ci.attributeNames{iA}) = displayAsList{iA};
+            end
             
             % describe the list of values selected for along each position on each axis
             for iX = 1:ci.nAxes  
@@ -2060,7 +2129,7 @@ classdef ConditionDescriptor
                 end
                 
                 strCell{iX} = arrayfun(@(v) TrialDataUtilities.Data.structToString(v, ...
-                    separator, 'includeFieldNames', ~shortNames), ...
+                    separator, 'includeFieldNames', ~shortNames, 'fieldNameSubstitutions', displayAsLookup,  'suffixByField', unitsLookup), ...
                     makecol(valueLists{iX}), ...
                    'UniformOutput', false);
 
@@ -2068,7 +2137,7 @@ classdef ConditionDescriptor
                 if ci.axisRandomizeModes(iX) ~= ci.AxisOriginal && ~shortNames
                     if ci.axisRandomizeModes(iX) == ci.AxisResampledFromSpecified
                         % indicate which attribute 
-                        strCell{iX} = cellfun(@(s, from) [s ' resampled from ' structToString(from)], ...
+                        strCell{iX} = cellfun(@(s, from) [s ' resampled from ' TrialDataUtilities.Data.structToString(from)], ...
                             strCell{iX}, ci.axisRandomizeResampleFromList{iX}, 'UniformOutput', false);
                     else
                         strCell{iX} = cellfun(@(s) [s ' ' randStrCell{iX}], strCell{iX}, 'UniformOutput', false);
@@ -2077,14 +2146,20 @@ classdef ConditionDescriptor
             end
         end
 
-        function names = buildNames(ci)
+        function names = buildNames(ci, varargin)
+            p = inputParser();
+            p.addParameter('short', false, @islogical);
+            p.addParameter('multiline', false, @islogical);
+            p.addParameter('includeUnits', true, @islogical);
+            p.parse(varargin{:});
+            
             % pass along values(i) and the subscripts of that condition in case useful 
             if ci.nConditions > 0
                 fn = ci.nameFn;
                 if isempty(fn)
                     fn = @ConditionDescriptor.defaultNameFn;
                 end
-                names = fn(ci, 'multiline', false);
+                names = fn(ci, p.Results);
                 assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
                     'nameFn must return cellstr with same size as .conditions');
             else
@@ -2093,49 +2168,15 @@ classdef ConditionDescriptor
         end
         
         function names = buildNamesShort(ci)
-            % pass along values(i) and the subscripts of that condition in case useful 
-            if ci.nConditions > 0
-                fn = ci.nameFn;
-                if isempty(fn)
-                    fn = @ConditionDescriptor.defaultNameFn;
-                end
-                names = fn(ci, 'multiline', false, 'shortNames', true);
-                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
-                    'nameFn must return cellstr with same size as .conditions');
-            else
-                names = {};
-            end
+            names = ci.buildNames('multiline', false, 'short', true);
         end
         
         function names = buildNamesMultilineShort(ci)
-            % pass along values(i) and the subscripts of that condition in case useful 
-            if ci.nConditions > 0
-                fn = ci.nameFn;
-                if isempty(fn)
-                    fn = @ConditionDescriptor.defaultNameFn;
-                end
-                names = fn(ci, 'multiline', true, 'shortNames', true);
-                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
-                    'nameFn must return cellstr with same size as .conditions');
-            else
-                names = {};
-            end
+            names = ci.buildNames('multiline', true, 'short', true);
         end
         
         function names = buildNamesMultiline(ci)
-            % pass along values(i) and the subscripts of that condition in case useful 
-            if ci.nConditions > 0
-                fn = ci.nameFn;
-                if isempty(fn)
-                    fn = @ConditionDescriptor.defaultNameFn;
-                end
-                % multiline true
-                names = fn(ci, 'multiline', true);
-                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
-                    'nameFn must return cellstr with same size as .conditions');
-            else
-                names = {};
-            end
+            names = ci.buildNames('multiline', true, 'short', false);
         end
 
         function appearances = buildAppearances(ci)
@@ -2194,17 +2235,23 @@ classdef ConditionDescriptor
         function valueList = buildAttributeValueListsAsStrings(ci)
             modes = ci.attributeValueModes;
             valueList = ci.attributeValueLists;
+            units = ci.attributeUnits;
             for i = 1:ci.nAttributes
+                if isempty(units{i})
+                    unitStr = '';
+                else
+                    unitStr = [' ' units{i}];
+                end
                 switch modes(i) 
                     case ci.AttributeValueListManual
                         if ci.attributeNumeric(i)
                             if iscell(valueList{i})
                                 % could have multiple attribute values
                                 % grouped together as one element
-                                valueList{i} = cellfun(@(i) sprintf('%.3g', i), valueList{i}, 'UniformOutput', false);
+                                valueList{i} = cellfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
                                 valueList{i} = cellfun(@(vals) strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
                             else
-                                valueList{i} = arrayfun(@(i) sprintf('%.3g', i), valueList{i}, 'UniformOutput', false);
+                                valueList{i} = arrayfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
                             end
                         else
                             % non-numeric, can leave as is unless...
@@ -2222,7 +2269,7 @@ classdef ConditionDescriptor
                             else
                                 bins = cat(1, valueList{i}{:});
                             end
-                            valueList{i} = arrayfun(@(row) sprintf('%.3g-%.3g', bins(row, 1), bins(row, 2)), ...
+                            valueList{i} = arrayfun(@(row) sprintf('%.3g-%.3g%s', bins(row, 1), bins(row, 2), unitStr), ...
                                 1:size(bins, 1), 'UniformOutput', false);
                         end
                         
@@ -2268,7 +2315,7 @@ classdef ConditionDescriptor
             %
             % Alternatively, if no arguments are passed, simply return a set of defaults
 
-            nConditions = ci.nConditions;
+            nConditions = ci.nConditions; %#ok<*PROPLC>
 
             a = repmat(AppearanceSpec(), ci.conditionsSize);
 
@@ -2290,19 +2337,16 @@ classdef ConditionDescriptor
         function addColoredLabels(ci, varargin)
             p = inputParser();
             p.addParameter('axh', gca, @ishandle);
-            p.addParameter('useNamesShort', true, @islogical);
+            p.addParameter('short', true, @islogical);
+            p.addParameter('fillAlpha', 0.5, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             axh = p.Results.axh;
 
             au = AutoAxis(axh);
-            if p.Results.useNamesShort
-                strCell = ci.namesShort;
-            else
-                strCell = ci.names;
-            end
+            strCell = ci.buildNames('short', p.Results.short, 'multiline', false);
             cmap = ci.conditionColors;
-            au.addColoredLabels(strCell, cmap, p.Unmatched);
+            au.addColoredLabels(strCell, cmap, 'fillAlpha', p.Results.fillAlpha, p.Unmatched);
             au.update();
         end
     end
@@ -2313,7 +2357,9 @@ classdef ConditionDescriptor
             %  a cell tensor specifying the names of each condition
             p = inputParser();
             p.addParameter('multiline', false, @islogical);
-            p.addParameter('shortNames', false, @islogical);
+            p.addParameter('short', false, @islogical);
+            p.addParameter('includeUnits', true, @islogical);
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2322,7 +2368,8 @@ classdef ConditionDescriptor
             else
                 separator = ' ';
             end
-            nameCell = ci.generateConditionsAsStrings(separator, p.Results.shortNames);
+            nameCell = ci.generateConditionsAsStrings('separator',separator, ...
+                'short', p.Results.short, 'includeUnits', p.Results.includeUnits);
         end
     end
 
@@ -2378,13 +2425,13 @@ classdef ConditionDescriptor
             ci = ConditionInfo.fromConditionDescriptor(cd, td);
             cdManual = ci.getFixedConditionDescriptor();
         end
-        
-        function cdManual = fixValueListsToCurrent(cd)
-            cd.warnIfNoArgOut(nargout);
-            assert(all(ismember(cd.attributeValueModes(idx), [ci.AttributeValueListManual, ci.AttributeValueBinsManual])), ...
-                'All attributes must have manually specified value lists');
-            cd = cd.setAllAxisValueListsManualToCurrent();
-        end
+%         
+%         function cd = fixValueListsToCurrent(cd)
+%             cd.warnIfNoArgOut(nargout);
+%             assert(all(ismember(cd.attributeValueModes(idx), [ci.AttributeValueListManual, ci.AttributeValueBinsManual])), ...
+%                 'All attributes must have manually specified value lists');
+%             cd = cd.setAllAxisValueListsManualToCurrent();
+%         end
     end
 
     methods(Access=protected) % Utility methods

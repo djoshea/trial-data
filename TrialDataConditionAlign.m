@@ -33,7 +33,7 @@ classdef TrialDataConditionAlign < TrialData
 
     % Properties which read through to ConditionInfo
     properties(Dependent, SetAccess=protected)
-        attributeParams % feeds thru to .conditionInfo.attributeRequestAs
+        attributeParams % feeds thru to .conditionInfo.attributeNames
         
         nConditions
         listByCondition
@@ -160,7 +160,7 @@ classdef TrialDataConditionAlign < TrialData
                 if iscell(times)
                     % event may happen zero, one, or multiple times
                     % convert to nTrials x nOccur matrix
-                    counts = cellfun(@numel, times); 
+                    counts = cellfun(@(x) nnz(~isnan(x)), times); 
                     maxCount = max(counts);
                     timeMat = nan(td.nTrials, maxCount);
                     for iT = 1:td.nTrials
@@ -264,7 +264,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             % check whether the affected fields matter for the 
-            if any(ismember(fieldsAffected, td.conditionInfo.attributeRequestAs))
+            if any(ismember(fieldsAffected, td.conditionInfo.attributeNames))
                 % condition descriptor affected
                 td = td.setConditionDescriptor(td.conditionInfo);
                 % this already calls update valid so we don't need to do it again
@@ -429,7 +429,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             % check whether any of the events are in condition info
-            conditionParams = td.conditionInfo.attributeRequestAs;
+            conditionParams = td.conditionInfo.attributeNames;
             mask = ismember(conditionParams, names);
             if any(mask)
                 error('TrialData conditioning depends on params %s', ...
@@ -456,6 +456,21 @@ classdef TrialDataConditionAlign < TrialData
             
             td.warnIfNoArgOut(nargout);
             td = td.dropChannelsExcept([td.listEventChannels(); td.listParamChannels(); makecol(names)]);
+        end
+        
+        function td = setChannelUnitsPrimary(td, name, units)
+            td.warnIfNoArgOut(nargout);
+            td = setChannelUnitsPrimary@TrialData(td, name, units);
+            
+            % if the channel is an attribute channel, we need to tell
+            % conditionInfo that its units have changed
+            if ismember(name, td.conditionInfo.attributeNames)
+                td.conditionInfo = td.conditionInfo.setAttributeUnits(name, units);
+            end
+            
+            % we shouldn't need to call postUpdateConditionInfo, since this
+            % should nominally only change the condition names, not
+            % anything related to .valid or the condition structure
         end
     end
 
@@ -528,10 +543,10 @@ classdef TrialDataConditionAlign < TrialData
             assert(isequal(class(cd), 'ConditionDescriptor'), 'Must be a ConditionDescriptor instance');
             
             % grab the param data to feed to the condition descriptor
-            if isempty(cd.attributeRequestAs)
+            if isempty(cd.attributeNames)
                 paramData = emptyStructArray(td.nTrials);
             else
-                paramData = td.getRawChannelDataAsStruct(cd.attributeRequestAs);
+                paramData = td.getRawChannelDataAsStruct(cd.attributeNames);
             end
             
             % build condition info from condition descriptor
@@ -591,7 +606,7 @@ classdef TrialDataConditionAlign < TrialData
            valLists = td.axisValueListsAsStringsShort;
            subs = td.conditionSubs;
            cellOfCategoricals = cellvec(td.nAxes);
-            for iAx = 1:td.nAxes
+           for iAx = 1:td.nAxes
                cellOfCategoricals{iAx} = categorical(subs(:, iAx), 1:numel(valLists{iAx}), valLists{iAx});
            end
         end
@@ -669,7 +684,8 @@ classdef TrialDataConditionAlign < TrialData
                     error('Unable to create attribute for channel type %s', class(cd));
                 end
                 
-                td.conditionInfo = td.conditionInfo.addAttribute(nameMod, 'values', values);
+                units = td.getChannelUnitsPrimary(name);
+                td.conditionInfo = td.conditionInfo.addAttribute(nameMod, 'values', values, 'units', units);
                 namesModified{i} = nameMod;
             end
             
@@ -711,6 +727,12 @@ classdef TrialDataConditionAlign < TrialData
             % this only undoes the grouping axes, NOT the value list
             % filtering. use reset condition info for that
             td.warnIfNoArgOut(nargout);
+            td = td.groupBy();
+        end
+        
+        function td = ungroupMaintainValid(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.markTrialsTemporarilyInvalid(~td.valid, 'Ungroup Fix Valid');
             td = td.groupBy();
         end
         
@@ -790,7 +812,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
-       function [td, maskC] = selectConditions(td, varargin)
+        function [td, maskC] = selectConditions(td, varargin)
             % select specific conditions by linear index or mask
             % and return a single-axis condition descriptor with just those
             % conditions selected
@@ -859,11 +881,23 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
+        function td = setAttributeDisplayAs(td, attrName, displayAs)
+            td.warnIfNoArgOut(nargout);
+            td = td.addAttribute(attrName);
+            td.conditionInfo = td.conditionInfo.setAttributeDisplayAs(attrName, displayAs);
+            td = td.postUpdateConditionInfo();
+        end 
+        
         function td = filter(td, attrName, valueList)
             % td = filter(td, attr, valueList)
             % shortcut for setAttributeValueList
             td.warnIfNoArgOut(nargout);
             td = td.setAttributeValueList(attrName, valueList);
+        end
+        
+        function td = nofilter(td, attrName)
+            td.warnIfNoArgOut(nargout);
+            td = td.setAttributeValueListAuto(attrName);
         end
         
         function valueList = getAttributeValueList(td, attrName)
@@ -1014,7 +1048,7 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function list = get.attributeParams(td)
-            list = td.conditionInfo.attributeRequestAs;
+            list = td.conditionInfo.attributeNames;
         end
         
         function n = get.nAxes(td)
@@ -4369,7 +4403,7 @@ classdef TrialDataConditionAlign < TrialData
         end
               
         function plotAnalogEachTrial(td, name, varargin) 
-            td.ungroup.plotAnalogGroupedEachTrial(name, varargin{:});
+            td.ungroupMaintainValid.plotAnalogGroupedEachTrial(name, varargin{:});
         end
         
         function plotAnalogGroupedEachTrial(td, name, varargin) 

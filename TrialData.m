@@ -630,7 +630,7 @@ classdef TrialData
             td.manualValid(mask) = false;
             if nargin > 2
                 assert(ischar(reason));
-                td.manualInvalidCause{mask} = {reason};
+                td.manualInvalidCause(mask) = {reason};
             end
             td = td.invalidateValid();
         end
@@ -2267,8 +2267,12 @@ classdef TrialData
                 if td.channelDescriptorsByName.(ch).isScalarByField(1)
                     eventStruct.(ch) = makecol([td.data.(ch)]);
                 else
-                    eventStruct.(ch) = makecol({td.data.(ch)});
+                    eventStruct.(ch) = cellRemoveNaN(makecol({td.data.(ch)}));
                 end
+            end
+            
+            function c = cellRemoveNaN(c)
+                c = cellfun(@(x) x(~isnan(x)), c, 'UniformOutput', false);
             end
         end 
             
@@ -2278,6 +2282,7 @@ classdef TrialData
                 
         function timesCell = getEventRaw(td, name)
             timesCell = {td.data.(name)}';
+            timesCell = cellfun(@(x) x(~isnan(x)), timesCell, 'UniformOutput', false);
         end
         
         function times = getEventRawFirst(td, name)

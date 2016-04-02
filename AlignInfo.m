@@ -345,13 +345,26 @@ classdef AlignInfo < AlignDescriptor
 
         % internal use function that simply grabs the event times relative to the trial
         % start and start/stop times as well
-        % eventInfo(iTrial).event_eventName is time of eventName in trial
-        % iTrial relative to eventInfo(iTrial).event_start
+        % eventData.eventName is nTrials x nOccurrencesMax
         function [eventData, eventCounts] = requestEventInfo(ad, td)
             eventList = ad.getEventList();
 
-            % grab the event times for all needed events
-            [eventData, eventCounts] = ad.getEventTimesFn(td, eventList);
+            if td.nTrials == 0
+                % create empty struct with the requisite fields, mostly
+                % useful for empty constructor
+                eventData = struct();
+                eventCounts = struct();
+                fields = union({'TrialStart', 'TrialEnd'}, eventList);
+                for iF = 1:numel(fields)
+                    eventData.(fields{iF}) = zeros(0, 0);
+                    eventCounts.(fields{iF}) = zeros(0, 1);
+                end
+            else
+                % grab the event times for all needed events
+                [eventData, eventCounts] = ad.getEventTimesFn(td, eventList);
+  
+            end
+            
             if ~isfield(eventData, 'TrialStart')
                 error('Missing event field TrialStart');
 %                 eventData.TrialStart = nanvec(td.nTrials);
