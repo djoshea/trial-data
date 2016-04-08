@@ -32,7 +32,7 @@ function hLine = drawTickRaster(timesCell, varargin)
                 waveYByTrial{iE} = zeros(0, 1);
                 waveTByTrial{iE} = zeros(0, 1);
             else
-                waves = (p.Results.waveCell{iE} - nanmin(p.Results.waveCell{iE}(:))) * p.Results.waveScaleHeight - rowHeight*(iE-1);
+                waves = (p.Results.waveCell{iE} - nanmin(p.Results.waveCell{iE}(:))) * p.Results.waveScaleHeight - rowHeight*iE;
                 tvecMat = bsxfun(@plus, repmat(tvec, size(waves, 1), 1), timesCell{iE});
                 if size(waves, 2) < size(tvecMat, 2)
                     tvecMat = tvecMat(:, 1:size(waves, 2));
