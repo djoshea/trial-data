@@ -1635,6 +1635,22 @@ classdef TrialData
             end
         end
         
+        function timeField = getAnalogChannelTimeField(td, name)
+            td.assertHasChannel(name);
+            timeField = td.channelDescriptorsByName.(name).timeField;
+        end
+        
+        function [tf, timeField] = checkAnalogChannelsShareTimeField(td, names)
+            timeFields = cellfun(@(name) td.getAnalogChannelTimeField(name), names, 'UniformOutput', false);
+            tf = numel(unique(timeFields)) == 1;
+            if tf
+                timeField = timeFields{1};
+            else
+                timeField = '';
+            end
+            
+        end
+        
         function cd = getAnalogChannelGroupSingleChannelDescriptor(td, groupName)
             chList = td.listAnalogChannels();
             for iC = 1:numel(chList)

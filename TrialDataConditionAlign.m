@@ -1988,7 +1988,7 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             assert(iscellstr(names));
-            [inGroup, groupName] = td.checkAnalogChannelsInGroup(names);
+            [inGroup, groupName] = td.checkAnalogChannelsInSameGroup(names);
                 
             if inGroup
                 % fetch the data as a group and rearrange the signals to
@@ -2008,31 +2008,47 @@ classdef TrialDataConditionAlign < TrialData
                 prog.finish();
                 
             else
-                % need to interpolate each signal's data on each trial to a common per-trial  time vector
+                sameTime = td.checkAnalogChannelsShareTimeField(names);
+                
                 [dataCellRaw, timeCellRaw] = td.getAnalogMulti(names, p.Unmatched);
                 
-                timeDelta = p.Results.timeDelta;
-                if isempty(timeDelta)
-                    timeDelta = td.alignInfoActive.minTimeDelta;
-                    if isempty(timeDelta)
-                        timeDelta = td.getAnalogTimeDelta(name);
-                        warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-                    end
-                end
+                if sameTime
+                    % no need to interpolate, just take the first channel's
+                    % time vectors and build matrices out of the data
+                    % across channnels
+                    dataCell = arrayfun(@(i) cat(2, dataCellRaw{i, :}), (1:td.nTrials)', 'UniformOutput', false); 
+                    timeCell = timeCellRaw(:, 1);
+                else
+                    % need to interpolate each signal's data on each trial to a common per-trial  time vector
                 
-                [dataCell, timeCell] = deal(cell(td.nTrials, 1));
-                prog = ProgressBar(td.nTrials, 'Interpolating analog channels to common time vectors');
-                for iT = 1:td.nTrials
-                    prog.update(iT);
-                    % build matrix from all data on this trial
-                    [dataCell{iT}, timeCell{iT}] = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
-                        dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
-                        'timeDelta', timeDelta, 'timeReference', 0, ...
-                        'assumeUniformSampling', false, 'interpolateMethod', p.Results.interpolateMethod);
+                    timeDelta = p.Results.timeDelta;
+                    if isempty(timeDelta)
+                        timeDelta = td.alignInfoActive.minTimeDelta;
+                        if isempty(timeDelta)
+                            timeDelta = td.getAnalogTimeDelta(name);
+                            warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
+                        end
+                    end
+
+                    [dataCell, timeCell] = deal(cell(td.nTrials, 1));
+                    prog = ProgressBar(td.nTrials, 'Interpolating analog channels to common time vectors');
+                    for iT = 1:td.nTrials
+                        prog.update(iT);
+                        % build matrix from all data on this trial
+                        [dataCell{iT}, timeCell{iT}] = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
+                            dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
+                            'timeDelta', timeDelta, 'timeReference', 0, ...
+                            'assumeUniformSampling', false, 'interpolateMethod', p.Results.interpolateMethod);
+                    end
+                    prog.finish();
                 end
-                prog.finish();
             end
         end
+        
+        function [dataByCondition, timeByCondition] = getAnalogMultiCommonTimeGrouped(td, names, varargin)
+            [data, time] = td.getAnalogMultiCommonTime(names, varargin{:});
+            [dataByCondition, timeByCondition] = td.groupElements(data, time);
+        end    
 
         function [dataTensor, tvec] = getAnalogMultiAsTensor(td, names, varargin)
             % data is nTrials x nTime x nChannels
@@ -2102,16 +2118,6 @@ classdef TrialDataConditionAlign < TrialData
             for iA = 1:td.nAlign
                 [dCell(:, iA), tCell(:, iA)] = td.useAlign(iA).groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
             end
-        end
-        
-        function [dCell, tvec] = getAnalogAsMatrixGrouped(td, name, varargin)
-            [mat, tvec] = td.getAnalogAsMatrix(name, varargin{:});
-            dCell = td.groupElements(mat);
-        end
-        
-        function [dCell, tvec, alignIdx] = getAnalogAsMatrixGroupedEachAlign(td, name, varargin)
-            [mat, tvec, alignIdx] = td.getAnalogAsMatrixEachAlign(name, varargin{:});
-            dCell = td.groupElements(mat);
         end
         
         function [dataCell, tvec] = getAnalogMultiAsTensorGrouped(td, nameCell, varargin)
@@ -4446,9 +4452,9 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getAnalogMultiAsTensorGrouped({name1, name2}, p.Results);
+            [dataCell, time] = td.getAnalogMultiCommonTimeGrouped({name1, name2}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
-                'time', tvec, 'data', dataCell(:), ...
+                'time', time, 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
                 'axisInfoY', td.channelDescriptorsByName.(name2), p.Unmatched);
         end
@@ -4460,9 +4466,9 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getAnalogMultiAsTensorGrouped({name1, name2}, p.Results);
+            [dataCell, time] = td.getAnalogMultiCommonTimeGrouped({name1, name2}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
-                'time', tvec, 'data', dataCell(:), ...
+                'time', time(:), 'data', dataCell(:), ...
                 'axisInfoZ', 'time', ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
                 'axisInfoY', td.channelDescriptorsByName.(name2), p.Unmatched);
@@ -4475,7 +4481,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getAnalogMultiAsTensorGrouped({name1, name2, name3}, p.Results);
+            [dataCell, tvec] = td.getAnalogMultiCommonTimeGrouped({name1, name2, name3}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(3, ...
                 'time', tvec, 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
