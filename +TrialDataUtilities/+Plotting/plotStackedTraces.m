@@ -1,16 +1,16 @@
-function [traceCenters, hLines] = plotStackedTraces(tvec, mat, varargin)
-% [traceCenters] = plotStacked(tvec, mat, varargin)
-% Plots the columns of mat stacked vertically on top of each other
+function [traceCenters, hLines] = plotStackedTraces(tvec, data, varargin)
+% [traceCenters] = plotStacked(tvec, data, varargin)
+% Plots the columns of data stacked vertically on top of each other
 %
-% For mat as numeric tensor, tvec is vector matching size(mat, 1)
-%   Dim 1 of mat is time, dim 2 is traces to stack vertically [nTraces]
+% For data as numeric tensor, tvec is vector matching size(data, 1)
+%   Dim 1 of data is time, dim 2 is traces to stack vertically [nTraces]
 %   If dim 3 has length > 1, these traces will be superimposed at the same
 %   location with the colors set by colorMap [nTracesSuperimposed]
 %
-% For mat as cell matrix, tvec is cell with same size
-%   Dim 1 of mat is traces to be stacked vertically [nTraces]
+% For data as cell matrix, tvec is cell with same size
+%   Dim 1 of data is traces to be stacked vertically [nTraces]
 %   Dim 2 is traces to be superimposed [nTracesSuperimposed]
-%   Inside each cell time is dim 1, multiple traces with same color is cols
+%   Inside each cell time is dim 1, multiple traces with same color can be plotted over cols
 %
 % nTraces is 
 %
@@ -18,6 +18,8 @@ function [traceCenters, hLines] = plotStackedTraces(tvec, mat, varargin)
 %   normalize: [false] scale each signal to the same range before plotting
 %   spacingFraction: [1.02] space each trace by this fraction of the previous
 %     trace's range
+
+% TODO : fix intercalate - probably not working anymore
 
 p = inputParser();
 p.addParamValue('evenSpacing', false, @islogical); % the vertical space allocated to each stacked trace is the same?
@@ -31,31 +33,32 @@ p.addParameter('labelsLinesWithinEachTrace', {}, @iscell); % labels over the nSu
 p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the labels on the left axis, slow if too many traces, 'auto' is true if nTraces < 25
 p.addParameter('clickable', true, @islogical); % make each trace clickable and show a description
 p.addParameter('timeUnits', '', @ischar); 
+p.addParameter('timeScaleBar', false, @islogical); % use scale bar instead of tick bridge for time axis?
 p.addParameter('dataUnits', [], @(x) ischar(x) || (isvector(x) && iscellstr(x))); % either a string describing units for all traces, or a nTraces x 1 cell of units for each set of traces running vertically
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.KeepUnmatched = true;
 p.parse(varargin{:});
 
-if ~iscell(mat)
+if ~iscell(data)
     % all traces share common time vector
-    nTraces = size(mat, 2);
-    nSuperimposed =size(mat, 3);
-    nTime = size(mat, 1);
+    nTraces = size(data, 2);
+    nSuperimposed =size(data, 3);
+    nTime = size(data, 1);
     if isempty(tvec)
         tvec = makecol(1:nTime);
     end
-    assert(numel(tvec) == nTime, 'Time vector must match size(mat, 1)');
+    assert(numel(tvec) == nTime, 'Time vector must match size(data, 1)');
     
-    if ~isfloat(mat)
-        mat = single(mat);
+    if ~isfloat(data)
+        data = single(data);
     end
 else
     % everytraces has different time vector
-    nTraces = size(mat, 1);
-    nSuperimposed = size(mat, 2);
-    emptyMask = cellfun(@isempty, mat);
-    mat(emptyMask) = {NaN}; % prevents errors with cellfun later
+    nTraces = size(data, 1);
+    nSuperimposed = size(data, 2);
+    emptyMask = cellfun(@isempty, data);
+    data(emptyMask) = {NaN}; % prevents errors with cellfun later
 end
    
 % construct labels by traces
@@ -75,13 +78,13 @@ else
     labelsLinesWithinEachTrace = p.Results.labelsLinesWithinEachTrace;
 end
 
-if ~iscell(mat)
+if ~iscell(data)
     % invert the order of the traces so the first is plotted at the top
     if p.Results.maintainScaleSuperimposed
         % subtract the min so each group of traces has min == 0
-        minEachGroup = TensorUtils.nanminMultiDim(mat, [1 3]);
+        minEachGroup = TensorUtils.nanminMultiDim(data, [1 3]);
         dataLowOrig = minEachGroup;
-        matShift = bsxfun(@minus, mat, minEachGroup);
+        matShift = bsxfun(@minus, data, minEachGroup);
 
         rangesOrig = TensorUtils.nanmaxMultiDim(matShift, [1 3]);
         if p.Results.normalize
@@ -92,8 +95,8 @@ if ~iscell(mat)
         end
     else
         % subtract the min so each trace has min at zero
-        dataLowOrig = nanmin(mat, [], 1);
-        matShift = bsxfun(@minus, mat, dataLowOrig);
+        dataLowOrig = nanmin(data, [], 1);
+        matShift = bsxfun(@minus, data, dataLowOrig);
 
         if p.Results.normalize
             maxEach = range(matShift, 1);
@@ -167,20 +170,20 @@ else
     map = getColormap(p.Results.colormap, nSuperimposed);
         
     % invert the order of the traces so the first is plotted at the top
-%     mat = flipud(mat);
+%     data = flipud(data);
 %     labels = flipud(labels);
 %     tvec = flipud(tvec);
 
     if p.Results.maintainScaleSuperimposed
         % subtract the min so each group trace has min at zero
-        minEachRow = nanmin(cellfun(@(mat) double(nanminNanEmpty(mat(:))), mat), [], 2);
+        minEachRow = nanmin(cellfun(@(data) double(nanminNanEmpty(data(:))), data), [], 2);
         dataLowOrig = minEachRow;
-        minCell = num2cell(repmat(minEachRow, 1, size(mat, 2)));
-        cellShift = cellfun(@(mat, min) mat - min, mat, minCell, 'UniformOutput', false);
+        minCell = num2cell(repmat(minEachRow, 1, size(data, 2)));
+        cellShift = cellfun(@(data, min) data - min, data, minCell, 'UniformOutput', false);
 
-        rangesOrig = nanmax(cellfun(@(mat) double(nanmax(mat(:))), cellShift), [], 2);
+        rangesOrig = nanmax(cellfun(@(data) double(nanmax(data(:))), cellShift), [], 2);
         if p.Results.normalize
-            maxCell = num2cell(repmat(rangesOrig, 1, size(mat, 2)));
+            maxCell = num2cell(repmat(rangesOrig, 1, size(data, 2)));
             cellShift = cellfun(@(matShift, max) double(matShift ./ max), cellShift, maxCell, 'UniformOutput', false);
             norms = rangesOrig;
         else
@@ -188,8 +191,8 @@ else
         end
     else
         % subtract the min so each trace has min at zero
-        dataLowOrig = nanmin(mat, [], 1);
-        cellShift = cellfun(@(mat) bsxfun(@minus, mat, dataLowOrig), mat, 'UniformOutput', false);
+        dataLowOrig = nanmin(data, [], 1);
+        cellShift = cellfun(@(data) bsxfun(@minus, data, dataLowOrig), data, 'UniformOutput', false);
 
         if p.Results.normalize
             cellShift = cellfun(@(matShift) bsxfun(@rdivide, matShift, range(matShift, 1)), 'UniformOutput', false);
@@ -246,14 +249,18 @@ else
 end
 
 au = AutoAxis(gca);
-au.addAutoAxisX();
-au.xlabel(xlab);
+
 au.xUnits = p.Results.timeUnits;
+if p.Results.timeScaleBar
+    au.addAutoScaleBarX();
+else
+    au.addAutoAxisX();
+    au.xlabel(xlab);
+end
 
 if showLabels
     spans = [makerow(traceLows); makerow(traceHighs)];
     au.addLabeledSpan('y', 'span', spans, 'label', labels);
-    
 end
 
 hold off;
@@ -388,6 +395,7 @@ if showYRanges && ~showScaleBars
 end
 
 hold off;
+au.update();
 
 end
 
