@@ -31,22 +31,22 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         electrodeManual = [];
         unitManual = [];
     end
-
+    
     methods(Access=protected)
         function cd = SpikeChannelDescriptor(name)
-            cd = cd@ChannelDescriptor(name); 
+            cd = cd@ChannelDescriptor(name);
             
             cd = cd.initialize();
         end
     end
     
     methods
-        function cd = initialize(cd) 
+        function cd = initialize(cd)
             cd.dataFields = {cd.name};
             cd.elementTypeByField = cd.VECTOR;
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
-               
+            
             if cd.hasWaveforms
                 cd.dataFields{end+1} = cd.waveformsField;
                 cd.elementTypeByField(end+1) = cd.NUMERIC;
@@ -86,7 +86,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 name = suggest{fieldIdx};
             else
                 name = sprintf('%s_f%d', fieldIdx);
-            end  
+            end
         end
         
         function cd = setArrayElectrodeUnit(cd, array, electrode, unit)
@@ -111,7 +111,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             if nargin < 2 || isempty(waveField)
                 waveField = sprintf('%s_waveforms', cd.name);
             end
-
+            
             cd.waveformsField = waveField;
             cd.waveformsTime = p.Results.time;
             cd.waveformsUnits = p.Results.units;
@@ -121,16 +121,16 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
         
-         function cd = addSortQualityEachTrialField(cd, field)
+        function cd = addSortQualityEachTrialField(cd, field)
             cd.warnIfNoArgOut(nargout);
             if nargin < 2 || isempty(field)
                 field = sprintf('%s_sortQualityByTrial', cd.name);
             end
             cd.sortQualityEachTrialField = field;
             cd = cd.initialize();
-         end
+        end
         
-         function cd = addBlankingRegionsField(cd, field)
+        function cd = addBlankingRegionsField(cd, field)
             cd.warnIfNoArgOut(nargout);
             if nargin < 2 || isempty(field)
                 field = sprintf('%s_blankingRegions', cd.name);
@@ -138,6 +138,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd.blankingRegionsField = field;
             cd = cd.initialize();
         end
+        
         
         function waveData = scaleWaveforms(cd, waveData)
             % waveData is either matrix or cell of matrices
@@ -147,7 +148,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             else
                 fromDelta = cd.waveformsScaleFromLims(2) - cd.waveformsScaleFromLims(1);
                 toDelta = cd.waveformsScaleToLims(2) - cd.waveformsScaleToLims(1);
-
+                
                 % convert to dtype and scale
                 scaleFn = @(x) (cast(x, dtype) - cd.waveformsScaleFromLims(1)) / fromDelta * toDelta + cd.waveformsScaleToLims(1);
             end
@@ -167,12 +168,12 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 oldWave = cd.waveformsField;
                 if strcmp(oldWave, sprintf('%s_waveforms', oldName))
                     newWave = sprintf('%s_waveforms', newName);
-                    dataFieldRenameStruct.(oldWave) = newWave;    
+                    dataFieldRenameStruct.(oldWave) = newWave;
                     cd.waveformsField = newWave;
                     cd = cd.initialize();
                 end
             end
-        end 
+        end
         
         function a = get.array(cd)
             if isempty(cd.arrayManual)
@@ -213,11 +214,11 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         function type = getType(~)
             type = 'spike';
         end
-
+        
         function str = describe(cd)
-            str = sprintf('Unit %s', cd.name);  
+            str = sprintf('Unit %s', cd.name);
         end
-
+        
         function cd = inferAttributesFromData(cd, varargin)
             assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
             
@@ -235,15 +236,15 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         
         function cd = buildFromUnitName(name)
             % attempt to parse the unit name into array electrode# and
-            % unit# 
+            % unit#
             cd = SpikeChannelDescriptor(name);
         end
-
+        
         function cd = buildFromArrayElectrodeDotUnit(electrodeDotUnit)
             name = SpikeChannelDescriptor.convertUnitNameToChannelName(electrodeDotUnit);
             cd = SpikeChannelDescriptor(name);
         end
-            
+        
         function fld = convertUnitNameToChannelName(unitStr)
             fld = ['unit', strrep(unitStr, '.', '_')];
         end
@@ -260,7 +261,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 unit = str2double(tokens.unit);
             end
         end
- 
+        
     end
-
+    
 end

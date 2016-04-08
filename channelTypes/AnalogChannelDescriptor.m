@@ -46,6 +46,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             % matrix anymore
             cd.warnIfNoArgOut(nargout);
             cd.isColumnOfSharedMatrix = false;
+            cd.elementTypeByField(1) = cd.VECTOR; 
             cd.primaryDataFieldColumnIndex = 1;
             cd.primaryDataFieldManual = '';
             
@@ -146,7 +147,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             % cast to access class, also do scaling upon request
             % (cd.scaleFromLims -> cd.scaleToLims)
             data = convertDataCellOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
+            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 scaleFromLow = cd.scaleFromLims(2);
                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
                 scaleToLow = cd.scaleToLims(2);
@@ -157,7 +158,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         
         function data = convertDataSingleOnAccess(cd, fieldIdx, data)
             data = convertDataSingleOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
+            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 scaleFromLow = cd.scaleFromLims(2);
                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
                 scaleToLow = cd.scaleToLims(2);
@@ -167,7 +168,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         end
         
         function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
-            if ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
+            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 scaleFromLow = cd.scaleFromLims(2);
                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
                 scaleToLow = cd.scaleToLims(2);
@@ -178,7 +179,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         end
         
         function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
-            if ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
+            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 scaleFromLow = cd.scaleFromLims(2);
                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
                 scaleToLow = cd.scaleToLims(2);
@@ -228,6 +229,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             assert(isscalar(dataFieldColumnIndex));
             cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits, varargin{:});
             cd.isColumnOfSharedMatrix = true;
+            cd.elementTypeByField(1) = cd.NUMERIC; % otherwise we'll throw errors when validating the shared matrix data as a whole
             cd.primaryDataField = dataFieldName;
             cd.primaryDataFieldColumnIndex = dataFieldColumnIndex;
             cd = cd.initialize();
@@ -263,6 +265,16 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             
             timeField = cellfun(@(cd) cd.timeField, cdCell, 'UniformOutput', false);
             tf = numel(unique(timeField)) == 1;
+        end
+        
+        function [cdCell, data] = sharedMatrixCheckConvertDataAndUpdateClass(cd, data)
+            % equivalent of
+            % checkConvertDataAndUpdateMemoryClassToMakeCompatible(cd,
+            % fieldIdx, data) but operates more effectively on groups of
+            % shared data
+            
+           
+            
         end
     end
 

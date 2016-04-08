@@ -118,6 +118,122 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
         end
         
+        function data = convertDataToCorrectVectorFormat(cd, iF, data)
+            % if collectAsCellByField(iF) is true, convert to cell
+            % if false, convert to numeric vector with appropriate missing
+            % values inserted to equalize length
+            
+            if cd.collectAsCellByField(iF)
+                if ~iscell(data)
+                    data = num2cell(data);
+                end
+            else
+                % convert to numeric vector, check for non-scalar values,
+                % and fill missing values
+                if iscell(data)
+                    missing = cd.missingValueByField{iF};
+                    assert(isscalar(missing));
+                    nVals = cellfun(@numel, data);
+                    if any(nVals > 1)
+                        throwError('Data must contain scalar values for each trial');
+                    end
+                    [data{nVals==0}] = deal(missing);
+                    nel = numel(data);
+                    newClass = ChannelDescriptor.cellDetermineCommonClass(data);
+                    data = ChannelDescriptor.cellCast(data, newClass);
+                    data = cell2mat(data);
+                    assert(isvector(data) && numel(data) == nel);
+                end
+            end
+        end
+        
+        function [cd, data] = checkConvertDataAndUpdateMemoryClassToMakeCompatible(cd, fieldIdx, data)
+            % this function does a couple of things. It takes a cell or
+            % vector of data destined for a specific field of this channel
+            % descriptor. It first checks whether this data is at all
+            % acceptable for this field type (i.e. BOOLEAN, SCALAR, VECTOR,
+            % above). It will throw an error if not.
+            %
+            % If the data are compatible, it will then check the class of
+            % data against my .memoryClassByField{fieldIdx}. If it is
+            % possible to convert data to memClass, data will be converted.
+            % If not, then memClass will be updated to reflect the change.
+            % For example, if memClass is single and data(i) = uint16(1),
+            % data(i) will be converted to double(1). However, if memClass
+            % is uint16 and data(i) = double(1.5), then memClass will be changed to
+            % double. This will not change any other data set on this field
+            % in the TrialData instance, but this preexisting data will be
+            % cast into the access class on access anyway, so it's not
+            % necessary to worry about it now.if not we
+            % change the class to match the new format.
+            
+            % if meant to be collected as a vector, do that first as it
+            % simplifies checking the types
+            iF = fieldIdx;
+            
+            % convert to cell or vector depending on collectAsCellByField
+            data = cd.convertDataToCorrectVectorFormat(iF, data);
+            
+            memClass = cd.memoryClassByField{iF};
+            switch cd.elementTypeByField(iF)
+                case cd.BOOLEAN
+                   data(isnan(data)) = false;
+                   convertedData = logical(data);
+                   if any(convertedData ~= data)
+                       throwError('Data must be logical or convertible to logical vector');
+                   end
+                   newClass = memClass;
+                   
+                case {cd.SCALAR, cd.DATENUM}
+                    newClass = determineCommonClass(data, memClass);
+                    data = cast(data, newClass);
+                    
+                case cd.VECTOR
+                    okay = cellfun(@(x) isempty(x) || isvector(x), data);
+                    if ~all(okay)
+                        throwError('Data cell contents must be vectors or empty');
+                    end
+                    newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
+                    data = ChannelDescriptor.cellCast(data, newClass);
+                    data = cellfun(@makecol, data, 'UniformOutput', false);
+                        
+                case cd.NUMERIC
+                    okay = cellfun(@(x) isempty(x) || isnumeric(x), data);
+                    if ~all(okay)
+                        throwError('Data cell contents must be numeric');
+                    end
+                    newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
+                    data = ChannelDescriptor.cellCast(data, newClass);
+                                        
+                case cd.STRING
+                    okay = cellfun(@(x) isempty(x) || (ischar(x) && isvector(x)), data);
+                    if ~all(okay)
+                        throwError('Data cell contents must be strings');
+                    end
+                    data = cellfun(@makerow, data, 'UniformOutput', false);
+                    newClass = 'char';
+                    
+                otherwise
+                    throwError('Unknown element type')
+            end
+            
+            cd.originalDataClassByField{iF} = newClass;
+            
+            function newClass = determineCommonClass(data, memClass)
+                convertedData = cast(data, memClass);
+                if ~isempty(data) && ~isequal(convertedData, data)
+                    newClass = class(data);
+                else
+                    newClass = memClass;
+                end
+            end
+       
+            function throwError(varargin)
+                error(['Error in channel %s, field %d: ' varargin{1}], cd.name, fieldIdx, varargin{2:end});
+            end
+           
+        end
+        
         function data = convertDataSingleOnAccess(cd, fieldIdx, data)
             memClass = cd.memoryClassByField{fieldIdx};
             accClass = cd.accessClassByField{fieldIdx};
@@ -286,86 +402,16 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 end
             end
         end
-
-        % do any replacement of missing values, etc.
-        % also adjust the data class inside channelDescriptor to match the
-        % data
-        function [data, cd] = repairData(cd, data)
-            % replace empty values with appropriate missing value
-            for iF = 1:cd.nFields
-                fld = cd.dataFields{iF};
-                missingValue = cd.missingValueByField{iF};
-
-                % replace empty values, with the appropriate missing value
-                % so that [] ends up as '' or NaN where appropriate
-                values = {data.(fld)};
-                replace = cellfun(@isempty, values);
-                [data(replace).(fld)] = deal(missingValue);
-
-                if cd.elementTypeByField(iF) == cd.BOOLEAN
-                    % manually convert to logical
-                    for i = 1:numel(data)
-                        if ~isnan(data(i).(fld))
-                            data(i).(fld) = logical(data(i).(fld));
-                        else
-                            data(i).(fld) = false;
-                        end
-                    end
-                end
-
-                if cd.elementTypeByField(iF) == cd.VECTOR
-                   % manually convert to column
-                    for i = 1:numel(data)
-                        data(i).(fld) = makecol(data(i).(fld));
-                    end
-                end
-
-                % check the data types match the specified memory data
-                % types
-                maskEmpty = arrayfun(@(t) isempty(t.(fld)), data);
-                if all(maskEmpty), continue, end;
-                % get all unique data classes ignoring empty (which are
-                % typically created as [] and tend to be double)
-                actualClasses = unique(arrayfun(@(t) class(t.(fld)), data(~maskEmpty), 'UniformOutput', false));
-                if ~ismember(cd.originalDataClassByField{iF}, actualClasses) && numel(actualClasses) == 1
-                    % all the actual data is a different class than its
-                    % specified in channelDescriptor and the classes are
-                    % uniform. Presumably the wrong class is specified in
-                    % the channelDescriptor, so we should change it
-                    cd.originalDataClassByField{iF} = actualClasses{1};
-                end
-
-                % now convert everything to the memory class, which will
-                % match the originalDataClassByField for numeric types
-                for i = 1:numel(data)
-                    memClass = cd.memoryClassByField{iF};
-                    if ~strcmp(class(data(i).(fld)), memClass) && ...
-                      ismember(memClass, {'double', 'single', 'logical', 'char', 'int8', 'uint8', 'uint16', 'int16', 'uint32', 'int32', 'unit64', 'int64'})
-                        data(i).(fld) = cast(data(i).(fld), memClass);
-                    end
-                end
-            end
-        end
-
-        function data = convertDataToMemoryClass(cd, data)
-            % change the storage class type of the data to the in-memory
-            % class
-            for iF = 1:cd.nFields
-                from = cd.storageClassByField{iF};
-                to = cd.memoryClassByField{iF};
-                if ~isempty(from) && ~isempty(to) && ~strcmp(from, to)
-                    data = structConvertFieldValues(data, to, cd.dataFields{iF});
-                end
-            end
-        end
-
-        function data = convertDataToStorageClass(cd, data)
-            for iF = 1:cd.nFields
-                to = cd.storageClassByField{iF};
-                from = cd.memoryClassByField{iF};
-                if ~isempty(from) && ~isempty(to) && ~strcmp(from, to)
-                    data = structConvertFieldValues(data, to, cd.dataFields{iF});
-                end
+        
+        function data = correctMissingValueInData(cd, fieldIdx, data)
+            missingValue = cd.missingValueByField{iF};
+            
+            if iscell(data)
+                replace = cellfun(@(x) isempty(x) || (isscalar(x) && isnan(x)), values);
+                [data(replace)] = deal(missingValue);
+            else
+                replace = isnan(values);
+                data(replace) = missingValue;
             end
         end
 
@@ -405,7 +451,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
 
         function vals = get.missingValueByField(cd)
-            missingVals = {false, NaN, [], [], '', {}, []};
+            missingVals = {false, NaN, [], [], '', NaN, []};
             vals = missingVals(cd.elementTypeByField);
         end
 
@@ -462,7 +508,27 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     end
 
     methods(Static) % Utility methods
-
+        function newClass = cellDetermineCommonClass(data, origClass)
+            if nargin > 1
+                newClass = origClass;
+            else
+                newClass = '';
+            end
+            for iV = 1:numel(data)
+                if isempty(data{iV}), continue; end
+                if isempty(newClass)
+                    newClass = class(data{iV});
+                else
+                    if ~isa(data{iV}, newClass)
+                        convertedData = cast(data{iV}, newClass);
+                        if ~isequal(convertedData, data{iV})
+                            newClass = class(data{iV});
+                        end
+                    end
+                end
+            end      
+        end
+        
         function cls = getCellElementClass(dataCell)
             if isempty(dataCell)
                 cls = 'double';
@@ -473,6 +539,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 else
                     first = find(nonEmpty, 1);
                     cls = class(dataCell{first});
+                end
+            end
+        end
+        
+        function data = cellCast(data, newClass)
+            for i = 1:numel(data)
+                if ~isa(data{i}, newClass)
+                    data{i} = cast(data{i}, newClass);
                 end
             end
         end

@@ -318,10 +318,17 @@ classdef TrialData
             % channelDescriptors depending on what we find
             prog = ProgressBar(nChannels, 'Repairing and converting channel data');
             for iChannel = 1:nChannels
-                prog.update(iChannel);
+                prog.update(iChannel, 'Repairing and converting %s', names{iChannel});
                 chd = channelDescriptorsByName.(names{iChannel}); 
-                [data, chd] = chd.repairData(data); 
-                data = chd.convertDataToMemoryClass(data);
+%                 
+%                 if chd.
+                
+                for iF = 1:chd.nFields
+                    fld = chd.dataFields{iF};
+                    valueCell = {data.(fld)}';
+                    [chd, valueCell] = chd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell); 
+                    data = assignIntoStructArray(data, fld, valueCell);
+                end
                 channelDescriptorsByName.(names{iChannel}) = chd;
             end
             prog.finish();
@@ -887,7 +894,7 @@ classdef TrialData
         
         function durations = getDurationsRaw(td)
             starts = td.getEventRawFirst('TrialStart');
-            ends = td.getEventRawLast('TrialEnd');
+            ends = td.getEventRawFirst('TrialEnd');
             durations = ends - starts;
         end
         
@@ -2311,11 +2318,17 @@ classdef TrialData
                 
         function timesCell = getEventRaw(td, name)
             timesCell = {td.data.(name)}';
+            
+            % remove nans from the event list
             timesCell = cellfun(@(x) x(~isnan(x)), timesCell, 'UniformOutput', false);
+            
+            % convert to access class
+            cd = td.channelDescriptorsByName.(name);
+            timesCell = cd.convertDataCellOnAccess(1, timesCell);
         end
         
         function times = getEventRawFirst(td, name)
-            timesCell = {td.data.(name)}';
+            timesCell = td.getEventRaw(name);
             
             times = cellfun(@getFirst, timesCell);
             
@@ -2329,7 +2342,7 @@ classdef TrialData
         end
         
         function times = getEventRawLast(td, name)
-            timesCell = {td.data.(name)}';
+            timesCell = td.getEventRaw(name);
             
             times = cellfun(@getLast, timesCell);
             
@@ -2564,14 +2577,8 @@ classdef TrialData
             
             if isa(cd, 'ParamChannelDescriptor')
                 values = {td.data.(cd.dataFields{1})}';
-                % if this channel is marked as a scalar, convert to a double numeric array
-                if ~cd.collectAsCellByField(1)
-                    if cd.isBooleanByField(1)
-                        values = cellfun(@logical, values);
-                    else
-                        values = cellfun(@double, values);
-                    end
-                end
+                values = cd.convertDataCellOnAccess(values); % convert to access data class
+               
             elseif isa(cd, 'AnalogChannelDescriptor')
                 values = td.getAnalogSample(name);
             else
@@ -3663,11 +3670,11 @@ classdef TrialData
                     valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
                 end
                
-%                 for iT = 1:numel(td.data)
-%                     if updateMask(iT)
-%                         td.data(iT).(dataFields{iF}) = valueCell{iF}{iT};
-%                     end
-%                 end
+                % validate the overall structure of the data (scalar vs.
+                % numeric vs. vector, etc.) and update the memory class to
+                % match the data passed in (e.g. uint16 --> double)
+                [cd, valueCell{iF}] = cd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell{iF});
+                
                 if iF == 1 && isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix
                     colIdx = cd.primaryDataFieldColumnIndex;
                     % shared analog channel, just replace that column
@@ -3686,13 +3693,15 @@ classdef TrialData
                 else
                     % normal field
                     td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}(updateMask, :), updateMask);
+                    
+%                   for iT = 1:numel(td.data)
+%                       if updateMask(iT)
+%                            td.data(iT).(dataFields{iF}) = valueCell{iF}{iT};
+%                       end
+%                  end
                 end
             end 
             
-            % convert data, also give cd a chance to update its memory
-            % storage class for the data to reflect what was passed in
-            [td.data, cd] = cd.repairData(td.data);
-
             td.channelDescriptorsByName.(cd.name) = cd;
             td = td.updatePostDataChange(dataFields(fieldMask));
             
