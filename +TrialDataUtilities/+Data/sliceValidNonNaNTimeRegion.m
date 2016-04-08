@@ -20,11 +20,11 @@ if all(isCell)
 elseif all(~isCell)
     useCell = false;
     
-    isvec = cellfun(@isrow, varargin);
+    isvec = cellfun(@isvector, varargin);
     n = cellfun(@(x) size(x, 1), varargin);
     t = cellfun(@(x) size(x, 2), varargin);
     nel = cellfun(@numel, varargin);
-    %t(isvec) = nel(isvec);
+    t(isvec) = nel(isvec);
     
     if any(~isvec)
         assert(all(n(isvec) == max(n(isvec))), 'All matrix inputs must have same numrows');
