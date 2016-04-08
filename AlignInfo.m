@@ -1392,6 +1392,7 @@ classdef AlignInfo < AlignDescriptor
 
             p.addParameter('markAsTicks', true, @islogical);
             p.addParameter('markAlpha', 0.5, @isscalar);
+            p.addParameter('markTickWidth', 2, @isscalar);
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParameter('showInLegend', true, @islogical);
@@ -1503,7 +1504,8 @@ classdef AlignInfo < AlignDescriptor
 
                 % plot mark and provide legend hint
                 hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
-                    p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    p.Results.markAlpha, 'tickWidth', p.Results.markTickWidth, ...
+                    'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
                     'tickHeight', p.Results.tickHeight);
 
                 if p.Results.showInLegend
