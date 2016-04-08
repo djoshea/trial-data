@@ -3,6 +3,13 @@ function [c, ia, ic] = uniquetol(a, tol)
     if nargin < 3
         tol = 1e-6 * nanmax(abs(a(:)));
     end
+    
+    if ~isfloat(a)
+        % only relevant for floating point inputs
+        assert(tol < 1);
+        [c, ia, ic] = unique(a);
+        return;
+    end
 
     if isempty(a)
         c = [];
