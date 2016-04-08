@@ -1,6 +1,6 @@
 function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractSnippets(data, time, thresh, snippetWindow, varargin)
 % [timeCellByTrial, waveformsByTrial] = thresholdExtractSnippets(data, thresh, snippetWindow)
-% either: 
+% either:
 %   data is time x trials, time is vector
 %   data is trials cell of vectors, time is cell of time vectors
 %
@@ -12,25 +12,31 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
 
     p = inputParser();
     p.addParameter('mode', 'leftToRight', @ischar); % or 'largestFirst'
-    p.addParameter('lockout', snippetWindow, @isscalar);
+    p.addParameter('lockoutPrePost', [], @(x) isempty(x) || isvector(x));
     p.addParameter('extremumWithin', 7, @islogical);
     p.parse(varargin{:});
-    lockout = p.Results.lockout;
+    if isempty(p.Results.lockoutPrePost)
+      lockoutPrePost = snippetWindow;
+    else
+      lockoutPrePost = p.Results.lockoutPrePost;
+    end
+    lockoutPre = lockoutPrePost(1);
+    lockoutPost = lockoutPrePost(2);
     extremumWithin = p.Results.extremumWithin;
-    
+
     if iscell(data)
         nTrials = numel(data);
     elseif ismatrix(data)
         nTrials = size(data, 2);
     end
-    
+
     snippetPre = snippetWindow(1);
     snippetPost = snippetWindow(2);
     snippetLength = snippetPre + snippetPost;
-    
+
     % utility for finding all crossing times of thresh
     function idx = findCrossings(dataVec)
-        if thresh < 0 
+        if thresh < 0
             % falling threshold < 0
             idx = find(diff(dataVec <= thresh) == 1);
         else
@@ -38,19 +44,19 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
             idx = find(diff(dataVec >= thresh) == 1);
         end
     end
-    
+
     if iscell(data)
         crossings = cellfun(@findCrossings, data, 'UniformOutput', false);
     else
         crossings = arrayfun(@(trial) findCrossings(data(:, trial)), 1:nTrials, 'UniformOutput', false);
     end
-    
+
     % ensure they are spaced by at least 1 waveform
     % loop through and extract snippets
     idxCellByTrial = cell(nTrials, 1);
     timeCellByTrial = cell(nTrials, 1);
     waveformsByTrial = cell(nTrials, 1);
-    
+
     if strcmp(p.Results.mode, 'leftToRight')
         % sweep left to right, thresholding as you go
         prog = ProgressBar(nTrials, 'Extracting threhold crossings from continuous data');
@@ -69,7 +75,7 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
 
             for iC = 1:numel(crossings{iR})
                 thisCross = crossings{iR}(iC);
-                if thisCross - lastCrossing < lockout || thisCross <= snippetPre || thisCross + snippetPost - 1 > nTimeThisTrial
+                if thisCross - lastCrossing < lockoutPost || thisCross <= snippetPre || thisCross + snippetPost - 1 > nTimeThisTrial
                     % too close to lastCrossing or to ends of data trace --> throw away
                     mask(iC) = false;
                 else
@@ -94,7 +100,7 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
             waveformsByTrial{iR} = waveMat(1:nCrossingsKept, :);
         end
         prog.finish();
-        
+
     elseif strcmp(p.Results.mode, 'largestFirst')
         % take biggest waveforms first, and ignore those within lockout
         % window
@@ -109,11 +115,11 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
                 nTimeThisTrial = size(data, 1);
             end
             waveMat = nan(C, snippetLength);
-            
+
             % figure out the extreme value of each snipet
             waveExt = nanvec(C);
             for iC = 1:C
-                thisCross = cross(iC);    
+                thisCross = cross(iC);
                 if thisCross - snippetPre < 1, continue, end
                 if thisCross + snippetPost - 1 > nTimeThisTrial, continue; end
                 if iscell(data)
@@ -129,22 +135,22 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
                     waveExt(iC) = min(snip);
                 end
             end
-            
+
             maskPicked = falsevec(C);
             maskEligible = truevec(C);
-            
+
             while(any(maskEligible))
                 % waveExt(ineligible) will be NaN
                 [~, pick] = max(abs(waveExt));
-                    
+
                 if isnan(waveExt(pick))
                     break;
                 end
                 maskPicked(pick) = true;
                 maskEligible(pick) = false;
-                
+
                 % mark ineligible other crossings within lockout window
-                tooClose = abs(cross - cross(pick)) < lockout;
+                tooClose = cross - cross(pick) >= -lockoutPre & cross-cross(pick) < lockoutPost;
                 maskEligible(tooClose) = false;
                 waveExt(tooClose) = NaN;
             end
@@ -161,6 +167,5 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
     else
         error('Unknown mode');
     end
-        
+
 end
-        
