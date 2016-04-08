@@ -1,5 +1,5 @@
-function S = structcat(varargin)
-% Scat = structcat(S1, S2, [S3, ...])
+function S = structcat(dim, varargin)
+% Scat = structcat(dim, S1, S2, [S3, ...])
 % Concatenates multiple structures together by adding and ordering fields 
 % as necessary via structEqualizeFields
 
@@ -24,6 +24,6 @@ function S = structcat(varargin)
         structs{iT} = makecol(orderfields(structs{iT}, fields));
     end
 
-    S = cat(1, structs{:});
+    S = cat(dim, structs{:});
 
 end
