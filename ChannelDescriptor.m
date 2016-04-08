@@ -251,6 +251,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             accClass = cd.accessClassByField{fieldIdx};
             if ~strcmp(memClass, accClass)
                 data = cellfun(@(a) cast(a, accClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
+            else
+                % convert to cell anyway
+                if iscell(data) &&  ~cd.collectAsCellByField(fieldIdx)
+                    data = cell2mat(data);
+                end
             end
         end
         

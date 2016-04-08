@@ -2577,7 +2577,7 @@ classdef TrialData
             
             if isa(cd, 'ParamChannelDescriptor')
                 values = {td.data.(cd.dataFields{1})}';
-                values = cd.convertDataCellOnAccess(values); % convert to access data class
+                values = cd.convertDataCellOnAccess(1, values); % convert to access data class
                
             elseif isa(cd, 'AnalogChannelDescriptor')
                 values = td.getAnalogSample(name);
