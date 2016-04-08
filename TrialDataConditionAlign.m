@@ -1593,7 +1593,7 @@ classdef TrialDataConditionAlign < TrialData
             % if name is a cellstr of multiple channels, mat will be nTrials x nTime x nChannels
             % tensor of values, but this will fail if the channels do not
             % share a common time vector to begin with. If this is not the
-            % case, use getAnalogMultiAsMatrix
+            % case, use getAnalogMultiAsTensor
             %
             % 'subtractTrialBaselineAt' : provide an alignment string that will
             %   optionally be used to estimate a 'baseline' value to subtract
@@ -2077,14 +2077,14 @@ classdef TrialDataConditionAlign < TrialData
                 'assumeUniformSampling', p.Results.assumeUniformSampling);
         end
         
-        function [mat, tvec, alignIdx] = getAnalogMultiAsMatrixEachAlign(td, names, varargin)
+        function [mat, tvec, alignIdx] = getAnalogMultiAsTensorEachAlign(td, names, varargin)
             % similar to getAnalogMultiAsMatrix, except each alignment will be
             % concatenated in time
             
             matCell = cellvec(td.nAlign);
             tvecCell = cellvec(td.nAlign);
             for iA = 1:td.nAlign
-                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getAnalogMultiAsMatrix(names, varargin{:});
+                [matCell{iA}, tvecCell{iA}] = td.useAlign(iA).getAnalogMultiAsTensor(names, varargin{:});
             end
             
             [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
@@ -2114,15 +2114,15 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(mat);
         end
         
-        function [dataCell, tvec] = getAnalogMultiAsMatrixGrouped(td, nameCell, varargin)
+        function [dataCell, tvec] = getAnalogMultiAsTensorGrouped(td, nameCell, varargin)
             % dataCell will be size(td.conditions)
             % contents will be nTrials x T x nChannels
-            [data, tvec] = td.getAnalogMultiAsMatrix(nameCell, varargin{:});
+            [data, tvec] = td.getAnalogMultiAsTensor(nameCell, varargin{:});
             dataCell = td.groupElements(data);
         end
         
-        function [dCell, tvec, alignIdx] = getAnalogMultiAsMatrixGroupedEachAlign(td, nameCell, varargin)
-            [mat, tvec, alignIdx] = td.getAnalogMultiAsMatrixEachAlign(nameCell, varargin{:});
+        function [dCell, tvec, alignIdx] = getAnalogMultiAsTensorGroupedEachAlign(td, nameCell, varargin)
+            [mat, tvec, alignIdx] = td.getAnalogMultiAsTensorEachAlign(nameCell, varargin{:});
             dCell = td.groupElements(mat);
         end
         
@@ -4446,7 +4446,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getAnalogMultiAsMatrixGrouped({name1, name2}, p.Results);
+            [dataCell, tvec] = td.getAnalogMultiAsTensorGrouped({name1, name2}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
                 'time', tvec, 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
@@ -4460,7 +4460,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getAnalogMultiAsMatrixGrouped({name1, name2}, p.Results);
+            [dataCell, tvec] = td.getAnalogMultiAsTensorGrouped({name1, name2}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
                 'time', tvec, 'data', dataCell(:), ...
                 'axisInfoZ', 'time', ...
@@ -4475,7 +4475,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, tvec] = td.getAnalogMultiAsMatrixGrouped({name1, name2, name3}, p.Results);
+            [dataCell, tvec] = td.getAnalogMultiAsTensorGrouped({name1, name2, name3}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(3, ...
                 'time', tvec, 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
