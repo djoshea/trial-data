@@ -2211,6 +2211,9 @@ classdef TrialDataConditionAlign < TrialData
             assert(all(nTimes == nValues), 'Mismatch between number of times and values. If the number of times has changed be sure to specify times parameter');
             
             % now slice off NaN samples of each trial's data
+            % this is useful in general but also specifically allows this
+            % function to accept data returned from
+            % getAnalogChannelGroupAsTensor
             if p.Results.removeNaNSamples
                 for iT = 1:sizeDim1Expected
                     keep = any(~isnan(values{iT}), 2);
@@ -2740,6 +2743,16 @@ classdef TrialDataConditionAlign < TrialData
             
             % align the intervals to the current align info
             intervalCell = td.alignInfoActive.getAlignedIntervalCell(intervalCell, includePadding);
+        end
+        
+        function td = blankSpikesWithinAlignWindow(td, spikeCh)
+            td.warnIfNoArgOut(nargout);
+            % build interval cell with current alignment window
+            
+            [start, stop] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
+            intervalCell = num2cell([start, stop], 2);
+            
+            td = td.blankSpikesInTimeIntervals(spikeCh, intervalCell);
         end
         
         %%%%%%% 
@@ -3288,10 +3301,10 @@ classdef TrialDataConditionAlign < TrialData
                 colormap = p.Results.colormap(numel(unitName));
             elseif ~isempty(p.Results.colormap) && ismatrix(p.Results.colormap)
                 colormap = repmat(p.Results.colormap, ceil(nUnits / size(p.Results.colormap, 1)), 1);
-            elseif nUnits == 1
-                colormap = [0 0 0];
+%             elseif nUnits == 1
+%                 colormap = [0 0 0];
             else
-                colormap = [0 0 0; distinguishable_colors(nUnits-1, {'w', 'k'})];
+                colormap = distinguishable_colors(nUnits, {'w', 'k'});
             end
            
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
@@ -3538,6 +3551,10 @@ classdef TrialDataConditionAlign < TrialData
 %             p.addParameter('spikeColor', 'k', @(x) true);
             p.addParameter('colorSpikesLikeCondition', false, @islogical);
             p.addParameter('timeAxisStyle', 'marker', @ischar);
+            
+            p.addParameter('markAlpha', 0.5, @isscalar);
+            p.addParameter('markTickWidth', 2, @isscalar);
+            
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
             p.addParameter('gapBetweenConditions', [], @(x) isempty(x) || isscalar(x));
@@ -3698,7 +3715,8 @@ classdef TrialDataConditionAlign < TrialData
                                 'yOffsetTop', yOffsetByCondition(iCond) + p.Results.annotationHeight + 1, ...
                                 'tickHeight', p.Results.annotationHeight, ...
                                 'intervalMinWidth', p.Results.intervalMinWidth, ...
-                                'axh', axh, 'intervalAlpha', p.Results.intervalAlpha);
+                                'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
+                                'markAlpha', p.Results.markAlpha, 'markTickWidth', p.Results.markTickWidth);
                         end
                     end
                 else
@@ -3717,7 +3735,8 @@ classdef TrialDataConditionAlign < TrialData
                             'yOffsetTop', yOffsetByCondition(iCond), ...
                             'intervalMinWidth', p.Results.intervalMinWidth, ...
                             'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
-                            'shadeStartStopInterval', p.Results.shadeValidIntervals);
+                            'shadeStartStopInterval', p.Results.shadeValidIntervals, ...
+                            'markAlpha', p.Results.markAlpha, 'markTickWidth', p.Results.markTickWidth);
                     end
                 end
             end

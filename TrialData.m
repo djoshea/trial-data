@@ -604,10 +604,17 @@ classdef TrialData
             else
                 td.manualValid = td.manualValid(mask);
             end
+            if ~isempty(td.manualInvalidCause)
+                td.manualInvalidCause = td.manualInvalidCause(mask);
+            end
+                
             if isempty(td.temporaryValid)
                 td.temporaryValid = [];
             else
                 td.temporaryValid = td.temporaryValid(mask);
+            end
+            if ~isempty(td.temporaryInvalidCause)
+                td.temporaryInvalidCause = td.temporaryInvalidCause(mask);
             end
             td = td.invalidateValid();
         end
@@ -630,6 +637,9 @@ classdef TrialData
             td.manualValid(mask) = false;
             if nargin > 2
                 assert(ischar(reason));
+                if isempty(td.manualInvalidCause)
+                    td.manualInvalidCause = cellvec(td.nTrials);
+                end
                 td.manualInvalidCause(mask) = {reason};
             end
             td = td.invalidateValid();
@@ -2204,6 +2214,9 @@ classdef TrialData
                 end
             end
             
+            if ~iscell(times)
+                times = arrayfun(@(x) x(~isnan(x)), times, 'UniformOutput', false);
+            end
             td = td.addChannel(cd, {times});
         end
         
@@ -2388,12 +2401,23 @@ classdef TrialData
             end
             
             % sort and makecol
-            if iscell(times)
-                times = cellfun(@(x) makecol(sort(times)), times, 'UniformOutput', false);
+            if ~iscell(times)
+                times = arrayfun(@(x) x(~isnan(x)), times, 'UniformOutput', false);
             end
+            times = cellfun(@(x) makecol(sort(x)), times, 'UniformOutput', false);
             
             td = td.setChannelData(name, {times}, varargin{:});
         end
+        
+        function td = addOrSetEvent(td, name, times, varargin)
+            td.warnIfNoArgOut(nargout);
+            if td.hasEventChannel(name)
+                td = td.setEvent(name, times, varargin{:});
+            else
+                td = td.addEvent(name, times, varargin{:});
+            end
+        end
+            
     end
     
     methods % Param channel methods
@@ -3007,6 +3031,8 @@ classdef TrialData
             % trial, and will inform the spike rate filtering that this
             % time interval is not observed, rather than simply has no
             % spikes
+            %
+            % intervalCell is nTrials x 1 cell with nIntervals(iT) x 2 matrices inside 
             
             td.warnIfNoArgOut(nargout);
             
@@ -3022,10 +3048,14 @@ classdef TrialData
             % need to request all spike times
             [rawWaves, ~, rawTimes] = td.getRawSpikeWaveforms(name);
             
-            if ismatrix(intervalCell)
+            if ~iscell(intervalCell)
                 % assume same for all trials
                 assert(size(intervalCell, 2) == 2);
                 intervalCell = repmat({intervalCell}, td.nTrials, 1);
+            else
+                nonEmpty = ~cellfun(@isempty, intervalCell);
+                nCols = cellfun(@(x) size(x, 2), intervalCell(nonEmpty));
+                assert(all(nCols == 2), 'Interval cell contents must contain matrices of intervals with 2 columns');
             end
             assert(iscell(intervalCell));
             intervalCell = makecol(intervalCell);
