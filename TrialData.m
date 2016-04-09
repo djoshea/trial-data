@@ -3404,8 +3404,11 @@ classdef TrialData
             
             % touch each of the value fields to make sure they exist
             for iF = 1:cd.nFields
-                if ~isfield(td.data, cd.dataFields{iF});
-                    td.data(end).(cd.dataFields{iF}) = [];
+                missing = cd.missingValueByField{iF};
+                if ~isfield(td.data, cd.dataFields{iF}) || ~cd.isShareableByField(iF)
+                    % clear if it's missing, or if its there but not
+                    % shared, since we're overwriting it
+                    td.data = assignIntoStructArray(td.data, cd.dataFields{iF}, missing);
                 end
             end     
             

@@ -247,15 +247,13 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             % chance to cast or adjust the data stored in .data. This
             % default implementation casts from the memory class to the
             % access class on demand
-            memClass = cd.memoryClassByField{fieldIdx};
+            %memClass = cd.memoryClassByField{fieldIdx};
             accClass = cd.accessClassByField{fieldIdx};
-            if ~strcmp(memClass, accClass)
-                data = cellfun(@(a) cast(a, accClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
-            else
-                % convert to cell anyway
-                if iscell(data) &&  ~cd.collectAsCellByField(fieldIdx)
-                    data = cell2mat(data);
-                end
+           
+            data = ChannelDescriptor.cellCast(data, accClass);
+                % data = cellfun(@(a) cast(a, accClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
+            if ~cd.collectAsCellByField(fieldIdx)
+                data = cell2mat(data);
             end
         end
         
@@ -458,6 +456,12 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function vals = get.missingValueByField(cd)
             missingVals = {false, NaN, [], [], '', NaN, []};
             vals = missingVals(cd.elementTypeByField);
+            memClasses = cd.memoryClassByField;
+            for iF = 1:numel(vals)
+                if cd.elementTypeByField(iF) == cd.SCALAR
+                    vals{iF} = cast(vals{iF}, memClasses{iF});
+                end
+            end
         end
 
         function c = get.accessClassByField(cd)
