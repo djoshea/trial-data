@@ -3290,6 +3290,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showThreshold', false, @islogical);
             p.addParameter('showMean', false, @islogical);
             p.addParameter('clickable', false, @islogical); % add interactive clicking to identify waveforms
+            p.addParameter('fast', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             clickable = p.Results.clickable;
@@ -3382,7 +3383,12 @@ classdef TrialDataConditionAlign < TrialData
             set(ht, 'Interpreter', 'none');
             
             axis tight;
-            AutoAxis.replaceScaleBars(gca, td.timeUnitName, td.channelDescriptorsByName.(unitName{1}).waveformsUnits);
+            
+            if ~p.Results.fast
+                AutoAxis.replaceScaleBars(gca, td.timeUnitName, td.channelDescriptorsByName.(unitName{1}).waveformsUnits);
+            else
+                box off;
+            end
             hold off;
         end
         

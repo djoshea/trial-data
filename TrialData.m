@@ -1815,7 +1815,7 @@ classdef TrialData
             if ~strcmp(groupName, newGroupName)
                 % name is changing
                 conflicts = td.getChannelsReferencingFields(newGroupName);
-                assert(isempty(conflicts), 'Channels %s already reference field %s', strjoin(conflicts, ', '), newGroupName);
+                assert(isempty(conflicts), 'Channel(s) %s already reference field %s. This field name cannot be used to store analog channel group.', strjoin(conflicts, ', '), newGroupName);
             
             elseif ~isempty(setdiff(chAll, names))
                 error('When group name is not changing, all channels must be included in the new ordering');
