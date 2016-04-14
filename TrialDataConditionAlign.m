@@ -542,15 +542,15 @@ classdef TrialDataConditionAlign < TrialData
             end
             assert(isequal(class(cd), 'ConditionDescriptor'), 'Must be a ConditionDescriptor instance');
             
-            % grab the param data to feed to the condition descriptor
-            if isempty(cd.attributeNames)
-                paramData = emptyStructArray(td.nTrials);
-            else
-                paramData = td.getRawChannelDataAsStruct(cd.attributeNames);
-            end
+%             % grab the param data to feed to the condition descriptor
+%             if isempty(cd.attributeNames)
+%                 paramData = emptyStructArray(td.nTrials);
+%             else
+%                 paramData = td.getRawChannelDataAsStruct(cd.attributeNames);
+%             end
             
             % build condition info from condition descriptor
-            td.conditionInfo = ConditionInfo.fromConditionDescriptor(cd, paramData);
+            td.conditionInfo = ConditionInfo.fromConditionDescriptor(cd, td);
             td = td.postUpdateConditionInfo();
         end
         
@@ -774,6 +774,20 @@ classdef TrialDataConditionAlign < TrialData
             td = td.clearConditionIncludeMask();
         end
         
+        function td = withFirstNTrialsEachCondition(td, n)
+            td.warnIfNoArgOut(nargout);
+            lists = td.listByCondition;
+            listsDrop = cell(size(lists));
+            for iC = 1:td.nConditions
+                if numel(lists{iC}) > n
+                    listsDrop{iC} = lists{iC}(n+1:end);
+                end
+            end
+            
+            drop = cat(1, listsDrop{:});
+            td = td.markTrialsTemporarilyInvalid(drop, 'withFirstNTrialsEachCondition');
+        end
+        
         function td = reshapeAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.reshapeAxes(varargin{:});
@@ -895,7 +909,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.setAttributeValueList(attrName, valueList);
         end
         
-        function td = nofilter(td, attrName)
+        function td = noFilter(td, attrName)
             td.warnIfNoArgOut(nargout);
             td = td.setAttributeValueListAuto(attrName);
         end

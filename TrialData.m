@@ -439,8 +439,42 @@ classdef TrialData
             end
             tdCombined = varargin{1};
             if numel(varargin) > 1
+                % check that channels  in common are all equivalent
+                TrialData.assertCommonChannelsEquivalentMultipleTrialData(varargin{:});
+                
                 % pass as a cell array of trial data
                 tdCombined = tdCombined.addTrialsFromTrialData(varargin(2:end));
+            end
+        end
+        
+        function assertCommonChannelsEquivalentMultipleTrialData(varargin)
+            % check that for every cchannel in common between varargin{:}
+            % that the channel descriptors are equal
+            
+            if numel(varargin) < 2
+                return;
+            end
+            
+            chListEach = cellfun(@(td) td.listChannels(), varargin, 'UniformOutput', false);
+            chListAll = chListEach{1};
+            for i = 2:numel(varargin)
+                chListAll = union(chListAll, chListEach{i});
+            end
+            
+            okay = truevec(numel(chListAll));
+            for iC = 1:numel(chListAll)
+                ch = chListAll{iC};
+                % check that channel descriptors are okay for all
+                % channels held in common between any 
+                hasChMask = cellfun(@(list) ismember(ch, list), chListEach);
+                if nnz(hasChMask) > 1
+                    cdCell = cellfun(@(td) td.channelDescriptorsByName.(ch), varargin(hasChMask), 'UniformOutput', false);
+                    okay(iC) = isequaln(cdCell{:});
+                end
+            end
+            
+            if ~all(okay)
+                error('TrialData instances differ on ChannelDescriptor for channel(s): %s', strjoin(chListAll(~okay), ', '));
             end
         end
     end
@@ -840,12 +874,20 @@ classdef TrialData
                 units = 'spikes / sec';
             else
                 units = td.getChannelDescriptor(name).unitsPrimary;
+                if strcmp(units, 'enum') % MatUdp did this at one point
+                    units = '';
+                end
             end
         end
         
         function td = setChannelUnitsPrimary(td, name, units)
             td.warnIfNoArgOut(nargout);
             td.channelDescriptorsByName.(name) = td.getChannelDescriptor(name).setPrimaryUnits(units);
+        end
+        
+        function tf = isChannelScalar(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            tf = ~cd.collectAsCellByField(1);
         end
         
         function td = setChannelMeta(td, name, meta)
@@ -1833,7 +1875,11 @@ classdef TrialData
             prog = ProgressBar(td.nTrials, 'Splitting analog channel group %s');
             for iT = 1:td.nTrials
                 prog.update(iT);
-                td.data(iT).(newGroupName) = td.data(iT).(groupName)(:, colIdx);
+                if ~isempty(td.data(iT).(groupName))
+                    td.data(iT).(newGroupName) = td.data(iT).(groupName)(:, colIdx);
+                else
+                    td.data(iT).(newGroupName) = zeros(0, numel(colIdx));
+                end
             end
             prog.finish();
             

@@ -790,6 +790,12 @@ classdef ConditionInfo < ConditionDescriptor
                 % store in .values cell
                 ci.values = valueCell;
                 
+                % fetch other details as well, units, and numeric status
+                for iA = 1:ci.nAttributes
+                    ci.attributeUnits{iA} = td.getChannelUnitsPrimary(ci.attributeNames{iA});
+                    ci.attributeNumeric(iA) = td.isChannelScalar(ci.attributeNames{iA});
+                end
+                
                 ci = ci.fixAttributeValues();
             end
             
@@ -815,7 +821,13 @@ classdef ConditionInfo < ConditionDescriptor
                 % check for numeric, replace empty with NaN
                 emptyMask = cellfun(@isempty, vals);
                 vals(emptyMask) = {NaN};
-                if ci.attributeNumeric
+                
+                % moved this to applyToTrialData
+%                 isNumeric = cellfun(@(x) isscalar(x) && (islogical(x) || isnumeric(x)), vals);
+                
+%                 if all(isNumeric)
+                 if ci.attributeNumeric(i)
+%                     ci.attributeNumeric(i) = true;
                     isboolean = cellfun(@(x) isscalar(x) && islogical(x), vals);
                     if all(isboolean)
                         mat = cell2mat(vals);
@@ -830,6 +842,8 @@ classdef ConditionInfo < ConditionDescriptor
                     % replace empty and NaN with '' (NaN for strings)
                     nanMask = cellfun(@(x) any(isnan(x)), vals);
                     vals(nanMask) = {''};
+                    
+%                     ci.attributeNumeric(i) = false;
                     
                     % check for cellstr
                     %if iscellstr(vals)
@@ -1073,7 +1087,8 @@ classdef ConditionInfo < ConditionDescriptor
 %                     valuesByAttribute.(attr) = {data.(attr)};
 %                 end
             elseif isa(data, 'TrialData')
-                values = keepfields(data.getParamStruct, attributeNames);
+                values = data.getRawChannelDataAsStruct(attributeNames);
+                %values = keepfields(data.getParamStruct, attributeNames);
             else
                 error('Please provide .getAttributeFn to request attributes from this data type');
             end

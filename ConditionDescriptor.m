@@ -1502,6 +1502,7 @@ classdef ConditionDescriptor
             p.addParameter('displayAs', '', @ischar);
             p.addParameter('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
             p.addParameter('valueBins', {}, @(x) isnumeric(x) || iscell(x));
+            p.addParameter('numeric', false, @islogical);
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
 
@@ -1513,7 +1514,11 @@ classdef ConditionDescriptor
             end
             ci.attributeNames{iAttr} = name;
             ci.attributeUnits{iAttr} = p.Results.units;
-            ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList); 
+            if isempty(valueList)
+                ci.attributeNumeric(iAttr) = p.Results.numeric;
+            else
+                ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList); 
+            end
             ci.attributeDisplayAsManual{iAttr} = p.Results.displayAs;
 
             if isempty(valueList)
