@@ -2333,12 +2333,12 @@ classdef TrialData
                 end
                 % loop over channel groups
                 for iG = 1:numel(groupList)
-                    if isempty(td.data(iT).(groupList{iG}))
-                        warning('Data for trial %d field %s empty but time vector %s is not', iT, groupList{iG}, timeField)
-                        td.data(iT).(groupList{iG}) = [];
-                    else
+%                     if isempty(td.data(iT).(groupList{iG}))
+%                         warning('Data for trial %d field %s empty but time vector %s is not', iT, groupList{iG}, timeField)
+%                         td.data(iT).(groupList{iG}) = zeros(;
+%                     else
                         td.data(iT).(groupList{iG}) = td.data(iT).(groupList{iG})(timesMask{iT}, :);
-                    end
+%                     end
                 end
             end
             prog.finish();
