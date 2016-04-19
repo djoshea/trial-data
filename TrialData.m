@@ -956,11 +956,14 @@ classdef TrialData
             cdCell = cellfun(@(name) td.channelDescriptorsByName.(name), names, 'UniformOutput', false);
         end
         
-%         function cd = setChannelDescriptor(td, name, cd)
-%             td.assertHasChannel(name);
-%             assert(isa(cd, 'ChannelDescriptor'));
-%             td.channelDescriptorsByName.(name) = cd;
-%         end
+        % This Should be disabled! It is mostly a hack for fixing data
+        % issues post-hoc
+        function td = setChannelDescriptor(td, name, cd)
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(name);
+            assert(isa(cd, 'ChannelDescriptor'));
+            td.channelDescriptorsByName.(name) = cd;
+        end
         
         function type = getChannelType(td, name)
             type = td.getChannelDescriptor(name).getType();
@@ -1046,7 +1049,7 @@ classdef TrialData
             durations = td.replaceInvalidMaskWithValue(durations, NaN);
         end
              
-        function durations = getValidDurationsForSpikeChannel(td, unitName)
+        function [durations, containsBlanked] = getValidDurationsForSpikeChannel(td, unitName)
             % similar to getValidDurations, except factors in the blanking
             % region
             durations = td.getValidDurations();
@@ -1063,6 +1066,8 @@ classdef TrialData
                     blankDurations(iT) = totalFn(blankIntervals{iT});
                 end
             end
+            
+            containsBlanked = blankDurations > 0;
             
             durations = durations - blankDurations;
             if any(durations < 0)
@@ -3318,9 +3323,17 @@ classdef TrialData
             counts = td.replaceInvalidMaskWithValue(counts, NaN);
         end
         
-        function rates = getSpikeMeanRate(td, unitName)
+        function rates = getSpikeMeanRate(td, unitName, varargin)
+            p = inputParser();
+            p.addParameter('invalidIfBlanked', false, @islogical); % if true, any trial that is partially blanked will be NaN, if false, the blanked region will be ignored and will not contribute to the time window used as the denominator for the rate calculation
+            p.parse(varargin{:});
+            
             counts = td.getSpikeCounts(unitName);
-            durations = td.getValidDurationsForSpikeChannel(unitName);
+            [durations, containsBlanked] = td.getValidDurationsForSpikeChannel(unitName);
+            
+            if p.Results.invalidIfBlanked
+                durations(containsBlanked) = NaN;
+            end
             rates = counts ./ durations * td.timeUnitsPerSecond;
         end
         

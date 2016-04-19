@@ -1498,9 +1498,13 @@ classdef TrialDataConditionAlign < TrialData
 
     % Analog channel access
     methods
-        function time = getAnalogTime(td, name)
+        function time = getAnalogTime(td, name, varargin)
+            p = inputParser;
+            p.addParameter('singleTimepointTolerance', Inf, @isscalar);
+            p.parse(varargin{:});
+            
             time = td.getAnalogTimeRaw(name);
-            time = td.alignInfoActive.getAlignedTimesCell(time, false); % no padding
+            time = td.alignInfoActive.getAlignedTimesCell(time, false, p.Results); % no padding
         end
         
         % return aligned analog channel
@@ -1508,10 +1512,12 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('singleTimepointTolerance', Inf, @isscalar);
             p.parse(varargin{:});
             
             [data, time] = getAnalog@TrialData(td, name);
-            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false);
+            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false, ...
+                'singleTimepointTolerance', p.Results.singleTimepointTolerance);
             
             % subtract baseline on condition by condition
             if ~isempty(p.Results.subtractConditionBaselineAt)
@@ -1521,7 +1527,7 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
                     tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name);
+                baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
                 baselineForTrial = nanvec(tdBaseline.nTrials);
                 mask = ~isnan(tdBaseline.conditionIdx);
                 baselineForTrial(mask) = baselineByCondition(tdBaseline.conditionIdx(mask));
@@ -1536,7 +1542,7 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
                     tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name);
+                baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
                 data = cellfun(@minus, data, num2cell(baseline), 'UniformOutput', false);
             end
         end
@@ -1900,7 +1906,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % figure out where to splice in the data into the full timeseries
             [fullData, fullTimes] = td.getAnalogRaw(name);
-            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false); % no padding
+            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false, 'singleTimepointTolerance', Inf); % no padding
             
             % splice each trial's data in
             prog = ProgressBar(td.nTrials, 'Splicing in analog data');
@@ -1984,7 +1990,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function time = getAnalogChannelGroupTime(td, groupName)
             time = getAnalogChannelGroupTime@TrialData(td, groupName);
-            time = td.alignInfoActive.getAlignedTimesCell(time, false); % no padding
+            time = td.alignInfoActive.getAlignedTimesCell(time, false, 'singleTimepointTolerance', Inf); % no padding
         end
 
         function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
@@ -2284,7 +2290,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             fullTimes = td.getAnalogChannelGroupTimeRaw(groupName);
-            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false); % no padding
+            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false, 'singleTimepointTolerance', Inf); % no padding
             
             % splice each trial's data in
             prog = ProgressBar(td.nTrials, 'Splicing in analog data');
@@ -2384,7 +2390,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % figure out where to splice in the data into the full timeseries
             fullTimes = td.getAnalogChannelGroupTimeRaw(groupName);
-            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false); % no padding
+            [~, timesMask] = td.alignInfoActive.getAlignedTimesCell(fullTimes, false, 'singleTimepointTolerance', Inf); % no padding
             
             prog = ProgressBar(td.nTrials, 'Tranforming %s in place', groupName);
             for iT = 1:td.nTrials
@@ -2446,7 +2452,7 @@ classdef TrialDataConditionAlign < TrialData
         % return aligned event times
         function timesCell = getEvent(td, name)
             timesCell = getEvent@TrialData(td, name);
-            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, false);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, false, 'singleTimepointTolerance', 0);
         end
 
         function dCell = getEventGrouped(td, name)
@@ -2738,7 +2744,7 @@ classdef TrialDataConditionAlign < TrialData
                 includePadding = false;
             end
             timesCell = getSpikeTimes@TrialData(td, unitNames);
-            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, includePadding);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, includePadding, 'singleTimepointTolerance', 0);
         end
         
         %%%%%
@@ -3189,13 +3195,13 @@ classdef TrialDataConditionAlign < TrialData
             countsCell = td.groupElements(counts);
         end
         
-        function rateCell = getSpikeMeanRateGrouped(td, unitName)
-            rates = td.getSpikeMeanRate(unitName);
+        function rateCell = getSpikeMeanRateGrouped(td, unitName, varargin)
+            rates = td.getSpikeMeanRate(unitName, varargin{:});
             rateCell = td.groupElements(rates);
         end
         
-        function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName) 
-            rateCell = td.getSpikeMeanRateGrouped(unitName);
+        function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName, varargin) 
+            rateCell = td.getSpikeMeanRateGrouped(unitName, varargin{:});
             
             meanByGroup = cellfun(@nanmean, rateCell);
             semByGroup = cellfun(@nansem, rateCell);
@@ -3285,7 +3291,7 @@ classdef TrialDataConditionAlign < TrialData
     methods % spike waveforms
         function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName, varargin)
             [wavesCell, waveTvec, timesCell] = getSpikeWaveforms@TrialData(td, unitName);
-            [timesCell, maskCell] = td.alignInfoActive.getAlignedTimesCell(timesCell, true);
+            [timesCell, maskCell] = td.alignInfoActive.getAlignedTimesCell(timesCell, true, 'singleTimepointTolerance', 0);
             wavesCell = cellfun(@(waves, mask) waves(mask, :), wavesCell, maskCell, 'UniformOutput', false);
             %timesCell = cellfun(@(times, mask) times(mask), timesCell, maskCell, 'UniformOutput', false);
         end
@@ -4721,16 +4727,29 @@ classdef TrialDataConditionAlign < TrialData
     
     % Plotting single trials
     methods
-        function plotSingleTrialAnalogChannels(td, trialInd, varargin)
+        function plotSingleTrialAnalogChannels(td, varargin)
             p = inputParser();
             p.addOptional('channels', td.listAnalogChannels(), @iscellstr);
+            p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
+            p.addParameter('trialIdx', [], @isvector); % selection into all trials
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            
+            if isempty(p.Results.validTrialIdx)
+                if isempty(p.Results.trialIdx)
+                    % auto choose first valid trial
+                    idx = find(td.valid, 1);
+                else
+                    idx = p.Results.trialIdx;
+                end
+            else
+                idx = mi2ui(p.Results.validTrialIdx, td.valid);
+            end
             
             chList = p.Results.channels;
             cdCell = td.getChannelDescriptorMulti(chList);
             dataUnits = cellfun(@(cd) cd.unitsPrimary, cdCell, 'UniformOutput', false);
-            [data, time] = td.selectTrials(trialInd).getAnalogMulti(chList);
+            [data, time] = td.selectTrials(idx).getAnalogMulti(chList);
             
             TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList, ...
                 'showLabels', true, 'dataUnits', dataUnits, p.Unmatched);
