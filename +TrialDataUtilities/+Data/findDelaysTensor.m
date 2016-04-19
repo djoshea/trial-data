@@ -34,6 +34,7 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
 %   based off Matlab's finddelay
 
     p = inputParser();
+    p.addOptional('maxLag', [], @isscalar);
     p.addParameter('timeDimension', 1, @isscalar);
     p.addParameter('simultaneousDimensions', 2, @isvector);
     p.addParameter('alignToEachOtherDimensions', 3, @isvector);
@@ -41,8 +42,9 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
     p.addParameter('upsample', 1, @isscalar);
     p.addParameter('message', 'Aligning segments in time', @ischar);
     
-    p.addOptional('maxLag', [], @isscalar);
+    
     p.addParameter('alignTo', 'mean', @ischar);
+    p.addParameter('periodicMode', false, @islogical);
     
     % for nargout == 2, passed to removeDelaysTensor
     p.addParameter('fillMode', NaN, @(x) isscalar(x) || ischar(x));
@@ -83,7 +85,7 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
     L = size(data, 4);
    
     if isempty(maxLag)
-        maxLag = floor(T/2);
+        maxLag = floor(T/2) * up;
     end
     
     if nargout > 1
@@ -139,44 +141,48 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
         % sum the cross correlations across channels
         c_normalized_sum = TensorUtils.squeezeDims(sum(c_normalized, 2), 2); % nLags x G;
 
-        % Find indices of lags resulting in the largest absolute values of
-        % normalized cross-correlations: to deal with periodic signals, seek the
-        % lowest (in absolute value) lag giving the largest absolute value of
-        % normalized cross-correlation.
-        % Find lowest positive or zero indices of lags (negative delays) giving the
-        % largest absolute values of normalized cross-correlations. 
-        [max_c_pos,index_max_pos] = max(c_normalized_sum(maxLag+1:end,:),[],1);    
-        % Find lowest negative indices of lags (positive delays) giving the largest
-        % absolute values of normalized cross-correlations. 
-        [max_c_neg,index_max_neg] = max(flipud(c_normalized_sum(1:maxLag,:)),[],1);
+        if p.Results.periodicMode
+            % Find indices of lags resulting in the largest absolute values of
+            % normalized cross-correlations: to deal with periodic signals, seek the
+            % lowest (in absolute value) lag giving the largest absolute value of
+            % normalized cross-correlation.
+            % Find lowest positive or zero indices of lags (negative delays) giving the
+            % largest absolute values of normalized cross-correlations. 
+            [max_c_pos,index_max_pos] = max(c_normalized_sum(maxLag+1:end,:),[],1);    
+            % Find lowest negative indices of lags (positive delays) giving the largest
+            % absolute values of normalized cross-correlations. 
+            [max_c_neg,index_max_neg] = max(flipud(c_normalized_sum(1:maxLag,:)),[],1);
 
-        max_c = nan(G, 1);
+            max_c = nan(G, 1);
 
-        if isempty(max_c_neg)
-            % Case where MAXLAG is all zeros.
-            index_max = maxLag + index_max_pos;
-        else
-            for g=1:G
-                if max_c_pos(g)>max_c_neg(g)
-                    % The estimated lag is positive or zero.
-                    index_max(g) = maxLag + index_max_pos(g);
-                    max_c(g) = max_c_pos(g);
-                elseif max_c_pos(g)<max_c_neg(g)
-                    % The estimated lag is negative.
-                    index_max(g) = maxLag + 1 - index_max_neg(g);
-                    max_c(g) = max_c_neg(g);
-                elseif max_c_pos(g)==max_c_neg(g)
-                    if index_max_pos(g)<=index_max_neg(g)
+            if isempty(max_c_neg)
+                % Case where MAXLAG is all zeros.
+                index_max = maxLag + index_max_pos;
+            else
+                for g=1:G
+                    if max_c_pos(g)>max_c_neg(g)
                         % The estimated lag is positive or zero.
-                        index_max(g) = max_maxlag + index_max_pos(g);
+                        index_max(g) = maxLag + index_max_pos(g);
                         max_c(g) = max_c_pos(g);
-                    else
+                    elseif max_c_pos(g)<max_c_neg(g)
                         % The estimated lag is negative.
-                        index_max(g) = max_maxlag + 1 - index_max_neg(g);
+                        index_max(g) = maxLag + 1 - index_max_neg(g);
                         max_c(g) = max_c_neg(g);
-                    end 
-                end   
+                    elseif max_c_pos(g)==max_c_neg(g)
+                        if index_max_pos(g)<=index_max_neg(g)
+                            % The estimated lag is positive or zero.
+                            index_max(g) = max_maxlag + index_max_pos(g);
+                            max_c(g) = max_c_pos(g);
+                        else
+                            % The estimated lag is negative.
+                            index_max(g) = max_maxlag + 1 - index_max_neg(g);
+                            max_c(g) = max_c_neg(g);
+                        end 
+                    end   
+                end
             end
+        else
+            [max_c, index_max] = max(c_normalized_sum, [], 1);
         end
         
         delays(1, 1, :, iL) = lags(index_max) / up;

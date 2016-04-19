@@ -31,7 +31,7 @@ p.addParamValue('maintainScaleSuperimposed', true, @islogical); % when superimpo
 p.addParameter('labels', {}, @isvector); % labels over nTraces for the y axis
 p.addParameter('labelsLinesWithinEachTrace', {}, @iscell); % labels over the nSuperimposed traces, for clickable descriptions
 p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the labels on the left axis, slow if too many traces, 'auto' is true if nTraces < 25
-p.addParameter('clickable', true, @islogical); % make each trace clickable and show a description
+p.addParameter('clickable', false, @islogical); % make each trace clickable and show a description
 p.addParameter('timeUnits', '', @ischar); 
 p.addParameter('timeScaleBar', false, @islogical); % use scale bar instead of tick bridge for time axis?
 p.addParameter('dataUnits', [], @(x) ischar(x) || (isvector(x) && iscellstr(x))); % either a string describing units for all traces, or a nTraces x 1 cell of units for each set of traces running vertically
