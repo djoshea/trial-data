@@ -1,4 +1,5 @@
 function [varargout] = sliceValidNonNaNTimeRegion(varargin)
+% [out1, out2, ..., maskOrMaskCell] = sliceValidNonNaNTimeRegion(out1, out2, )
 % Given a set of either:
 %   1. cell arrays with the same length (N) containing vectors
 %        of the same lengths across each argument (T_i) 
@@ -40,7 +41,7 @@ nArg = numel(varargin);
 
 if useCell
     nTrials = numel(varargin{1});
-    for iArg = 1:nArg
+    for iArg = 1:nArg+1
         varargout{iArg} = cell(nTrials, 1);
     end
     
@@ -59,6 +60,10 @@ if useCell
                 varargout{iArg}{iTrial} = varargin{iArg}{iTrial}(i1:i2);
             end
         end
+        
+        m = falsevec(size(nanmask));
+        m(i1:i2) = true;
+        varargout{nArg+1} = m;
     end
 else
     if any(~isvec)
@@ -108,7 +113,8 @@ else
             end
         end
     end
-        
     
-
+    m = false(nTime, 1);
+    m(i1:i2) = true;
+    varargout{nArg+1} = m;
 end

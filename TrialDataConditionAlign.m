@@ -4,7 +4,7 @@ classdef TrialDataConditionAlign < TrialData
     properties(SetAccess=protected)
         % ConditionInfo instance
         conditionInfo
-        
+               
         % AlignInfo instance
         alignInfoSet
 
@@ -29,6 +29,16 @@ classdef TrialDataConditionAlign < TrialData
 
         % nAlign x 1 cell of AlignSummary instances
         alignSummarySet
+        
+        % size(conditions) by nRandomized 
+        randomizedListsByCondition
+        
+        conditionInfoRandomized
+    end
+    
+    properties(SetAccess=protected)
+        nRandomized = 10; % number of cached copies of the randomized condition lists to keep around
+        % set with setNumRandomized
     end
 
     % Properties which read through to ConditionInfo
@@ -61,6 +71,10 @@ classdef TrialDataConditionAlign < TrialData
         
         conditionAppearanceFn
         conditionNameFn
+        
+        hasRandomizationActive
+        hasRandomizationSpecified
+        randomizationDescription
     end
     
     % Simple dependent properties
@@ -139,6 +153,34 @@ classdef TrialDataConditionAlign < TrialData
         function td = set.alignSummarySet(td, v)
             td.odc = td.odc.copy();
             td.odc.alignSummarySet = v;
+        end
+    
+        function v = get.randomizedListsByCondition(td)
+            v = td.odc.randomizedListsByCondition;            
+            if isempty(v)
+                td.odc.randomizedListsByCondition = td.buildRandomizedListsByCondition();
+                v = td.odc.randomizedListsByCondition;
+            end
+        end 
+        
+        function td = set.randomizedListsByCondition(td, v)
+            td.odc = td.odc.copy();
+            td.odc.randomizedListsByCondition = v;
+        end 
+        
+        function v = get.conditionInfoRandomized(td)
+            v = td.odc.conditionInfoRandomized;            
+            if isempty(v)
+                % we just copy the condition Info on first access, will be
+                % subsequently modified
+                td.odc.conditionInfoRandomized = td.conditionInfo;
+                v = td.odc.conditionInfoRandomized;
+            end
+        end 
+        
+        function td = set.conditionInfoRandomized(td, v)
+            td.odc = td.odc.copy();
+            td.odc.conditionInfoRandomized = v;
         end
     end
     
@@ -330,6 +372,9 @@ classdef TrialDataConditionAlign < TrialData
             td.printDescriptionShort();
             
             td.conditionInfo.printDescription();
+            if td.hasRandomizationSpecified
+                tcprintf('inline', '  {bright blue}Randomization via: {none}%d samples, %s\n', td.nRandomized, td.randomizationDescription);
+            end
             for iA = 1:td.nAlign
                 td.alignInfoSet{iA}.printDescription('active', td.alignInfoActiveIdx == iA);
             end
@@ -617,6 +662,7 @@ classdef TrialDataConditionAlign < TrialData
             % align descriptor within
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.selectTrials(mask);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.selectTrials(mask);
             for i = 1:td.nAlign
                 td.alignInfoSet{i} = td.alignInfoSet{i}.selectTrials(mask);
             end
@@ -692,6 +738,8 @@ classdef TrialDataConditionAlign < TrialData
             if wasChar
                 namesModified = namesModified{1};
             end
+            
+            td = td.postUpdateConditionInfo();
         end
         
         function td = groupBy(td, varargin)
@@ -941,65 +989,21 @@ classdef TrialDataConditionAlign < TrialData
             valueList = td.conditionInfo.getAxisValueList(varargin{:});
         end
         
-        % Axis randomization settings
-        function td = setRandomSeed(td, varargin)
-            % args: seed
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.setRandomSeed(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end
-        
-        function td = newRandomSeed(td, varargin)
-            % no args
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.newRandomSeed(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end
-        
-        function td = noRandomization(td, varargin)
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.axisNoRandomization(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end  
-        
-        function td = resampleTrialsWithinConditions(td, varargin)
-            % no args
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.resampleTrialsWithinConditions(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end
-        
-        function td = axisNoRandomization(td, varargin)
-            % args: idxOrAttr
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.axisNoRandomization(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end
-                   
-        function td = axisShuffle(td, varargin)
-            % args (idxOrAttr, replace)
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.axisShuffle(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end
-
-        function td = axisResampleFromSpecifiedValueListIndices(td, varargin)
-            % args: (axisIdxOrAttr, resampleFromIndices, replace) 
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.axisResampleFromSpecifiedValueListIndices(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end
-        
-        function td = axisResampleFromSpecifiedValues(td, varargin)
-            % args: (axisIdxOrAttr, resampleFromValueStructMatch, replace) 
-            td.warnIfNoArgOut(nargout);
-            td.conditionInfo = td.conditionInfo.axisResampleFromSpecifiedValues(varargin{:});
-            td = td.postUpdateConditionInfo();
-        end
-        
-        function td = postUpdateConditionInfo(td)
+        function td = postUpdateConditionInfo(td, clearRandomized)
+            if nargin < 2
+                clearRandomized = true; % sometimes don't want to clear conditionInfoRandomized when using .withRandomized( ) to access a specific set of data
+            end
             td.warnIfNoArgOut(nargout);
             td = td.invalidateValid();
+            
+            if clearRandomized
+                % flush conditionInfo randomized, needs to be recreated
+                td.conditionInfoRandomized = [];
+
+                % flush cached randomize lists if found
+                td.odc = td.odc.copy();
+                td.odc.flushRandomized();
+            end
         end
         
         % filter trials that are valid based on ConditionInfo
@@ -1598,8 +1602,13 @@ classdef TrialDataConditionAlign < TrialData
             meansCell = td.groupElements(means);
         end
         
-        function [means, tvec] = getAnalogMeanOverTimeGroupMeans(td, name, varargin)
-            [meansCell, tvec] = td.getAnalogMeanOverTimeEachTrialGrouped(name, varargin{:});
+        function [meansCell, tvec] = getAnalogMeanOverTimeEachTrialGroupedRandomized(td, name, varargin)
+            [means, tvec] = td.getAnalogMeanOverTimeEachTrial(name, varargin{:});
+            meansCell = td.groupElementsRandomized(means);
+        end
+        
+        function [means, tvec] = getAnalogMeanOverTimeGroupMeansRandomized(td, name, varargin)
+            [meansCell, tvec] = td.getAnalogMeanOverTimeEachTrialGroupedRandomized(name, varargin{:});
             means = cellfun(@nanmean, meansCell);
         end
         
@@ -1658,6 +1667,11 @@ classdef TrialDataConditionAlign < TrialData
                 'assumeUniformSampling', p.Results.assumeUniformSampling);
         end
         
+        function [matCell, tvec] = getAnalogAsMatrixGrouped(td, name, varargin)
+            [mat, tvec] = td.getAnalogAsMatrix(name, varargin{:});
+            matCell = td.groupElements(mat);
+        end
+        
         function [mat, tvec, alignIdx] = getAnalogAsMatrixEachAlign(td, name, varargin)
             % similar to getAnalogAsMatrix, except each alignment will be
             % concatenated in time
@@ -1670,6 +1684,11 @@ classdef TrialDataConditionAlign < TrialData
             
             [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
             tvec = cat(2, tvecCell{:});
+        end
+        
+        function [matCell, tvec, alignIdx] = getAnalogAsMatrixGroupedEachAlign(td, name, varargin)
+            [mat, tvec, alignIdx] = td.getAnalogAsMatrixEachAlign(name, varargin{:});
+            matCell = td.groupElements(mat);
         end
         
         function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogGroupMeans(td, name, varargin)
@@ -1691,11 +1710,55 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
+        function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogGroupMeansRandomized(td, name, varargin)
+            % *Mat will be nConditions x T x nRandomized matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            % *Mat will be nConditions x T x nRandomized matrices
+            [mat, tvec] = td.getAnalogAsMatrix(name, p.Unmatched);
+            
+             % now do grouping and mean computation in loop for each iRandom
+            % so as to save memory
+            prog = ProgressBar(td.nRandomized, 'Computing mean over randomizations');
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), td.nRandomized));
+                
+            for iR = 1:td.nRandomized
+                prog.update(iR);
+                
+                % group for this randomization
+                dCell = td.groupElementsRandomizedSingle(iR, mat);
+                
+                for iC = 1:td.nConditions
+                    if ~isempty(dCell{iC})
+                        [meanMat(iC, :, iR), semMat(iC, :, iR), nTrialsMat(iC, :, iR), stdMat(iC, :, iR)] = ...
+                            nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                    end
+                end
+            end
+            prog.finish();
+        end
+        
+        function quantileMat = getAnalogGroupMeansRandomizedQuantiles(td, name, varargin)
+            p = inputParser();
+            p.addParameter('quantiles', [0.025 0.975], @isvector);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            meanMat = td.getAnalogGroupMeansRandomized(name, p.Unmatched);
+            
+            quantileMat = quantile(meanMat, p.Results.quantiles, 3); % nRandom along 3rd dimension for this
+        end
+        
         function [meanMat, semMat, tvec, stdMat, nTrialsMat, alignIdx] = getAnalogGroupMeansEachAlign(td, name, varargin)
             % *Mat will be nConditions x T x nChannels matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -1704,7 +1767,7 @@ classdef TrialDataConditionAlign < TrialData
             else
                 nC = 1;
             end
-            [dCell, tvec, alignIdx] = td.getAnalogAsMatrixGroupedEachAlign(name);
+            [dCell, tvec, alignIdx] = td.getAnalogAsMatrixGroupedEachAlign(name, p.Unmatched);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nC));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
@@ -1714,7 +1777,7 @@ classdef TrialDataConditionAlign < TrialData
             end 
         end
         
-         function [meanMat, semMat, tvec, nTrialsMat, stdMat] = ...
+        function [meanMat, semMat, tvec, nTrialsMat, stdMat] = ...
                  getAnalogMultiGroupMeans(td, nameCell, varargin)
              % *Mat will be nConditions x T x nChannels tensors
             import TrialDataUtilities.Data.nanMeanSemMinCount;
@@ -2493,6 +2556,10 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(td.getParam(name));
         end
         
+        function dCell = getParamGroupedRandomized(td, name)
+            dCell = td.groupElementsRandomized(td.getParam(name));
+        end
+        
         function values = getParamUniqueGrouped(td, name)
             vCell = td.getParamGrouped(name);
             values = cellfun(@getUnique, vCell, 'UniformOutput', false);
@@ -2507,7 +2574,6 @@ classdef TrialDataConditionAlign < TrialData
         
         function [meanMat, semMat, stdMat, nTrialsMat] = getParamGroupMeans(td, name, varargin)
             % get averaged parameter value within each group
-            
             % *Mat will be size(conditions) tensors
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
@@ -2518,6 +2584,25 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.getParamGrouped(name);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.conditionsSize));
             for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    [meanMat(iC), semMat(iC), nTrialsMat(iC), stdMat(iC)] = ...
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                end
+            end 
+        end
+        
+        function [meanMat, semMat, stdMat, nTrialsMat] = getParamGroupMeansRandomized(td, name, varargin)
+            % get averaged parameter value within each group
+            % *Mat will be size(conditions) x nRandomized tensors
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            dCell = td.getParamGroupedRandomized(name);
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.conditionsSize td.nRandomized]));
+            for iC = 1:numel(dCell)
                 if ~isempty(dCell{iC})
                     [meanMat(iC), semMat(iC), nTrialsMat(iC), stdMat(iC)] = ...
                         nanMeanSemMinCount(dCell{iC}, 1, minTrials);
@@ -2861,14 +2946,26 @@ classdef TrialDataConditionAlign < TrialData
             hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
+        function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = getSpikeBinnedCountsGroupedRandomized(td, unitName, varargin)
+            [countsMat, tvec, hasSpikes, tBinEdges] = td.getSpikeBinnedCounts(unitName, varargin{:});
+            countsGrouped = td.groupElementsRandomized(countsMat);
+            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
+        end
+        
         function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges, alignVec] = getSpikeBinnedCountsGroupedEachAlign(td, unitName, varargin)
             [countsMat, tvec, hasSpikes, tBinEdges, alignVec] = td.getSpikeBinnedCountsEachAlign(unitName, varargin{:});
             countsGrouped = td.groupElements(countsMat);
             hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
+        function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges, alignVec] = getSpikeBinnedCountsGroupedEachAlignRandomized(td, unitName, varargin)
+            [countsMat, tvec, hasSpikes, tBinEdges, alignVec] = td.getSpikeBinnedCountsEachAlign(unitName, varargin{:});
+            countsGrouped = td.groupElementsRandomized(countsMat);
+            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
+        end
+        
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, tBinEdges] = ...
-                getSpikeBinnedCountsMeanByGroup(td, varargin)
+                getSpikeBinnedCountsGroupMeans(td, varargin)
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
@@ -2912,7 +3009,7 @@ classdef TrialDataConditionAlign < TrialData
         end
              
         function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
-                getSpikeBinnedCountsMeanByGroupEachAlign(td, varargin)
+                getSpikeBinnedCountsGroupMeansEachAlign(td, varargin)
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
@@ -3052,7 +3149,7 @@ classdef TrialDataConditionAlign < TrialData
             tvecCell = cellvec(td.nAlign);
             hasSpikesMat = nan(td.nTrials, td.nAlign);
             for iA = 1:td.nAlign
-                [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA)] = td.useAlign(iA).getSpikeRateFilteredAsMatrix(unitName);
+                [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA)] = td.useAlign(iA).getSpikeRateFilteredAsMatrix(unitName, varargin{:});
             end
             
             [rates, alignVec] = TensorUtils.catWhich(2, ratesCell{:});
@@ -3067,10 +3164,23 @@ classdef TrialDataConditionAlign < TrialData
             hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
+        function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGroupedRandomized(td, unitName, varargin)
+            [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
+            rateCell = td.groupElementsRandomized(rateCell);
+            timeCell = td.groupElementsRandomized(timeCell);
+            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
+        end
+        
         function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGrouped(td, unitNames, varargin)
             [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
             rateCell = td.groupElements(rates);
             hasSpikesGrouped = td.groupElements(hasSpikes);
+        end
+        
+        function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGroupedRandomized(td, unitNames, varargin)
+            [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
+            rateCell = td.groupElementsRandomized(rates);
+            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
         end
         
         function [rateCell, tvec, hasSpikesGrouped, alignVec] = getSpikeRateFilteredAsMatrixGroupedEachAlign(td, unitName, varargin)
@@ -3079,9 +3189,16 @@ classdef TrialDataConditionAlign < TrialData
             hasSpikesGrouped = td.groupElements(hasSpikes);
         end
         
-        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
-                getSpikeRateFilteredMeanByGroup(td, varargin)
+        function [rateCell, tvec, hasSpikesGrouped, alignVec] = getSpikeRateFilteredAsMatrixGroupedRandomizedEachAlign(td, unitName, varargin)
+            [rates, tvec, hasSpikes, alignVec] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
+            rateCell = td.groupElementsRandomized(rates);
+            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
+        end
+        
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
+                getSpikeRateFilteredGroupMeans(td, varargin)
             % *Mat will be nConditions x T matrices
+            % if randomized, will be nConditions x T x nRandomized
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addRequired('unitNames', @(x) ischar(x) || iscellstr(x));
@@ -3091,6 +3208,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
+          
+            % these are to enable this function to support multiple roles
+            p.addParameter('eachAlign', false, @islogical);
             p.parse(varargin{:});
             unitNames = p.Results.unitNames;
             
@@ -3106,9 +3226,16 @@ classdef TrialDataConditionAlign < TrialData
                 minTrialFraction = p.Results.minTrialFraction;
             end
             
-            [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
-                'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
-            
+            % pick the right function to call
+            if p.Results.eachAlign
+                 [rateCell, tvec, hasSpikesGrouped, whichAlign] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
+                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+            else
+                [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
+                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+                whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
+            end
+
             % remove trials from each group that have no spikes
             if p.Results.removeZeroSpikeTrials
                 for iC = 1:td.nConditions
@@ -3126,17 +3253,70 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
-        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = ...
-                getSpikeRateFilteredMeanByGroupEachAlign(td, unitName, varargin)
-            % *Mat will be nConditions x T matrices
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
+                getSpikeRateFilteredGroupMeansEachAlign(td, unitName, varargin)
+            [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
+                td.getSpikeRateFilteredGroupMeans('eachAlign', true, varargin{:});
+        end
+        
+%             % *Mat will be nConditions x T matrices
+%             import TrialDataUtilities.Data.nanMeanSemMinCount;
+%             p = inputParser();
+%             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+%             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+%             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+%             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+%             p.addParameter('removeZeroSpikeTrials', true, @islogical);
+%             p.parse(varargin{:});
+%             
+%             if isempty(p.Results.minTrials)
+%                 minTrials = 1;
+%             else
+%                 minTrials = p.Results.minTrials;
+%             end
+%             
+%             if isempty(p.Results.minTrialFraction)
+%                 minTrialFraction = 0;
+%             else
+%                 minTrialFraction = p.Results.minTrialFraction;
+%             end
+%             
+%             [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
+%                 'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+%             
+%             % remove trials from each group that have no spikes
+%             if p.Results.removeZeroSpikeTrials
+%                 for iC = 1:td.nConditions
+%                     rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
+%                 end
+%             end
+%             
+%             % comute the means
+%             [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+%             for iC = 1:td.nConditions
+%                 if ~isempty(rateCell{iC})
+%                     [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
+%                         nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
+%                 end
+%             end
+        
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
+                getSpikeRateFilteredGroupMeansRandomized(td, unitNames, varargin)
+            % *Mat will be nConditions x T x nRandomized
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
+            p.addRequired('unitNames', @(x) ischar(x) || iscellstr(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
-            p.addParameter('removeZeroSpikeTrials', true, @islogical);
-            p.parse(varargin{:});
+            p.addParameter('removeZeroSpikeTrials', false, @islogical);
+          
+            % these are to enable this function to support multiple roles
+            p.addParameter('eachAlign', false, @islogical);
+            p.parse(unitNames, varargin{:});
+            unitNames = p.Results.unitNames;
             
             if isempty(p.Results.minTrials)
                 minTrials = 1;
@@ -3150,28 +3330,63 @@ classdef TrialDataConditionAlign < TrialData
                 minTrialFraction = p.Results.minTrialFraction;
             end
             
-            [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
-                'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+            % grab the data ungrouped
+            if ~p.Results.eachAlign
+                [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames,...
+                    'spikeFilter', p.Results.spikeFilter, 'timeDelta', p.Results.timeDelta);
+                whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
+            else
+                [rates, tvec, hasSpikes, whichAlign] = td.getSpikeRateFilteredAsMatrixEachAlign(unitNames, ...
+                    'spikeFilter', p.Results.spikeFilter, 'timeDelta', p.Results.timeDelta);
+            end
             
-            % remove trials from each group that have no spikes
-            if p.Results.removeZeroSpikeTrials
+            % now do grouping and mean computation in loop for each iRandom
+            % so as to save memory
+            prog = ProgressBar(td.nRandomized, 'Computing mean spike rate over randomizations');
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec), td.nRandomized));
+            
+            for iR = 1:td.nRandomized
+                prog.update(iR);
+                
+                % group for this randomization
+                [rateCell, hasSpikesGrouped] = td.groupElementsRandomizedSingle(iR, rates, hasSpikes);
+                
+                % remove trials from each group that have no spikes
+                if p.Results.removeZeroSpikeTrials
+                    for iC = 1:td.nConditions
+                        rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
+                    end
+                end
+
+                % compute the means
                 for iC = 1:td.nConditions
-                    rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
+                    if ~isempty(rateCell{iC})
+                        [psthMat(iC, :, iR), semMat(iC, :, iR), nTrialsMat(iC, :, iR), stdMat(iC, :, iR)] = ...
+                            nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
+                    end
                 end
             end
+            prog.finish();
+        end
+        
+        function quantilesByGroup = getSpikeRateFilteredGroupMeansRandomizedQuantiles(td, unitName, varargin) 
+            p = inputParser();
+            p.addParameter('quantiles', [0.025 0.975], @isvector);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            meanByGroup = td.getSpikeRateFilteredGroupMeansRandomized(unitName, p.Unmatched);
             
-            % comute the means
-            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
-            for iC = 1:td.nConditions
-                if ~isempty(rateCell{iC})
-                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
-                end
-            end
+            quantilesByGroup = quantile(meanByGroup, p.Results.quantiles, ndims(meanByGroup));
+        end
+        
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
+                getSpikeRateFilteredGroupMeansRandomizedEachAlign(td, varargin)
+            [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
+                td.getSpikeRateFilteredGroupMeansRandomized('eachAlign', true, varargin{:});
         end
             
         function [psthMat, tvec, semMat, stdMat, nTrialsMat] = getPSTH(td, varargin)
-            [psthMat, tvec, semMat, stdMat, nTrialsMat] = getSpikeRateFilteredMeanByGroup(td, varargin{:});
+            [psthMat, tvec, semMat, stdMat, nTrialsMat] = getSpikeRateFilteredGroupMeans(td, varargin{:});
         end
         
         function [snr, range, noise] = getSpikeRateFilteredSNR(td, varargin)
@@ -3190,14 +3405,32 @@ classdef TrialDataConditionAlign < TrialData
             timesCellofCells = td.groupElements(timesCell);
         end
         
+        function timesCellofCells = getSpikeTimesGroupedRandomized(td, unitName, includePadding)
+            if nargin < 3
+                includePadding = false;
+            end
+            timesCell = td.getSpikeTimes(unitName, includePadding);
+            timesCellofCells = td.groupElementsRandomized(timesCell);
+        end
+        
         function countsCell = getSpikeCountsGrouped(td, unitName)
             counts = td.getSpikeCounts(unitName);
             countsCell = td.groupElements(counts);
         end
         
+        function countsCell = getSpikeCountsGroupedRandomized(td, unitName)
+            counts = td.getSpikeCounts(unitName);
+            countsCell = td.groupElementsRandomized(counts);
+        end
+        
         function rateCell = getSpikeMeanRateGrouped(td, unitName, varargin)
             rates = td.getSpikeMeanRate(unitName, varargin{:});
             rateCell = td.groupElements(rates);
+        end
+        
+        function rateCell = getSpikeMeanRateGroupedRandomized(td, unitName, varargin)
+            rates = td.getSpikeMeanRate(unitName, varargin{:});
+            rateCell = td.groupElementsRandomized(rates);
         end
         
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName, varargin) 
@@ -3207,6 +3440,25 @@ classdef TrialDataConditionAlign < TrialData
             semByGroup = cellfun(@nansem, rateCell);
             stdByGroup = cellfun(@nanstd, rateCell);
             nByGroup = cellfun(@numel, rateCell);
+        end
+        
+        function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeansRandomized(td, unitName, varargin) 
+            rateCell = td.getSpikeMeanRateGroupedRandomized(unitName, varargin{:});
+            
+            meanByGroup = cellfun(@nanmean, rateCell);
+            semByGroup = cellfun(@nansem, rateCell);
+            stdByGroup = cellfun(@nanstd, rateCell);
+            nByGroup = cellfun(@numel, rateCell);
+        end
+        
+        function quantilesByGroup = getSpikeMeanRateGroupMeansRandomizedQuantiles(td, unitName, varargin) 
+            p = inputParser();
+            p.addParameter('quantiles', [0.025 0.975], @isvector);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            meanByGroup = td.getSpikeMeanRateGroupMeansRandomized(unitName, p.Unmatched);
+            
+            quantilesByGroup = quantile(meanByGroup, p.Results.quantiles, ndims(meanByGroup));
         end
         
         function plotTuningCurve(td, unitName, varargin)
@@ -3507,7 +3759,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
-            p.addParameter('showSem', false, @islogical); % equivalent to 'errorType', 'sem'
+            p.addParameter('showSem', true, @islogical); % equivalent to 'errorType', 'sem'
+            p.addParameter('showQuantiles', [], @(x) isempty(x) || isvector(x));
+            
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.KeepUnmatched = true;
@@ -3517,15 +3771,15 @@ classdef TrialDataConditionAlign < TrialData
 
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
-            [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
+            [meanMat, semMat, tvecCell, stdMat, timeMask] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getSpikeRateFilteredMeanByGroup(unitNames, ...
+                    td.useAlign(iAlign).getSpikeRateFilteredGroupMeans(unitNames, ...
                     'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
                     'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
             
-                [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
+                [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}', meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
                 tvecCell{iAlign} = tvecTemp';
@@ -3548,13 +3802,29 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
+            if ~isempty(p.Results.showQuantiles)
+                quantileData = cell(td.nAlign, 1);
+                for iAlign = 1:td.nAlign
+                    quantileData{iAlign} = td.useAlign(iAlign).getSpikeRateFilteredGroupMeansRandomizedQuantiles(unitNames, ...
+                        'quantiles', p.Results.showQuantiles, ...
+                        'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
+                        'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
+                        'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
+                    
+                    % apply same time slicing
+                    quantileData{iAlign} = quantileData{iAlign}(:, timeMask{iAlign}, :);
+                end
+            else
+                quantileData = [];
+            end
+            
             maskEmpty = cellfun(@isempty, tvecCell);
             if any(maskEmpty)
                 error('No valid time window found for alignment. Perhaps there are not enough trials with spikes in all of the conditions? Try lowering minTrials or setting removeZeroSpikeTrials to false.');
             end
             
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
-                'data', meanMat, 'dataError', errorMat, 'axh', axh, ...
+                'data', meanMat, 'dataError', errorMat, 'quantileData', quantileData, 'axh', axh, ...
                 'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'), ...
                 'quick', p.Results.quick, ...
                 p.Unmatched);
@@ -4543,7 +4813,9 @@ classdef TrialDataConditionAlign < TrialData
             
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar);
-            p.addParameter('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('showSem', true, @islogical);
+            p.addParameter('showQuantiles', [], @(x) isempty(x) || isvector(x));
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
@@ -4551,13 +4823,13 @@ classdef TrialDataConditionAlign < TrialData
 
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
-            [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
+            [meanMat, semMat, tvecCell, stdMat, timeMask] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getAnalogGroupMeans(name, 'minTrials', p.Results.minTrials, ...
                     'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                     'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt);     
-                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
+                [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
             end
@@ -4571,8 +4843,29 @@ classdef TrialDataConditionAlign < TrialData
                     errorMat = stdMat;
             end
             
+            if p.Results.showSem
+                errorMat = semMat;
+            end
+            
+            if ~isempty(p.Results.showQuantiles)
+                quantileData = cell(td.nAlign, 1);
+                for iAlign = 1:td.nAlign
+                    quantileData{iAlign} = td.useAlign(iAlign).getAnalogGroupMeansRandomizedQuantiles(name, ...
+                        'quantiles', p.Results.showQuantiles, ...
+                         'minTrials', p.Results.minTrials, ...
+                        'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
+                        'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt); 
+                    
+                    % apply same time slicing
+                    quantileData{iAlign} = quantileData{iAlign}(:, timeMask{iAlign}, :);
+                end
+            else
+                quantileData = [];
+            end
+            
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
+                'quantileData', quantileData, ...
                 'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(name), p.Unmatched);
         end
         
@@ -4775,10 +5068,14 @@ classdef TrialDataConditionAlign < TrialData
             %     vector, for nAlign == 1
             %     nAlign x 1 cell of ime vectors for each align 
             %
-            %  data, dataErrorY is either
+            %  data, dataError is either
             %     nConditions x T x D matrix 
             %     nAlign x 1 cell of nConditions x T x D matrices
             %
+            %  quantilesData is either
+            %      nConditions x T x nRandomized matrix 
+            %      nAlign x 1 cell of nConditions x T x nRandomized matrices
+            
             p = inputParser();
             p.addParameter('time', [], @(x) isvector(x) || iscell(x)); % for D == 1,2,3 (for marking)
             p.addParameter('data', {}, @(x) isnumeric(x) || iscell(x)); % for D == 1,2,3
@@ -4807,6 +5104,8 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('alpha', 1, @isscalar); % alpha for main traces
             p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
+            
+            p.addParameter('quantileData', [], @(x) isnumeric(x) || iscell(x));
             
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('markShowOnAxis', true, @islogical);
@@ -4863,6 +5162,7 @@ classdef TrialDataConditionAlign < TrialData
             
             data = p.Results.data;
             dataError = p.Results.dataError;
+            quantileData = p.Results.quantileData;
             time = p.Results.time;
             if isempty(data) || isempty(time)
                 error('Must provide data and time');
@@ -4875,13 +5175,14 @@ classdef TrialDataConditionAlign < TrialData
                     'Arguments must be nAlign x 1 cell or C x T x D matrices');
                 nAlignUsed = numel(time);
             else
-                assert(~iscell(time) && ~iscell(data) && (isEmpty(dataError) || ~iscell(dataError)), ...
+                assert(~iscell(time) && ~iscell(data) && (isEmpty(dataError) || ~iscell(dataError)) && (isEmpty(quantileData) || ~iscell(quantileData)), ...
                     'Arguments must be nAlign x 1 cell or C x T x D matrices');
                 nAlignUsed = 1;
                 
                 time = {time};
                 data = {data};
                 dataError = {dataError};
+                quantileData = {quantileData};
             end
               
             % check size of time/data cell contents and mask conditions if
@@ -4891,20 +5192,28 @@ classdef TrialDataConditionAlign < TrialData
                     % okay as is
                 elseif size(time{iA}, 1) == cd.nConditions
                     % needs to be masekd
-                    time{iA} = time{iA}(conditionIdx, :);
+                    time{iA} = time{iA}(conditionIdx, :, :);
                 end
                 if size(data{iA}, 1) == nConditionsUsed
                     % okay as is
                 elseif size(data{iA}, 1) == cd.nConditions
                     % needs to be masekd
-                    data{iA} = data{iA}(conditionIdx, :);
+                    data{iA} = data{iA}(conditionIdx, :, :);
                 end
                 if ~isempty(dataError)
                     if size(dataError{iA}, 1) == nConditionsUsed
                         % okay as is
                     elseif size(dataError{iA}, 1) == cd.nConditions
                         % needs to be masekd
-                        dataError{iA} = dataError{iA}(conditionIdx, :);
+                        dataError{iA} = dataError{iA}(conditionIdx, :, :);
+                    end
+                end
+                if ~isempty(quantileData)
+                    if size(quantileData{iA}, 1) == nConditionsUsed
+                        % okay as is
+                    elseif size(quantileData{iA}, 1) == cd.nConditions
+                        % needs to be masked
+                        quantileData{iA} = quantileData{iA}(conditionIdx, :, :);
                     end
                 end
             end
@@ -4924,6 +5233,9 @@ classdef TrialDataConditionAlign < TrialData
             assert(numel(data) == nAlignUsed, 'Number of alignments must match numel(data)');
             if ~isempty(dataError)
                 assert(numel(dataError) == nAlignUsed, 'Number of alignments must match numel(dataError)');
+            end
+            if ~isempty(quantileData)
+                assert(numel(quantileData) == nAlignUsed, 'Number of alignments must match numel(quantileData)');
             end
             assert(numel(alignIdx) == nAlignUsed, 'numel(time) must match numel(alignIdx)');
             
@@ -4952,22 +5264,34 @@ classdef TrialDataConditionAlign < TrialData
                     
                     if D == 1
                         tOffset = timeOffsetByAlign(iAlign);
+                        plotArgs = app(iCond).getPlotArgs();
+                            
+                        if ~isempty(quantileData)
+                            qmat = squeeze(quantileData{iAlign}(iCond, :, :)); % should be T by nQuantiles
+                            % plot quantiles first
+                            hQuant = plot(axh, tvec + tOffset + xOffset, qmat + yOffset, '-', ...
+                                'LineWidth', p.Results.lineWidth / 2, 'Parent', axh, ...
+                                plotArgs{:}, p.Results.plotOptions{:});
+                            TrialDataUtilities.Plotting.hideInLegend(hQuant);
+                        end
                         if plotErrorY
                             hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
                                 errmat, app(iCond).Color, 'axh', axh, ...
                                 'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false);
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
                         end
-                        if p.Results.alpha < 1
-                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
-                               'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
-                        else
-                            plotArgs = app(iCond).getPlotArgs();
+%                         if p.Results.alpha < 1
+%                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
+%                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+%                                'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
+%                         else
                             hData{iCond, iAlign} = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
-                        end
+                            if p.Results.alpha < 1
+                                TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
+                            end
+%                         end
 
                     elseif D == 2
                         if p.Results.alpha < 1
@@ -5100,5 +5424,137 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
         
+    % Axis randomization settings
+    methods 
+        % wipe out any randomization
+        function td = withoutRandomization(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            % restore original condition info, but don't flush randomized
+            td.conditionInfo = td.conditionInfo.noRandomization(varargin{:});
+            td = td.postUpdateConditionInfo(false);
+        end
         
+        function assertHasRandomizationSpecified(td)
+            assert(td.hasRandomizationSpecified, 'TrialData has no randomization active. Try .resampleTrialsWithinConditions');
+        end
+        
+        function td = withRandomized(td, idxRandom)
+            % make this TD instance act as a specific draw of the
+            % randomization, so as to visualize specific reshuffles,
+            % resamplings, etc.
+            % this affects data coming from the trial data instance itself,
+            % all methods below only affect the random data returned by
+            % methods ending in groupedRandomized
+            td.warnIfNoArgOut(nargout);
+            td.assertHasRandomizationSpecified();
+            if nargin < 2
+                idxRandom = 1;
+            end
+            % use conditionInfoRandomized's seed + (idxRandom-1)
+            % so as to match the results of random sampling
+            td.conditionInfo = td.conditionInfoRandomized.setRandomSeed(td.conditionInfoRandomized.randomSeed + idxRandom-1);
+            td = td.postUpdateConditionInfo(false);
+        end
+            
+        function td = setRandomSeed(td, seed)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.setRandomSeed(seed);
+        end
+        
+        function td = newRandomSeed(td, varargin)
+            % no args
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.newRandomSeed(varargin{:});
+        end
+        
+        function td = setRandomizedResampleTrialsWithinConditions(td, varargin)
+            % no args
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.resampleTrialsWithinConditions(varargin{:});
+        end
+        
+        function td = setRandomizedAxisNoRandomization(td, varargin)
+            % args: idxOrAttr
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.axisNoRandomization(varargin{:});
+        end
+                   
+        function td = setRandomizedAxisShuffle(td, varargin)
+            % args (idxOrAttr, replace)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.axisShuffle(varargin{:});
+        end
+
+        function td = setRandomizedAxisResampleFromSpecifiedValueListIndices(td, varargin)
+            % args: (axisIdxOrAttr, resampleFromIndices, replace) 
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.axisResampleFromSpecifiedValueListIndices(varargin{:});
+        end
+        
+        function td = axisResampleFromSpecifiedValues(td, varargin)
+            % args: (axisIdxOrAttr, resampleFromValueStructMatch, replace) 
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfoRandomized = td.conditionInfoRandomized.axisResampleFromSpecifiedValues(varargin{:});
+        end
+
+        function tf = get.hasRandomizationActive(td)
+            tf = td.conditionInfo.hasRandomization;
+        end
+        
+        function tf = get.hasRandomizationSpecified(td)
+            tf = td.conditionInfoRandomized.hasRandomization;
+        end
+        
+        function v = get.randomizationDescription(td)
+            v = td.conditionInfoRandomized.randomizationDescription;
+        end
+        
+        function td = setNumRandomized(td, v)
+            td.warnIfNoArgOut(nargout);
+            if v ~= td.nRandomized
+                td.randomizedListsByCondition = [];
+            end
+            td.nRandomized = v;
+        end
+        
+        function lists = buildRandomizedListsByCondition(td)
+            if ~td.hasRandomizationSpecified
+                lists = [];
+            else
+                lists = td.conditionInfoRandomized.generateMultipleRandomizedListByCondition(td.nRandomized, 'showProgress', true);
+                lists = reshape(lists, [td.conditionsSize td.nRandomized]); % make (conditionsSize) x nRandomized
+            end
+        end
+        
+        % given a cellvec or nmeric vector, group its elements according to
+        % a specific randomized list
+        function varargout = groupElementsRandomizedSingle(td, idxRandom, varargin)
+            assert(isscalar(idxRandom));
+            td.assertHasRandomizationSpecified();
+            lists = TensorUtils.selectAlongDimension(td.randomizedListsByCondition, ndims(td.randomizedListsByCondition), idxRandom, true); % squeeze result
+            varargout = cell(nargout, 1);
+            for i = 1:numel(varargin)
+                data = varargin{i};
+                assert(size(data,1) == td.nTrials, ...
+                    'Data must have size nTrials along 1st dimension');
+                varargout{i} = cellfun(@(idx) TensorUtils.selectAlongDimension(data, 1, idx, false), ...
+                    lists, 'UniformOutput', false);
+            end
+        end
+        
+        % given a cellvec or nmeric vector, group its elements according to
+        % a specific randomized list
+        function varargout = groupElementsRandomized(td, varargin)
+            td.assertHasRandomizationSpecified();
+            lists = td.randomizedListsByCondition;
+            varargout = cell(nargout, 1);
+            for i = 1:numel(varargin)
+                data = varargin{i};
+                assert(size(data,1) == td.nTrials, ...
+                    'Data must have size nTrials along 1st dimension');
+                varargout{i} = cellfun(@(idx) TensorUtils.selectAlongDimension(data, 1, idx, false), ...
+                    lists, 'UniformOutput', false);
+            end
+        end
+    end
 end

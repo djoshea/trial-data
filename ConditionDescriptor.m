@@ -53,6 +53,9 @@ classdef ConditionDescriptor
         % a short string summarizing the randomization applied to this
         % conditionDescriptor
         randomizationDescription
+        
+        % boolean determining whether there is any randomization
+        hasRandomization
     end
 
     properties
@@ -116,7 +119,7 @@ classdef ConditionDescriptor
                       % after building it, which resamples with replacement
                       % without changing condition labels.
 
-        randomSeed = 0;
+        randomSeed = 1;
         
         % scalar numeric seed initializing the RandStream which will generate shuffling or resampling along each axis
         % the persistence of this seed ensures that the randomization can reliably be repeated, but the results may change if anything
@@ -338,10 +341,10 @@ classdef ConditionDescriptor
                 tcprintf('inline', '  {bright blue}Sort: {purple}%s\n', strjoin(ci.attributeSortByList, ', '));
             end
             if ci.isResampledWithinConditions
-                tcprintf('inline', '  {bright red}Trials resampled within conditions\n');
+                tcprintf('inline', '  {bright red}Randomization active: {darkGray}(seed=%g) {none}Trials resampled within conditions\n', ci.randomSeed);
             end
             
-        end
+        end      
         
         function printOneLineDescription(ci)           
             if ci.nAxes == 0
@@ -822,7 +825,11 @@ classdef ConditionDescriptor
         end
     end
 
-    methods % Axis randomization related
+    methods % Axis randomization related        
+        function tf = get.hasRandomization(ci)
+            tf = any(ci.axisRandomizeModes ~= ci.AxisOriginal) || ci.isResampledWithinConditions;
+        end
+        
         function ci = setRandomSeed(ci, seed)
             ci.warnIfNoArgOut(nargout);
             ci.randomSeed = seed; 

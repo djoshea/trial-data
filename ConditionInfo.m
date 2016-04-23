@@ -330,6 +330,8 @@ classdef ConditionInfo < ConditionDescriptor
             p.addParameter('showProgress', true, @islogical);
             p.parse(varargin{:});
             
+            assert(ci.hasRandomization, 'CondtionInfo needs some kind of randomization applied');
+            
             N = p.Results.n;
             initialSeed = p.Results.initialSeed;
             showProgress = p.Results.showProgress;
