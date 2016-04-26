@@ -903,8 +903,11 @@ classdef AlignSummary
             allowedRange = p.Results.allowedRange;
             showRanges = p.Results.showRanges;
             
-            au = AutoAxis(p.Results.axh);
-            au.xUnits = as.timeUnitName;
+            quick = strcmp(style, 'quick');
+            if ~quick
+                au = AutoAxis(p.Results.axh);
+                au.xUnits = as.timeUnitName;
+            end
             
             % filter labels, intervals that overlap tMin : tMax
             labelInfo = as.labelInfo; %#ok<*PROP>
@@ -916,10 +919,15 @@ classdef AlignSummary
                 intervalInfo = intervalInfo([intervalInfo.stopTime] >= tMin & [intervalInfo.startTime] <= tMax);
             end
             
-            au.removeAutoAxisX();
-            au.removeAutoScaleBarX();
+            if ~quick
+                au.removeAutoAxisX();
+                au.removeAutoScaleBarX();
+            end
             
             switch style
+                case 'quick'
+                    xlabel(sprintf('Time from %s (%s)', as.alignDescriptor.zeroLabel, as.timeUnitName));
+                    
                 case 'auto'
                     au.addAutoAxisX();
                     xlabel(sprintf('Time from %s (%s)', as.alignDescriptor.zeroLabel, as.timeUnitName));
@@ -1023,9 +1031,11 @@ classdef AlignSummary
                     au.addAutoScaleBarX();
                     
             end
-            axis off;
-            au.update();
-            au.installCallbacks();      
+            if ~quick
+                axis off;
+                au.update();
+                au.installCallbacks();      
+            end
         end
 
 %         function drawOnTimeseries(as, data, tvec, varargin)

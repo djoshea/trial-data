@@ -12,6 +12,8 @@ classdef RectangularCausalSpikeFilter < ConvolutionSpikeFilter
     
     methods
         function sf = RectangularCausalSpikeFilter(varargin)
+            % params:
+            %   widthMs : [default 25]
             p = inputParser;
             p.addOptional('widthMs', 25, @isscalar);
             p.parse(varargin{:});

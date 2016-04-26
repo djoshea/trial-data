@@ -500,7 +500,7 @@ classdef TrialData
             p = inputParser();
             p.addParameter('figh', [], @(x) isempty(x) || ishandle(x));
             p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
-            p.KeepUnmatched = true;
+            p.KeepUnmatched = false;
             p.parse(varargin{:});
 
             if ~isempty(p.Results.axh)
@@ -2615,14 +2615,13 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
 
             p = inputParser;
-            p.addRequired('name', @ischar);
             p.addOptional('values', '', @(x) true);
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.addParameter('like', '', @ischar);
             p.KeepUnmatched = true;
-            p.parse(name, varargin{:});
+            p.parse(varargin{:});
             
-            name = p.Results.name;
+            %name = p.Results.name;
             values = p.Results.values;
 
 %             if td.hasChannel(name)
@@ -2912,7 +2911,7 @@ classdef TrialData
             end
             
             values = td.getParamNBack(name, n);
-            td = td.addParam(as, 'like', name, 'values', values);
+            td = td.addParam(as, values, 'like', name);
         end
     end
 

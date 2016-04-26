@@ -2505,6 +2505,152 @@ classdef PopulationTrajectorySet
             c.basisInvalidCause = cause;
         end
         
+        % old version that duplicates things already in trial data
+%         function buildDataByTrial(pset)
+%             % stores dataByTrial, alignValidByTrial, tMinByTrial, and tMaxByTrial in odc
+%             % This method fetches the aligned data for EVERY trial in 
+%             % each data source, for each alignment. It does NOT consider
+%             % the condition grouping, allowing this to be handled later.
+%             % It stores this data as a matrix, whose time vector is given
+%             % by the widest time vector along any trial. Missing samples in
+%             % this matrix are NaNs.
+%             
+%             if pset.dataSourceManual
+%                 return;
+%             end
+%             
+%             [dataByTrial, tMinByTrial, tMaxByTrial, alignValidByTrial] = ...
+%                 deal(cell(pset.nBases, pset.nAlign));
+%             
+%             [tMinForDataByTrial, tMaxForDataByTrial] = deal(nan(pset.nBases, pset.nAlign));
+%            
+%             % alignSummary instances are built by dataSource, so the
+%             % basis to alignSummary lookup is the same as the basis to dataSource lookup
+% %             basisAlignSummaryLookup = pset.basisDataSourceIdx;
+% %             alignSummaryData = cell(pset.nDataSources, pset.nAlign);
+%             
+%             dataSourcesByBasis = pset.dataSources(pset.basisDataSourceIdx);
+%             basisDataSourceChannelNames = pset.basisDataSourceChannelNames; %#ok<*PROP>
+%             nAlign = pset.nAlign;
+%             nBases = pset.nBases;
+%             timeDelta = pset.timeDelta;
+%             spikeFilter = pset.spikeFilter;
+%             
+%             isSpikeChannel = false(pset.nBases, 1);
+%             
+%             [dataCell, timeCell, timeInfoCell, unitsPerSecondCell] = deal(cell(pset.nBases, pset.nAlign));
+%             
+%             prog = ProgressBar(pset.nBases, 'Extracting aligned data by basis');
+%             for iBasis = 1:nBases    
+%                 prog.update(iBasis);
+%                 % request the specified aligned analog channel from the
+%                 % specified data source.spikeFilter
+%                 src = dataSourcesByBasis{iBasis};
+%                 chName = basisDataSourceChannelNames{iBasis};
+%                 
+%                 % unapply the condition descriptor so that we can grab
+%                 % all trials in this call, even the ones that would be
+%                 % marked invalid by this condition info. Manually
+%                 % invalid trials will still not be considered.
+%                 src = src.resetConditionInfo();
+%                 
+%                 for iAlign = 1:nAlign
+%                     % mark this align as active
+%                     src = src.useAlign(iAlign);
+% 
+%                     % currently will request either analog trials or
+%                     % filtered spike rates channel
+%                     if src.hasAnalogChannel(chName)
+%                         [dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}] = src.getAnalog(chName);
+%                         isSpikeChannel(iBasis) = false;
+%                         
+%                     elseif src.hasSpikeChannel(chName)
+%                         %src = src.padForSpikeFilter(spikeFilter); % should have been done in applyAlignInfoSet already
+%                         dataCell{iBasis, iAlign} = src.getSpikeTimes(chName, true); % include padding
+%                         timeInfoCell{iBasis, iAlign} = src.alignInfoActive.timeInfo;
+%                         unitsPerSecondCell{iBasis, iAlign} = src.timeUnitsPerSecond;
+%                         isSpikeChannel(iBasis) = true;
+%                     else
+%                         error('Unknown channel type');
+%                     end
+%                     
+%                     % essential that we use computedValid here since .valid
+%                     % will also reflect trials which are invalid based on
+%                     % the current conditionInfo, which we don't want to
+%                     % consider here.
+%                     alignValidByTrial{iBasis, iAlign} = src.alignInfoActive.computedValid;
+%                     
+%                     % also store the precise time starts and stops for EACH
+%                     % trial that comprises that matrix. Essential that all
+%                     % padding be done to src before this call to ensure
+%                     % that the tvec returned above matches these numbers
+%                     [tMinByTrial{iBasis, iAlign}, ...
+%                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
+%                 end
+%             end
+%             prog.finish();
+%                
+%             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
+%             
+%             for iBasis = 1:nBases
+%                 prog.update(iBasis);
+%                 for iAlign = 1:nAlign
+%                     if ~isSpikeChannel(iBasis)
+%                         % from TDCA.getAnalogAsMatrix
+%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+%                             TrialDataUtilies.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
+%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
+%                     
+%                     else
+%                         % from TDCA.getSpikeRateFilteredAsMatrix
+%                         
+%                         % convert to .zero relative times since that's what spikeCell
+%                         % will be in (when called in this class)
+%                         timeInfo = timeInfoCell{iBasis, iAlign};
+%                         
+%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+%                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
+%                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
+%                             unitsPerSecondCell{iBasis, iAlign}, ...
+%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
+%                     end
+%                     
+%                     % store the time limits used in the time vector for 
+%                     % the dataByTrial{..} matrix
+%                     tMinForDataByTrial(iBasis, iAlign) = min(tvec);
+%                     tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
+%                  
+%                     % bring trial start stop in within the limits of tvec,
+%                     % to deal with any rounding issues
+%                     tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
+%                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
+%                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
+%                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
+%                  
+% %                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
+% %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
+% %                         'Time vector returned by TrialData has invalid limits');
+%                 end
+%             end
+%             prog.finish();            
+%             
+%             % apply translation / normalization to data
+%             if ~isempty(pset.translationNormalization)
+%                 dataByTrial = pset.translationNormalization.applyTranslationNormalizationToData(dataByTrial);
+%             end
+%             
+%             % store the results in the odc without copying
+%             c = pset.odc;
+% %             c.alignSummaryData = alignSummaryData;
+% %             c.basisAlignSummaryLookup = basisAlignSummaryLookup;
+%             c.dataByTrial = dataByTrial;
+%             c.tMinForDataByTrial = tMinForDataByTrial;
+%             c.tMaxForDataByTrial = tMaxForDataByTrial;
+%             c.alignValidByTrial = alignValidByTrial;
+%             c.tMinByTrial = tMinByTrial;
+%             c.tMaxByTrial = tMaxByTrial;
+%         end
+        
         function buildDataByTrial(pset)
             % stores dataByTrial, alignValidByTrial, tMinByTrial, and tMaxByTrial in odc
             % This method fetches the aligned data for EVERY trial in 
@@ -2598,7 +2744,7 @@ classdef PopulationTrajectorySet
                         % from TDCA.getAnalogAsMatrix
                         [dataByTrial{iBasis, iAlign}, tvec] = ...
                             TrialDataUtilies.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
-                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolate', true);
+                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
                     
                     else
                         % from TDCA.getSpikeRateFilteredAsMatrix
@@ -2611,7 +2757,7 @@ classdef PopulationTrajectorySet
                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
                             unitsPerSecondCell{iBasis, iAlign}, ...
-                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolate', true);
+                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
                     end
                     
                     % store the time limits used in the time vector for 

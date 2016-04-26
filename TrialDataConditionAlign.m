@@ -662,7 +662,11 @@ classdef TrialDataConditionAlign < TrialData
             % align descriptor within
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.selectTrials(mask);
-            td.conditionInfoRandomized = td.conditionInfoRandomized.selectTrials(mask);
+            if ~isempty(td.odc.conditionInfoRandomized)
+                % only slice conditionInfoRandomized if it hasn't already
+                % been built on the fly
+                td.conditionInfoRandomized = td.conditionInfoRandomized.selectTrials(mask);
+            end
             for i = 1:td.nAlign
                 td.alignInfoSet{i} = td.alignInfoSet{i}.selectTrials(mask);
             end
@@ -3053,6 +3057,9 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function plotSpikeBinBoundaries(td, unitName, varargin)
+            % utility function for showing raster with superimposed spike
+            % bin boundaries for debugging bin widths and bin alignment
+            % mode
             p = inputParser;
             p.addParameter('binWidthMs', 1, @isscalar);
             p.addParameter('binAlignmentMode', SpikeBinAlignmentMode.Causal, @(x) isa(x, 'SpikeBinAlignmentMode'));
@@ -3196,7 +3203,7 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
-                getSpikeRateFilteredGroupMeans(td, varargin)
+                getSpikeRateFilteredGroupMeans(td, unitNames, varargin)
             % *Mat will be nConditions x T matrices
             % if randomized, will be nConditions x T x nRandomized
             import TrialDataUtilities.Data.nanMeanSemMinCount;
@@ -3211,7 +3218,7 @@ classdef TrialDataConditionAlign < TrialData
           
             % these are to enable this function to support multiple roles
             p.addParameter('eachAlign', false, @islogical);
-            p.parse(varargin{:});
+            p.parse(unitNames, varargin{:});
             unitNames = p.Results.unitNames;
             
             if isempty(p.Results.minTrials)
@@ -3228,7 +3235,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % pick the right function to call
             if p.Results.eachAlign
-                 [rateCell, tvec, hasSpikesGrouped, whichAlign] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
+                 [rateCell, tvec, hasSpikesGrouped, whichAlign] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitNames, ...
                     'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
             else
                 [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
@@ -3256,7 +3263,31 @@ classdef TrialDataConditionAlign < TrialData
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
                 getSpikeRateFilteredGroupMeansEachAlign(td, unitName, varargin)
             [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
-                td.getSpikeRateFilteredGroupMeans('eachAlign', true, varargin{:});
+                td.getSpikeRateFilteredGroupMeans(unitName, 'eachAlign', true, varargin{:});
+        end
+        
+                
+        function [snr, range, noise]  = getSpikeChannelSNR(td, unitName, varargin)
+            % options same as getSpikeRateFilteredGroupMeansEachAlign
+            [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, varargin{:});
+            
+            noise = nanmax(semMat(:));
+            range = nanmax(psthMat(:)) - nanmin(psthMat(:));
+            snr = range / noise;
+        end
+        
+        function tbl = getSpikeChannelSNRTable(td, varargin)
+            units = td.listSpikeChannels();
+            nUnits = numel(units);
+            
+            prog = ProgressBar(nUnits, 'Computing SNR');
+            for iU = 1:nUnits  
+                prog.update(iU, 'Computing SNR for %s', units{iU});
+                [s(iU).snr, s(iU).range, s(iU).noise] = td.getSpikeChannelSNR(units{iU}, varargin{:}); %#ok<AGROW>
+            end
+            prog.finish();
+            
+            tbl = struct2table(s, 'RowNames', units, 'AsArray', true); 
         end
         
 %             % *Mat will be nConditions x T matrices
@@ -3881,6 +3912,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeWaveformScaleHeight', 1, @isscalar);
             p.addParameter('spikeWaveformScaleTime', 1, @isscalar);
             
+            p.addParameter('quick', true, @islogical);
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -3992,57 +4025,59 @@ classdef TrialDataConditionAlign < TrialData
 %                     lastTrialCount = trialCounts(iC);
                 end
             end
+            yCentersByCondition = mean(yLimsByCondition, 1)';
 
-            % draw marks and intervals on each raster
-            if p.Results.annotateAboveEachCondition
-                if p.Results.annotateUsingFirstTrialEachCondition
-                    % draw first trial's marks and intervals above the
-                    % spikes for that condition. First trial is used when
-                    % only the gist of the marks/intervals is required and
-                    % is better seen from an individual trial rather than
-                    % the average
+            if ~p.Results.quick
+                % draw marks and intervals on each raster
+                if p.Results.annotateAboveEachCondition
+                    if p.Results.annotateUsingFirstTrialEachCondition
+                        % draw first trial's marks and intervals above the
+                        % spikes for that condition. First trial is used when
+                        % only the gist of the marks/intervals is required and
+                        % is better seen from an individual trial rather than
+                        % the average
+                        for iAlign = 1:nAlignUsed
+                            idxAlign = alignIdx(iAlign);
+                            for iCond = 1:nConditionsUsed
+                                if isempty(listByCondition{iCond}(listByConditionMask{iCond}))
+                                    continue; 
+                                end
+                                % use first trial to draw marks and intervals
+                                % on
+                                firstTrialIdx = find(listByConditionMask{iCond}, 1);
+                                td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}(firstTrialIdx), ...
+                                    'stopByTrial', stopData{iAlign, iCond}(firstTrialIdx), ...
+                                    'trialIdx', listByCondition{iCond}(firstTrialIdx), ...
+                                    'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
+                                    'yOffsetTop', yOffsetByCondition(iCond) + p.Results.annotationHeight + 1, ...
+                                    'tickHeight', p.Results.annotationHeight, ...
+                                    'intervalMinWidth', p.Results.intervalMinWidth, ...
+                                    'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
+                                    'markAlpha', p.Results.markAlpha, 'markTickWidth', p.Results.markTickWidth);
+                            end
+                        end
+                    else
+                        error('Not yet implemented');
+                    end
+                else
+                    % draw marks and intervals on each trial
                     for iAlign = 1:nAlignUsed
                         idxAlign = alignIdx(iAlign);
                         for iCond = 1:nConditionsUsed
-                            if isempty(listByCondition{iCond}(listByConditionMask{iCond}))
-                                continue; 
-                            end
-                            % use first trial to draw marks and intervals
-                            % on
-                            firstTrialIdx = find(listByConditionMask{iCond}, 1);
-                            td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}(firstTrialIdx), ...
-                                'stopByTrial', stopData{iAlign, iCond}(firstTrialIdx), ...
-                                'trialIdx', listByCondition{iCond}(firstTrialIdx), ...
+                            if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
+                            td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}(listByConditionMask{iCond}), ...
+                                'stopByTrial', stopData{iAlign, iCond}(listByConditionMask{iCond}), ...
+                                'trialIdx', listByCondition{iCond}(listByConditionMask{iCond}), ...
                                 'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
-                                'yOffsetTop', yOffsetByCondition(iCond) + p.Results.annotationHeight + 1, ...
-                                'tickHeight', p.Results.annotationHeight, ...
+                                'yOffsetTop', yOffsetByCondition(iCond), ...
                                 'intervalMinWidth', p.Results.intervalMinWidth, ...
                                 'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
+                                'shadeStartStopInterval', p.Results.shadeValidIntervals, ...
                                 'markAlpha', p.Results.markAlpha, 'markTickWidth', p.Results.markTickWidth);
                         end
                     end
-                else
-                    error('Not yet implemented');
-                end
-            else
-                % draw marks and intervals on each trial
-                for iAlign = 1:nAlignUsed
-                    idxAlign = alignIdx(iAlign);
-                    for iCond = 1:nConditionsUsed
-                        if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
-                        td.alignInfoSet{idxAlign}.drawOnRasterByTrial('startByTrial', startData{iAlign, iCond}(listByConditionMask{iCond}), ...
-                            'stopByTrial', stopData{iAlign, iCond}(listByConditionMask{iCond}), ...
-                            'trialIdx', listByCondition{iCond}(listByConditionMask{iCond}), ...
-                            'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
-                            'yOffsetTop', yOffsetByCondition(iCond), ...
-                            'intervalMinWidth', p.Results.intervalMinWidth, ...
-                            'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
-                            'shadeStartStopInterval', p.Results.shadeValidIntervals, ...
-                            'markAlpha', p.Results.markAlpha, 'markTickWidth', p.Results.markTickWidth);
-                    end
                 end
             end
-            %set(gcf, 'Renderer', 'painters');
             
             % if we're drawing waveforms, figure out the global scale and
             % offset so that fit within a unit height row
@@ -4105,14 +4140,21 @@ classdef TrialDataConditionAlign < TrialData
                 conditionNames = td.conditionNamesMultiline(conditionIdx);
             end
             
-            % only include conditions with at least 1 trial
-            mask = trialCounts(conditionIdx) > 0;
-            au = AutoAxis(axh);
-            au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
-                conditionNames(mask), 'color', colors(mask, :));
-            
+            if ~p.Results.quick
+                % only include conditions with at least 1 trial
+                mask = trialCounts(conditionIdx) > 0;
+                au = AutoAxis(axh);
+                au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
+                    conditionNames(mask), 'color', colors(mask, :));
+            else
+                set(gca, 'YTick', flipud(yCentersByCondition), 'YTickLabels', flipud(conditionNames));
+            end
+                
             % setup time axis markers
-            if p.Results.annotateAboveEachCondition
+            if p.Results.quick
+                td.alignSummarySet{1}.setupTimeAutoAxis('which', 'x', ...
+                    'style', 'quick');
+            elseif p.Results.annotateAboveEachCondition
                 if iAlign == nAlignUsed
                     % just use horizontal scale bar
                     au = AutoAxis(axh);
@@ -4133,11 +4175,14 @@ classdef TrialDataConditionAlign < TrialData
             TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitName);
             
             axis(axh, 'tight');
-            au = AutoAxis(axh);
-            au.axisMarginLeft = p.Results.axisMarginLeft; % make room for left hand side labels
-            axis(axh, 'off');
-            au.update();
-            
+            if ~p.Results.quick
+                au = AutoAxis(axh);
+                au.axisMarginLeft = p.Results.axisMarginLeft; % make room for left hand side labels
+                axis(axh, 'off');
+                au.update();
+            else
+                box(axh, 'off');
+            end
             hold(axh, 'off');
         end
     end
