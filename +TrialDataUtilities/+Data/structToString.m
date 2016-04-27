@@ -5,6 +5,7 @@ function str = structToString(s, varargin)
     p.addParameter('fieldNameSubstitutions', struct(), @isstruct); % for includeFieldNames = true or useFieldNameForBoolean, if a field is set, use that field's value as the string instead of the field name itself
     p.addParameter('useFieldNameForBoolean', true, @islogical); % if the value is true/false, then use the attribute name or ''
     p.addParameter('suffixByField', struct(), @isstruct);
+    p.addParameter('logicalNotPrefix', 'Not ', @ischar);
     p.parse(varargin{:});
     
     separator = p.Results.separator;
@@ -46,7 +47,7 @@ function str = structToString(s, varargin)
             if v
                 str = [fldSub, suffix];
             else
-                str = ['~', fldSub, suffix];
+                str = [p.Results.logicalNotPrefix, fldSub, suffix];
             end
         elseif isempty(v)
             str = [prefix '[]'];

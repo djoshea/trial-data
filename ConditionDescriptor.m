@@ -2093,6 +2093,7 @@ classdef ConditionDescriptor
             p.addParameter('separator', ' ', @ischar);
             p.addParameter('short', false, @islogical);
             p.addParameter('includeUnits', true, @islogical);
+            p.addParameter('logicalNotPrefix', 'Not ', @ischar);
             p.parse(varargin{:});
            
             separator = p.Results.separator;
@@ -2141,7 +2142,8 @@ classdef ConditionDescriptor
                 end
                 
                 strCell{iX} = arrayfun(@(v) TrialDataUtilities.Data.structToString(v, ...
-                    separator, 'includeFieldNames', ~shortNames, 'fieldNameSubstitutions', displayAsLookup,  'suffixByField', unitsLookup), ...
+                    separator, 'includeFieldNames', ~shortNames, 'fieldNameSubstitutions', displayAsLookup,  'suffixByField', unitsLookup, ...
+                    'logicalNotPrefix', p.Results.logicalNotPrefix), ...
                     makecol(valueLists{iX}), ...
                    'UniformOutput', false);
 
