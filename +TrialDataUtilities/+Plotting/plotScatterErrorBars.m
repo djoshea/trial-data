@@ -1,4 +1,4 @@
-function h = plotScatterErrorBars(xData, yData, varargin)
+function [hPoints, hError] = plotScatterErrorBars(xData, yData, varargin)
 
 iscolor = @(x) ischar(x) || (isnumeric(x) && isvector(x) && numel(x) == 3);
 p = inputParser();
@@ -13,11 +13,11 @@ p.addParameter('xConfLow', [], @(x) true);
 p.addParameter('yConfLow', [], @(x) true);
 
 p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
-p.addParameter('edgeColor', 'w', iscolor);
+p.addParameter('edgeColor', 'none', iscolor);
 p.addParameter('edgeAlpha', 0.6, @isscalar);
 p.addParameter('color', [0.1 0.1 0.1], @(x) isempty(x) || iscolor(x));
 p.addParameter('alpha', 0.8, @isscalar);
-p.addParameter('markerSize', 5, @isscalar);
+p.addParameter('markerSize', 3, @isscalar);
 p.addParameter('errorLineWidth', 1, @isscalar);
 p.addParameter('errorLineAlpha', 0.8, @isscalar);
 p.addParameter('errorLineColor', [], @(x) isempty(x) || iscolor(x));
@@ -65,16 +65,17 @@ else
 end
 
 hold(axh, 'on');
-h.errorLines = line(xLine, yLine, 'LineWidth', p.Results.errorLineWidth, ...
+hError = line(xLine, yLine, 'LineWidth', p.Results.errorLineWidth, ...
     'Color', errorLineColor, 'Parent', axh);
-SaveFigure.setLineOpacity(h.errorLines, p.Results.errorLineAlpha);
+TrialDataUtilities.Plotting.setLineOpacity(hError, p.Results.errorLineAlpha);
+TrialDataUtilities.Plotting.hideInLegend(hError);
 
 % draw points on top
-h.points = plot(xData, yData, 'o', 'Parent', axh, ...
+hPoints = plot(xData, yData, 'o', 'Parent', axh, ...
     'MarkerSize', p.Results.markerSize, ...
     'MarkerFaceColor', p.Results.color, ...
     'MarkerEdgeColor', p.Results.edgeColor);
-SaveFigure.setMarkerOpacity(h.points, p.Results.alpha, p.Results.edgeAlpha);
+TrialDataUtilities.Plotting.setMarkerOpacity(hPoints, p.Results.alpha, p.Results.edgeAlpha);
 
 
 end

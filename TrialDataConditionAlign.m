@@ -3912,7 +3912,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeWaveformScaleHeight', 1, @isscalar);
             p.addParameter('spikeWaveformScaleTime', 1, @isscalar);
             
-            p.addParameter('quick', true, @islogical);
+            p.addParameter('quick', false, @islogical);
             
             p.KeepUnmatched = true;
             p.parse(varargin{:});
