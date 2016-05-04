@@ -762,9 +762,19 @@ classdef TrialData
              
              td = td.selectTrials(maskFull);
         end
+        
+       function td = markTrialsPermanentlyInvalid(td, mask, reason, varargin)
+            p = inputParser();
+            p.addParameter('validOnly', true, @islogical);  % if false, mark trial invalid even if its not currently valid
+            p.parse(varargin{:});
 
-        function td = markTrialsInvalid(td, mask, reason)
             td.warnIfNoArgOut(nargout);
+
+            mask = makecol(TensorUtils.vectorIndicesToMask(mask, td.nTrials));
+            if p.Results.validOnly
+                mask = mask & td.valid;
+            end
+
             td.manualValid(mask) = false;
             if nargin > 2
                 assert(ischar(reason));
@@ -776,12 +786,12 @@ classdef TrialData
             td = td.invalidateValid();
         end
         
-        function td = markValidTrialsInvalid(td, reason)
+        function td = markValidTrialsPermanentlyInvalid(td, reason)
             td.warnIfNoArgOut(nargout);
             if nargin < 2
                 reason = '';
             end
-            td = td.markTrialsInvalid(td.valid, reason);
+            td = td.markTrialsPermanentlyInvalid(td.valid, reason, 'validOnly', true);
         end 
         
         function td = setManualValidTo(td, mask)
@@ -2751,6 +2761,11 @@ classdef TrialData
             cd = td.channelDescriptorsByName.(name);
             values = td.getParamRaw(name);
             values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
+        end
+
+        function values = getParamValid(td, name)
+            values = td.getParam(name);
+            values = values(td.valid);
         end
         
         % return nTrials x nParams cell of raw values
