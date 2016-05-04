@@ -798,6 +798,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = reset(td)
             td.warnIfNoArgOut(nargout);
+            td = reset@TrialData(td); % important to clear temporarily invalid
             td = td.resetConditionInfo();
             td = td.unalign();
         end
@@ -924,6 +925,11 @@ classdef TrialDataConditionAlign < TrialData
             td = td.addAttribute(varargin{1});
             td.conditionInfo = td.conditionInfo.binAttribute(varargin{:});
             td = td.postUpdateConditionInfo();
+        end
+
+        function td = filterRange(td, name, range)
+            td.warnIfNoArgOut(nargout);
+            td = td.binAttribute(name, range);
         end
             
         function td = binAttributeUniform(td, varargin)
