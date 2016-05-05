@@ -47,6 +47,8 @@ classdef TrialData
     properties(Dependent)
         valid
         invalidCause % cellstr of explanations
+        
+        permanentlyInvalid
     end
 
     % Convenience dependent properties
@@ -710,6 +712,10 @@ classdef TrialData
             nTrials = nnz(~td.getManualValid);
         end
         
+        function v = get.permanentlyInvalid(td)
+            v = ~td.getManualValid;
+        end
+        
         function nTrials = get.nTrialsValid(td)
             nTrials = nnz(td.valid);
         end
@@ -898,9 +904,7 @@ classdef TrialData
                 for iT = 1:td.nTrials
                     if ~valid(iT)
                         if isempty(cause{iT})
-                            cause{iT} = '(temporary) marked invalid temporarily';
-                        else
-                            cause{iT} = ['(temporary) ' cause{iT}];
+                            cause{iT} = 'marked invalid temporarily';
                         end
                     end
                 end
