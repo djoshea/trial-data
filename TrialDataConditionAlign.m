@@ -75,6 +75,7 @@ classdef TrialDataConditionAlign < TrialData
         hasRandomizationActive
         hasRandomizationSpecified
         randomizationDescription
+        randomSeed % use setRandomSeed
     end
     
     % Simple dependent properties
@@ -182,6 +183,10 @@ classdef TrialDataConditionAlign < TrialData
             td.odc = td.odc.copy();
             td.odc.conditionInfoRandomized = v;
         end
+        
+        function v = get.randomSeed(td)
+            v = td.conditionInfoRandomized.randomSeed;
+        end
     end
     
     % build* methods for properties stored in odc
@@ -254,17 +259,18 @@ classdef TrialDataConditionAlign < TrialData
             
             % invalidated temporarily
             tmask = ~tempValid & ~explained;
-            cause(tmask) = tempCause(tmask);
+            cause(tmask) = cellfun(@(s) ['(temporary) ' tempCause(tmask)], ...
+                tempCause(tmask), 'UniformOutput', false);
             
             % invalid by condition info
             cmask = ~td.conditionInfo.computedValid & ~explained;
-            cause(cmask) = cellfun(@(s) ['ConditionInfo: ' s], ...
+            cause(cmask) = cellfun(@(s) ['(temporary) ConditionInfo: ' s], ...
                 td.conditionInfo.invalidCause(cmask), 'UniformOutput', false);
             
             % invalid by each align info
             for iA = 1:td.nAlign
                 amask = ~td.alignInfoSet{iA}.computedValid & ~explained;
-                cause(amask) = cellfun(@(s) ['AlignInfo ', num2str(iA), ': ', s], ...
+                cause(amask) = cellfun(@(s) ['(temporary) AlignInfo ', num2str(iA), ': ', s], ...
                     td.alignInfoSet{iA}.invalidCause(amask), 'UniformOutput', false);
             end
             
@@ -373,7 +379,7 @@ classdef TrialDataConditionAlign < TrialData
             
             td.conditionInfo.printDescription();
             if td.hasRandomizationSpecified
-                tcprintf('inline', '  {bright blue}Randomization via: {none}%d samples, %s\n', td.nRandomized, td.randomizationDescription);
+                tcprintf('inline', '  {bright blue}Randomization via: {none}%d samples, %s, seed %d\n', td.nRandomized, td.randomizationDescription, td.randomSeed);
             end
             for iA = 1:td.nAlign
                 td.alignInfoSet{iA}.printDescription('active', td.alignInfoActiveIdx == iA);
@@ -3797,7 +3803,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
             p.addParameter('showSem', true, @islogical); % equivalent to 'errorType', 'sem'
-            p.addParameter('showQuantiles', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('showRandomizedQuantiles', [], @(x) isempty(x) || isvector(x));
             
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
@@ -3839,11 +3845,11 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            if ~isempty(p.Results.showQuantiles)
+            if ~isempty(p.Results.showRandomizedQuantiles)
                 quantileData = cell(td.nAlign, 1);
                 for iAlign = 1:td.nAlign
                     quantileData{iAlign} = td.useAlign(iAlign).getSpikeRateFilteredGroupMeansRandomizedQuantiles(unitNames, ...
-                        'quantiles', p.Results.showQuantiles, ...
+                        'quantiles', p.Results.showRandomizedQuantiles, ...
                         'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
                         'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
                         'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
@@ -4866,7 +4872,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', 1, @isscalar);
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
             p.addParameter('showSem', true, @islogical);
-            p.addParameter('showQuantiles', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('showRandomizedQuantiles', [], @(x) isempty(x) || isvector(x));
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
@@ -4898,11 +4904,11 @@ classdef TrialDataConditionAlign < TrialData
                 errorMat = semMat;
             end
             
-            if ~isempty(p.Results.showQuantiles)
+            if ~isempty(p.Results.showRandomizedQuantiles)
                 quantileData = cell(td.nAlign, 1);
                 for iAlign = 1:td.nAlign
                     quantileData{iAlign} = td.useAlign(iAlign).getAnalogGroupMeansRandomizedQuantiles(name, ...
-                        'quantiles', p.Results.showQuantiles, ...
+                        'quantiles', p.Results.showRandomizedQuantiles, ...
                          'minTrials', p.Results.minTrials, ...
                         'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                         'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt); 
