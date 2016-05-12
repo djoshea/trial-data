@@ -9,6 +9,8 @@ function setupAxisForChannel(channelDescriptor, varargin)
     which = p.Results.which;
     axh = p.Results.axh;
     
+    hold(axh, 'on');
+    
     if isa(channelDescriptor, 'ChannelDescriptor')
         label = channelDescriptor.getAxisLabelPrimary();
         units = channelDescriptor.unitsPrimary;
@@ -89,5 +91,5 @@ function setupAxisForChannel(channelDescriptor, varargin)
             end
     end
     
-    au.update();
+%     au.update();
 end

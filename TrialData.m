@@ -530,6 +530,7 @@ classdef TrialData
                 error('Please provide at least 1 argument');
             end
             tdCombined = varargin{1};
+            assert(isa(tdCombined, 'TrialData'), 'Individual arguments must be TrialData instances');
             if numel(varargin) > 1
                 % check that channels  in common are all equivalent
                 TrialData.assertCommonChannelsEquivalentMultipleTrialData(varargin{:});
@@ -562,6 +563,9 @@ classdef TrialData
                 if nnz(hasChMask) > 1
                     cdCell = cellfun(@(td) td.channelDescriptorsByName.(ch), varargin(hasChMask), 'UniformOutput', false);
                     okay(iC) = isequaln(cdCell{:});
+                    if ~okay(iC)
+                        b = 1;
+                    end
                 end
             end
             

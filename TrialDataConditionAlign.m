@@ -1905,7 +1905,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = setAnalogWithinAlignWindow(td, name, values, varargin)
             % replace the analog data within the curr ent align window with
-            % the data in values
+            % kthe data in values
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) || isnumeric(x));
             p.addParameter('preserveContinuity', false, @islogical);
@@ -2723,6 +2723,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
                     args{:}, p.Results.plotOptions{:});
+                hold on;
 
                 TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNamesShort{idxC});
             end
@@ -5579,7 +5580,7 @@ classdef TrialDataConditionAlign < TrialData
                 lists = [];
             else
                 lists = td.conditionInfoRandomized.generateMultipleRandomizedListByCondition(td.nRandomized, 'showProgress', true);
-                lists = reshape(lists, [td.conditionsSize td.nRandomized]); % make (conditionsSize) x nRandomized
+                lists = reshape(lists, [td.conditionsSizeNoExpand td.nRandomized]); % make (conditionsSize) x nRandomized
             end
         end
         
