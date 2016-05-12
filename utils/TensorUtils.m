@@ -1319,6 +1319,49 @@ classdef TensorUtils
             % result will have size s1 x 1 x 1 x s4
             t = cell2mat(TensorUtils.mapSlicesInPlace(@(slice) std(slice(:), varargin{:}), dims, t));
         end
+        
+        function [y, group] = buildAnovanInputs(valueCell, namesAlongAxes)
+            % converts from tensor array of vectors into format needed for
+            % Matlab's anovan
+            %
+            % valueCell is a cell array with multiple axes, one for each factor
+            %
+            % namesAlongAxes is nAxes x 1 each containing the names of levels along
+            % each axis of value cell
+
+            nAx = ndims(valueCell);
+            sz = size(valueCell);
+            
+            if nargin < 2 || isempty(namesAlongAxes)
+                for a = 1:nAx
+                    namesAlongAxes{a} = (1:sz(a))';
+                end
+            end
+            assert(numel(namesAlongAxes) == nAx, 'Number of axes must match numel(namesAlongAxes)');
+            
+            group = cellvec(nAx);
+            for a = 1:nAx
+                group{a} = cell(sz);
+            end
+            
+            % construct the cell of factor level names
+            subs = cellvec(nAx);
+            for i = 1:numel(valueCell)
+                [subs{1:nAx}] = ind2sub(sz, i);
+                n = numel(valueCell{i});
+                for a = 1:nAx
+                    group{a}{i} = repmat(namesAlongAxes{a}(subs{a}), n, 1);
+                end
+                
+                valueCell{i} = makecol(valueCell{i});
+            end
+            
+            % collapse over treatments
+            y = cat(1, valueCell{:});
+            for a = 1:nAx
+                group{a} = cat(1, group{a}{:});
+            end
+        end
     end
     
     methods(Static) % Data manipulation
