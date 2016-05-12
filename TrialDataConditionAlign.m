@@ -294,7 +294,7 @@ classdef TrialDataConditionAlign < TrialData
             td = postAddNewTrials@TrialData(td); % will call update valid
         end
         
-        function td = updatePostDataChange(td, fieldsAffected)
+        function td = postDataChange(td, fieldsAffected)
             td.warnIfNoArgOut(nargout);
             
             needUpdate = false;
@@ -1903,6 +1903,88 @@ classdef TrialDataConditionAlign < TrialData
             td = td.addAnalog(diffName, diffData, time, 'units', diffUnits, 'isAligned', false);
         end
         
+        function td = addAnalogChannelModifiedInPlace(td, oldName, newName, data)
+            td = td.reset();
+            td.warnIfNoArgOut(nargout);
+            td = td.copyChannel(oldName, newName);
+            td = td.setAnalog(newName, data);
+        end
+        
+        function [data, time] = getAnalogFiltered(td, name, B, A, varargin)
+            p = inputParser;
+            p.addParameter('filtfilt', false, @islogical);
+            p.addParameter('subtractFirstSample', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [data, time] = td.getAnalog(name, p.Unmatched);
+            data = TrialDataUtilities.Data.filterIgnoreLeadingTrailingNaNs(B, A, data, ...
+                'filtfilt', p.Results.filtfilt, 'subtractFirstSample', p.Results.subtractFirstSample);
+        end
+        
+        function td = addFilteredAnalogChannel(td, name, filtName, B, A, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogFiltered(name, B, A, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+        
+        function [data, time] = getAnalogLowPassFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized, 'low');
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addLowPassFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogLowPassFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+
+        function [data, time] = getAnalogHighPassFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized, 'high');
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addHighPassFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogHighPassFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+        
+        function [data, time] = getAnalogBandPassFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized);
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addBandPassFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogBandPassFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+        
+        function [data, time] = getAnalogBandStopFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized, 'stop');
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addBandStopFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogBandStopFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+        
         function td = setAnalogWithinAlignWindow(td, name, values, varargin)
             % replace the analog data within the curr ent align window with
             % kthe data in values
@@ -2439,9 +2521,9 @@ classdef TrialDataConditionAlign < TrialData
             prog.finish();
             
             if updateTimes
-                td = td.updatePostDataChange({groupName, timeField});
+                td = td.postDataChange({groupName, timeField});
             else
-                td = td.updatePostDataChange({groupName});
+                td = td.postDataChange({groupName});
             end
         end
         

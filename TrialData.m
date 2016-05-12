@@ -1222,7 +1222,7 @@ classdef TrialData
                 end
             end
             
-            td = td.updatePostDataChange(fieldsRemove);
+            td = td.postDataChange(fieldsRemove);
         end
     end
     
@@ -1485,6 +1485,24 @@ classdef TrialData
             else
                 td = td.setChannelData(name, {values}, p.Unmatched);
             end
+        end
+        
+        function td = scaleAnalogTimeField(td, names, multiplyBy, varargin)
+            % pass the full list of
+            td.warnIfNoArgOut(nargout);
+            assert(isscalar(multiplyBy) && isnumeric(multiplyBy));
+            
+            td = td.copyRenameSharedChannelFields(names, 2);                
+            timeField = td.channelDescriptorsByName.(names{1}).timeField;
+            
+            prog = ProgressBar(td.nTrials, 'Scaling time field %s', timeField);
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                td.data(iT).(timeField) = multiplyBy * td.data(iT).(timeField);
+            end
+            prog.finish();
+            
+            td = td.postDataChange(timeField);
         end
         
         function td = convertAnalogChannelToNoScaling(td, name)
@@ -1974,7 +1992,7 @@ classdef TrialData
                 td.channelDescriptorsByName.(chList{c}).primaryDataFieldColumnIndex = c;
             end
             
-            td = td.updatePostDataChange(groupName);
+            td = td.postDataChange(groupName);
         end
         
         function td = separateAnalogChannelsIntoSeparateGroup(td, names, newGroupName)
@@ -2030,7 +2048,7 @@ classdef TrialData
                 end
             end
             
-            td = td.updatePostDataChange(newGroupName);
+            td = td.postDataChange(newGroupName);
         end
 
         function td = renameAnalogChannelGroup(td, groupName, newGroupName)
@@ -2260,9 +2278,9 @@ classdef TrialData
             end
             
             if updateTimes
-                td = td.updatePostDataChange({groupName, timeField});
+                td = td.postDataChange({groupName, timeField});
             else
-                td = td.updatePostDataChange({groupName});
+                td = td.postDataChange({groupName});
             end
             
             prog.finish();
@@ -2296,7 +2314,7 @@ classdef TrialData
             cd = td.channelDescriptorsByName.(chName);
             timeField = cd.timeField;
             
-            td = td.trimAnalogChannelTimeFieldAndReferencingChannels(timeField);
+            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField);
         end
             
         function td = trimAnalogChannelTimeFieldAndReferencingChannelsRaw(td, timeField, varargin)
@@ -3506,7 +3524,7 @@ classdef TrialData
     end
 
     methods % Generic add data methods
-        function td = updatePostDataChange(td, fieldsAffected) %#ok<INUSD>
+        function td = postDataChange(td, fieldsAffected) %#ok<INUSD>
             % call this after any changes to td.data.(fieldsAffected)
             td.warnIfNoArgOut(nargout);
         end
@@ -3514,7 +3532,7 @@ classdef TrialData
         function td = updatePostChannelDataChange(td, chName)
             td.warnIfNoArgOut(nargout);
             fields = td.channelDescriptorsByName.(chName).dataFields;
-            td = td.updatePostDataChange(fields);
+            td = td.postDataChange(fields);
         end
         
         function offsets = getTimeOffsetsFromZeroEachTrial(td)
@@ -3932,7 +3950,7 @@ classdef TrialData
             end 
             
             td.channelDescriptorsByName.(cd.name) = cd;
-            td = td.updatePostDataChange(dataFields(fieldMask));
+            td = td.postDataChange(dataFields(fieldMask));
             
             fieldsUpdated = fieldMask;
             trialsUpdated = updateMask;
