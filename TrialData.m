@@ -241,7 +241,7 @@ classdef TrialData
                 'suppressWarnings', p.Results.suppressWarnings);
 
             % concatenate onto the old data
-            concatData = TrialDataUtilities.Data.structcat(concatData, newData); 
+            concatData = TrialDataUtilities.Data.structcat(1, concatData, newData); 
 
             % concatenate the valid array
             if isempty(tdNew)
