@@ -2212,7 +2212,24 @@ classdef ConditionDescriptor
                 appearances = [];
             end
         end
+        
+        function appearances = testConditionAppearanceFn(ci)
+            % same as build appearances but does not catch errors to allow
+            % for debugging
+            if ci.nConditions > 0
+                appearFn = ci.appearanceFn;
 
+                appearances = ci.defaultAppearanceFn();
+                if ~isempty(appearFn)
+                    appearances = appearFn(ci, appearances);
+                end
+                
+                appearances = ci.applyAppearanceModifications(appearances);
+            else
+                appearances = [];
+            end
+        end
+        
         function valueList = buildAttributeValueLists(ci)
             % just pull the manual lists (ConditionInfo will deal with this
             % when it has the TrialData it's being applied to)
