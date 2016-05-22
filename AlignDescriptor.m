@@ -668,6 +668,35 @@ classdef AlignDescriptor
             ad = ad.postUpdateInterval();
         end
         
+        function ad = removeIntervalsByIdx(ad, mask)
+            ad.warnIfNoArgOut(nargout);
+
+            mask = makecol(TensorUtils.vectorIndicesToMask(mask, ad.nIntervals));
+            
+            ad.intervalEventsStart = ad.intervalEventsStart(~mask);
+            ad.intervalEventsStop = ad.intervalEventsStop(~mask);
+            ad.intervalEventsIndexStart = ad.intervalEventsIndexStart(~mask);
+            ad.intervalEventsIndexStop = ad.intervalEventsIndexStop(~mask);
+            ad.intervalOffsetsStart = ad.intervalOffsetsStart(~mask);
+            ad.intervalOffsetsStop = ad.intervalOffsetsStop(~mask);
+            ad.intervalAppear = ad.intervalAppear(~mask);
+            ad.intervalLabelsStored = ad.intervalLabelsStored(~mask);
+            ad.intervalShowOnData = ad.intervalShowOnData(~mask);
+            ad.intervalShowOnAxis = ad.intervalShowOnAxis(~mask);
+            
+            ad = ad.postUpdateInterval();
+        end
+        
+        function ad = removeInterval(ad, eventStart, indexStart, offsetStart, ...
+                eventStop, indexStop, offsetStop)
+            ad.warnIfNoArgOut(nargout);
+
+            idx = ad.findInterval(eventStart, indexStart, offsetStart, ...
+                eventStop, indexStop, offsetStop);
+            ad = ad.removeIntervalsByIdx(idx);
+        end
+        
+        
         function idx = findMarkByString(ad, str)
             [eventName, index, offset] = ad.parseEventOffsetString(str, ...
                 'mark', 'defaultIndex', ':');
@@ -738,6 +767,37 @@ classdef AlignDescriptor
             ad.markLabelsStored{iMark,1} = p.Results.as;
 
             ad = ad.postUpdateMark();
+        end
+        
+        function ad = removeMarksByIdx(ad, mask)
+            ad.warnIfNoArgOut(nargout);
+
+            mask = TensorUtils.vectorIndicesToMask(mask, ad.nMarks);
+            % remove all marks and intervals
+            ad.warnIfNoArgOut(nargout);
+            ad.markEvents = ad.markEvents(~mask);
+            ad.markEventsIndex = ad.markEventsIndex(~mask);
+            ad.markOffsets = ad.markOffsets(~mask);
+            ad.markLabelsStored = ad.markLabelsStored(~mask);
+            ad.markAppear= ad.markAppear(~mask);
+            ad.markShowOnData = ad.markShowOnData(~mask); 
+            ad.markShowOnAxis = ad.markShowOnAxis(~mask);
+            
+            ad = ad.postUpdateMark();
+        end
+        
+        function ad = removeMarkByString(ad, str)
+            ad.warnIfNoArgOut(nargout);
+
+            idx = ad.findMarkByString(str);
+            ad = ad.removeMarksByIdx(idx);
+        end
+        
+        function ad = removeMark(ad, eventName, index, offset)
+            ad.warnIfNoArgOut(nargout);
+
+            idx = ad.findMark(ad, eventName, index, offset);
+            ad = ad.removeMarksByIdx(idx);
         end
 
         function ad = truncateBefore(ad, eventStr, varargin)

@@ -17,7 +17,14 @@ function makeClickableShowDescription(hvec, varargin)
     descCell = p.Results.descCell;
     activateFn = p.Results.activateFn;
     
+    maskValid = falsevec(numel(hvec));
+    for i = 1:numel(hvec)
+        maskValid(i) = ~isa(hvec(i), 'matlab.graphics.GraphicsPlaceholder');
+    end
+    hvec = hvec(maskValid);
+    
     if nargin > 1 && ~isempty(descCell)
+        descCell = descCell(maskValid);
         for i = 1:numel(hvec)
             set(hvec(i), 'Description', descCell{i});
         end

@@ -17,18 +17,10 @@ classdef TrialData
         trialDataVersion = 20160313; % used for backwards compatibility
         
         datasetMeta = struct(); % arbitrary, user determined data, use setMetaByKey and getMetaByKey to access
-
-        data = struct([]);  % standardized format nTrials x 1 struct with all trial data  
-
+        
         initialized = false; % has initialize() been called yet?
 
         trialDataInterfaceClass = ''; % how did we access the original data?
-
-        manualValid = true(0, 1);
-        manualInvalidCause = {};
-        
-        temporaryValid = [];
-        temporaryInvalidCause = {};
 
         timeUnitName = 'ms';
 
@@ -37,6 +29,16 @@ classdef TrialData
         channelDescriptorsByName  = struct(); % struct with ChannelDescriptor for each channel, by name
         
         trialDescriptionExtraParams = {} % used in generating descriptions of each trial
+    end
+    
+    % properties that scale with the number of trials, should be referenced
+    % in all select and merge methods
+    properties(SetAccess=protected)
+        data = struct([]);  % standardized format nTrials x 1 struct with all trial data  
+        manualValid = true(0, 1);
+        manualInvalidCause = {};
+        temporaryValid = [];
+        temporaryInvalidCause = {};
     end
 
     properties(Access=protected, Hidden)
@@ -69,7 +71,7 @@ classdef TrialData
             p = inputParser();
             p.addOptional('buildFrom', [], @(x) isa(x, 'TrialData') || isa(x, 'TrialDataInterface'));
 %             p.addParamValue('quiet', false, @islogical); % completely silent output
-            p.addParamValue('suppressWarnings', false, @islogical); % don't warn about any minor issues
+            p.addParameter('suppressWarnings', false, @islogical); % don't warn about any minor issues
             p.parse(varargin{:});
 %             quiet = p.Results.quiet;
             suppressWarnings = p.Results.suppressWarnings;
@@ -116,7 +118,7 @@ classdef TrialData
             
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
-            p.addParamValue('suppressWarnings', false, @islogical);
+            p.addParameter('suppressWarnings', false, @islogical);
             p.parse(varargin{:});
             tdi = p.Results.trialDataInterface;
             
@@ -174,7 +176,7 @@ classdef TrialData
 
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
-            p.addParamValue('suppressWarnings', false, @islogical);
+            p.addParameter('suppressWarnings', false, @islogical);
             p.parse(varargin{:});
             tdi = p.Results.trialDataInterface;
 
@@ -213,20 +215,27 @@ classdef TrialData
             end
             
             % add the data
+            prog = ProgressBar(numel(trialData), 'Adding trials from TrialData instances');
             for i = 1:numel(trialData)
+                prog.update(i);
                 td = td.addNewTrialsRaw(trialData{i}, varargin{:});
             end
+            prog.finish();
         end
 
         function td = addNewTrialsRaw(td, dataOrTrialData, varargin)
             td.warnIfNoArgOut(nargout);
             p = inputParser();
-            p.addParamValue('suppressWarnings', false, @islogical);
+            p.addParameter('suppressWarnings', false, @islogical);
             p.parse(varargin{:});
             
+%             data = struct([]);  % standardized format nTrials x 1 struct with all trial data  
+%             manualValid = true(0, 1);
+%             manualInvalidCause = {};
+%             temporaryValid = [];
+%             temporaryInvalidCause = {};
+            
             concatData = td.data;
-            concatValid = td.manualValid;
-
             if isa(dataOrTrialData, 'TrialData')
                 tdNew = dataOrTrialData;
                 newData = tdNew.data;
@@ -241,25 +250,42 @@ classdef TrialData
                 'suppressWarnings', p.Results.suppressWarnings);
 
             % concatenate onto the old data
-            concatData = TrialDataUtilities.Data.structcat(1, concatData, newData); 
+            td.data = TrialDataUtilities.Data.structcat(1, concatData, newData); 
 
-            % concatenate the valid array
+            % concatenate the manual valid array
             if isempty(tdNew)
                 newValid = truevec(numel(newData));
+                newCause = cellvec(numel(newData));
             else
                 newValid = tdNew.manualValid;
+                newCause = tdNew.manualInvalidCause;
                 assert(numel(newValid) == numel(newData), 'manualValid must be same length as data');
             end
-            concatValid = cat(1, concatValid, newValid);
-            
-            td.data = concatData;
-            td.manualValid = concatValid;
+            td.manualValid = cat(1,  td.manualValid, newValid);
+            td.manualInvalidCause = cat(1, td.manualInvalidCause, newCause);
+
+            % concatenate the temporary valid array
+            if isempty(tdNew)
+                newValid = truevec(numel(newData));
+                newCause = cellvec(numel(newData));
+            else
+                newValid = tdNew.temporaryValid;
+                newCause = tdNew.temporaryInvalidCause;
+                assert(numel(newValid) == numel(newData), 'manualValid must be same length as data');
+            end
+            td.temporaryValid = cat(1,  td.temporaryValid, newValid);
+            td.temporaryInvalidCause = cat(1, td.temporaryInvalidCause, newCause);
             
             td = td.postAddNewTrials(); % update valid here, also to allow TDCA to update itself before update valid since TDCA's override executes first
         end
         
         function td = postAddNewTrials(td)
             td.warnIfNoArgOut(nargout);
+            
+            % copy and flush valid
+            td.odc = td.odc.copy();
+            td.odc.flush();
+            
             td = td.invalidateValid();
         end
 
@@ -449,7 +475,6 @@ classdef TrialData
     % Faster saving
     methods
         function saveFast(td, location)
-            % saves in a custom hdf5 format that allows partial loading
             data = td.data;
             td.data = 'saved separately';
             td.odc = []; %#ok<MCHV2>
@@ -875,32 +900,33 @@ classdef TrialData
         function [valid, cause] = getManualValid(td)
             if isempty(td.manualValid)
                 valid = truevec(td.nTrials);
-                cause = cellvec(td.nTrials);
+                cause = cellstrvec(td.nTrials);
             else
                 valid = makecol(td.manualValid);
                 
                 % generate the list of causes
                 if isempty(td.manualInvalidCause)
-                    cause = cellvec(td.nTrials);
+                    cause = cellstrvec(td.nTrials);
                 else
                     cause = td.manualInvalidCause;
                 end
                 
                 emptyMask = cellfun(@isempty, cause);
                 cause(~valid & emptyMask) = {'marked invalid manually'};
+                cause(valid) = {''};
             end
         end
         
         function [valid, cause] = getTemporaryValid(td)
             if isempty(td.temporaryValid)
                 valid = truevec(td.nTrials);
-                cause = cellvec(td.nTrials);
+                cause = cellstrvec(td.nTrials);
             else
                 valid = makecol(td.temporaryValid);
                 
                 % generate the list of causes, prefixed with (temporary)
                 if isempty(td.temporaryInvalidCause)
-                    cause = cellvec(td.nTrials);
+                    cause = cellstrvec(td.nTrials);
                 else
                     cause = td.temporaryInvalidCause;
                 end
@@ -912,6 +938,7 @@ classdef TrialData
                         end
                     end
                 end
+                cause(valid) = {''};
             end
         end
         
@@ -945,6 +972,11 @@ classdef TrialData
             
             if isempty(td.manualValid)
                 td.manualValid = truevec(td.nTrials);
+                td.manualInvalidCause = cellvec(td.nTrials);
+            end
+            if isempty(td.temporaryValid)
+                td.temporaryValid = truevec(td.nTrials);
+                td.temporaryInvalidCause = cellvec(td.nTrials);
             end
         end
         
@@ -1222,7 +1254,7 @@ classdef TrialData
                 end
             end
             
-            td = td.updatePostDataChange(fieldsRemove);
+            td = td.postDataChange(fieldsRemove);
         end
     end
     
@@ -1487,6 +1519,24 @@ classdef TrialData
             end
         end
         
+        function td = scaleAnalogTimeField(td, names, multiplyBy, varargin)
+            % pass the full list of
+            td.warnIfNoArgOut(nargout);
+            assert(isscalar(multiplyBy) && isnumeric(multiplyBy));
+            
+            td = td.copyRenameSharedChannelFields(names, 2);                
+            timeField = td.channelDescriptorsByName.(names{1}).timeField;
+            
+            prog = ProgressBar(td.nTrials, 'Scaling time field %s', timeField);
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                td.data(iT).(timeField) = multiplyBy * td.data(iT).(timeField);
+            end
+            prog.finish();
+            
+            td = td.postDataChange(timeField);
+        end
+        
         function td = convertAnalogChannelToNoScaling(td, name)
             % convert a single channel to using scaling (representing the
             % data in memory in a different scaling, and often a different
@@ -1643,9 +1693,11 @@ classdef TrialData
         
         function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
             [dataCell, timeCell] = td.getAnalog(name);
-            dataVec = cellfun(@(v) v(1), dataCell, 'ErrorHandler', @(varargin) NaN);
+            dataVec = cellfun(@(v) v(1), dataCell(td.valid), 'ErrorHandler', @(varargin) NaN);
+            dataVec = TensorUtils.inflateMaskedTensor(dataVec, 1, td.valid, NaN);
             if nargout > 1
-                timeVec = cellfun(@(v) v(1), timeCell, 'ErrorHandler', @(varargin) NaN);
+                timeVec = cellfun(@(v) v(1), timeCell(td.valid), 'ErrorHandler', @(varargin) NaN);
+                timeVec = TensorUtils.inflateMaskedTensor(timeVec, 1, td.valid, NaN);
             end
         end 
        
@@ -1706,7 +1758,7 @@ classdef TrialData
                 if p.Results.raw
                     [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(name{c});
                 else
-                    [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, varargin{:});
+                    [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, p.Unmatched);
                 end
             end
             prog.finish();
@@ -1974,7 +2026,7 @@ classdef TrialData
                 td.channelDescriptorsByName.(chList{c}).primaryDataFieldColumnIndex = c;
             end
             
-            td = td.updatePostDataChange(groupName);
+            td = td.postDataChange(groupName);
         end
         
         function td = separateAnalogChannelsIntoSeparateGroup(td, names, newGroupName)
@@ -2030,7 +2082,7 @@ classdef TrialData
                 end
             end
             
-            td = td.updatePostDataChange(newGroupName);
+            td = td.postDataChange(newGroupName);
         end
 
         function td = renameAnalogChannelGroup(td, groupName, newGroupName)
@@ -2260,9 +2312,9 @@ classdef TrialData
             end
             
             if updateTimes
-                td = td.updatePostDataChange({groupName, timeField});
+                td = td.postDataChange({groupName, timeField});
             else
-                td = td.updatePostDataChange({groupName});
+                td = td.postDataChange({groupName});
             end
             
             prog.finish();
@@ -2296,7 +2348,7 @@ classdef TrialData
             cd = td.channelDescriptorsByName.(chName);
             timeField = cd.timeField;
             
-            td = td.trimAnalogChannelTimeFieldAndReferencingChannels(timeField);
+            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField);
         end
             
         function td = trimAnalogChannelTimeFieldAndReferencingChannelsRaw(td, timeField, varargin)
@@ -3506,7 +3558,7 @@ classdef TrialData
     end
 
     methods % Generic add data methods
-        function td = updatePostDataChange(td, fieldsAffected) %#ok<INUSD>
+        function td = postDataChange(td, fieldsAffected) %#ok<INUSD>
             % call this after any changes to td.data.(fieldsAffected)
             td.warnIfNoArgOut(nargout);
         end
@@ -3514,7 +3566,7 @@ classdef TrialData
         function td = updatePostChannelDataChange(td, chName)
             td.warnIfNoArgOut(nargout);
             fields = td.channelDescriptorsByName.(chName).dataFields;
-            td = td.updatePostDataChange(fields);
+            td = td.postDataChange(fields);
         end
         
         function offsets = getTimeOffsetsFromZeroEachTrial(td)
@@ -3932,7 +3984,7 @@ classdef TrialData
             end 
             
             td.channelDescriptorsByName.(cd.name) = cd;
-            td = td.updatePostDataChange(dataFields(fieldMask));
+            td = td.postDataChange(dataFields(fieldMask));
             
             fieldsUpdated = fieldMask;
             trialsUpdated = updateMask;

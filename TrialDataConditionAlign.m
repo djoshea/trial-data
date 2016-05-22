@@ -259,7 +259,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % invalidated temporarily
             tmask = ~tempValid & ~explained;
-            cause(tmask) = cellfun(@(s) ['(temporary) ' tempCause(tmask)], ...
+            cause(tmask) = cellfun(@(s) ['(temporary) ' s], ...
                 tempCause(tmask), 'UniformOutput', false);
             
             % invalid by condition info
@@ -289,12 +289,16 @@ classdef TrialDataConditionAlign < TrialData
         function td = postAddNewTrials(td)
             td.warnIfNoArgOut(nargout);
             
+            % copy and flush valid
+            td.odc = td.odc.copy();
+            td.odc.flush();
+            
             td = td.reinitializeConditionAlign();
             
             td = postAddNewTrials@TrialData(td); % will call update valid
         end
         
-        function td = updatePostDataChange(td, fieldsAffected)
+        function td = postDataChange(td, fieldsAffected)
             td.warnIfNoArgOut(nargout);
             
             needUpdate = false;
@@ -614,6 +618,10 @@ classdef TrialDataConditionAlign < TrialData
             assert(isempty(fn) || isa(fn, 'function_handle'));
             td.warnIfNoArgOut(nargout);
             td.conditionInfo.appearanceFn = fn;
+        end
+        
+        function appearances = testConditionAppearanceFn(td)
+            appearances = td.conditionInfo.testConditionAppearanceFn();
         end
         
         function td = resetConditionAppearanceFn(td)
@@ -1330,9 +1338,27 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateAlignInfo();
         end
         
+        function td = removeMarkByString(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.removeMarkByString(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = removeMark(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.removeMark(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
         function td = interval(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.alignInfoActive = td.alignInfoActive.interval(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+        
+        function td = removeInterval(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.removeInterval(varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
@@ -1530,6 +1556,7 @@ classdef TrialDataConditionAlign < TrialData
         % return aligned analog channel
         function [data, time] = getAnalog(td, name, varargin)
             p = inputParser;
+            p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || ischar(x) || isa(x, 'function_handle'))
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
@@ -1564,6 +1591,25 @@ classdef TrialDataConditionAlign < TrialData
                 end
                 baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
                 data = cellfun(@minus, data, num2cell(baseline), 'UniformOutput', false);
+            end
+
+            % subtract manual offset from each trial 
+            if ~isempty(p.Results.subtractTrialBaseline)
+                sub = p.Results.subtractTrialBaseline;
+                if isa(sub, 'function_handle')
+                    % call it on each element of data
+                    subValues = cellfun(sub, data);
+                elseif ischar(sub)
+                    % treat as parameter value
+                    subValues = td.getParam(sub);
+                elseif isscalar(sub)
+                    subValues = repmat(sub, td.nTrials, 1);
+                else
+                    subValues = sub;
+                end
+
+                assert(numel(subValues) == td.nTrials, 'subtractTrialBaseline must be scalar of have nTrials entries');
+                data = cellfun(@minus, data, num2cell(subValues), 'UniformOutput', false);
             end
         end
         
@@ -1605,6 +1651,19 @@ classdef TrialDataConditionAlign < TrialData
             [dataUnif, timeUnif, delta] = getAnalogUniformlySampled@TrialData(td, name, varargin{:});
 
             [dataUnif, timeUnif] = td.alignInfoActive.getAlignedTimeseries(dataUnif, timeUnif, false);
+        end
+                
+        function [dCell, tCell] = getAnalogGrouped(td, name)
+            [dataCell, timeCell] = td.getAnalog(name);
+            [dCell, tCell] = td.groupElements(dataCell, timeCell);
+        end
+        
+        function [dCell, tCell] = getAnalogGroupedEachAlign(td, name, varargin)
+            [dataCell, timeCell] = td.getAnalogEachAlign(name, varargin{:});
+            [dCell, tCell] = deal(cell(td.nConditions, td.nAlign));
+            for iA = 1:td.nAlign
+                [dCell(:, iA), tCell(:, iA)] = td.useAlign(iA).groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
+            end
         end
         
         function [means, tvec] = getAnalogMeanOverTimeEachTrial(td, name, varargin)
@@ -1652,6 +1711,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('tvec', [], @isvector);
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
@@ -1672,6 +1732,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % build nTrials cell of data/time vectors
             [dataCell, timeCell] = td.getAnalog(name, ...
+                'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                 'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                 'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt);
 
@@ -1712,6 +1773,7 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
@@ -1721,7 +1783,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
                     [meanMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end
         end
@@ -1731,6 +1793,7 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
@@ -1752,7 +1815,7 @@ classdef TrialDataConditionAlign < TrialData
                 for iC = 1:td.nConditions
                     if ~isempty(dCell{iC})
                         [meanMat(iC, :, iR), semMat(iC, :, iR), nTrialsMat(iC, :, iR), stdMat(iC, :, iR)] = ...
-                            nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                            nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                     end
                 end
             end
@@ -1774,6 +1837,7 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
@@ -1783,12 +1847,12 @@ classdef TrialDataConditionAlign < TrialData
             else
                 nC = 1;
             end
-            [dCell, tvec, alignIdx] = td.getAnalogAsMatrixGroupedEachAlign(name, p.Unmatched);
+            [dCell, tvec, alignIdx] = td.getAnalogAsTensorGroupedEachAlign(name, p.Unmatched);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nC));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
                     [meanMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end 
         end
@@ -1799,6 +1863,8 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -1806,12 +1872,12 @@ classdef TrialDataConditionAlign < TrialData
             nChannels = numel(nameCell);
             
             % dCell is size(conditions) with nTrials x T x nChannels inside
-            [dCell, tvec] = td.getAnalogMultiAsMatrixGrouped(nameCell);
+            [dCell, tvec] = td.getAnalogMultiAsTensorGrouped(nameCell, p.Unmatched);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nChannels));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
                     [meanMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), ...
-                        stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                        stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end 
          end
@@ -1822,6 +1888,8 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.addParamet
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -1829,30 +1897,131 @@ classdef TrialDataConditionAlign < TrialData
             nChannels = numel(nameCell);
             
             % dCell is size(conditions) with nTrials x T x nChannels inside
-            [dCell, tvec, alignIdx] = td.getAnalogMultiAsMatrixGroupedEachAlign(nameCell);
+            [dCell, tvec, alignIdx] = td.getAnalogMultiAsTensorGroupedEachAlign(nameCell, p.Unmatched);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nChannels));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
                     [meanMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), ...
-                        stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                        stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end 
          end
-        
+    end
+    
+    methods % Analog first sample as a scalar, useful for aligning to single timepoint
          function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
              % same as in TrialData, except issues warning if alignment has
              % more than one sample. Pulls a single time point from the t=0
              % aligned time for each trial. Guaranteed to be scalar per
              % trial, i.e. vector over trials
+             p = inputParser;
+             p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || ischar(x) || isa(x, 'function_handle'))
+             p.addParameter('subtractTrialBaselineAt', '', @ischar);
+             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
+             p.parse(varargin{:});
              if ~td.alignInfoActive.isStartStopEqual
                  warning('Getting analog sample when alignment is not for single timepoint');
              end
              [dataVec, timeVec] = getAnalogSample@TrialData(td, name, varargin{:});
+             
+             % subtract baseline on condition by condition
+            if ~isempty(p.Results.subtractConditionBaselineAt)
+                if strcmp(p.Results.subtractConditionBaselineAt, '*')
+                    tdBaseline = td;
+                else
+                    tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
+                    tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                end
+                baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                baselineForTrial = nanvec(tdBaseline.nTrials);
+                mask = ~isnan(tdBaseline.conditionIdx);
+                baselineForTrial(mask) = baselineByCondition(tdBaseline.conditionIdx(mask));
+                dataVec = dataVec - baselineForTrial;
+            end
+            
+            % subtract baseline on trial by trial basis
+            if ~isempty(p.Results.subtractTrialBaselineAt)
+                if strcmp(p.Results.subtractTrialBaselineAt, '*')
+                    tdBaseline = td;
+                else
+                    tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
+                    tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                end
+                baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                dataVec = dataVec - baseline;
+            end
+
+            % subtract manual offset from each trial 
+            if ~isempty(p.Results.subtractTrialBaseline)
+                sub = p.Results.subtractTrialBaseline;
+                if isa(sub, 'function_handle')
+                    % call it on each element of data
+                    subValues = arrayfun(sub, dataVec);
+                elseif ischar(sub)
+                    % treat as parameter value
+                    subValues = td.getParam(sub);
+                elseif isscalar(sub)
+                    subValues = repmat(sub, td.nTrials, 1);
+                else
+                    subValues = sub;
+                end
+
+                assert(numel(subValues) == td.nTrials, 'subtractTrialBaseline must be scalar of have nTrials entries');
+                dataVec = dataVec - subValues;
+            end
         end 
         
         function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
-            [dataVec, timeVec] = td.getAnalogSample(name);
+            [dataVec, timeVec] = td.getAnalogSample(name, varargin{:});
             [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
+        end
+        
+        function [dataCell, timeCell] = getAnalogSampleGroupedRandomized(td, name, varargin)
+            [dataVec, timeVec] = td.getAnalogSample(name, varargin{:});
+            [dataCell, timeCell] = td.groupElementsRandomized(dataVec, timeVec);
+        end
+        
+        function [meanMat, semMat, stdMat, nTrialsMat] = getAnalogSampleGroupMeans(td, name, varargin)
+            % get averaged analog sample value within each group
+            % *Mat will be size(conditions) tensors
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            dCell = td.getAnalogSampleGrouped(name, p.Unmatched);
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.conditionsSize));
+            for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    [meanMat(iC), semMat(iC), nTrialsMat(iC), stdMat(iC)] = ...
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
+                end
+            end 
+        end
+        
+        function [meanMat, semMat, stdMat, nTrialsMat] = getAnalogSampleGroupMeansRandomized(td, name, varargin)
+            % get averaged analog sample value within each group
+            % *Mat will be size(conditions) x nRandomized tensors
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;            
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+
+            dCell = td.getAnalogSampleGroupedRandomized(name, p.Unmatched);
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.conditionsSize td.nRandomized]));
+            for iC = 1:numel(dCell)
+                if ~isempty(dCell{iC})
+                    [meanMat(iC), semMat(iC), nTrialsMat(iC), stdMat(iC)] = ...
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
+                end
+            end 
         end
     end
     
@@ -1901,6 +2070,88 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             [diffData, time, diffUnits] = td.reset().differentiateAnalogChannel(name, varargin{:});
             td = td.addAnalog(diffName, diffData, time, 'units', diffUnits, 'isAligned', false);
+        end
+        
+        function td = addAnalogChannelModifiedInPlace(td, oldName, newName, data)
+            td = td.reset();
+            td.warnIfNoArgOut(nargout);
+            td = td.copyChannel(oldName, newName);
+            td = td.setAnalog(newName, data);
+        end
+        
+        function [data, time] = getAnalogFiltered(td, name, B, A, varargin)
+            p = inputParser;
+            p.addParameter('filtfilt', false, @islogical);
+            p.addParameter('subtractFirstSample', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [data, time] = td.getAnalog(name, p.Unmatched);
+            data = TrialDataUtilities.Data.filterIgnoreLeadingTrailingNaNs(B, A, data, ...
+                'filtfilt', p.Results.filtfilt, 'subtractFirstSample', p.Results.subtractFirstSample);
+        end
+        
+        function td = addFilteredAnalogChannel(td, name, filtName, B, A, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogFiltered(name, B, A, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+        
+        function [data, time] = getAnalogLowPassFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized, 'low');
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addLowPassFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogLowPassFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+
+        function [data, time] = getAnalogHighPassFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized, 'high');
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addHighPassFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogHighPassFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+        
+        function [data, time] = getAnalogBandPassFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized);
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addBandPassFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogBandPassFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+        end
+        
+        function [data, time] = getAnalogBandStopFiltered(td, name, order, cornerHz, varargin)
+            Fs = td.getAnalogSamplingRateHz(name);
+            cornerNormalized = cornerHz / (Fs/2);
+            [B, A] = butter(order, cornerNormalized, 'stop');
+            [data, time] = td.getAnalogFiltered(name, B, A, varargin{:});
+        end
+        
+        function td = addBandStopFilteredAnalogChannel(td, name, filtName, order, cornerHz, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            data = td.getAnalogBandStopFiltered(name, order, cornerHz, varargin{:});
+            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
         end
         
         function td = setAnalogWithinAlignWindow(td, name, values, varargin)
@@ -2062,7 +2313,7 @@ classdef TrialDataConditionAlign < TrialData
     
     methods % Analog channel group methods
         % return aligned analog channel
-        function [data, time] = getAnalogChannelGroup(td, groupName)            
+        function [data, time] = getAnalogChannelGroup(td, groupName)
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName);
             [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false);
         end
@@ -2072,6 +2323,48 @@ classdef TrialDataConditionAlign < TrialData
             time = td.alignInfoActive.getAlignedTimesCell(time, false, 'singleTimepointTolerance', Inf); % no padding
         end
 
+        function [dataCell, timeCell] = getAnalogMulti(td, name, varargin)
+            % [data, time] = getAnalogMulti(td, chNames, varargin)
+            % data and time are cell(nTrials, nChannels)
+            % this overrides a method in TrialData
+            p = inputParser();
+            p.addParameter('raw', false, @islogical);
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            if ischar(name)
+                name = {name};
+            end
+            nChannels = numel(name);
+            
+            % apply subtractTrialBaseline, if its a cell, feed individually for each channel
+            if ~isempty(p.Results.subtractTrialBaseline)
+                subBase = p.Results.subtractTrialBaseline;
+                if ~iscell(subBase)
+                    subBase = repmat({subBase}, nChannels, 1);
+                else
+                    assert(numel(subBase) == nChannels, 'Size of subtractTrialBaseline cell must match nChannels');
+                end
+            else
+                subBase = cellvec(nChannels);
+            end
+
+            % build nTrials x nChannels cell of data/time vectors
+            C = numel(name);
+            [dataCell, timeCell] = deal(cell(td.nTrials, C));
+            prog = ProgressBar(C, 'Fetching analog channels');
+            for c = 1:C
+                prog.update(c);
+                if p.Results.raw
+                    [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(name{c});
+                else
+                    [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, 'subtractTrialBaseline', subBase{c}, p.Unmatched);
+                end
+            end
+            prog.finish();
+        end
+        
         function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
             % dataCell is cell(nTrials, 1) containing nTime x nChannels mat
             % timeCell is cell(nTrials, 1) containing nTime x 1 vectors
@@ -2204,19 +2497,6 @@ classdef TrialDataConditionAlign < TrialData
             
             [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
             tvec = cat(2, tvecCell{:});
-        end
-        
-        function [dCell, tCell] = getAnalogGrouped(td, name)
-            [dataCell, timeCell] = td.getAnalog(name);
-            [dCell, tCell] = td.groupElements(dataCell, timeCell);
-        end
-        
-        function [dCell, tCell] = getAnalogGroupedEachAlign(td, name, varargin)
-            [dataCell, timeCell] = td.getAnalogEachAlign(name, varargin{:});
-            [dCell, tCell] = deal(cell(td.nConditions, td.nAlign));
-            for iA = 1:td.nAlign
-                [dCell(:, iA), tCell(:, iA)] = td.useAlign(iA).groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
-            end
         end
         
         function [dataCell, tvec] = getAnalogMultiAsTensorGrouped(td, nameCell, varargin)
@@ -2439,9 +2719,9 @@ classdef TrialDataConditionAlign < TrialData
             prog.finish();
             
             if updateTimes
-                td = td.updatePostDataChange({groupName, timeField});
+                td = td.postDataChange({groupName, timeField});
             else
-                td = td.updatePostDataChange({groupName});
+                td = td.postDataChange({groupName});
             end
         end
         
@@ -2594,6 +2874,7 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -2602,7 +2883,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
                     [meanMat(iC), semMat(iC), nTrialsMat(iC), stdMat(iC)] = ...
-                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end 
         end
@@ -2613,6 +2894,7 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -2621,7 +2903,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:numel(dCell)
                 if ~isempty(dCell{iC})
                     [meanMat(iC), semMat(iC), nTrialsMat(iC), stdMat(iC)] = ...
-                        nanMeanSemMinCount(dCell{iC}, 1, minTrials);
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end 
         end
@@ -2721,8 +3003,10 @@ classdef TrialDataConditionAlign < TrialData
                 if isempty(dataX{iC}) || isempty(dataY{iC})
                     continue;
                 end
-                h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
-                    args{:}, p.Results.plotOptions{:});
+%                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
+%                     args{:}, p.Results.plotOptions{:});
+                h(iC) = scatter(dataX{iC}, dataY{iC}, p.Results.markerSize, ...
+                    args{:}, 'MarkerFaceAlpha', p.Results.alpha, p.Results.plotOptions{:});
                 hold on;
 
                 TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNamesShort{idxC});
@@ -2743,10 +3027,10 @@ classdef TrialDataConditionAlign < TrialData
             
             AutoAxis.updateIfInstalled(axh);
                     
-            for iC = 1:numel(h)
-                % not sure why this needs to go last
-                SaveFigure.setMarkerOpacity(h(iC), alpha, edgeAlpha);
-            end
+%             for iC = 1:numel(h)
+%                 % not sure why this needs to go last
+%                 SaveFigure.setMarkerOpacity(h(iC), alpha, edgeAlpha);
+%             end
         end
         
         function plotParamVsParamMeanLinePlot(td, nameX, nameY, varargin)
@@ -4787,13 +5071,14 @@ classdef TrialDataConditionAlign < TrialData
         
         function plotAnalogGroupedEachTrial(td, name, varargin) 
             p = inputParser;
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             % grab raw data (for marking) and grouped data (for plotting)
-            [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);     
+            [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(1, 'time', timeByGroup, ...
                 'data', dataByGroup, 'axisInfoY', td.channelDescriptorsByName.(name), ...
                 p.Unmatched);
@@ -4801,20 +5086,22 @@ classdef TrialDataConditionAlign < TrialData
         
         function plotAnalogGroupedEachTrial2D(td, name1, name2, varargin) 
             p = inputParser;
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataCell, time] = td.getAnalogMultiCommonTimeGrouped({name1, name2}, p.Results);
+            [dataCell, timeCell] = td.getAnalogMultiCommonTimeGrouped({name1, name2}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
-                'time', time, 'data', dataCell(:), ...
+                'time', timeCell(:), 'data', dataCell(:), ...
                 'axisInfoX', td.channelDescriptorsByName.(name1), ...
                 'axisInfoY', td.channelDescriptorsByName.(name2), p.Unmatched);
         end
         
         function plotAnalogGroupedEachTrial2DvsTime(td, name1, name2, varargin)
             p = inputParser;
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
@@ -4830,6 +5117,7 @@ classdef TrialDataConditionAlign < TrialData
         
         function plotAnalogGroupedEachTrial3D(td, name1, name2, name3, varargin) 
             p = inputParser;
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
@@ -4871,9 +5159,11 @@ classdef TrialDataConditionAlign < TrialData
             
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar);
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
             p.addParameter('showSem', true, @islogical);
             p.addParameter('showRandomizedQuantiles', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
@@ -4885,6 +5175,8 @@ classdef TrialDataConditionAlign < TrialData
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getAnalogGroupMeans(name, 'minTrials', p.Results.minTrials, ...
+                    'minTrialFraction', p.Results.minTrialFraction, ...
+                    'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                     'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                     'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt);     
                 [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
@@ -4910,7 +5202,8 @@ classdef TrialDataConditionAlign < TrialData
                 for iAlign = 1:td.nAlign
                     quantileData{iAlign} = td.useAlign(iAlign).getAnalogGroupMeansRandomizedQuantiles(name, ...
                         'quantiles', p.Results.showRandomizedQuantiles, ...
-                         'minTrials', p.Results.minTrials, ...
+                         'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
+                        'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                         'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                         'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt); 
                     
@@ -4933,7 +5226,10 @@ classdef TrialDataConditionAlign < TrialData
             
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar);
-            p.addParameter('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
+            p.addParameter('subtractTrialBaselineAt', '', @ischar);
+            p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -4942,7 +5238,11 @@ classdef TrialDataConditionAlign < TrialData
             [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getAnalogMultiGroupMeans({name1, name2}, 'minTrials', p.Results.minTrials);     
+                    td.useAlign(iAlign).getAnalogMultiGroupMeans({name1, name2}, ...
+                    'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
+                    'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
+                    'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
+                    'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt); 
                 [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
@@ -4959,7 +5259,10 @@ classdef TrialDataConditionAlign < TrialData
             
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar);
-            p.addParameter('errorType', 'sem', @(s) ismember(s, {'sem', 'std', ''}));
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.addParameter('subtractTrialBaseline', [], @(x) true);
+            p.addParameter('subtractTrialBaselineAt', '', @ischar);
+            p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -4968,7 +5271,11 @@ classdef TrialDataConditionAlign < TrialData
             [meanMat, semMat, tvecCell, stdMat] = deal(cell(td.nAlign, 1));
             for iAlign = 1:td.nAlign
                 [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getAnalogMultiGroupMeans({name1, name2, name3}, 'minTrials', p.Results.minTrials);     
+                    td.useAlign(iAlign).getAnalogMultiGroupMeans({name1, name2, name3}, ...
+                    'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
+                    'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
+                    'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
+                    'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt); 
                 [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
@@ -5183,6 +5490,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('useTranslucentMark3d', true, @islogical);
             
             p.addParameter('quick', false, @islogical);
+            p.addParameter('clickable', false, @islogical);
             
             p.addParameter('axh', [], @(x) true); % pass thru to getRequestedPlotAxis
             
@@ -5305,7 +5613,7 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             % store handles as we go
-            hData = cell(nConditionsUsed, nAlignUsed);
+            hData = gobjects(nConditionsUsed, nAlignUsed);
             
             % plot data traces
             hold(axh, 'on');
@@ -5339,38 +5647,38 @@ classdef TrialDataConditionAlign < TrialData
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
                         end
 %                         if p.Results.alpha < 1
-%                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
+%                             hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
 %                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
 %                                'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
 %                         else
-                            hData{iCond, iAlign} = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
+                            hData(iCond, iAlign) = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
                                 plotArgs{:}, p.Results.plotOptions{:});
                             if p.Results.alpha < 1
-                                TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
+                                TrialDataUtilities.Plotting.setLineOpacity(hData(iCond, iAlign), p.Results.alpha);
                             end
 %                         end
 
                     elseif D == 2
                         if p.Results.alpha < 1
-                           hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, ...
+                           hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
-                            hData{iCond, iAlign} = plot(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, '-', ...
+                            hData(iCond, iAlign) = plot(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, '-', ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ... 
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
 
                     elseif D == 3
                         if p.Results.alpha < 1
-                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, ... 
+                            hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, ... 
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
                                'LineWidth', p.Results.lineWidth,  'Parent', axh, p.Results.plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
-                            hData{iCond, iAlign} = plot3(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, '-', ...
+                            hData(iCond, iAlign) = plot3(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, '-', ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ... 
                                 plotArgs{:}, p.Results.plotOptions{:});
                         end
@@ -5378,9 +5686,9 @@ classdef TrialDataConditionAlign < TrialData
                     
                     % update name for inclusion in legend
                     if iAlign == 1
-                        TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, cd.namesShort{iCond});
+                        TrialDataUtilities.Plotting.showFirstInLegend(hData(iCond, iAlign), cd.namesShort{iCond});
                     else
-                        TrialDataUtilities.Plotting.hideInLegend(hData{iCond, iAlign});
+                        TrialDataUtilities.Plotting.hideInLegend(hData(iCond, iAlign));
                     end
                 end
                 
@@ -5467,7 +5775,13 @@ classdef TrialDataConditionAlign < TrialData
                     end                   
                 end
             end
-
+            
+            if p.Results.clickable
+                for iAlign = 1:nAlignUsed
+                    TrialDataUtilities.Plotting.makeClickableShowDescription(hData(:, iAlign), cd.names(:));
+                end
+            end
+            
             box(axh, 'off');
             axis(axh, 'tight');
             

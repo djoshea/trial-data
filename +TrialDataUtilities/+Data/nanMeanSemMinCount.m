@@ -23,7 +23,7 @@ end
 n = sum(~nans,dim);
 tooFew = n < minCount;
 
-if exist('minRatio', 'var')
+if exist('minRatio', 'var') && ~isnan(minRatio) && minRatio > 0
     minCountFromRatio = ceil(minRatio * size(x, dim));
     tooFew = tooFew | n < minCountFromRatio;
 end
