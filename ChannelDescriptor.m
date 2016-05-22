@@ -525,6 +525,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
             for iV = 1:numel(data)
                 if isempty(data{iV}), continue; end
+                if all(isnan(data{iV})) && strcmp(newClass, 'logical'), continue; end
                 if isempty(newClass)
                     newClass = class(data{iV});
                 else
@@ -555,6 +556,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function data = cellCast(data, newClass)
             for i = 1:numel(data)
                 if ~isa(data{i}, newClass)
+                    if strcmp(newClass, 'logical')
+                        data{i}(isnan(data{i})) = false;
+                    end
                     data{i} = cast(data{i}, newClass);
                 end
             end

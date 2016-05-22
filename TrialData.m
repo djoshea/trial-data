@@ -278,7 +278,7 @@ classdef TrialData
         function [data, channelDescriptorsByName] = validateDataInternal(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
             p = inputParser();
             p.addParameter('addMissingFields', false, @islogical); % if true, don't complain about missing channels, just add the missing fields
-            p.addParamValue('suppressWarnings', false, @islogical); % don't warn about any minor issues
+            p.addParameter('suppressWarnings', false, @islogical); % don't warn about any minor issues
             p.parse(varargin{:});
             suppressWarnings = p.Results.suppressWarnings;
 
