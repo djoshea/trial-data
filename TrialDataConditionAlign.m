@@ -1914,19 +1914,71 @@ classdef TrialDataConditionAlign < TrialData
              % more than one sample. Pulls a single time point from the t=0
              % aligned time for each trial. Guaranteed to be scalar per
              % trial, i.e. vector over trials
+             p = inputParser;
+             p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || ischar(x) || isa(x, 'function_handle'))
+             p.addParameter('subtractTrialBaselineAt', '', @ischar);
+             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
+             p.parse(varargin{:});
              if ~td.alignInfoActive.isStartStopEqual
                  warning('Getting analog sample when alignment is not for single timepoint');
              end
              [dataVec, timeVec] = getAnalogSample@TrialData(td, name, varargin{:});
+             
+             % subtract baseline on condition by condition
+            if ~isempty(p.Results.subtractConditionBaselineAt)
+                if strcmp(p.Results.subtractConditionBaselineAt, '*')
+                    tdBaseline = td;
+                else
+                    tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
+                    tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                end
+                baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                baselineForTrial = nanvec(tdBaseline.nTrials);
+                mask = ~isnan(tdBaseline.conditionIdx);
+                baselineForTrial(mask) = baselineByCondition(tdBaseline.conditionIdx(mask));
+                dataVec = dataVec - baselineForTrial;
+            end
+            
+            % subtract baseline on trial by trial basis
+            if ~isempty(p.Results.subtractTrialBaselineAt)
+                if strcmp(p.Results.subtractTrialBaselineAt, '*')
+                    tdBaseline = td;
+                else
+                    tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
+                    tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                end
+                baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                dataVec = dataVec - baseline;
+            end
+
+            % subtract manual offset from each trial 
+            if ~isempty(p.Results.subtractTrialBaseline)
+                sub = p.Results.subtractTrialBaseline;
+                if isa(sub, 'function_handle')
+                    % call it on each element of data
+                    subValues = arrayfun(sub, dataVec);
+                elseif ischar(sub)
+                    % treat as parameter value
+                    subValues = td.getParam(sub);
+                elseif isscalar(sub)
+                    subValues = repmat(sub, td.nTrials, 1);
+                else
+                    subValues = sub;
+                end
+
+                assert(numel(subValues) == td.nTrials, 'subtractTrialBaseline must be scalar of have nTrials entries');
+                dataVec = dataVec - subValues;
+            end
         end 
         
         function [dataCell, timeCell] = getAnalogSampleGrouped(td, name, varargin)
-            [dataVec, timeVec] = td.getAnalogSample(name);
+            [dataVec, timeVec] = td.getAnalogSample(name, varargin{:});
             [dataCell, timeCell] = td.groupElements(dataVec, timeVec);
         end
         
-        function [dataCell, timeCell] = getAnalogSampleGroupedRandomized(td, name)
-            [dataVec, timeVec] = td.getAnalogSample(name);
+        function [dataCell, timeCell] = getAnalogSampleGroupedRandomized(td, name, varargin)
+            [dataVec, timeVec] = td.getAnalogSample(name, varargin{:});
             [dataCell, timeCell] = td.groupElementsRandomized(dataVec, timeVec);
         end
         
@@ -1937,10 +1989,11 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
-            dCell = td.getAnalogSampleGrouped(name);
+            dCell = td.getAnalogSampleGrouped(name, p.Unmatched);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.conditionsSize));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
@@ -1957,10 +2010,11 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;            
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
-            
-            dCell = td.getAnalogSampleGroupedRandomized(name);
+
+            dCell = td.getAnalogSampleGroupedRandomized(name, p.Unmatched);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.conditionsSize td.nRandomized]));
             for iC = 1:numel(dCell)
                 if ~isempty(dCell{iC})
