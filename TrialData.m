@@ -638,7 +638,24 @@ classdef TrialData
                     tcprintf('inline', '  {blue}%s: \{{none}%s\}\n', groups{iG}, strjoin(isect, ', '));
                 end
             end
-            tcprintf('inline', '{yellow}Spike: {none}%s\n', strjoin(td.listSpikeChannels(), ', '));
+            
+            % display spike channels indicating waveforms
+            spikeCh = td.listSpikeChannels();
+            hasWaves = td.hasSpikeWaveforms(spikeCh);
+            str = '{yellow}Spike: {none}';
+            for iS = 1:numel(spikeCh)
+                if ~hasWaves(iS)
+                    str = [str, spikeCh{iS}]; %#ok<AGROW>
+                else
+                    str = [str, spikeCh{iS}, '{bright blue}+w{none}']; %#ok<AGROW>
+                end
+                if iS < numel(spikeCh)
+                    str = [str, ', ']; %#ok<AGROW>
+                end
+            end
+            str = [str, '\n'];
+            tcprintf('inline', str);
+            
             tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', strjoin(continuousChNonGroup, ', '));
             for iG = 1:numel(groups)
                 isect = groupChannels{iG}(ismember(groupChannels{iG}, continuousCh)); % want them in the group order
@@ -3420,13 +3437,21 @@ classdef TrialData
             blankingRegionsField = td.channelDescriptorsByName.(unitName).blankingRegionsField;
         end
         
-        function tf = hasSpikeWaveforms(td, unitName)
-            if ~td.hasSpikeChannel(unitName)
-                tf = false;
-                return;
+        function tf = hasSpikeWaveforms(td, unitNames)
+            if ischar(unitNames)
+                unitNames = {unitNames};
             end
-            wavefield = td.channelDescriptorsByName.(unitName).waveformsField;
-            tf = ~isempty(wavefield);
+            
+            tf = falsevec(numel(unitNames));
+            for iU = 1:numel(unitNames)
+                unitName = unitNames{iU};
+                if ~td.hasSpikeChannel(unitName)
+                    tf(iU) = false;
+                else
+                    wavefield = td.channelDescriptorsByName.(unitName).waveformsField;
+                    tf(iU) = ~isempty(wavefield);
+                end
+            end
         end
         
         function [wavesCell, waveTvec, timesCell] = getRawSpikeWaveforms(td, unitName)
