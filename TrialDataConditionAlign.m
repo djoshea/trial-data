@@ -4024,6 +4024,29 @@ classdef TrialDataConditionAlign < TrialData
             td.plotSpikeWaveforms(unitNames, p.Unmatched);
         end
         
+        function units = matchSpikeChannelsByRegex(td, units)
+            if ischar(units), units = {units}; end
+            allUnits = td.listSpikeChannels();
+            matches = cellvec(numel(units));
+            for iU = 1:numel(units)
+                matchRes = regexp(allUnits, units{iU}, 'match');
+                matches{iU} = cat(1, matchRes{:});
+            end
+            units = cat(1, matches{:});
+        end
+        
+        function units = matchSpikeChannelsByWildcard(td, units)
+            if ischar(units), units = {units}; end
+            allUnits = td.listSpikeChannels();
+            matches = cellvec(numel(units));
+            for iU = 1:numel(units)
+                regex = regexptranslate('wildcard', units{iU});
+                matchRes = regexp(allUnits, regex, 'match');
+                matches{iU} = cat(1, matchRes{:});
+            end
+            units = cat(1, matches{:});
+        end
+        
         function [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
             % [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
             % returns a matrix containing all waveforms in units. Units
@@ -4031,11 +4054,34 @@ classdef TrialDataConditionAlign < TrialData
             % or, if paramValue 'regexp' is true, a regexp search over
             % unitNames
             p = inputParser();
-            p.addParameter('regexp', false, @islogical);
-            p.addParameter('alignMode', 'none', @ischar);
+            p.addParameter('regexp', false, @islogical); % if false, standard wildcard * search is done via regexptranslate
+            
+            % subselecting waveforms
+            p.addParameter('maxWaves', Inf, @isscalar); % per unit
+            p.addParameter('seed', 0, @isscalar);
+            
+            % alignment / interpolation. If align is true, interpolation
+            % will be performed
+            p.addParameter('align', false, @islogical);
+            p.addParameter('alignMethod', 'upwardDownward', @ischar);
+            p.addParameter('interpTroughThresh', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('interp', false, @islogical);
+            p.addParameter('interpFactor', 10, @isscalar);
+            
+            % cleaning
+            p.addParameter('clean', false, @islogical);
+            p.addParameter('meanSDThresh', 0.4, @isscalar);
+            p.addParameter('maxSDThresh', 2, @isscalar);
             p.parse(varargin{:});
             
             if ischar(units), units = {units}; end
+            
+            % do regexp matching
+            if p.Results.regexp
+                units = td.matchSpikeChannelsByRegex(units);
+            else
+                units = td.matchSpikeChannelsByWildcard(units);
+            end
             
             waveTvec = td.channelDescriptorsByName.(units{1}).waveformsTime;
             for iU = 2:numel(units)
@@ -4043,36 +4089,71 @@ classdef TrialDataConditionAlign < TrialData
                     'Differing waveform time vectors found for units %s and %s', units{1}, units{iU});
             end
             
-            % do regexp matching
-            if p.Results.regexp
-                allUnits = td.listSpikeChannels();
-                matches = cellvec(numel(units));
-                for iU = 1:numel(units)
-                    matchRes = regexp(allUnits, units{iU}, 'match');
-                    matches{iU} = cat(1, matchRes{:});
-                end
-                units = cat(1, matches{:});
-            end
+            s = RandStream('mt19937ar','Seed',p.Results.seed);
             
-            % get waveforms for each unit
+            % get waveforms for each unit, do alignment / interpolation and
+            % cleaning within each unit separately
             [waveByU, trialByU, timeByU] = deal(cellvec(numel(units)));
             for iU = 1:numel(units)
                 [w, ~, t] = td.getSpikeWaveforms(units{iU});
                 [waveByU{iU}, trialByU{iU}] = TensorUtils.catWhich(1, w{:});
-                timeByU{iU} = cat(1, t{:});
-%                 
-%                 switch p.Results.alignMode
-%                     case 'none'
-%                         
-%                     case 'min'
-%                         
-                    
+                timeByU{iU} = cat(1, t{:}); 
+                
+                if size(waveByU{iU}, 1) > p.Results.maxWaves
+                    mask = randsample(s, size(waveByU{iU}, 1), p.Results.maxWaves);
+                    waveByU{iU} = waveByU{iU}(mask, :);
+                    trialByU{iU} = trialByU{iU}(mask);
+                    timeByU{iU} = timeByU{iU}(mask);
+                end
+                
+                if p.Results.align
+                    % will also do interpolation
+                    [waveByU{iU}, newWaveTvec] = TrialDataUtilities.MKsort.alignSpline(waveByU{iU}, waveTvec, ...
+                        'alignMethod', p.Results.alignMethod, 'interpFactor', p.Results.interpFactor, ...
+                        'interpTroughThresh', p.Results.interpTroughThresh);
+                elseif p.Results.interp
+                    % just do interpolation
+                    [waveByU{iU}, newWaveTvec] = interpWaves(waveByU{iU}, waveTvec, p.Results.interpFactor);
+                else
+                    newWaveTvec = waveTvec;
+                end
+                
+                if p.Results.clean
+                    [waveByU{iU}, maskKeep] = TrialDataUtilities.MKsort.cleanWaveforms(waveByU{iU}, ...
+                        'meanSDThresh', p.Results.meanSDThresh, 'maxSDThresh', p.Results.maxSDThresh);
+                    if ~isempty(maskKeep) && ~any(maskKeep)
+                        warning('No waveforms kept by cleaning procedure');
+                    end
+                    trialByU{iU} = trialByU{iU}(maskKeep);
+                    timeByU{iU} = timeByU{iU}(maskKeep);
+                end
             end
-            
-            
+                
+            % concatenate waveforms together
             [wavesMat, whichUnit] = TensorUtils.catWhich(1, waveByU{:});
             trialIdx = cat(1, trialByU{:});
             timeWithinTrial = cat(1, timeByU{:});
+            waveTvec = newWaveTvec;
+            
+            function [iwaves, itvec] = interpWaves(waves, tvec, factor)
+                itvec = linspace(min(tvec), max(tvec), factor*numel(tvec))';
+                iwaves = zeros(size(waves, 1), numel(itvec));
+                for iW = 1:size(waves, 1)
+                    iwaves(iW, :) = interp1(tvec, waves(iW,:), itvec, 'spline');
+                end
+            end
+        end
+        
+        function [waveMean, waveTvec, waveStd] = getSpikeWaveformMean(td, units, varargin)
+            [wavesMat, waveTvec, ~, ~, whichUnit] = getSpikeWaveformMatrix(td, units, varargin{:});
+            
+            nU = numel(unique(whichUnit));
+            
+            [waveMean, waveStd] = deal(nan(nU, size(wavesMat, 2)));
+            for iU = 1:nU
+                waveMean(iU, :) = nanmean(wavesMat(whichUnit == iU, :));
+                waveStd(iU, :) = nanstd(wavesMat(whichUnit == iU, :));
+            end
         end
     end
     
@@ -5450,6 +5531,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alignSummarySet', [], @iscell);
             p.addParameter('alignInfoActiveIdx', 1, @isscalar);
             p.addParameter('alignTimeOffsets', [], @isvector);
+            
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
@@ -5461,6 +5543,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('scaleBars', false, @islogical);
             p.addParameter('axisStyleX', 'tickBridge', @ischar);
             p.addParameter('axisStyleY', 'tickBridge', @ischar);
+            
+            p.addParameter('style', 'line', @ischar); % line, stairs
             
             p.addParameter('lineWidth', 1, @isscalar);
             p.addParameter('conditionIdx', [], @isnumeric);

@@ -3454,14 +3454,14 @@ classdef TrialData
             end
         end
         
-        function [wavesCell, waveTvec, timesCell] = getRawSpikeWaveforms(td, unitName)
+        function [wavesCell, waveTvec, timesCell, sortQuality] = getRawSpikeWaveforms(td, unitName)
             cd = td.channelDescriptorsByName.(unitName);
             wavefield = cd.waveformsField;
             assert(~isempty(wavefield), 'Unit %s does not have waveforms', unitName);
             wavesCell = {td.data.(wavefield)}';
             % scale to appropriate units
             wavesCell = cd.scaleWaveforms(wavesCell);
-            waveTvec = td.channelDescriptorsByName.(unitName).waveformsTime;
+            waveTvec = cd.waveformsTime;
             
             % check number of timepoints 
             waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(wavesCell);
@@ -3475,6 +3475,14 @@ classdef TrialData
                 end
             end
             timesCell = td.getRawSpikeTimes(unitName);
+            
+            if cd.hasSortQualityEachTrial
+                qualityField = cd.sortQualityEachTrialField;
+                sortQuality = {td.data.(qualityField)}';
+            else
+                quality = cd.sortQuality;
+                sortQuality = cellfun(@(times) repmat(quality, numel(times), 1), timesCell, 'UniformOutput', false);
+            end
         end
         
         function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName)
