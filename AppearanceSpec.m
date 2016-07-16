@@ -140,9 +140,16 @@ classdef AppearanceSpec
            args = app.getNonEmptyArgsByName({'Color', 'LineWidth'});
        end
        
-       function args = getMarkerPlotArgs(app)
-           args = {'MarkerFaceColor', app.Color, ...
-               'MarkerEdgeColor', AppearanceSpec.darkenColor(app.Color, 0.5)};
+       function args = getMarkerPlotArgs(app, showEdges)
+           if nargin < 2
+               showEdges = false;
+           end
+           if showEdges
+               edge = AppearanceSpec.darkenColor(app.Color, 0.5);
+           else
+               edge = 'none';
+           end
+           args = {'MarkerFaceColor', app.Color, 'MarkerEdgeColor', edge};
        end
        
     end

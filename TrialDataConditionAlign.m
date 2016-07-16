@@ -945,6 +945,11 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.binAttribute(name, range);
         end
+        
+        function td = filterRangeExclude(td, attrName, rangeExclude)
+            td.warnIfNoArgOut(nargout);
+            td = td.binAttribute(attrName, [-Inf rangeExclude(1); rangeExclude(2) Inf]);
+        end
             
         function td = binAttributeUniform(td, varargin)
             td.warnIfNoArgOut(nargout);
@@ -978,6 +983,12 @@ classdef TrialDataConditionAlign < TrialData
             % td = filter(td, attr, valueList)
             % shortcut for setAttributeValueList
             td.warnIfNoArgOut(nargout);
+            td = td.setAttributeValueList(attrName, valueList);
+        end
+        
+        function td = filterExclude(td, attrName, valueListExclude)
+            td.warnIfNoArgOut(nargout);
+            valueList = setdiff(td.getParamUnique(attrName), valueListExclude);
             td = td.setAttributeValueList(attrName, valueList);
         end
         
@@ -2033,7 +2044,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('delta', [], @isscalar);
             p.addParameter('interpolationMethod', 'pchip', @ischar);
-            p.addParameter('smoothing', 7, @(x) isscalar(x) && mod(x, 2) == 1);
+            p.addParameter('smoothing', NaN, @(x) isnan(x) || (isscalar(x) && mod(x, 2) == 1));
+            p.addParameter('smoothingMs', 7, @isscalar); % 
             p.addParameter('order', 1, @isscalar);
             p.addParameter('polynomialOrder', 2, @isscalar);
             p.parse(varargin{:});
@@ -2041,6 +2053,18 @@ classdef TrialDataConditionAlign < TrialData
             [data, time, delta] = td.getAnalogUniformlySampled(name, ...
                 'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
             diffData = cellvec(td.nTrials);
+            
+            % figure out smoothing in samples if specified in ms
+            if ~isnan(p.Results.smoothing)
+                smoothing = p.Results.smoothing;
+            else
+                smoothingMs = p.Results.smoothingMs;
+                % convert from ms to samples using ms * samples/ms
+                smoothing = round(smoothingMs * delta / td.timeUnitsPerMs);
+                if mod(smoothing, 2) == 0 
+                    smoothing = smoothing + 1;
+                end
+            end
             
             w = -1 / (delta / td.timeUnitsPerSecond) ^ p.Results.order;
             prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', name);
@@ -2050,12 +2074,12 @@ classdef TrialDataConditionAlign < TrialData
                     continue;
                 end
                 
-                if nnz(~isnan(data{iT})) < p.Results.smoothing
+                if nnz(~isnan(data{iT})) < smoothing
                     % too few samples
                     diffData{iT} = nan(size(time{iT}));
                 else
                     diffData{iT} = w * TrialDataUtilities.Data.savitzkyGolayFilt( ...
-                        data{iT}, p.Results.polynomialOrder, p.Results.order, p.Results.smoothing)'; 
+                        data{iT}, p.Results.polynomialOrder, p.Results.order, smoothing)'; 
                 end
             end
             prog.finish();
@@ -2960,8 +2984,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.addParameter('alpha', 0.7, @isscalar);
             p.addParameter('edgeAlpha', [], @isscalar);
-            p.addParameter('markerSize', 5, @isscalar);
+            p.addParameter('markerSize', 6, @isscalar);
             p.addParameter('useThreeVector', true, @islogical);
+            
+            p.addParameter('xJitter', 0, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2999,13 +3025,20 @@ classdef TrialDataConditionAlign < TrialData
             h = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nConditionsUsed);
             for iC = 1:nConditionsUsed
                 idxC = conditionIdx(iC);
-                args = app(idxC).getMarkerPlotArgs();
+                args = app(idxC).getMarkerPlotArgs(false);
                 if isempty(dataX{iC}) || isempty(dataY{iC})
                     continue;
                 end
+                
+                if p.Results.xJitter > 0
+                    X = dataX{iC} + (rand(size(dataX{iC}))-0.5) * p.Results.xJitter;
+                else
+                    X = dataX{iC};
+                end
+                
 %                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
 %                     args{:}, p.Results.plotOptions{:});
-                h(iC) = scatter(dataX{iC}, dataY{iC}, p.Results.markerSize, ...
+                h(iC) = scatter(X, dataY{iC}, p.Results.markerSize, ...
                     args{:}, 'MarkerFaceAlpha', p.Results.alpha, p.Results.plotOptions{:});
                 hold on;
 
@@ -3043,6 +3076,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('errorType', 'sem', @ischar);
             p.addParameter('LineWidth', 1, @isscalar);
+            p.addParameter('connectMissing', false, @islogical);
+            p.addParameter('xJitter', 0, @isscalar);
             p.KeepUnmatched = true;
             p.CaseSensitive = false;
             p.parse(varargin{:});
@@ -3085,9 +3120,21 @@ classdef TrialDataConditionAlign < TrialData
             app = td.conditionAppearances;
             
             nCondOther = td.conditionsSize(2);
-            h = nan(nCondOther, 1);
+            h = gobjects(nCondOther, 1);
             for iC = 1:nCondOther
-                h(iC) = TrialDataUtilities.Plotting.errorline(xValues, meanY(:, iC), errorY(:, iC), ...
+                if p.Results.connectMissing
+                    mask = ~isnan(makecol(xValues)) & ~isnan(meanY(:, iC)) & ~isnan(errorY(:, iC));
+                    if ~any(mask)
+                        continue;
+                    end
+                else
+                    mask = true(size(xValues));
+                end
+                x = xValues(mask) + iC*p.Results.xJitter;
+                y = meanY(mask, iC);
+                ey = errorY(mask, iC);
+                
+                h(iC) = TrialDataUtilities.Plotting.errorline(x, y, ey, ...
                     'Color', app(1, iC).Color, 'axh', axh, 'LineWidth', p.Results.LineWidth);
                 TrialDataUtilities.Plotting.showInLegend(h(iC), conditionNames{iC});
             end
@@ -5146,7 +5193,7 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             alignTimeOffsets = td.getAlignPlottingTimeOffsets(p.Results.time, 'alignIdx', p.Results.alignIdx);
-            TrialDataConditionAlign.plotConditionAlignedAnalogDataGroupMeans(D, varargin{:}, ...
+            TrialDataConditionAlign.plotConditionAlignedAnalogDataGroupMeans(D, p.Results, p.Unmatched, ...
                 'conditionDescriptor', td.conditionInfo, ...
                 'alignSummarySet', td.alignSummarySet, ...
                 'alignInfoActiveIdx', td.alignInfoActiveIdx, ...
@@ -5166,6 +5213,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('label', '', @ischar); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -5217,7 +5265,8 @@ classdef TrialDataConditionAlign < TrialData
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
                 'quantileData', quantileData, ...
-                'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(name), p.Unmatched);
+                'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(name), 'labelY', p.Results.label, ...
+                p.Unmatched);
         end
         
         function plotAnalogGroupMeans2D(td, name1, name2, varargin) 
@@ -5458,11 +5507,15 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
             p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
             
+            p.addParameter('labelX', '', @ischar);
+            p.addParameter('labelY', '', @ischar);
+            p.addParameter('labelZ', '', @ischar);
+            
             p.addParameter('scaleBars', false, @islogical);
             p.addParameter('axisStyleX', 'tickBridge', @ischar);
             p.addParameter('axisStyleY', 'tickBridge', @ischar);
             
-            p.addParameter('lineWidth', 1, @isscalar);
+            p.addParameter('lineWidth', get(0, 'DefaultLineLineWidth'), @isscalar);
             p.addParameter('conditionIdx', [], @isnumeric);
             p.addParameter('alignIdx', [], @isnumeric);
             p.addParameter('plotOptions', {}, @(x) iscell(x));
@@ -5734,38 +5787,38 @@ classdef TrialDataConditionAlign < TrialData
                         % x is data, y is time
                         if ~isempty(p.Results.axisInfoX)
                             TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
-                                'which', 'x', 'style', axisStyleX);
+                                'which', 'x', 'style', axisStyleX, 'label', p.Results.labelX);
                         end
                     else
                         % y is data, x is time
                         if ~isempty(p.Results.axisInfoY)
                             TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                                'which', 'y', 'style', axisStyleY);
+                                'which', 'y', 'style', axisStyleY, 'label', p.Results.labelY);
                         end
                     end
 
                 elseif D == 2
                     if ~isempty(p.Results.axisInfoX)
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
-                            'which', 'x', 'style', axisStyleX);
+                            'which', 'x', 'style', axisStyleX, 'label', p.Results.labelX);
                     end
                     if ~isempty(p.Results.axisInfoY)
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                            'which', 'y', 'style', axisStyleY);
+                            'which', 'y', 'style', axisStyleY, 'label', p.Results.labelY);
                     end
 
                 elseif D == 3
                     if ~isempty(p.Results.axisInfoX)
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
-                            'which', 'x', 'useAutoAxis', false);
+                            'which', 'x', 'useAutoAxis', false, 'label', p.Results.labelX);
                     end
                     if ~isempty(p.Results.axisInfoY)
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                            'which', 'y', 'useAutoAxis', false);
+                            'which', 'y', 'useAutoAxis', false, 'label', p.Results.labelY);
                     end
                     if ~isempty(p.Results.axisInfoZ)
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoZ, ...
-                            'which', 'z', 'useAutoAxis', false);
+                            'which', 'z', 'useAutoAxis', false, 'label', p.Results.labelZ);
                     end
 
                     if p.Results.useThreeVector

@@ -703,7 +703,12 @@ classdef AlignDescriptor
             idx = ad.findMark(eventName, index, offset);
         end
         
-        function idx = findMark(ad, eventName, index, offset)
+        function idx = findMark(ad, eventName, varargin)
+            p = inputParser();
+            p.addOptional('index', ':', @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addOptional('offset', 0, @isscalar);
+            p.parse(varargin{:});
+            
             if ad.nMarks == 0
                 idx = [];
                 return;
@@ -712,8 +717,8 @@ classdef AlignDescriptor
             match = truevec(ad.nMarks);
             
             match = match & makecol(strcmp(ad.markEvents, eventName));
-            match = match & makecol(cellfun(@(x) isequal(x, index), ad.markEventsIndex));
-            match = match & makecol(ad.markOffsets == offset);
+            match = match & makecol(cellfun(@(x) isequal(x, p.Results.index), ad.markEventsIndex));
+            match = match & makecol(ad.markOffsets == p.Results.offset);
             idx = find(match);
         end
         
@@ -793,10 +798,10 @@ classdef AlignDescriptor
             ad = ad.removeMarksByIdx(idx);
         end
         
-        function ad = removeMark(ad, eventName, index, offset)
+        function ad = removeMark(ad, eventName, varargin)
             ad.warnIfNoArgOut(nargout);
 
-            idx = ad.findMark(ad, eventName, index, offset);
+            idx = ad.findMark(ad, eventName, varargin{:});
             ad = ad.removeMarksByIdx(idx);
         end
 

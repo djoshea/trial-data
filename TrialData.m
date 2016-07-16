@@ -1,4 +1,4 @@
-classdef TrialData
+ classdef TrialData
 % TrialData represents a collection of trials, whose data is accessed via
 % a TrialDataInterface. 
 %
@@ -63,6 +63,8 @@ classdef TrialData
         
         nChannels
         channelNames % cell array of channel names
+        
+        timeUnitsPerMs
     end
 
     % Initializing and building
@@ -756,6 +758,10 @@ classdef TrialData
         function names = get.channelNames(td)
             names = fieldnames(td.channelDescriptorsByName);
         end
+        
+        function n = get.timeUnitsPerMs(td)
+            n = td.timeUnitsPerSecond / 1000;
+        end
     end
 
     methods % Trial selection
@@ -841,8 +847,17 @@ classdef TrialData
             td = td.invalidateValid();
         end
         
-        function td = markTrialsTemporarilyInvalid(td, mask, reason)
+        function td = markTrialsTemporarilyInvalid(td, mask, reason, varargin)
+            p = inputParser();
+            p.addParameter('validOnly', true, @islogical);  % if false, mark trial invalid even if its not currently valid
+            p.parse(varargin{:});
+            
             td.warnIfNoArgOut(nargout);
+            
+            mask = makecol(TensorUtils.vectorIndicesToMask(mask, td.nTrials));
+            if p.Results.validOnly
+                mask = mask & td.valid;
+            end
             
             tempValid = td.getTemporaryValid();
             tempValid(mask) = false;
@@ -853,6 +868,14 @@ classdef TrialData
             td.temporaryValid = makecol(tempValid);
             td = td.invalidateValid();
         end
+        
+        function td = markValidTrialsTemporarilyInvalid(td, reason)
+            td.warnIfNoArgOut(nargout);
+            if nargin < 2
+                reason = '';
+            end
+            td = td.markTrialsTemporarilyInvalid(td.valid, reason, 'validOnly', true);
+        end 
         
         function td = withTrials(td, mask)
             td.warnIfNoArgOut(nargout);
@@ -1613,6 +1636,11 @@ classdef TrialData
                 strjoin(setdiff(names, full), ', ')); 
             td = td.dropChannels(setdiff(full, names));
         end
+        
+        function deltaMs = getAnalogTimeDeltaMs(td, name)
+            delta = td.getAnalogTimeDelta(name);
+            deltaMs = delta * td.timeUnitsPerSecond / 1000;
+        end
 
         function delta = getAnalogTimeDelta(td, name)
             % compute the median delta betwen successive samples of an
@@ -1704,7 +1732,7 @@ classdef TrialData
         function [dataUnif, timeUnif, delta] = getAnalogRawUniformlySampled(td, name, varargin)
             p = inputParser();
             p.addParameter('method', 'linear', @ischar);
-            p.addParameter('delta', [], @(x) isscalar(x) || isempty(x));
+            p.addParameter('delta', [], @(x) isscalar(x) || isempty(x)); % in ms
             p.parse(varargin{:});
             
             delta = p.Results.delta;
