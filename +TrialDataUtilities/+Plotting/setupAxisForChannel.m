@@ -4,6 +4,7 @@ function setupAxisForChannel(channelDescriptor, varargin)
     p.addParamValue('which', 'y', @(str) ismember(str, {'x', 'y', 'z'}));
     p.addParamValue('useAutoAxis', true, @islogical);
     p.addParamValue('style', 'tickBridge', @ischar);
+    p.addParameter('label', '', @ischar);
     p.parse(varargin{:});
     
     which = p.Results.which;
@@ -12,17 +13,25 @@ function setupAxisForChannel(channelDescriptor, varargin)
     hold(axh, 'on');
     
     if isa(channelDescriptor, 'ChannelDescriptor')
-        label = channelDescriptor.getAxisLabelPrimary();
         units = channelDescriptor.unitsPrimary;
+        if isempty(p.Results.label)
+            label = channelDescriptor.getAxisLabelPrimary(); % includes units
+        else
+            label = sprintf('%s (%s)', p.Results.label, units);
+        end
     elseif isstruct(channelDescriptor)
-        name = channelDescriptor.name;
+        if isempty(p.Results.label)
+            name = channelDescriptor.name;
+        else
+            name = p.Results.label;
+        end
         units = channelDescriptor.units;
         if isempty(units)
             label = name;
         else
             label = sprintf('%s (%s)', name, units);
         end
-    end  
+    end
     
     useAutoAxis = p.Results.useAutoAxis;
     
