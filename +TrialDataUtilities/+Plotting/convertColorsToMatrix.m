@@ -2,7 +2,9 @@ function map = convertColorsToMatrix(colors)
 
     hasAlpha = false;
 
-    if iscell(colors)
+    if ischar(colors)
+        map = convStr(colors);
+    elseif iscell(colors)
         N = numel(colors);
         map = nan(N, 4);
 
@@ -38,6 +40,8 @@ end
 
 function c = convStr(s)
     switch s
+        case 'none'
+            c = 'none';
         case 'k'
             c = [0 0 0];
         case 'b'
