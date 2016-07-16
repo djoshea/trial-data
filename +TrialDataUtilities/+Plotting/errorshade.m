@@ -30,12 +30,12 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
             TrialDataUtilities.Plotting.hideInLegend(hl);
         else
             % use plot for opaque lines
-            if z ~=0
-                zv = z*ones(size(v));
-                hl = plot(x, ym, zv, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
-            else
+%             if z ~=0
+%                 zv = z*ones(size(v));
+%                 hl = plot(x, ym, zv, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
+%             else
                 hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
-            end
+%             end
         end
     else
         hl = [];

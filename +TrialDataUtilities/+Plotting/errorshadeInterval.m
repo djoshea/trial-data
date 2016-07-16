@@ -9,6 +9,8 @@ function hs = errorshadeInterval(x, lo, hi, color, varargin)
     p.addParameter('z', 0, @isscalar); % used for visual stacking on 2-d plots
     p.parse(varargin{:}); 
     
+    color = TrialDataUtilities.Plotting.convertColorsToMatrix(color);
+    
     z = p.Results.z;
 
     if isempty(p.Results.axh)
@@ -80,13 +82,16 @@ p.addParameter('alpha', 1, @isscalar);
 p.KeepUnmatched = false;
 p.parse(varargin{:});
 
+faceColor = TrialDataUtilities.Plotting.convertColorsToMatrix(p.Results.FaceColor);
+edgeColor = TrialDataUtilities.Plotting.convertColorsToMatrix(p.Results.EdgeColor);
+
 xv = [x, fliplr(x)];
 yv = [y1, fliplr(y2)];
 zv = z * ones(size(xv));
 
 ha = patch(xv, yv, zv, 'k', 'Parent', axh);
-set(ha, 'FaceColor', p.Results.FaceColor, ...
-    'EdgeColor', p.Results.EdgeColor, 'Parent', axh, 'FaceAlpha', p.Results.alpha);
+set(ha, 'FaceColor', faceColor, ...
+    'EdgeColor', edgeColor, 'Parent', axh, 'FaceAlpha', p.Results.alpha);
 
 % hide shading from legend
 set(get(get(ha, 'Annotation'), 'LegendInformation'), 'IconDisplayStyle', 'off');
