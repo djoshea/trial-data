@@ -71,6 +71,9 @@ classdef ConditionDescriptor
         % updates cache on set
         appearanceFn; % function which takes struct('attrName1', attrVal1, 'attrName2', attrVal2)
                       % and returns struct('color', 'k', 'lineWidth', 2, ...); 
+                      
+        logicalNotPrefix = 'Non-';
+        includeUnits = true;
     end
      
     properties(SetAccess=protected)        
@@ -98,6 +101,8 @@ classdef ConditionDescriptor
         attributeValueBinsManual = {}; % A x 1 cell array of value Nbins x 2 value bins to use for numeric lists
         attributeValueBinsAutoCount % A x 1 numeric array of Nbins to use when auto computing the bins, NaN if not in use
         attributeValueBinsAutoModes % A x 1 numeric array of either AttributeValueBinsAutoUniform or AttributeValueBinsAutoQuantiles
+        
+        attributeValueListsAsStringsManual = {}; % A x 1 array of cellstr which remap the attribute values with value lists
         
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
         axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
@@ -210,9 +215,6 @@ classdef ConditionDescriptor
         function ci = invalidateCache(ci)
             ci.warnIfNoArgOut(nargout);
 
-            % here we precompute these things to save time, 
-            % but each of these things also has a get method that will
-            % recompute this for us
             if ~isempty(ci.odc)
                 ci.odc  = ci.odc.copy();
                 ci.odc.flush();
@@ -1508,6 +1510,7 @@ classdef ConditionDescriptor
             % list of allowed values for this value (other values will be ignored)
             p.addParameter('displayAs', '', @ischar);
             p.addParameter('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x)); 
+            p.addParameter('valueListDisplayAs', {}, @(x) isempty(x) || iscellstr(x));
             p.addParameter('valueBins', {}, @(x) isnumeric(x) || iscell(x));
             p.addParameter('numeric', false, @islogical);
             p.parse(name, varargin{:});
@@ -1530,10 +1533,25 @@ classdef ConditionDescriptor
 
             if isempty(valueList)
                 ci.attributeValueListsManual{iAttr} = {};
+                assert(isempty(p.Results.valueListDisplayAs), 'valueListDisplayAs may only be specified when valueList is also specified');
+                ci.attributeValueListsAsStringsManual{iAttr} = {};
             else
                 %assert(isnumeric(valueList) || iscell(valueList), 'ValueList must be numeric or cell');
                 % filter for unique values or 
-                ci.attributeValueListsManual{iAttr} = unique(valueList, 'stable');
+                if ~isempty(p.Results.valueListDisplayAs)
+                    as = p.Results.valueListDisplayAs;
+                    assert(iscellstr(as) && numel(as) == numel(valueList), 'valueListDisplayAs must have same size as value list');
+                else
+                    as = {};
+                end
+                [valueList, iA] = unique(valueList, 'stable');
+                ci.attributeValueListsManual{iAttr} = valueList;
+                
+                if ~isempty(as)
+                    as = as(iA);
+                    ci.attributeValueListsAsStringsManual{iAttr} = as;
+                end
+                
             %    if ~iscell(valueList)
              %       valueList = num2cell(valueList);
              %   end
@@ -1542,7 +1560,6 @@ classdef ConditionDescriptor
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
-
             ci = ci.notifyConditionsChanged();
         end
 
@@ -1605,6 +1622,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsAutoCount = ci.attributeValueBinsAutoCount(mask);
             ci.attributeValueBinsAutoModes = ci.attributeValueBinsAutoModes(mask);
             ci.attributeValueBinsManual = ci.attributeValueBinsManual(mask);
+            ci.attributeValueListsAsStringsAsManual = ci.attributeValueListsAsStringsAsManual(mask);
         end 
         
         % set all attribute value lists to auto
@@ -1624,6 +1642,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
+            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
         end
         
@@ -1649,21 +1668,59 @@ classdef ConditionDescriptor
         end  
 
         % manually set the attribute value list
-        function ci = setAttributeValueList(ci, name, valueList)
+        function ci = setAttributeValueList(ci, name, valueList, varargin)
+            p = inputParser;
+            p.addParameter('displayAs', {}, @(x) isempty(x) || ischar(x) || iscellstr(x));
+            p.parse(varargin{:});
+            
             ci.warnIfNoArgOut(nargout);
 
             iAttr = ci.getAttributeIdx(name);           
             if isempty(valueList)
                 ci.attributeValueListsManual{iAttr} = {};
+                ci.attributeValueListsAsStringsAsManual{iAttr} = {};
             else
                 if ischar(valueList)
                     valueList = {valueList};
                 end
-                ci.attributeValueListsManual{iAttr} = valueList;                
+                ci.attributeValueListsManual{iAttr} = valueList;   
+                
+                % set the attributeValueListDisplayAs
+                displayAs = p.Results.displayAs;
+                if ~isempty(displayAs)
+                    if ischar(displayAs)
+                        displayAs = {displayAs};
+                    end
+                    assert(iscellstr(displayAs));
+                else
+                    displayAs = {};
+                end
+                ci.attributeValueListsAsStringsAsManual{iAttr} = displayAs;
+            end
+             
+            %ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
+            ci = ci.notifyConditionsChanged();
+        end
+        
+        function ci = setAttributeValueListDisplayAs(ci, name, displayAs)
+            ci.warnIfNoArgOut(nargout);
+
+            iAttr = ci.getAttributeIdx(name);           
+            switch(ci.attributeValueModes(iAttr))
+                case {ci.AttributeValueListManual, ci.AttributeValueBinsManual}
+                    if ~isempty(displayAs)
+                        if ischar(displayAs)
+                            displayAs = {displayAs};
+                        end
+                        assert(iscellstr(displayAs));
+                    else
+                        displayAs = {};
+                    end
+                    ci.attributeValueListsAsStringsManual{iAttr} = displayAs;
+                otherwise
+                    error('Attribute must have a fixed value list in order to specify the valueListDisplayAs manually');
             end
             
-            %ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
-
             ci = ci.notifyConditionsChanged();
         end
 
@@ -1694,7 +1751,7 @@ classdef ConditionDescriptor
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
-
+            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
         end
 
@@ -1709,7 +1766,7 @@ classdef ConditionDescriptor
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = nBins;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoUniform;
-
+            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
         end
 
@@ -1723,8 +1780,16 @@ classdef ConditionDescriptor
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = nQuantiles;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoQuantiles;
-
+            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
+        end
+        
+        function list = get.attributeValueListsAsStringsManual(ci)
+            if isempty(ci.attributeValueListsAsStringsManual)
+                list = cellvec(ci.nAttributes);
+            else
+                list = ci.attributeValueListsAsStringsManual;
+            end
         end
         
         function values = generateConditionsAsStrings(ci, varargin)
@@ -2085,15 +2150,15 @@ classdef ConditionDescriptor
         
         function strCell = buildAxisValueListsAsStringsShort(ci)
             strCell = ci.generateAxisValueListsAsStrings('separator', ' ', 'short', true);
-        end
-        
+        end 
         
         function strCell = generateAxisValueListsAsStrings(ci, varargin)
             p = inputParser();
             p.addParameter('separator', ' ', @ischar);
             p.addParameter('short', false, @islogical);
-            p.addParameter('includeUnits', true, @islogical);
-            p.addParameter('logicalNotPrefix', 'Not ', @ischar);
+            p.addParameter('includeUnits', ci.includeUnits, @islogical);
+            p.addParameter('logicalNotPrefix', ci.logicalNotPrefix, @ischar);
+            p.addParameter('useDisplayAs', true, @islogical);
             p.parse(varargin{:});
            
             separator = p.Results.separator;
@@ -2123,7 +2188,7 @@ classdef ConditionDescriptor
             % describe the list of values selected for along each position on each axis
             for iX = 1:ci.nAxes  
                 
-                % start with axisValueLists
+                % loop over all attributes on this axis
                 attr = ci.axisAttributes{iX};
                 attrIdx = ci.getAttributeIdx(attr);
                 
@@ -2138,6 +2203,23 @@ classdef ConditionDescriptor
                                     valueLists{iX}(iV).(attr{iA}) = sprintf('%.3g-%.3g', cell2mat(valueLists{iX}(iV).(attr{iA})));
                                 end
                             end
+                    end
+                    
+                    % check whether a manual value list as stirings is used
+                    % for this attribute (per-value display as)
+                    if p.Results.useDisplayAs && ...
+                            ismember(ci.attributeValueModes(attrIdx(iA)), [ci.AttributeValueBinsManual, ci.AttributeValueListManual])
+                        displayAs = ci.attributeValueListsAsStringsManual{attrIdx(iA)};
+                        if ~isempty(displayAs)
+                            valuesThisAttr = ci.attributeValueLists{attrIdx(iA)};
+                            for iV = 1:numel(valueLists{iX})
+                                val = valueLists{iX}(iV).(attr{iA});
+                                [tf, idx] = ismember(val, valuesThisAttr);
+                                assert(tf, 'Value not found in list of values for attribute %s', ci.attributeNames{iA});
+                                % substitute in the display as value
+                                valueLists{iX}(iV).(attr{iA}) = displayAs{idx};
+                            end
+                        end
                     end
                 end
                 
@@ -2267,6 +2349,7 @@ classdef ConditionDescriptor
             modes = ci.attributeValueModes;
             valueList = ci.attributeValueLists;
             units = ci.attributeUnits;
+            valueDisplay = ci.attributeValueListsAsStringsManual;
             for i = 1:ci.nAttributes
                 if isempty(units{i})
                     unitStr = '';
@@ -2275,7 +2358,14 @@ classdef ConditionDescriptor
                 end
                 switch modes(i) 
                     case ci.AttributeValueListManual
-                        if ci.attributeNumeric(i)
+                        if ~isempty(valueDisplay{i})
+                            % use manual stirngs
+                            displayAs = makecol(valueDisplay{i});
+                            assert(numel(valueList{i}) == numel(displayAs), 'attributeValueListsAsStringsManual for attribute %s has the wrong number of entries');
+
+                            valueList{i} = displayAs;
+                            
+                        elseif ci.attributeNumeric(i)
                             if iscell(valueList{i})
                                 % could have multiple attribute values
                                 % grouped together as one element
