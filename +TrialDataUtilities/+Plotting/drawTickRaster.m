@@ -46,31 +46,46 @@ function hLine = drawTickRaster(timesCell, varargin)
         
         X = cat(1, waveTByTrial{:}) + p.Results.xOffset;
         Y = cat(1, waveYByTrial{:}) + p.Results.yOffset; 
+        
+        % filter within time limits?
+        if ~isempty(X)
+            hLine = plot(X(:), Y(:), 'Parent', p.Results.axh, 'Color', p.Results.color, ...
+                'LineWidth', p.Results.lineWidth);
+            if p.Results.alpha < 1
+                SaveFigure.setLineOpacity(hLine, p.Results.alpha);
+            end
+        else
+            hLine = NaN;
+        end
     else
+        % draw vertical ticks
+        
         % build line commands
         XByTrial = cell(1, nTrials);
         YByTrial = cell(1, nTrials);
         for iE = 1:nTrials 
             if ~isempty(timesCell{iE})
-                XByTrial{iE} = repmat(makerow(timesCell{iE}), 3, 1);
-                XByTrial{iE}(3, :) = NaN;
-                YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)-tickHeight; NaN], 1, numel(timesCell{iE}));
+                XByTrial{iE} = repmat(makerow(timesCell{iE}), 2, 1);
+                YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)-tickHeight], 1, numel(timesCell{iE}));
             end
         end
 
         X = cell2mat(XByTrial) + p.Results.xOffset;
         Y = cell2mat(YByTrial) + p.Results.yOffset;
+        
+        % filter within time limits?
+        if ~isempty(X)
+            hLine = line(X, Y, 'Parent', p.Results.axh, 'Color', p.Results.color, ...
+                'LineWidth', p.Results.lineWidth);
+            if p.Results.alpha < 1
+                SaveFigure.setLineOpacity(hLine, p.Results.alpha);
+            end
+        else
+            hLine = NaN;
+        end
+
     end
     
-    % filter within time limits?
-    if ~isempty(X)
-        hLine = plot(X(:), Y(:), 'Parent', p.Results.axh, 'Color', p.Results.color, ...
-            'LineWidth', p.Results.lineWidth);
-        if p.Results.alpha < 1
-            SaveFigure.setLineOpacity(hLine, p.Results.alpha);
-        end
-    else
-        hLine = NaN;
-    end
+    
 end
 
