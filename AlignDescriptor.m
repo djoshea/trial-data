@@ -801,7 +801,7 @@ classdef AlignDescriptor
         function ad = removeMark(ad, eventName, varargin)
             ad.warnIfNoArgOut(nargout);
 
-            idx = ad.findMark(ad, eventName, varargin{:});
+            idx = ad.findMark(eventName, varargin{:});
             ad = ad.removeMarksByIdx(idx);
         end
 
