@@ -972,6 +972,13 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
+        function td = setAttributeValueListDisplayAs(td, attrName, displayAs)
+            td.warnIfNoArgOut(nargout);
+            td = td.addAttribute(attrName);
+            td.conditionInfo = td.conditionInfo.setAttributeValueListDisplayAs(attrName, displayAs);
+            td = td.postUpdateConditionInfo();
+        end
+        
         function td = setAttributeDisplayAs(td, attrName, displayAs)
             td.warnIfNoArgOut(nargout);
             td = td.addAttribute(attrName);
@@ -4220,11 +4227,12 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
+            p.addParameter('axh', gca, @ishandle);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            axh = td.getRequestedPlotAxis(p.Unmatched);
-
+            axh = TrialDataConditionAlign.getRequestedPlotAxis('axh', p.Results.axh);
+            
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
             [meanMat, semMat, tvecCell, stdMat, timeMask] = deal(cell(td.nAlign, 1));
@@ -5102,7 +5110,7 @@ classdef TrialDataConditionAlign < TrialData
                 % setup time axis for this align
                 if D == 1
                     td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle, ...
-                        'tOffsetZero', timeOffsetByAlign(iAlign), 'showRanges', p.Results.showRangesOnAxis);
+                        'tOffsetZero', timeOffsetByAlign(iAlign), 'showMarks', p.Results.showMarksOnAxis, 'showRanges', p.Results.showRangesOnAxis);
                 end
             end
             
@@ -5776,25 +5784,35 @@ classdef TrialDataConditionAlign < TrialData
                                 plotArgs{:}, p.Results.plotOptions{:});
                             TrialDataUtilities.Plotting.hideInLegend(hQuant);
                         end
-                        if plotErrorY
-                            hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
-                                errmat, app(iCond).Color, 'axh', axh, ...
-                                'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false);
-                            TrialDataUtilities.Plotting.hideInLegend(hShade);
-                        end
-%                         if p.Results.alpha < 1
-%                             hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
-%                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-%                                'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
-%                         else
-                            hData(iCond, iAlign) = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-                                plotArgs{:}, p.Results.plotOptions{:});
-                            if p.Results.alpha < 1
-                                TrialDataUtilities.Plotting.setLineOpacity(hData(iCond, iAlign), p.Results.alpha);
+                        
+                        if strcmp(p.Results.style, 'line')
+                            if plotErrorY
+                                hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
+                                    errmat, app(iCond).Color, 'axh', axh, ...
+                                    'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false); % we'll plot the mean line ourselves
+                                TrialDataUtilities.Plotting.hideInLegend(hShade);
                             end
-%                         end
-
+    %                         if p.Results.alpha < 1
+    %                             hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
+    %                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+    %                                'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
+    %                         else
+                                hData(iCond, iAlign) = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
+                                    'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
+                                    plotArgs{:}, p.Results.plotOptions{:});
+                                if p.Results.alpha < 1
+                                    TrialDataUtilities.Plotting.setLineOpacity(hData(iCond, iAlign), p.Results.alpha);
+                                end
+    %                         end
+    
+                        elseif strcmp(p.Results.style, 'stairs')
+                             [hData(iCond, iAlign), hShade] = TrialDataUtilities.Plotting.stairsError(...
+                                 tvec + tOffset + xOffset, dmat + yOffset, errmat, ...
+                                 'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(iCond).Color, 'alpha', p.Results.alpha, ...
+                                 'errorStyle', 'fill', 'errorColor', app(iCond).Color, 'lineWidth', p.Results.lineWidth);
+                             TrialDataUtilities.Plotting.hideInLegend(hShade);
+                        end
+                             
                     elseif D == 2
                         if p.Results.alpha < 1
                            hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, ...
@@ -5845,7 +5863,8 @@ classdef TrialDataConditionAlign < TrialData
                         'intervalAlpha', p.Results.intervalAlpha, ...
                         'showRanges', p.Results.showRangesOnData, ...
                         'showInLegend', p.Results.markShowInLegend', ...
-                        'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}));
+                        'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
+                        'style', p.Results.style);
                 end
             end
             
@@ -5858,7 +5877,8 @@ classdef TrialDataConditionAlign < TrialData
                         % setup x axis 
                         alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign) + xOffset, ...
                             'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
-                            'style', p.Results.timeAxisStyle, 'showRanges', p.Results.showRangesOnAxis);
+                            'style', p.Results.timeAxisStyle,  'showIntervals', p.Results.intervalShowOnAxis, ...
+                            'showMarks', p.Results.markShowOnAxis, 'showRanges', p.Results.showRangesOnAxis);
                     end
                 end
             end

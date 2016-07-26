@@ -1134,6 +1134,7 @@ classdef AlignSummary
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
+            p.addParameter('style', 'line', @ischar);
             p.parse(varargin{:});
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
@@ -1238,14 +1239,14 @@ classdef AlignSummary
                         errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
                         h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intRangeLoc, D, ...
                             errorAppear, errorThickness, p.Results.intervalAlpha, ...
-                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
+                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style);
                         TrialDataUtilities.Plotting.hideInLegend(h);
                     end
 
                     % then plot interval
                     hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
                         app, p.Results.markSize, p.Results.intervalAlpha, ...
-                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style);
 
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, as.alignDescriptor.intervalLabels{iInterval});
@@ -1332,7 +1333,7 @@ classdef AlignSummary
                         errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
                         h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
                             errorAppear, errorThickness, p.Results.markAlpha, ...
-                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
+                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style);
                         TrialDataUtilities.Plotting.hideInLegend(h);
                     end
 

@@ -95,6 +95,7 @@ classdef DrawOnData
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
+            p.addParameter('style', 'line', @ischar);
             p.parse(varargin{:});
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
@@ -111,14 +112,19 @@ classdef DrawOnData
                     x = data{iOccur}(:, 1);
                     y = data{iOccur}(:, 2);
                   
-                    if alpha < 1
-                       h(iOccur) = TrialDataUtilities.Plotting.patchline(x + xOffset, y + yOffset, ...
-                           'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
-                           'LineWidth', thickness);
-                    else
-                        zvals = 0.09 * ones(size(x,1), 1);
-                        h(iOccur) = plot3(axh, x + xOffset, y + yOffset, zvals, '-', ...
-                            'Color', app.Color, 'LineWidth', thickness);
+                    if strcmp(p.Results.style, 'line')
+                        if alpha < 1
+                           h(iOccur) = TrialDataUtilities.Plotting.patchline(x + xOffset, y + yOffset, ...
+                               'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
+                               'LineWidth', thickness);
+                        else
+                            zvals = 0.09 * ones(size(x,1), 1);
+                            h(iOccur) = plot3(axh, x + xOffset, y + yOffset, zvals, '-', ...
+                                'Color', app.Color, 'LineWidth', thickness);
+                        end
+                    elseif strcmp(p.Results.style, 'stairs')
+                        h(iOccur) = TrialDataUtilities.Plotting.stairs(x + xOffset, y + yOffset, ...
+                               'Color', app.Color, 'LineWidth', thickness);
                     end
                 end
                 

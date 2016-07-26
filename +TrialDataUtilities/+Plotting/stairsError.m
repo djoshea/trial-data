@@ -14,18 +14,22 @@ function [hMean, hError] = stairsError(x,y, varargin)
 %   errorAlpha - defaults to 0.8
 
     p = inputParser();
-    p.addRequired('err1', @ismatrix);
-    p.addOptional('err2', [], @ismatrix);
+    p.addRequired('err1', @(x) isnumeric(x) && ismatrix(x));
+    p.addOptional('err2', [], @(x) isnumeric(x) && ismatrix(x));
     p.addParameter('color', [], @(x) true);
     p.addParameter('errorStyle', 'fill', @ischar); % fill or stairs
     p.addParameter('errorColor', [], @(x) true);
     p.addParameter('errorAlpha', 0.5, @isscalar);
     p.addParameter('lineWidth', 1, @isscalar);
+    p.addParameter('alpha', 1, @isscalar); % alpha for mean line, not supported yet
     p.addParameter('lastX', [], @isvector);
+    p.addParameter('axh', gca, @ishandle);
     p.KeepUnmatched = true;
     p.CaseSensitive = false;
     p.parse(varargin{:});
 
+    axh = p.Results.axh;
+    
     if isempty(p.Results.err2)
         yhi = y + p.Results.err1;
         ylo = y - p.Results.err1;
@@ -73,7 +77,7 @@ function [hMean, hError] = stairsError(x,y, varargin)
     
     hMean = stairs(x, y, colorArg{:}, 'LineWidth', p.Results.lineWidth);
     hold on;
-
+    
     % build polygons for fill 
     npts = size(x, 1);
     nlin = size(x, 2);
@@ -100,19 +104,19 @@ function [hMean, hError] = stairsError(x,y, varargin)
             X = circshift(cat(1, X, Xud), -1, 1);
             Y = cat(1, repelem(yhi(1:end-1, :), 2, 1), repelem(flipud(ylo(1:end-1)), 2, 1));
 
-            hError = patch(X, Y, [0 0 0], 'EdgeColor', 'none', 'FaceAlpha', p.Results.errorAlpha);
+            hError = patch(X, Y, [0 0 0], 'EdgeColor', 'none', 'FaceAlpha', p.Results.errorAlpha, 'Parent', axh);
             for i = 1:nlin
                 if isempty(p.Results.errorColor)
-                    hError(i).FaceColor = hMean(i).FaceColor;
+                    hError(i).FaceColor = hMean(i).Color;
                 else
                     hError(i).FaceColor = p.Results.errorColor;
                 end
             end
             
         case 'stairs'
-            hError = stairs(x, ylo, 'LineWidth', p.Results.lineWidth/2);
+            hError = stairs(x, ylo, 'LineWidth', p.Results.lineWidth/2, 'Parent', axh);
             hold on;
-            hError(:, 2) = stairs(x, yhi, 'LineWidth', p.Results.lineWidth/2);
+            hError(:, 2) = stairs(x, yhi, 'LineWidth', p.Results.lineWidth/2, 'Parent', axh);
             
             for i = 1:nlin
                 if isempty(p.Results.errorColor)
