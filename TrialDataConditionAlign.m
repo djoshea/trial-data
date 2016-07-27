@@ -965,10 +965,10 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateConditionInfo();
         end
         
-        function td = setAttributeValueList(td, attrName, valueList)
+        function td = setAttributeValueList(td, attrName, valueList, varargin)
             td.warnIfNoArgOut(nargout);
             td = td.addAttribute(attrName);
-            td.conditionInfo = td.conditionInfo.setAttributeValueList(attrName, valueList);
+            td.conditionInfo = td.conditionInfo.setAttributeValueList(attrName, valueList, varargin{:});
             td = td.postUpdateConditionInfo();
         end
         
@@ -4347,6 +4347,8 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('quick', false, @islogical);
             
+            p.addParameter('axh', gca, @ishandle);
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -4361,7 +4363,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             nUnits = numel(unitNames);
             
-            axh = td.getRequestedPlotAxis(p.Unmatched);
+            axh = td.getRequestedPlotAxis('axh', p.Results.axh);
             
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)

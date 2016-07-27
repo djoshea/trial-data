@@ -1695,7 +1695,7 @@ classdef ConditionDescriptor
                 else
                     displayAs = {};
                 end
-                ci.attributeValueListsAsStringsAsManual{iAttr} = displayAs;
+                ci.attributeValueListsAsStringsManual{iAttr} = displayAs;
             end
              
             %ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
