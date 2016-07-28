@@ -121,6 +121,17 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
         
+        function cd = removeWaveformsField(cd)
+            cd.waveformsField = '';
+            cd.waveformsUnits = '';
+            cd.waveformsScaleFromLims = [];
+            cd.waveformsScaleToLims = [];
+            cd.waveformsOriginalDataClass = '';
+            cd.waveformsTime = []; 
+            
+            cd = cd.initialize();
+        end
+        
         function cd = addSortQualityEachTrialField(cd, field)
             cd.warnIfNoArgOut(nargout);
             if nargin < 2 || isempty(field)

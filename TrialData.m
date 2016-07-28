@@ -1296,6 +1296,18 @@
             
             td = td.postDataChange(fieldsRemove);
         end
+        
+    end
+    
+    methods(Access=protected)
+        function td = dropChannelFields(td, fieldsRemove)
+            % for the removed data channels' fields, figure out which ones 
+            % aren't referenced by any other channels
+            otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
+            maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
+            fieldsRemove = fieldsRemove(maskRemove);
+            td.data = rmfield(td.data, fieldsRemove);
+        end
     end
     
     methods
@@ -3480,6 +3492,30 @@
                     tf(iU) = ~isempty(wavefield);
                 end
             end
+        end
+        
+        function td = dropSpikeWaveforms(td, unitNames)
+            td.warnIfNoArgOut(nargout);
+            
+            if ischar(unitNames)
+                unitNames = {unitNames};
+            end
+            
+            wavefields = cellvec(numel(unitNames));
+            mask = falsevec(numel(unitNames));
+            for iU = 1:numel(unitNames)
+                unitName = unitNames{iU};
+                if ~td.hasSpikeChannel(unitName)
+                    mask(iU) = true;
+                else
+                    wavefields{iU} = td.channelDescriptorsByName.(unitName).waveformsField;
+                    mask(iU) = false;
+                    
+                   td.channelDescriptorsByName.(unitName) = td.channelDescriptorsByName.(unitName).removeWaveformsField();
+                end
+            end
+            
+            td = td.dropChannelFields(wavefields(mask));
         end
         
         function [wavesCell, waveTvec, timesCell, sortQuality] = getRawSpikeWaveforms(td, unitName)
