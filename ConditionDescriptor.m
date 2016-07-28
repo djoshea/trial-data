@@ -1550,6 +1550,8 @@ classdef ConditionDescriptor
                 if ~isempty(as)
                     as = as(iA);
                     ci.attributeValueListsAsStringsManual{iAttr} = as;
+                else
+                    ci.attributeValueListsAsStringsManual{iAttr} = [];
                 end
                 
             %    if ~iscell(valueList)
