@@ -1249,10 +1249,14 @@ classdef PopulationTrajectorySet
         end
         
         function v = get.basisValid(pset)
-            v = pset.odc.basisValid;            
-            if isempty(v)
-                pset.buildBasisValid();
-                v = pset.odc.basisValid;
+            if ~pset.dataSourceManual
+                v = pset.odc.basisValid;            
+                if isempty(v)
+                    pset.buildBasisValid();
+                    v = pset.odc.basisValid;
+                end
+            else
+                v = pset.basisValidManual;
             end
         end
         
@@ -1267,10 +1271,14 @@ classdef PopulationTrajectorySet
         
         
         function v = get.basisInvalidCause(pset)
-            v = pset.odc.basisInvalidCause;            
-            if isempty(v)
-                pset.buildBasisValid();
-                v = pset.odc.basisInvalidCause;
+            if ~pset.dataSourceManual
+                v = pset.odc.basisInvalidCause;            
+                if isempty(v)
+                    pset.buildBasisValid();
+                    v = pset.odc.basisInvalidCause;
+                end
+            else
+                v = pset.basisInvalidCauseManual;
             end
         end
         
@@ -2737,6 +2745,7 @@ classdef PopulationTrajectorySet
                
             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
             
+            showProgressInner = false;
             for iBasis = 1:nBases
                 prog.update(iBasis);
                 for iAlign = 1:nAlign
@@ -2744,8 +2753,8 @@ classdef PopulationTrajectorySet
                         % from TDCA.getAnalogAsMatrix
                         [dataByTrial{iBasis, iAlign}, tvec] = ...
                             TrialDataUtilies.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
-                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
-                    
+                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
+                            'showProgress', showProgressInner);
                     else
                         % from TDCA.getSpikeRateFilteredAsMatrix
                         
@@ -2757,13 +2766,16 @@ classdef PopulationTrajectorySet
                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
                             unitsPerSecondCell{iBasis, iAlign}, ...
-                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
+                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
+                             'showProgress', showProgressInner);
                     end
                     
                     % store the time limits used in the time vector for 
                     % the dataByTrial{..} matrix
-                    tMinForDataByTrial(iBasis, iAlign) = min(tvec);
-                    tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
+                    if ~isempty(tvec)
+                        tMinForDataByTrial(iBasis, iAlign) = min(tvec);
+                        tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
+                    end
                  
                     % bring trial start stop in within the limits of tvec,
                     % to deal with any rounding issues
@@ -3636,32 +3648,64 @@ classdef PopulationTrajectorySet
             % keep only bases listed in or selected by mask
             % only filter fields in odc if they are non-empty, implying that have already
             % been computed
+            %
+            % some of the logic below is tricky because we have properties
+            % that can be computed on demand, which need to be masked only
+            % if they are already computed. These same properties have a
+            % propertyManual equivalent that is active when
+            % .dataSourceManual is true, which should be masked directly in
+            % that case.
+            
             assert(isvector(mask));
             assert(islogical(mask) || all(mask >= 1 & mask <= pset.nBases));
 
             pset.warnIfNoArgOut(nargout);
             
-            maskDim1 = {'basisNames', 'basisUnits', 'basisValidManual', 'basisInvalidCauseManual', ...
+            maskDim1_odcOrManual = {'basisNames', 'basisUnits', 'basisValid', 'basisInvalidCause', 'trialLists', ...
                 'dataByTrial', 'tMinForDataByTrial', ...
-                'tMaxForDataByTrial', 'tMinByTrial', 'tMaxByTrial', 'alignValidByTrial', ...
-                'dataCachedSampledTrialsTensor', 'dataCachedSampledTrialCounts', 'dataCachedMeanExcludingSampledTrialsTensor'};
-            maskDim2 = {'dataValid', 'dataNTrials', 'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition'};
-            maskCellDim1 = {'dataMean', 'dataSem', 'dataMeanRandomized', 'dataSemRandomized', ...
+                'tMaxForDataByTrial', 'tMinByTrial', 'tMaxByTrial', 'alignValidByTrial'};
+            maskDim1 = {'dataCachedSampledTrialsTensor', 'dataCachedSampledTrialCounts', 'dataCachedMeanExcludingSampledTrialsTensor'};
+            
+            maskDim2_odcOrManual = {'dataValid', 'dataNTrials', 'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition'};
+            
+            maskCellDim1_odcOrManual = {'dataMean', 'dataSem', ...
                 'dataIntervalHigh', 'dataIntervalLow'}; 
+            maskCellDim1 = {'dataMeanRandomized', 'dataSemRandomized'};
 
             for i = 1:numel(maskDim1)
                 fld = maskDim1{i};
-                if ~isempty(pset.(fld))
+                if ~isempty(pset.(fld)) 
                     % some have up to 4 dimensions, add a couple of extra
                     % colons just in case
                     pset.(fld) = pset.(fld)(mask, :, :, :, :, :);
                 end
             end
+            
+            % if dataSourceManual, mask the field Manual value. 
+            % else, mask the odc property if it's already been computed
+            for i = 1:numel(maskDim1_odcOrManual)
+                fld = maskDim1_odcOrManual{i};
+                if pset.dataSourceManual || ~isempty(pset.odc.(fld)) 
+                    % check whether it's already been computed
+                    % then write to the property itself, which will
+                    % copy the ODC on write. never write to the odc
+                    % property directly
+                    if ~isempty(pset.(fld))
+                        pset.(fld) = pset.(fld)(mask, :, :, :, :, :);
+                    end
+                end
+            end
 
-            for i = 1:numel(maskDim2)
-                fld = maskDim2{i};
-                if ~isempty(pset.(fld))
-                    pset.(fld) = pset.(fld)(:, mask, :, :, :, :);
+            for i = 1:numel(maskDim2_odcOrManual)
+                fld = maskDim2_odcOrManual{i};
+                if pset.dataSourceManual || ~isempty(pset.odc.(fld)) 
+                    % check whether it's already been computed
+                    % then write to the property itself, which will
+                    % copy the ODC on write. never write to the odc
+                    % property directly
+                    if ~isempty(pset.(fld))
+                        pset.(fld) = pset.(fld)(:, mask, :, :, :, :);
+                    end
                 end
             end
             
@@ -3669,19 +3713,32 @@ classdef PopulationTrajectorySet
             % scratch, since the time windows will be shifted to reflect
             % the bases
 %             c.flushTrialAveragedData();
-        
+            for i = 1:numel(maskCellDim1_odcOrManual)
+                fld = maskCellDim1_odcOrManual{i};
+                if pset.dataSourceManual || ~isempty(pset.odc.(fld))
+                    for j = 1:numel(pset.(fld))
+                        % some have 4 dimensions
+                        if ~isempty(pset.(fld){j})
+                            pset.(fld){j} = pset.(fld){j}(mask, :, :, :);
+                        end
+                    end 
+                end
+            end
+            
             for i = 1:numel(maskCellDim1)
                 fld = maskCellDim1{i};
                 if ~isempty(pset.(fld))
                     for j = 1:numel(pset.(fld))
                         % some have 4 dimensions
-                        pset.(fld){j} = pset.(fld){j}(mask, :, :, :);
+                        if ~isempty(pset.(fld){j})
+                            pset.(fld){j} = pset.(fld){j}(mask, :, :, :);
+                        end
                     end
                 end
             end
 
             % filter alignSummaryData
-            if ~isempty(pset.alignSummaryData)
+            if pset.dataSourceManual || ~isempty(pset.odc.alignSummaryData)
                 cachedMaskedBasisAlignSummaryLookup = pset.basisAlignSummaryLookup(mask);
                 alignSummaryKeep = false(size(pset.alignSummaryData{1}, 1), 1);
                 alignSummaryKeep(cachedMaskedBasisAlignSummaryLookup) = true;
@@ -3717,7 +3774,7 @@ classdef PopulationTrajectorySet
                 pset.translationNormalization = pset.translationNormalization.filterBases(mask);
             end
             
-            if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
+            if pset.dataSourceManual || ~isempty(pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate)
                 pset.dataDifferenceOfTrialsScaledNoiseEstimate = pset.dataDifferenceOfTrialsScaledNoiseEstimate(mask, :, :);
                 if pset.hasDataRandomized
                     pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(mask, :, :, :);
@@ -3924,6 +3981,40 @@ classdef PopulationTrajectorySet
             basisValidMat = cell2mat(cellfun(@(pset) pset.basisValid, makerow(varargin), 'UniformOutput', false));
             
             tf = all(all(basisValidMat, 2) | all(~basisValidMat, 2));
+        end
+        
+        function [tf, reason] = checkBasesMatch(varargin)
+            tf = true;
+            reason = '';
+            
+            nBases = cellfun(@(pset) pset.nBases, varargin);
+            if numel(unique(nBases)) ~= 1
+                tf = false;
+                reason = 'nBases do not match';
+                return;
+            end
+            
+            basisAlignSummaryLookupCell = cellfun(@(pset) pset.basisAlignSummaryLookup, varargin, 'UniformOutput', false);
+            if ~allEqual(basisAlignSummaryLookupCell{:})
+                tf = false;
+                reason = 'basisAlignSummaryLookup do not match';
+                return;
+            end
+            
+            function tf = allEqual(varargin)
+                tf = true;
+                for i = 2:numel(varargin)
+                    if ~isequal(varargin{1}, varargin{2})
+                        tf = false;
+                        return;
+                    end
+                end
+            end
+        end
+        
+        function assertBasesMatch(varargin)
+            [tf, reason] = PopulationTrajectorySet.checkBasesMatch(varargin{:});
+            assert(tf, reason);
         end
     end
 

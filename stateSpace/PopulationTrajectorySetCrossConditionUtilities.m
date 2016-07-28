@@ -18,7 +18,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             % generate new names from differences
             if p.Results.autoNamesAlongAxis
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 valueList = valueLists{aIdx};
                 if reverse
                     newNamesAlongAxis = cellfun(@(v1, v2) [v2 ' - ' v1], valueList(1:end-1), ...
@@ -29,7 +29,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 end
             elseif isempty(p.Results.newNamesAlongAxis)
                 % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 newNamesAlongAxis = valueLists{aIdx};
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
@@ -66,7 +66,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             % generate new names from differences
             if p.Results.autoNamesAlongAxis
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 valueList = valueLists{aIdx}(idxKeep);
                 valueSubtract = valueLists{aIdx}{conditionToSubtract};
                 
@@ -74,7 +74,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                     'UniformOutput', false); 
             elseif isempty(p.Results.newNamesAlongAxis)
                 % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 newNamesAlongAxis = valueLists{aIdx};
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
@@ -105,7 +105,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 newNamesAlongAxis = {sprintf('Mean Over %s', pset.conditionDescriptor.axisNames{aIdx}) }; 
             elseif isempty(p.Results.newNamesAlongAxis)
                 % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 newNamesAlongAxis = valueLists{aIdx};
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
@@ -132,12 +132,12 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             nAlongAxis = pset.conditionsSize(aIdx);
             
             if p.Results.autoNamesAlongAxis
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 valueList = valueLists{aIdx};
                 newNamesAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted', s), valueList, 'UniformOutput', false); 
             elseif isempty(p.Results.newNamesAlongAxis)
                 % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings(' ', true);
+                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 newNamesAlongAxis = valueLists{aIdx};
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
@@ -420,6 +420,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             p.parse(varargin{:});
             
+            PopulationTrajectorySet.assertBasesMatch(psetCell{:});
             assert(PopulationTrajectorySet.checkSameBasesValid(psetCell{:}), ...
                 'Psets being concatenated do not have the same .basisValid. Use PopulationTrajectorySet.equalizeBasesValid first');
             pset = psetCell{1};
@@ -482,20 +483,29 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % adjust alignSummaryData
             % N x A
             temp = pset.alignSummaryData; %#ok<NASGU> % request up front to trigger computation before progress bar
-            prog = ProgressBar(pset.nBases, 'Aggregating AlignSummary by basis');
-            for iBasis = 1:pset.nBases
-                prog.update(iBasis);
-                if ~pset.basisValid(iBasis)
-                    continue;
-                end
+            prog = ProgressBar(pset.nBases, 'Aggregating AlignSummary data');
+            for iSource = 1:pset.nAlignSummaryData
+                prog.update(iSource);
                 for iAlign = 1:pset.nAlign
-                    clear alignSummarySet;
-                    for iP = numel(psetCell):-1:1
-                        alignSummarySet(iP) = psetCell{iP}.lookupAlignSummaryDataForBasisAlign(iBasis, iAlign);
+                    emptyMask = cellfun(@(pset) isempty(pset.alignSummaryData{iSource, iAlign}), psetCell);
+                    if all(emptyMask)
+                        % missing entirely, that's okay
+                        b.alignSummaryData{iSource, iAlign} = [];
+                        
+                    elseif ~any(emptyMask)
+                        % all found, combine
+                        clear alignSummarySet;
+                        for iP = numel(psetCell):-1:1
+                            alignSummarySet(iP) = psetCell{iP}.alignSummaryData{iSource, iAlign};
+                        end
+                        b.alignSummaryData{iSource, iAlign} = ...
+                            AlignSummary.aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, cd, ...
+                            'aggregateMarks', p.Results.aggregateMarks, 'aggregateIntervals', p.Results.aggregateIntervals);
+                    else
+                        % missing for some, that's a problem
+                        error('AlignSummary missing for %d PopTrajSets for source %d align %d', nnz(emptyMask), iSource, iAlign);
                     end
-                    b.alignSummaryData{iBasis, iAlign} = ...
-                        AlignSummary.aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, cd, ...
-                        'aggregateMarks', p.Results.aggregateMarks, 'aggregateIntervals', p.Results.aggregateIntervals);
+                    
                 end
             end
             prog.finish();
