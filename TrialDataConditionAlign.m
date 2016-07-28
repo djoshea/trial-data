@@ -2998,12 +2998,12 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            alpha = p.Results.alpha;
-            if isempty(p.Results.edgeAlpha)
-                edgeAlpha = alpha;
-            else
-                edgeAlpha = p.Results.edgeAlpha;
-            end
+%             alpha = p.Results.alpha;
+%             if isempty(p.Results.edgeAlpha)
+%                 edgeAlpha = alpha;
+%             else
+%                 edgeAlpha = p.Results.edgeAlpha;
+%             end
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
             hold(axh, 'on');

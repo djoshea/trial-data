@@ -590,9 +590,6 @@
                 if nnz(hasChMask) > 1
                     cdCell = cellfun(@(td) td.channelDescriptorsByName.(ch), varargin(hasChMask), 'UniformOutput', false);
                     okay(iC) = isequaln(cdCell{:});
-                    if ~okay(iC)
-                        b = 1;
-                    end
                 end
             end
             
@@ -3030,7 +3027,7 @@
         
         function td = addParamNBack(td, name, n, varargin)
             p = inputParser;
-            p.addParamValue('as', '', @ischar); % new channel name
+            p.addParameter('as', '', @ischar); % new channel name
             p.parse(varargin{:});
             
             td.warnIfNoArgOut(nargout);
@@ -3687,7 +3684,8 @@
             tMaxByTrial(~td.valid) = NaN;
         end
         
-        function tf = alignIncludesFullTrial(td)
+        function tf = alignIncludesFullTrial(td) %#ok<MANU>
+            % just a standin b/c this is redefined in TDCA
             tf = true;
         end 
         
