@@ -989,6 +989,9 @@ classdef ConditionInfo < ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             iAttr = ci.assertHasAttribute(name);
             
+            % cache this since it will be reset
+            ciMask = ci.conditionIncludeMaskManual;
+            
             switch(ci.attributeValueModes(iAttr))
                 case {ci.AttributeValueListManual, ci.AttributeValueBinsManual}
                     % it's manual already
@@ -1002,6 +1005,7 @@ classdef ConditionInfo < ConditionDescriptor
             end
                
             ci = ci.invalidateCache();
+            ci.conditionIncludeMaskManual = ciMask;
         end
         
         function ci = fixAllAttributeValueLists(ci)
@@ -1013,10 +1017,15 @@ classdef ConditionInfo < ConditionDescriptor
        
         function ci = fixAxisValueList(ci, axisSpec)
             ci.warnIfNoArgOut(nargout);
+            % cache this since it will be reset
+            ciMask = ci.conditionIncludeMaskManual;
+            
             idx = ci.axisLookupByAttributes(axisSpec);
             for i = 1:numel(idx)
                 ci = ci.setAxisValueList(idx(i), ci.axisValueLists{idx(i)});
             end
+            
+            ci.conditionIncludeMaskManual = ciMask;
         end
         
         function ci = fixAllAxisValueLists(ci)
