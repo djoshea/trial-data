@@ -53,6 +53,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
     p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParamValue('timeReference', 0, @isscalar);
+    p.addParameter('showProgress', true, @islogical);
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
     
@@ -63,7 +64,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     empty = szData == 0 | szTime == 0;
     
     if all(empty)
-        mat = nan(size(dataCell), 0, size(dataCell, 2));
+        mat = nan(size(dataCell, 1), 0, size(dataCell, 2));
         tvec = zeros(0, 1);
         return;
     end
@@ -132,9 +133,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     
-    prog = ProgressBar(N, 'Embedding data over trials into common time vector');
+    if p.Results.showProgress
+        prog = ProgressBar(N, 'Embedding data over trials into common time vector');
+    end
     for i = 1:N
-        prog.update(i);
+        if p.Results.showProgress, prog.update(i); end
         for g = 1:G
             if ~isnan(indStart(i,g)) && ~isnan(indStop(i,g))
                 if numel(indStart(i,g):indStop(i,g)) > 1
@@ -165,7 +168,9 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
             end
         end
     end
-    prog.finish();
+    if p.Results.showProgress
+        prog.finish();
+    end
     
     mat = reshape(mat, [N T C*G]);
 end

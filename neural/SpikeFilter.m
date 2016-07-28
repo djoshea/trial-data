@@ -101,6 +101,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             p.addParameter('timeDelta', 1, @isscalar);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('showProgress', true, @islogical);    
             p.parse(varargin{:});
             
             % give the subclass a chance to complain about the chosen time
@@ -113,6 +114,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             [rates, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(rateCell, timeCell, ...
                 'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
                 'interpolateMethod', p.Results.interpolateMethod, ...
+                'showProgress', p.Results.showProgress, ...
                 'fixDuplicateTimes', false); % no need for this since we know the time vectors are monotonic
         end
     end
