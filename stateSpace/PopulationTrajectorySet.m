@@ -399,7 +399,7 @@ classdef PopulationTrajectorySet
         basisUnitsManual
         basisValidManual
         basisInvalidCauseManual
-        conditionIncludeMaskManual
+%         conditionIncludeMaskManual
         alignSummaryDataManual
         alignSummaryAggregatedManual
         basisAlignSummaryLookupManual
@@ -797,7 +797,7 @@ classdef PopulationTrajectorySet
         
         function explain(pset, varargin)
             p = inputParser();
-            p.addParamValue('dropFraction', 0.05, @isscalar);
+            p.addParameter('dropFraction', 0.05, @isscalar);
             p.parse(varargin{:});
             
             temp = pset.tMinForDataMean; %#ok<NASGU>
@@ -962,23 +962,38 @@ classdef PopulationTrajectorySet
             end
         end
         
-        function pset = set.conditionIncludeMask(pset, v)
+        % revised by using pass thru to ConditionDescriptor
+%         function pset = set.conditionIncludeMask(pset, v)
+%             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
+%                 'conditionIncludeMask must be logical vector with length nConditions');
+%             
+%             old = pset.conditionIncludeMaskManual;
+%             pset.conditionIncludeMaskManual = v;
+%             if ~isempty(old) % no need to invalidate on initialization
+%                 pset = pset.invalidateTrialAveragedData();
+%             end
+%         end
+%         
+%         function v = get.conditionIncludeMask(pset)
+%             if isempty(pset.conditionIncludeMaskManual)
+%                 v = truevec(pset.nConditions);
+%             else
+%                 v = pset.conditionIncludeMaskManual;
+%             end
+%         end
+        
+         function pset = set.conditionIncludeMask(pset, v)
             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
                 'conditionIncludeMask must be logical vector with length nConditions');
             
-            old = pset.conditionIncludeMaskManual;
-            pset.conditionIncludeMaskManual = v;
-            if ~isempty(old) % no need to invalidate on initialization
-                pset = pset.invalidateTrialAveragedData();
-            end
+            cd = pset.conditionDescriptor;
+            cd = cd.setConditionIncludeMask(v);
+            
+            pset = pset.setConditionDescriptor(cd);
         end
         
         function v = get.conditionIncludeMask(pset)
-            if isempty(pset.conditionIncludeMaskManual)
-                v = truevec(pset.nConditions);
-            else
-                v = pset.conditionIncludeMaskManual;
-            end
+            v = pset.conditionDescriptor.conditionIncludeMask;
         end
     end
     
@@ -1348,7 +1363,12 @@ classdef PopulationTrajectorySet
             % generate on the fly, no caching
             % only consider conditions that have the potential to
             % contribute data to the trial averages on all bases
-            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            
+            % @djoshea changing this 20160728 since not all bases need to
+            % be present. the window can be the tightest for all bases with
+            % any valid window, ignoring the ones that don't have any data
+%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            cMask = pset.conditionIncludeMask(:);
             
             if ~any(cMask)
                 v = nan(pset.nAlign, pset.nConditions);
@@ -1362,7 +1382,11 @@ classdef PopulationTrajectorySet
         
         function v = get.tMaxValidAllBasesByAlignCondition(pset)
             % generate on the fly, no caching
-            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            
+            % see above comment 20160728
+%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            cMask = pset.conditionIncludeMask(:);
+            
             if ~any(cMask)
                 v = nan(pset.nAlign, pset.nConditions);
             else
@@ -1378,18 +1402,20 @@ classdef PopulationTrajectorySet
             p = inputParser();
             
             % specify either these manually
-            p.addParamValue('tMinByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
-            p.addParamValue('tMaxByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
+            p.addParameter('tMinByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
+            p.addParameter('tMaxByAlignCondition', nan(pset.nAlign, pset.nConditions), @(x) isequal(size(x), [pset.nAlign pset.nConditions]));
             
             % proceed outward from both ends or just to widen the min or
             % max?
-            p.addParamValue('mode', 'both', @(x) ismember(x, {'both', 'min', 'max'}));
+            p.addParameter('mode', 'both', @(x) ismember(x, {'both', 'min', 'max'}));
             
             % or use this to allow only a certain percent of the 
-            p.addParamValue('dropFraction', 0.05, @isscalar);
+            p.addParameter('dropFraction', 0.05, @isscalar);
             p.parse(varargin{:});
             
-            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            % changing 20160728
+%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            cMask = pset.conditionIncludeMask;
             c = cell(pset.nAlign, pset.nConditions);
             
             tMinValidABC = pset.tMinValidByAlignBasisCondition;
@@ -1439,8 +1465,11 @@ classdef PopulationTrajectorySet
             end
         end
         
-        function [tMinValidAllBasesByAlignCondition, tMaxValidAllBasesByAlignCondition] = computeNewTimeWindowValidAfterInvalidatingBases(pset, basesMarkInvalid)
-            cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+        function [tMinValidAllBasesByAlignCondition, tMaxValidAllBasesByAlignCondition] = ...
+                computeNewTimeWindowValidAfterInvalidatingBases(pset, basesMarkInvalid)
+            % changed 20160728 
+%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            cMask = pset.conditionIncludeMask;
             
             if ~any(cMask)
                 tMinValidAllBasesByAlignCondition = nan(pset.nAlign, pset.nConditions);
@@ -1467,13 +1496,13 @@ classdef PopulationTrajectorySet
             p = inputParser();
             
             % either specify these
-            p.addParamValue('tMinByAlign', nanvec(pset.nAlign), @(x) isvector(x) && numel(x) == pset.nAlign);
-            p.addParamValue('tMaxByAlign', nanvec(pset.nAlign), @(x) isvector(x) && numel(x) == pset.nAlign);
+            p.addParameter('tMinByAlign', nanvec(pset.nAlign), @(x) isvector(x) && numel(x) == pset.nAlign);
+            p.addParameter('tMaxByAlign', nanvec(pset.nAlign), @(x) isvector(x) && numel(x) == pset.nAlign);
             
             % or specify tMinByAlignCondition and tMaxBYALignCondition
             
             % or use this to allow only a certain percent of the 
-            p.addParamValue('dropFractionPerCondition', 0.05, @isscalar);
+            p.addParameter('dropFractionPerCondition', 0.05, @isscalar);
             
             p.parse(varargin{:});
             
@@ -3694,6 +3723,12 @@ classdef PopulationTrajectorySet
                         pset.(fld) = pset.(fld)(mask, :, :, :, :, :);
                     end
                 end
+                
+                % in the ODC case still may need to mask the manual field
+                fldManual = [fld 'Manual'];
+                if ~pset.dataSourceManual && ~isempty(pset.(fldManual))
+                    pset.(fldManual) = pset.(fldManual)(mask, :, :, :, :, :);
+                end
             end
 
             for i = 1:numel(maskDim2_odcOrManual)
@@ -3706,6 +3741,11 @@ classdef PopulationTrajectorySet
                     if ~isempty(pset.(fld))
                         pset.(fld) = pset.(fld)(:, mask, :, :, :, :);
                     end
+                end
+                % in the ODC case still may need to mask the manual field
+                fldManual = [fld 'Manual'];
+                if ~pset.dataSourceManual && ~isempty(pset.(fldManual))
+                    pset.(fldManual) = pset.(fldManual)(:, mask, :, :, :, :);
                 end
             end
             
@@ -3722,6 +3762,16 @@ classdef PopulationTrajectorySet
                             pset.(fld){j} = pset.(fld){j}(mask, :, :, :);
                         end
                     end 
+                end
+                % in the ODC case still may need to mask the manual field
+                fldManual = [fld 'Manual'];
+                if ~pset.dataSourceManual
+                    for j = 1:numel(pset.(fldManual))
+                        % some have 4 dimensions
+                        if ~isempty(pset.(fldManual){j})
+                            pset.(fldManual){j} = pset.(fldManual){j}(mask, :, :, :);
+                        end
+                    end
                 end
             end
             
@@ -4955,9 +5005,9 @@ classdef PopulationTrajectorySet
         
         function setupTimeAxisMultiAlign(pset, varargin)
             p = inputParser();
-            p.addParamValue('tOffsetByAlign', pset.offsetsTimeDataMeanForPlotting, @isvector);
-            p.addParamValue('axh', gca, @ishandle);
-            p.addParamValue('doUpdate', true, @islogical);
+            p.addParameter('tOffsetByAlign', pset.offsetsTimeDataMeanForPlotting, @isvector);
+            p.addParameter('axh', gca, @ishandle);
+            p.addParameter('doUpdate', true, @islogical);
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis            

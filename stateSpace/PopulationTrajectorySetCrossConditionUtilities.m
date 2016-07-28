@@ -420,12 +420,20 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             p.parse(varargin{:});
             
-            PopulationTrajectorySet.assertBasesMatch(psetCell{:});
-            assert(PopulationTrajectorySet.checkSameBasesValid(psetCell{:}), ...
-                'Psets being concatenated do not have the same .basisValid. Use PopulationTrajectorySet.equalizeBasesValid first');
+%             PopulationTrajectorySet.assertBasesMatch(psetCell{:});
+%             assert(PopulationTrajectorySet.checkSameBasesValid(psetCell{:}), ...
+%                 'Psets being concatenated do not have the same .basisValid. Use PopulationTrajectorySet.equalizeBasesValid first');
             pset = psetCell{1};
             
             b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
+            
+            % take union of valid bases and make this the new basis valid
+            basisValid = psetCell{1}.basisValid;
+            for i = 2:numel(psetCell)
+                basisValid = basisValid | psetCell{i}.basisValid;
+            end
+            b.basisValid = basisValid;
+            b.basisInvalidCause(~basisValid) = {''};
             
             % update condition descriptor
             cd = pset.conditionDescriptor;
