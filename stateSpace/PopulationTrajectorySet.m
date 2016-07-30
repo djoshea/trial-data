@@ -4277,7 +4277,7 @@ classdef PopulationTrajectorySet
             ctaByN = pset.buildCTAbyN(varargin{:});
             ctaByN_meanSub = bsxfun(@minus, ctaByN, nanmean(ctaByN, 1));
             varPerCTAByBasis = nanmean(ctaByN_meanSub.^2, 1);
-            varPerCTA = squeeze(nansum(varPerCTAByBasis, 2)); 
+            varPerCTA = squeeze(nansum(varPerCTAByBasis, 2));
         end
         
         function ssq = computeTotalSS(pset, varargin)
@@ -5065,8 +5065,10 @@ classdef PopulationTrajectorySet
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
+            p.addParameter('clipping', 'on', @ischar);
             
             p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
+            p.CaseSensitive = false;
             p.parse(varargin{:});
             
             axh = newplot;
@@ -5117,21 +5119,25 @@ classdef PopulationTrajectorySet
                             h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
+                                'Clipping', p.Results.clipping, ...
                                  plotArgs{:});
                         else
                             h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
+                                'Clipping', p.Results.clipping, ...
                                 plotArgs{:});
                         end
                     else
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                'LineWidth', p.Results.lineWidth, plotArgsC{:}, plotArgs{:});
+                                'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
+                                plotArgsC{:}, plotArgs{:});
                         else
 %                             dataMat = [dataVec1 dataVec2];
                             h = plot(axh, dataMat(1, :), dataMat(2, :), ...
                                 'LineWidth', p.Results.lineWidth, ...
+                                'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         end
                     end
@@ -5154,7 +5160,7 @@ classdef PopulationTrajectorySet
                     'alpha', p.Results.alpha, ...
                     'intervalAlpha', p.Results.intervalAlpha, ...
                     'showRanges', p.Results.showRangesOnData, ...
-                    'markSize', p.Results.markSize); 
+                    'markSize', p.Results.markSize, 'clipping', p.Results.clipping); 
             end
 
             box(axh, 'off')
@@ -5175,6 +5181,7 @@ classdef PopulationTrajectorySet
              
              hold(axh, 'off');
              set(get(axh, 'Parent'), 'CurrentAxes', axh);
+             axis(axh, 'vis3d');
         end
         
     end
