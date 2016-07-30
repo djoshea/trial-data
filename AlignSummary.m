@@ -1135,6 +1135,8 @@ classdef AlignSummary
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
             p.addParameter('style', 'line', @ischar);
+            p.addParameter('clipping', 'on', @ischar);
+            p.CaseSensitive = false;
             p.parse(varargin{:});
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
@@ -1239,14 +1241,16 @@ classdef AlignSummary
                         errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
                         h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intRangeLoc, D, ...
                             errorAppear, errorThickness, p.Results.intervalAlpha, ...
-                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style);
+                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style, ...
+                            'clipping', p.Results.clipping);
                         TrialDataUtilities.Plotting.hideInLegend(h);
                     end
 
                     % then plot interval
                     hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
                         app, p.Results.markSize, p.Results.intervalAlpha, ...
-                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style);
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style, ...
+                        'clipping', p.Results.clipping);
 
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, as.alignDescriptor.intervalLabels{iInterval});
@@ -1333,14 +1337,15 @@ classdef AlignSummary
                         errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
                         h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, markErrorLoc, D, ...
                             errorAppear, errorThickness, p.Results.markAlpha, ...
-                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style);
+                            'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style, ...
+                            'clipping', p.Results.clipping);
                         TrialDataUtilities.Plotting.hideInLegend(h);
                     end
 
                     % plot mark and provide legend hint
                     h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
                         p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
-                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset);
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'clipping', p.Results.clipping);
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
                     else

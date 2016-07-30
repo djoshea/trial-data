@@ -94,8 +94,9 @@ function hvec = patchline(xs,ys,varargin)
 
 [zs,PVs] = parseInputs(varargin{:});
 p = inputParser;
-p.addParamValue('Parent', gca, @ishandle);
-p.addParamValue('LineWidth', 1, @isscalar);
+p.addParameter('Parent', gca, @ishandle);
+p.addParameter('LineWidth', 1, @isscalar);
+p.addParameter('clipping', 'on', @ischar);
 p.KeepUnmatched = true;
 p.CaseSensitive = false;
 p.parse(PVs{:});
@@ -114,9 +115,11 @@ end
 for i = 1:nTraces
     % Facecolor = 'k' is (essentially) ignored here, but syntactically necessary
     if isempty(zs)
-        hvec(i) = patch([xs(:, i);NaN],[ys(:, i); NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent, 'LineWidth', p.Results.LineWidth);
+        hvec(i) = patch([xs(:, i);NaN],[ys(:, i); NaN],'k', 'FaceAlpha', 0, ...
+            'Parent', p.Results.Parent, 'LineWidth', p.Results.LineWidth, 'Clipping', p.Results.clipping);
     else
-        hvec(i) = patch([xs(:, i);NaN],[ys(:, i);NaN],[zs(:, i); NaN],'k', 'FaceAlpha', 0, 'Parent', p.Results.Parent, 'LineWidth', p.Results.LineWidth);
+        hvec(i) = patch([xs(:, i);NaN],[ys(:, i);NaN],[zs(:, i); NaN],'k', 'FaceAlpha', 0, ...
+            'Parent', p.Results.Parent, 'LineWidth', p.Results.LineWidth, 'Clipping', p.Results.clipping);
     end
 end
     

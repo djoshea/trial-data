@@ -13,6 +13,7 @@ function h = stairs(x,y, varargin)
     p.addParameter('alpha', 1, @isscalar); % alpha for mean line, not supported yet
     p.addParameter('lastX', [], @isvector);
     p.addParameter('axh', gca, @ishandle);
+    p.addParameter('clipping', 'on', @ischar);
     p.KeepUnmatched = true;
     p.CaseSensitive = false;
     p.parse(varargin{:});
@@ -45,5 +46,5 @@ function h = stairs(x,y, varargin)
         colorArg = {'Color', p.Results.color};
     end
     
-    h = stairs(xWithLast, yWithLast, colorArg{:}, 'LineWidth', p.Results.lineWidth, 'Parent', axh);
+    h = stairs(xWithLast, yWithLast, colorArg{:}, 'LineWidth', p.Results.lineWidth, 'Parent', axh, 'Clipping', p.Results.clipping);
 end

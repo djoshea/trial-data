@@ -11,6 +11,8 @@ classdef DrawOnData
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
+            p.addParameter('clipping', 'on', @ischar);
+            p.CaseSensitive = false;
             p.parse(varargin{:});
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
@@ -25,7 +27,7 @@ classdef DrawOnData
                 zvals = 1 * ones(size(flatten(dMark(:, 1, :))));
                 h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, zvals, ...
                     'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.Color, ...
-                    'MarkerSize', markerSize, 'Parent', axh);
+                    'MarkerSize', markerSize, 'Parent', axh, 'Clipping', p.Results.clipping);
                 if alpha < 1
                     SaveFigure.setMarkerOpacity(h, alpha, 0);
                 end
@@ -39,7 +41,7 @@ classdef DrawOnData
 %                 else
                 h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, flatten(dMark(:, 3, :)) + zOffset, ...
                     'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
-                    'Parent', axh, 'MarkerSize', markerSize);
+                    'Parent', axh, 'MarkerSize', markerSize, 'Clipping', p.Results.clipping);
                 if alpha < 1 && p.Results.useTranslucentMark3d
                     SaveFigure.setMarkerOpacity(h, alpha, 0);
                 end
@@ -96,6 +98,8 @@ classdef DrawOnData
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
             p.addParameter('style', 'line', @ischar);
+            p.addParameter('clipping', 'on', @ischar);
+            p.CaseSensitive = false;
             p.parse(varargin{:});
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
@@ -116,15 +120,15 @@ classdef DrawOnData
                         if alpha < 1
                            h(iOccur) = TrialDataUtilities.Plotting.patchline(x + xOffset, y + yOffset, ...
                                'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
-                               'LineWidth', thickness);
+                               'LineWidth', thickness, 'Clipping', p.Results.clipping);
                         else
                             zvals = 0.09 * ones(size(x,1), 1);
                             h(iOccur) = plot3(axh, x + xOffset, y + yOffset, zvals, '-', ...
-                                'Color', app.Color, 'LineWidth', thickness);
+                                'Color', app.Color, 'LineWidth', thickness, 'Clipping', p.Results.clipping);
                         end
                     elseif strcmp(p.Results.style, 'stairs')
                         h(iOccur) = TrialDataUtilities.Plotting.stairs(x + xOffset, y + yOffset, ...
-                               'Color', app.Color, 'LineWidth', thickness);
+                               'Color', app.Color, 'LineWidth', thickness, 'Clipping', p.Results.clipping);
                     end
                 end
                 
@@ -141,10 +145,10 @@ classdef DrawOnData
                     if alpha < 1
                        h(iOccur) = TrialDataUtilities.Plotting.patchline(x + xOffset, y + yOffset, z + zOffset, ...
                            'EdgeColor', app.Color, 'EdgeAlpha', alpha, ...
-                           'LineWidth', thickness);
+                           'LineWidth', thickness, 'Clipping', p.Results.clipping);
                     else
                         h(iOccur) = plot3(axh, x + xOffset, y + yOffset, z + zOffset, '-', ...
-                            'Color', app.Color, 'LineWidth', thickness);
+                            'Color', app.Color, 'LineWidth', thickness, 'Clipping', p.Results.clipping);
                     end
                 end
             end
