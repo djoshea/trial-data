@@ -1624,7 +1624,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsAutoCount = ci.attributeValueBinsAutoCount(mask);
             ci.attributeValueBinsAutoModes = ci.attributeValueBinsAutoModes(mask);
             ci.attributeValueBinsManual = ci.attributeValueBinsManual(mask);
-            ci.attributeValueListsAsStringsAsManual = ci.attributeValueListsAsStringsAsManual(mask);
+            ci.attributeValueListsAsStringsManual = ci.attributeValueListsAsStringsManual(mask);
         end 
         
         % set all attribute value lists to auto
@@ -1644,7 +1644,7 @@ classdef ConditionDescriptor
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
-            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
+            ci.attributeValueListsAsStringsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
         end
         
@@ -1680,7 +1680,7 @@ classdef ConditionDescriptor
             iAttr = ci.getAttributeIdx(name);           
             if isempty(valueList)
                 ci.attributeValueListsManual{iAttr} = {};
-                ci.attributeValueListsAsStringsAsManual{iAttr} = {};
+                ci.attributeValueListsAsStringsManual{iAttr} = {};
             else
                 if ischar(valueList)
                     valueList = {valueList};
@@ -1753,7 +1753,7 @@ classdef ConditionDescriptor
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
-            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
+            ci.attributeValueListsAsStringsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
         end
 
@@ -1768,7 +1768,7 @@ classdef ConditionDescriptor
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = nBins;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoUniform;
-            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
+            ci.attributeValueListsAsStringsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
         end
 
@@ -1782,7 +1782,7 @@ classdef ConditionDescriptor
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = nQuantiles;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoQuantiles;
-            ci.attributeValueListsAsStringsAsManual{iAttr} = {};
+            ci.attributeValueListsAsStringsManual{iAttr} = {};
             ci = ci.notifyConditionsChanged();
         end
         
