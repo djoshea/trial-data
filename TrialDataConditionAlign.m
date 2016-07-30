@@ -1907,7 +1907,6 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
-            p.addParamet
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
             
@@ -2527,7 +2526,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             [mat, alignIdx] = TensorUtils.catWhich(2, matCell{:});
-            tvec = cat(2, tvecCell{:});
+            tvec = cat(1, tvecCell{:});
         end
         
         function [dataCell, tvec] = getAnalogMultiAsTensorGrouped(td, nameCell, varargin)
