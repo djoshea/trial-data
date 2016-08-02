@@ -3992,6 +3992,13 @@ classdef PopulationTrajectorySet
         function idx = findBasesMissingTrialAverageForNonEmptyConditionAligns(pset)
             idx = find(pset.basesMissingTrialAverageForNonEmptyConditionAligns);
         end
+        
+        function pset = setBasisNames(pset, basisNames)
+            assert(iscellstr(basisNames) && numel(basisNames) == pset.nBases);
+            pset.warnIfNoArgOut(nargout);
+            
+            pset.basisNames = basisNames;
+        end
     end
     
     methods(Static) % Static methods which take multiple psets as args 
@@ -5061,6 +5068,7 @@ classdef PopulationTrajectorySet
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 10, @isscalar);
             p.addParameter('useThreeVector', true, @islogical);
+            p.addParameter('threeVectorLength', 1, @isscalar);
             p.addParameter('useTranslucentMark3d', true, @islogical);
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('intervalShowOnData', false, @islogical);
@@ -5131,11 +5139,11 @@ classdef PopulationTrajectorySet
                     else
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
+                                '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         else
 %                             dataMat = [dataVec1 dataVec2];
-                            h = plot(axh, dataMat(1, :), dataMat(2, :), ...
+                            h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
                                 'LineWidth', p.Results.lineWidth, ...
                                 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
@@ -5173,10 +5181,13 @@ classdef PopulationTrajectorySet
                 view(axh, [-40 20]);
                 axis(axh, 'vis3d');
                 axis(axh, 'off');
-                ThreeVector(axh);
              else
                 axis(axh, 'off');
-                ThreeVector(axh);
+             end
+             
+             if p.Results.useThreeVector;
+                tv = ThreeVector(axh);
+                tv.vectorLength = p.Results.threeVectorLength;
              end
              
              hold(axh, 'off');
