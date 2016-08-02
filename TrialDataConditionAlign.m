@@ -5965,7 +5965,7 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function assertHasRandomizationSpecified(td)
-            assert(td.hasRandomizationSpecified, 'TrialData has no randomization active. Try .resampleTrialsWithinConditions');
+            assert(td.hasRandomizationSpecified, 'TrialData has no randomization active. Try .setRandomizedResampleTrialsWithinConditions()');
         end
         
         function td = withRandomized(td, idxRandom)
