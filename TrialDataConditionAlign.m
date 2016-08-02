@@ -3184,6 +3184,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             timesCell = getSpikeTimes@TrialData(td, unitNames);
             timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, includePadding, 'singleTimepointTolerance', 0);
+            if isempty(timesCell), timesCell = cell(0, 1); end
         end
         
         %%%%%
@@ -5111,7 +5112,7 @@ classdef TrialDataConditionAlign < TrialData
                 % setup time axis for this align
                 if D == 1
                     td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle, ...
-                        'tOffsetZero', timeOffsetByAlign(iAlign), 'showMarks', p.Results.showMarksOnAxis, 'showRanges', p.Results.showRangesOnAxis);
+                        'tOffsetZero', timeOffsetByAlign(iAlign), 'showMarks', p.Results.markShowOnAxis, 'showRanges', p.Results.showRangesOnAxis);
                 end
             end
             
