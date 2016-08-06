@@ -6,6 +6,7 @@ classdef CausalHalfGaussianSpikeFilter < GaussianSpikeFilter
     methods
         function sf = CausalHalfGaussianSpikeFilter(varargin)
             sf = sf@GaussianSpikeFilter('truncateFuture', 0, 'delayPeak', 0, varargin{:});
+            sf.binAlignmentMode = SpikeBinAlignmentMode.Causal;
         end
     end
     

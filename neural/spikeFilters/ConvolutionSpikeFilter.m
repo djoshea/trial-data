@@ -46,12 +46,27 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         end
         
         function plotFilter(sf)
+            cla;
             [filt, indZero] = sf.getFilter(); %#ok<PROP>
             filt = filt ./ sum(filt);
             tvec = (1:numel(filt))' - indZero; %#ok<PROP>
-            plot(tvec, filt, '-.', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+            plot(tvec, filt, '.-', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
             xlabel('Time (ms)');
-            ylabel('Filter');
+            ylabel('Impulse Response');
+            
+            hold on;
+            TrialDataUtilities.Plotting.verticalLine(0, 'Color', [0.7 0.7 0.7]);
+            h = gobjects(0, 1);
+            if sf.getPreWindow() > 0
+                h(end+1) = text(0, 0, '  Causal', 'HorizontalAlignment', 'left', 'BackgroundColor', 'none', 'VerticalAlignment', 'bottom', 'XLimInclude', 'on');
+            end
+            if sf.getPostWindow() > 0
+                h(end+1) = text(0, 0, 'Acausal  ', 'HorizontalAlignment', 'right', 'BackgroundColor', 'none', 'VerticalAlignment', 'bottom', 'XLimInclude', 'on');
+           end
+            hold off;
+            ax = AutoAxis.replace();
+            ax.addAnchor(AutoAxis.AnchorInfo(h, AutoAxis.PositionType.Bottom, gca, AutoAxis.PositionType.Bottom, 0.1));
+            ax.update();
         end
     end
 
@@ -82,7 +97,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         end
         
         function tf = getIsCausal(sf) % allows subclasses to override
-            tf = sf.getPreWindow() >= 0 && sf.binAlignmentMode == SpikeBinAlignmentMode.Causal;
+            tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == SpikeBinAlignmentMode.Causal;
         end
 
         % spikeCell is nTrains x 1 cell array of time points which will include 
