@@ -1194,7 +1194,7 @@ classdef TensorUtils
                 if ~isscalar(list)
                     % randsample with scalar first input thinks we mean
                     % 1:scalar as the population rather than just [scalar]
-                    list = randsample(list, numel(list), replace);
+                    list = list(randsample(numel(list), numel(list), replace));
                 end
                 sNew = TensorUtils.splitListIntoCells(list, cellfun(@numel, s));
             end
@@ -1204,7 +1204,7 @@ classdef TensorUtils
             % resample from replacement within each list, i.e. don't move
             % anything between lists, just take each list and resample with
             % replacement from itself.
-            t = TensorUtils.map(@(list) randsample(list, numel(list), true), t);
+            t = TensorUtils.map(@(list) list(randsample(numel(list), numel(list), true)), t);
         end
         
         function t = listResampleFromSpecifiedAlongDimension(t, from, iA, replace)
@@ -1231,7 +1231,7 @@ classdef TensorUtils
                 sNew = cell(size(s));
                 for i = 1:numel(s)
                     list = TensorUtils.combineListFromCells(s(from{i}));
-                    sNew{i} = randsample(list, numel(s{i}), replace);
+                    sNew{i} = list(randsample(numel(list), numel(s{i}), replace));
                 end
             end
         end
