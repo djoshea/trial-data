@@ -5808,11 +5808,18 @@ classdef TrialDataConditionAlign < TrialData
     %                         end
     
                         elseif strcmp(p.Results.style, 'stairs')
-                             [hData(iCond, iAlign), hShade] = TrialDataUtilities.Plotting.stairsError(...
-                                 tvec + tOffset + xOffset, dmat + yOffset, errmat, ...
-                                 'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(iCond).Color, 'alpha', p.Results.alpha, ...
-                                 'errorStyle', 'fill', 'errorColor', app(iCond).Color, 'lineWidth', p.Results.lineWidth);
-                             TrialDataUtilities.Plotting.hideInLegend(hShade);
+                            if plotErrorY
+                                 [hData(iCond, iAlign), hShade] = TrialDataUtilities.Plotting.stairsError(...
+                                     tvec + tOffset + xOffset, dmat + yOffset, errmat, ...
+                                     'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(iCond).Color, 'alpha', p.Results.alpha, ...
+                                     'errorStyle', 'fill', 'errorColor', app(iCond).Color, 'lineWidth', p.Results.lineWidth);
+                                TrialDataUtilities.Plotting.hideInLegend(hShade);
+                            else
+                                hData(iCond, iAlign) = TrialDataUtilities.Plotting.stairs(...
+                                 tvec + tOffset + xOffset, dmat + yOffset, ...
+                                 'axh', axh, 'color', app(iCond).Color, 'alpha', p.Results.alpha, ...
+                                 'lineWidth', p.Results.lineWidth);
+                            end
                         end
                              
                     elseif D == 2
@@ -6061,7 +6068,7 @@ classdef TrialDataConditionAlign < TrialData
         function varargout = groupElementsRandomizedSingle(td, idxRandom, varargin)
             assert(isscalar(idxRandom));
             td.assertHasRandomizationSpecified();
-            lists = TensorUtils.selectAlongDimension(td.randomizedListsByCondition, ndims(td.randomizedListsByCondition), idxRandom, true); % squeeze result
+            lists = TensorUtils.selectAlongDimension(td.randomizedListsByCondition, td.conditionInfoRandomized.nAxes+1, idxRandom, true); % squeeze result
             varargout = cell(nargout, 1);
             for i = 1:numel(varargin)
                 data = varargin{i};

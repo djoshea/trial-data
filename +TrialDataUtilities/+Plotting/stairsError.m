@@ -72,12 +72,7 @@ function [hMean, hError] = stairsError(x,y, varargin)
     else
         colorArg = {'Color', p.Results.color};
     end
-    
-    holdstate = ishold;
-    
-    hMean = stairs(x, y, colorArg{:}, 'LineWidth', p.Results.lineWidth);
-    hold on;
-    
+        
     % build polygons for fill 
     npts = size(x, 1);
     nlin = size(x, 2);
@@ -96,6 +91,10 @@ function [hMean, hError] = stairsError(x,y, varargin)
     y = cat(1, y, y(end, :));
     ylo = cat(1, ylo, ylo(end, :));
     yhi = cat(1, yhi, yhi(end, :));
+
+    holdstate = ishold;
+    hMean = stairs(x, y, colorArg{:}, 'LineWidth', p.Results.lineWidth);
+    hold on;
 
     switch p.Results.errorStyle
         case 'fill'
