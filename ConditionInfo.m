@@ -522,24 +522,25 @@ classdef ConditionInfo < ConditionDescriptor
             % where necessary
             modes = ci.attributeValueModes;
             valueListAsStrings = buildAttributeValueListsAsStrings@ConditionDescriptor(ci);
-            valueList = ci.attributeValueLists;
+%             valueList = ci.attributeValueLists;
             
-            for i = 1:ci.nAttributes
-                if isempty(ci.attributeUnits{i})
-                    unitsStr = '';
-                else
-                    unitsStr = [' ', ci.attributeUnits{i}];
-                end
-                if modes(i) == ci.AttributeValueListAuto
-                    % convert populated list to cellstr
-                    if ci.attributeNumeric(i)
-                        valueListAsStrings{i} = arrayfun(@(x) [num2str(x), unitsStr], valueList{i}, 'UniformOutput', false);
-                    else
-                        valueListAsStrings{i} = [valueList{i}, unitsStr];
-                    end
-                end
-                valueListAsStrings{i} = makecol(valueListAsStrings{i});
-            end
+%             for i = 1:ci.nAttributes
+%                 if isempty(ci.attributeUnits{i})
+%                     unitsStr = '';
+%                 else
+%                     unitsStr = [' ', ci.attributeUnits{i}];
+%                 end
+%                 if modes(i) == ci.AttributeValueListAuto
+%                     % convert populated list to cellstr
+%                     if ci.attributeNumeric(i)
+% %                         valueListAsStrings{i} = arrayfun(@(x) [num2str(x), unitsStr], valueList{i}, 'UniformOutput', false);
+%                         valueListAsStrings{i} = arrayfun(@(x) num2str(x), valueList{i}, 'UniformOutput', false);
+%                     else
+%                         valueListAsStrings{i} = [valueList{i}, unitsStr];
+%                     end
+%                 end
+%                 valueListAsStrings{i} = makecol(valueListAsStrings{i});
+%             end
         end
         
         function valueListByAxes = buildAxisValueLists(ci)
