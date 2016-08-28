@@ -29,7 +29,7 @@ classdef DrawOnData
                     'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.Color, ...
                     'MarkerSize', markerSize, 'Parent', axh, 'Clipping', p.Results.clipping);
                 if alpha < 1
-                    SaveFigure.setMarkerOpacity(h, alpha, 0);
+                    TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
                 end
                 
             elseif D == 3
@@ -43,7 +43,7 @@ classdef DrawOnData
                     'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
                     'Parent', axh, 'MarkerSize', markerSize, 'Clipping', p.Results.clipping);
                 if alpha < 1 && p.Results.useTranslucentMark3d
-                    SaveFigure.setMarkerOpacity(h, alpha, 0);
+                    TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
                 end
             else
                 error('Invalid Dimensionality of data');
@@ -75,7 +75,7 @@ classdef DrawOnData
                 Y = Y(:);
                 h = plot3(X, Y, p.Results.tickHeight, 'z', 0.1, 'o', ...
                     'color', app.Color, 'Parent', axh);
-                SaveFigure.setMarkerOpacity(h, alpha, 0);
+                TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
             else
                 timesByTrial = mat2cell(timesMat, nOccur, ones(nTrials, 1))';
                 h = TrialDataUtilities.Plotting.drawTickRaster(timesByTrial, ...

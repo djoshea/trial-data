@@ -22,22 +22,25 @@ function [traceCenters, hLines] = plotStackedTraces(tvec, data, varargin)
 % TODO : fix intercalate - probably not working anymore
 
 p = inputParser();
-p.addParamValue('evenSpacing', false, @islogical); % the vertical space allocated to each stacked trace is the same?
-p.addParamValue('normalize', false, @islogical); % the vertical height of each trace is normalized? or in original data units
-p.addParamValue('intercalate', false, @islogical); % the traces should be squished together as close as possible without touching
-p.addParamValue('spacingFraction', 1.2, @isscalar); % the gap between each trace / the height of those traces
-p.addParamValue('colormap', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for superimposed traces 
-p.addParamValue('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
+p.addParameter('evenSpacing', false, @islogical); % the vertical space allocated to each stacked trace is the same?
+p.addParameter('normalize', false, @islogical); % the vertical height of each trace is normalized? or in original data units
+p.addParameter('intercalate', false, @islogical); % the traces should be squished together as close as possible without touching
+p.addParameter('spacingFraction', 1.2, @isscalar); % the gap between each trace / the height of those traces
+p.addParameter('colormap', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for superimposed traces 
+p.addParameter('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
 p.addParameter('labels', {}, @isvector); % labels over nTraces for the y axis
+p.addParameter('labelRotation', 0, @isvector);
 p.addParameter('labelsLinesWithinEachTrace', {}, @iscell); % labels over the nSuperimposed traces, for clickable descriptions
 p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the labels on the left axis, slow if too many traces, 'auto' is true if nTraces < 25
 p.addParameter('clickable', false, @islogical); % make each trace clickable and show a description
 p.addParameter('timeUnits', '', @ischar); 
 p.addParameter('timeScaleBar', false, @islogical); % use scale bar instead of tick bridge for time axis?
 p.addParameter('dataUnits', [], @(x) ischar(x) || (isvector(x) && iscellstr(x))); % either a string describing units for all traces, or a nTraces x 1 cell of units for each set of traces running vertically
+p.addParameter('verticalScaleBarHideLabel', false, @islogical);
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.KeepUnmatched = true;
+p.CaseSensitive = false;
 p.parse(varargin{:});
 
 if ~iscell(data)
@@ -260,7 +263,7 @@ end
 
 if showLabels
     spans = [makerow(traceLows); makerow(traceHighs)];
-    au.addLabeledSpan('y', 'span', spans, 'label', labels);
+    au.addLabeledSpan('y', 'span', spans, 'label', labels, 'rotation', p.Results.labelRotation);
 end
 
 hold off;
@@ -307,7 +310,7 @@ if showScaleBars
             if commonDataUnits
                 dataUnits = u{1};
             end
-        elseif ischar(dataUnits)
+        elseif isempty(dataUnits) || ischar(dataUnits)
             commonDataUnits = true;
         else
             commonDataUnits = false;
@@ -338,7 +341,7 @@ if showScaleBars
                     label = '';
                 end
                 au.addScaleBar('y', 'length', plottedValue, 'manualLabel', label, ...
-                    'manualPositionAlongAxis', traceLows(iT));
+                    'manualPositionAlongAxis', traceLows(iT), 'hideLabel', p.Results.verticalScaleBarHideLabel);
             end
             
         else
@@ -354,7 +357,7 @@ if showScaleBars
                 end
                 label = sprintf('%g %s', actualValue, units);
                 au.addScaleBar('y', 'length', plottedValue, 'manualLabel', label, ...
-                    'manualPositionAlongAxis', traceLows(iT));
+                    'manualPositionAlongAxis', traceLows(iT), 'hideLabel', p.Results.verticalScaleBarHideLabel);
             end
         end
             
