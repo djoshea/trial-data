@@ -2221,6 +2221,9 @@ classdef ConditionDescriptor
                                 % substitute in the display as value
                                 valueLists{iX}(iV).(attr{iA}) = displayAs{idx};
                             end
+                            
+                            % remove units from unitsLookup
+                            unitsLookup = rmfield(unitsLookup, attr{iA});
                         end
                     end
                 end
