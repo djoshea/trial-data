@@ -3190,12 +3190,16 @@ classdef PopulationTrajectorySet
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
+            p.addParameter('useValidTimepointsFromOriginal', true, @islogical); % this makes sense to default true here
+            p.addParameter('normalizeToMaintainTotalVariance', true, @islogical); % this makes sense to default true here
+            p.addParameter('translateToMaintainTotalVariance', true, @islogical);
             p.parse(varargin{:});
             
             seed = p.Results.randomSeed;
             nRandomSamples = p.Results.nRandomSamples;
             
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
+            listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
             prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
@@ -3205,11 +3209,17 @@ classdef PopulationTrajectorySet
                     'initialSeed', seed, 'showProgress', p.Results.nRandomSamples > 100), -1);
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
+                
+                listOriginal = src.conditionInfo.listByCondition;
+                listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
             
             [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
-                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell, listByConditionCellOriginal, ...
+                'normalizeToMaintainTotalVariance', p.Results.normalizeToMaintainTotalVariance, ...
+                'translateToMaintainTotalVariance', p.Results.translateToMaintainTotalVariance, ...
+                'useValidTimepointsFromOriginal', p.Results.useValidTimepointsFromOriginal);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
                 
@@ -3232,12 +3242,14 @@ classdef PopulationTrajectorySet
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             seed = p.Results.randomSeed;
             nRandomSamples = p.Results.nRandomSamples;
             
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
+            listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
             prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
@@ -3247,11 +3259,15 @@ classdef PopulationTrajectorySet
                     'initialSeed', seed, 'showProgress', p.Results.nRandomSamples > 100), -1);
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
+                
+                listOriginal = src.conditionInfo.listByCondition;
+                listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
             
             [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
-                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell, listByConditionCellOriginal, ...
+                p.Unmatched);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
         
@@ -3273,12 +3289,14 @@ classdef PopulationTrajectorySet
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             seed = p.Results.randomSeed;
             nRandomSamples = p.Results.nRandomSamples;
             
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
+            listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
             prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
@@ -3288,11 +3306,15 @@ classdef PopulationTrajectorySet
                     'initialSeed', seed, 'showProgress', p.Results.nRandomSamples > 100), -1);
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
+                
+                listOriginal = src.conditionInfo.listByCondition;
+                listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
             
             [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
-                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell, listByConditionCellOriginal, ...
+                p.Unmatched);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
 
@@ -3315,12 +3337,15 @@ classdef PopulationTrajectorySet
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             seed = p.Results.randomSeed;
             nRandomSamples = p.Results.nRandomSamples;
             
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
+            listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
+            
             prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
@@ -3330,16 +3355,20 @@ classdef PopulationTrajectorySet
                     'initialSeed', seed, 'showProgress', p.Results.nRandomSamples > 100), -1);
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
+                
+                listOriginal = src.conditionInfo.listByCondition;
+                listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
             
             [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
-                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell);
+                pset.computeDataMeanUsingMultipleListByCondition(listByConditionCell, listByConditionCellOriginal, ...
+                p.Unmatched);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
 
         function [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
-                computeDataMeanUsingMultipleListByCondition(pset, listByConditionCell)
+                computeDataMeanUsingMultipleListByCondition(pset, listByConditionCell, listByConditionOriginal, varargin)
             % a utility function for recomputing dataMean using a different
             % conditionInfo.listByCondition than the one already present in
             % the data source. This is typically used when shuffling or resampling
@@ -3347,11 +3376,17 @@ classdef PopulationTrajectorySet
             %
             % listByConditionCell is a nBases x nConditions x nSamples
             
-            tMinForDataByTrial = pset.tMinForDataByTrial;
-            tMaxForDataByTrial = pset.tMaxForDataByTrial;
-            tMinForDataMean = pset.tMinForDataMean;
-            tMaxForDataMean = pset.tMaxForDataMean;
-            timeDelta = pset.timeDelta;
+            p = inputParser();
+            p.addParameter('useValidTimepointsFromOriginal', false, @islogical);
+            p.addParameter('normalizeToMaintainTotalVariance', false, @islogical);
+            p.addParameter('translateToMaintainTotalVariance', false, @islogical);
+            p.parse(varargin{:});
+            
+%             tMinForDataByTrial = pset.tMinForDataByTrial;
+%             tMaxForDataByTrial = pset.tMaxForDataByTrial;
+%             tMinForDataMean = pset.tMinForDataMean;
+%             tMaxForDataMean = pset.tMaxForDataMean;
+%             timeDelta = pset.timeDelta;
             nAlign = pset.nAlign;
             nBases = pset.nBases;
             nConditions = pset.nConditions;
@@ -3359,96 +3394,139 @@ classdef PopulationTrajectorySet
             nRandomSamples = size(listByConditionCell, 3);
             minTrialsForTrialAveraging = pset.minTrialsForTrialAveraging;
             minFractionTrialsForTrialAveraging = pset.minFractionTrialsForTrialAveraging;
-            T = sum(pset.nTimeDataMean);
-            dataByTrial = pset.dataByTrial;
+%             T = sum(pset.nTimeDataMean);
+%             dataByTrial = pset.dataByTrial;
             
             % new matrix will contain all data, concatenated by alignment
-            [dataMeanRandomizedCat, dataSemRandomizedCat] = deal(nan(nBases, nConditions, T, nRandomSamples));
+            [dataMeanRandomized, dataSemRandomized] = deal(cell(nAlign, 1));
             
-            prog = ProgressBar(pset.nBases, 'Computing re-conditioned trial-averaged data');
-            for iBasis = 1:nBases    
-                
-                % don't process invalid bases, leave these as NaNs
-                if ~pset.basisValid(iBasis);
-                    continue;
-                end
-                
-                % compute a align-concatenated time mask for indexing into
-                % data by trial
-                tMaskValidByAlign = cell(nAlign, 1);
-                for iAlign = 1:nAlign
-                    % lookup the time limits which describe the byTrial
-                    % matrix
-                    tMinAll = tMinForDataByTrial(iBasis, iAlign);
-                    tMaxAll = tMaxForDataByTrial(iBasis, iAlign);
-                    tvecAll = (tMinAll:timeDelta:tMaxAll)';
+            for iAlign = 1:nAlign
+                prog = ProgressBar(pset.nBases, 'Computing re-conditioned trial-averaged data for align %d', iAlign);
+                for iBasis = 1:nBases    
 
-                    % lookup the new time limits which we'll compute the
-                    % trial average within
-                    tMinValid = tMinForDataMean(iAlign);
-                    tMaxValid = tMaxForDataMean(iAlign);
-                    tMaskValidByAlign{iAlign} = tvecAll >= tMinValid & tvecAll <= tMaxValid;
-                end
-                tMaskValidCat = cat(1, tMaskValidByAlign{:});
-
-                % grab the valid time portion of the nTrials x
-                % nTime data matrix
-                % pull the by-trial data from .dataByTrial
-                byTrialCat = cat(2, dataByTrial{iBasis, :});
-                byTrialCatValid = byTrialCat(:, tMaskValidCat);
-
-                % nConditions x nSamples
-                listByConditionSamples = squeeze(listByConditionCell(iBasis, :, :));
-                
-                % figure out how many trials for averagin we need by condition, based on
-                % the number of trials each condition (assuming all lists
-                % maintain the same number of trials by condition)
-                nTrialsByCondition = cellfun(@numel, listByConditionSamples(:, 1));
-                minTrialsByCondition = max(minTrialsForTrialAveraging, ...
-                    ceil(nTrialsByCondition * minFractionTrialsForTrialAveraging));
-                       
-                [dataMeanRandomizedThisBasis, dataSemRandomizedThisBasis] = deal(nan(nConditions, sum(nTimeDataMean), nRandomSamples));
-                for iSample = 1:nRandomSamples
-                    byCondition = cellfun(@(idx) byTrialCatValid(idx,:), ...
-                        listByConditionSamples(:, iSample), 'UniformOutput', false);
-
-                    for iCondition = 1:numel(byCondition)
-                        % n by t
-                        mat = byCondition{iCondition};
-                        nanMask = isnan(mat);
-                        nTrialsByTime = sum(~nanMask, 1);
-                        
-                        % compute mean
-                        m = nanmean(mat, 1);
-                        m(nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
-
-                        dataMeanRandomizedThisBasis(iCondition, :, iSample) = m;
-
-                        se = nansem(mat, 1)';
-                        se(nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
-                        dataSemRandomizedThisBasis(iCondition, :, iSample) = se;
+                    % don't process invalid bases, leave these as NaNs
+                    if ~pset.basisValid(iBasis);
+                        continue;
                     end
-                end
-                
-                dataMeanRandomizedCat(iBasis, :, :, :) = dataMeanRandomizedThisBasis;
-                dataSemRandomizedCat(iBasis, :, :, :) = dataSemRandomizedThisBasis;
-                prog.update(iBasis);
-            end
-            prog.finish();
 
-            % segregate into different alignments again
-            if nRandomSamples == 1
-                % avoid warning about trailing singleton dimensions
-                dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
-                    pset.nTimeDataMean));
-                dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
-                    pset.nTimeDataMean));
-            else
-                dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
-                    pset.nTimeDataMean, nRandomSamples));
-                dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
-                    pset.nTimeDataMean, nRandomSamples));
+    %                 % compute a align-concatenated time mask for indexing into
+    %                 % data by trial
+    %                 tMaskValidByAlign = cell(nAlign, 1);
+    %                 for iAlign = 1:nAlign
+    %                     % lookup the time limits which describe the byTrial
+    %                     % matrix
+    %                     tMinAll = tMinForDataByTrial(iBasis, iAlign);
+    %                     tMaxAll = tMaxForDataByTrial(iBasis, iAlign);
+    %                     tvecAll = (tMinAll:timeDelta:tMaxAll)';
+    % 
+    %                     % lookup the new time limits which we'll compute the
+    %                     % trial average within
+    %                     tMinValid = tMinForDataMean(iAlign);
+    %                     tMaxValid = tMaxForDataMean(iAlign);
+    %                     tMaskValidByAlign{iAlign} = tvecAll >= tMinValid & tvecAll <= tMaxValid;
+    %                 end
+    %                 tMaskValidCat = cat(1, tMaskValidByAlign{:});
+
+    %                 % grab the valid time portion of the nTrials x
+    %                 % nTime data matrix
+    %                 % pull the by-trial data from .dataByTrial
+    %                 byTrialCat = cat(2, dataByTrial{iBasis, :});
+    %                 byTrialCatValid = byTrialCat(:, tMaskValidCat);
+
+                    % nConditions x nSamples
+                    listByConditionSamples = squeeze(listByConditionCell(iBasis, :, :));
+
+                    % figure out how many trials for averagin we need by condition, based on
+                    % the number of trials each condition (assuming all lists
+                    % maintain the same number of trials by condition)
+                    nTrialsByCondition = cellfun(@numel, listByConditionSamples(:, 1));
+                    minTrialsByCondition = max(minTrialsForTrialAveraging, ...
+                        ceil(nTrialsByCondition * minFractionTrialsForTrialAveraging));
+
+                    thisDataByTrial = pset.dataByTrial{iBasis, iAlign};
+                    [dataMeanRandomizedThisBasis, dataSemRandomizedThisBasis] = deal(nan(nConditions, nTimeDataMean(iAlign), nRandomSamples));
+                    byConditionOriginal = cellfun(@(idx) thisDataByTrial(idx, :), ...
+                        listByConditionOriginal(iBasis, :)', 'UniformOutput', false);
+
+                    for iSample = 1:nRandomSamples
+                        byCondition = cellfun(@(idx) thisDataByTrial(idx,:), ...
+                            listByConditionSamples(:, iSample), 'UniformOutput', false);
+
+                        for iCondition = 1:numel(byCondition)
+                            % n by t
+                            mat = byCondition{iCondition};
+    %                         nanMask = isnan(mat);
+
+                            matOrig = byConditionOriginal{iCondition};
+                            if p.Results.useValidTimepointsFromOriginal
+                                 % use the nTrials by time of the original data so
+                                % placement of nans doesn't change
+                                nTrialsByTime = sum(~isnan(matOrig), 1);
+                            else
+                                nTrialsByTime = sum(~isnan(mat), 1);
+                            end
+
+                            % clear invalid timesteps
+                            mat(:, nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
+                            matOrig(:, nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
+
+                            m = nanmean(mat, 1);
+                            
+                            if p.Results.translateToMaintainTotalVariance && numel(m) > 1
+                                % maintain at the same level of variance of the
+                                % original mean. when operating across
+                                % alignments, this means shifting the means
+                                % to match the original mean over time
+                                meanOrig = nanmean(nanmean(matOrig, 1));
+                                mu = nanmean(m);
+                                m = m - mu + meanOrig;
+                            end
+
+                            if p.Results.normalizeToMaintainTotalVariance && numel(m) > 1
+                                % maintain at the same level of variance of the
+                                % original mean.
+                                meanOrig = nanmean(matOrig, 1);
+                                mu = nanmean(m);
+                                vOrig = nanvar(meanOrig, 1);
+                                vThis = nanvar(m, 1);
+                                
+                                if vOrig ~= 0 && vThis ~= 0
+                                    m = (m - mu) / sqrt(vThis / vOrig) + mu;
+                                end
+                                
+                                multiplier = sqrt(vOrig / vThis);
+                            else
+                                multiplier = 1;
+                            end
+
+                            dataMeanRandomizedThisBasis(iCondition, :, iSample) = m;
+
+                            se = nansem(mat, 1)' * multiplier;
+                            se(nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
+                            dataSemRandomizedThisBasis(iCondition, :, iSample) = se;
+                        end
+                    end
+
+                    dataMeanRandomized{iAlign}(iBasis, :, :, :) = dataMeanRandomizedThisBasis;
+                    dataSemRandomized{iAlign}(iBasis, :, :, :) = dataSemRandomizedThisBasis;
+                    prog.update(iBasis);
+                end
+                prog.finish();
             end
+
+%             % segregate into different alignments again
+%             if nRandomSamples == 1
+%                 % avoid warning about trailing singleton dimensions
+%                 dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
+%                     pset.nTimeDataMean));
+%                 dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
+%                     pset.nTimeDataMean));
+%             else
+%                 dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
+%                     pset.nTimeDataMean, nRandomSamples));
+%                 dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
+%                     pset.nTimeDataMean, nRandomSamples));
+%             end
             
             % apply translation normalization if present
             if ~isempty(pset.translationNormalization)
@@ -3998,6 +4076,14 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             
             pset.basisNames = basisNames;
+        end
+        
+        function pset = setBasisNamesUsingFormatString(pset, prefix)
+            assert(ischar(prefix) && ~isempty(strfind(prefix, '%d')), 'Format string must be char containing ''%d''');
+            pset.warnIfNoArgOut(nargout);
+            
+            names = arrayfun(@(n) sprintf(prefix, n), (1:pset.nBases)', 'UniformOutput', false);
+            pset = pset.setBasisNames(names);
         end
     end
     
@@ -5073,7 +5159,7 @@ classdef PopulationTrajectorySet
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
-            p.addParameter('clipping', 'on', @ischar);
+            p.addParameter('clipping', 'off', @ischar);
             
             p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
             p.CaseSensitive = false;

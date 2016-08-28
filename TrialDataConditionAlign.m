@@ -2103,10 +2103,12 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function td = addAnalogChannelModifiedInPlace(td, oldName, newName, data)
-            td = td.reset();
+            % if we do a reset here we'll mess up the valid array the user
+            % was expecting
+%             td = td.reset();
             td.warnIfNoArgOut(nargout);
             td = td.copyChannel(oldName, newName);
-            td = td.setAnalog(newName, data);
+            td = td.setAnalog(newName, data, 'updateValidOnly', true, 'clearForInvalid', true);
         end
         
         function [data, time] = getAnalogFiltered(td, name, B, A, varargin)

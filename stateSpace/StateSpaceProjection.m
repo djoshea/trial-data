@@ -419,7 +419,9 @@ classdef StateSpaceProjection
             
             % copy basic settings from pset 
             b = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(pset);
-            b.dataUnits = pset.dataUnits; % user may may want to clear this later, but keep them by default
+%             b.dataUnits = pset.dataUnits; % user may may want to clear
+%             this later, but keep them by default. No just clear them,
+%             they are misleading
 
             b.basisNames = proj.generateBasisNamesProj(pset);
             
@@ -542,6 +544,9 @@ classdef StateSpaceProjection
             % ensure there is no translation normalization by default
             b.translationNormalization = [];
             
+            b.basisValid = proj.basisValidProj;
+            b.basisInvalidCause = proj.basisInvalidCauseProj;
+            
             psetProjected = b.buildManualWithTrialAveragedData();
             
             if p.Results.applyTranslationNormalizationPostProject && ~isempty(proj.translationNormalizationPostProject)
@@ -611,6 +616,9 @@ classdef StateSpaceProjection
             nproj = proj.getAsManual();
             
             nproj.decoderKbyN = null(proj.decoderKbyN)';
+            if isempty(nproj.decoderKbyN)
+                error('Projection decoder matrix is full rank. Cannot project into null space.');
+            end
             nproj.encoderNbyK = nproj.decoderKbyN';
             
             nproj.basisNamesProjStem = ['Null ' nproj.basisNamesProjStem];
@@ -699,6 +707,9 @@ classdef StateSpaceProjection
             proj.basisValidProj = proj.basisValidProj(idx);
             proj.basisInvalidCauseProj = proj.basisInvalidCauseProj(idx);
             proj.basisNamesProj = proj.basisNamesProj(idx);
+            if ~isempty(proj.translationNormalizationPostProject)
+                proj.translationNormalizationPostProject = proj.translationNormalizationPostProject.filterBases(idx);
+            end
         end
         
         function proj = truncateOutputBases(proj, K)

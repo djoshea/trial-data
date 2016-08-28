@@ -64,6 +64,12 @@ classdef StateSpaceProjectionStatistics
 %     number of condition axes and the axisCombinations setting.
 %   K = number of output bases
 
+    properties
+        pcaBoundColor = [0.7 0.7 0.7]; % color used for pca bounds
+        totalVarColor = [0.1 0.1 0.1]; % color used for total variance in plots
+        totalVarLabel = 'total';
+    end
+
     properties(SetAccess=protected) % basic metadata
         basisNamesSource
         basisNamesProj
@@ -158,7 +164,7 @@ classdef StateSpaceProjectionStatistics
             if ~isa(v, 'function_handle')
                 assert(size(v, 1) == s.nMarginalizations && size(v, 2) == 3, 'Colors must be nMarginalizations==%d x 3', s.nMarginalizations);
             end
-            s.marginalizationColors = v;
+            s.marginalizationColorsStored = v;
         end
         
         function v = get.marginalizationColors(s)
@@ -339,8 +345,9 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('showTotals', true, @islogical); % show horizontal lines at total for each variance
             p.addParameter('verbose', true, @islogical);
             p.addParameter('showThresholdAt', [], @(x) isempty(x) || isscalar(x)); % draw horizontal line at fractional threshold and vertical lines where each variance trace crosses that threshold
+            p.addParameter('showMarginalizedThresholdsAt', [], @(x) isempty(x) || isvector(x)); % draw horizontal line at fractional threshold and vertical lines where each marginalized variance trace crosses that threshold
             p.addParameter('showQuantiles', [], @(x) isempty(x) || isvector(x)); % either empty (don't show), scalar like 0.95 for 95% confidence interval, or [0.025 0.975] for specific quantiles
-            
+            p.addParameter('quantileAlpha', 0.5, @isscalar);
             p.parse(varargin{:});
             
             varianceType = p.Results.varianceType;
@@ -348,10 +355,11 @@ classdef StateSpaceProjectionStatistics
             timepoints = p.Results.timepoints;
             verbose = p.Results.verbose;
             
+            quantileAlpha = p.Results.quantileAlpha;
             markerSize = 4;
-            
-            pcaColor = [0.7 0.7 0.7];
-            mainColor = [0.3 0.3 0.3];
+
+            pcaColor = TrialDataUtilities.Color.toRGB(s.pcaBoundColor);
+            totalVarColor = TrialDataUtilities.Color.toRGB(s.totalVarColor);
             
             if isempty(marginalize)
                 marginalize = strcmp(timepoints, 'shared');
@@ -429,8 +437,6 @@ classdef StateSpaceProjectionStatistics
             % Collect for later
             data_margVar = [];
             
-            hold(axh, 'on');
-            
             if p.Results.showPCABound
                 pcaFieldName = sprintf('pca_cum%s%sByBasis_%s', fracStr, varStrForPCA, timeStr);
                 if isprop(s, pcaFieldName)
@@ -443,7 +449,7 @@ classdef StateSpaceProjectionStatistics
                     h = plot(axh, 1:s.nBasesProj, vp, '-', ...
                         'Color', pcaColor, 'LineWidth', 1);
                     TrialDataUtilities.Plotting.showInLegend(h, 'PCA Upper Bound');
-                    
+                    hold(axh, 'on');
 %                     data_pcaVar = vp;
                 else
 %                     data_pcaVar = [];
@@ -460,9 +466,11 @@ classdef StateSpaceProjectionStatistics
             data_mainVar = v;
             
             h = plot(axh, 1:s.nBasesProj, v, 'o-', ...
-                'Color', mainColor, 'MarkerFaceColor', [0.1 0.1 0.1], ...
+                'Color', totalVarColor, 'MarkerFaceColor', totalVarColor, ...
                 'MarkerEdgeColor', 'none', 'MarkerSize', markerSize, 'LineWidth', 1);
-            TrialDataUtilities.Plotting.showInLegend(h, 'Total');
+            hold(axh, 'on');
+            
+            TrialDataUtilities.Plotting.showInLegend(h, s.totalVarLabel);
             if verbose
                 debug('Plotting variance using %s\n', mainFieldName);
             end
@@ -488,17 +496,17 @@ classdef StateSpaceProjectionStatistics
             
             if showQuantiles
                 debug('Plotting randomization quantiles using .computeQuantilesForRandomizedStatistics\n');
-                quantileAlpha = 0.5;
+                
                 if p.Results.showPCABound
                     % 1 x K x 2
                     qdata = TensorUtils.squeezeDims(s.computeQuantilesForRandomizedStatistics(pcaFieldName, quantiles), 1);
-                    hs = TrialDataUtilities.Plotting.errorshadeInterval(1:s.nBasesProj, qdata(:, 1), qdata(:, 2), [0.7 0.7 0.7], 'alpha', quantileAlpha, 'axh', axh);
+                    hs = TrialDataUtilities.Plotting.errorshadeInterval(1:s.nBasesProj, qdata(:, 1), qdata(:, 2), pcaColor, 'alpha', quantileAlpha, 'axh', axh);
                     TrialDataUtilities.Plotting.hideInLegend(hs);
                 end
                 
                 % main trace
                 qdata = TensorUtils.squeezeDims(s.computeQuantilesForRandomizedStatistics(mainFieldName, quantiles), 1);
-                hs = TrialDataUtilities.Plotting.errorshadeInterval(1:s.nBasesProj, qdata(:, 1), qdata(:, 2), mainColor, 'alpha', quantileAlpha, 'axh', axh);
+                hs = TrialDataUtilities.Plotting.errorshadeInterval(1:s.nBasesProj, qdata(:, 1), qdata(:, 2), totalVarColor, 'alpha', quantileAlpha, 'axh', axh);
                 TrialDataUtilities.Plotting.hideInLegend(hs);
                 
                 if marginalize
@@ -529,7 +537,7 @@ classdef StateSpaceProjectionStatistics
                 total = s.(fieldName);
                 if ~p.Results.fractional
                     h = TrialDataUtilities.Plotting.horizontalLine(total, ...
-                        'Color', mainColor, 'LineWidth', 0.5, 'LineStyle', '--');
+                        'Color', totalVarColor, 'LineWidth', 0.5, 'LineStyle', '--');
                     TrialDataUtilities.Plotting.hideInLegend(h);
                     if verbose
                         debug('Plotting total variance using %s\n', fieldName);
@@ -558,23 +566,58 @@ classdef StateSpaceProjectionStatistics
             
             if ~isempty(p.Results.showThresholdAt) && ~isnan(p.Results.showThresholdAt)
                 thresh = p.Results.showThresholdAt;
-                TrialDataUtilities.Plotting.horizontalLine(thresh, 'Color', [0.9 0.3 0.3], 'Parent', axh);
-                TrialDataUtilities.Plotting.showInLegend(h, sprintf('%g%% Threshold', thresh*100));
+                h = TrialDataUtilities.Plotting.horizontalLine(thresh, 'Color', totalVarColor, 'Parent', axh);
+                if p.Results.fractional
+                    TrialDataUtilities.Plotting.showInLegend(h, sprintf('%g%% Threshold', thresh*100));
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
                 
                 % calculate number of bases required to reach threshold
                 nMain = find(data_mainVar > thresh, 1);
                 if ~isempty(nMain)
-                    h = plot(axh, [nMain nMain], [0 data_mainVar(nMain)], '-', 'Color', [0.3 0.3 0.3]);
+%                     h = plot(axh, [nMain nMain], [0 data_mainVar(nMain)], '-', 'Color', [0.3 0.3 0.3]);
+                    h = TrialDataUtilities.Plotting.verticalLine(nMain, 'Color', totalVarColor);
                     TrialDataUtilities.Plotting.hideInLegend(h);
-                    debug('%d bases required to explain %g%% of total variance\n', nMain, thresh*100);
+                    if p.Results.fractional
+                        debug('%d bases required to explain %g%% of total variance\n', nMain, thresh*100);
+                    end
                 end
-                if marginalize
-                    for m = 1:s.nMarginalizations
-                        nMarg = find(data_margVar(m, :) > thresh, 1);
-                        if ~isempty(nMarg)
-                            h = plot(axh, [nMarg nMarg], [0 data_mainVar(nMarg)], '-', ...
-                                'Color', s.marginalizationColors(m, :));
-                            TrialDataUtilities.Plotting.hideInLegend(h);
+            end
+            
+            if ~isempty(p.Results.showMarginalizedThresholdsAt) && marginalize
+                for m = 1:s.nMarginalizations
+                    thresh = p.Results.showMarginalizedThresholdsAt(m);
+                    if isnan(thresh), continue, end;
+                    
+                    if p.Results.fractional
+                        % make the thresh fractional relative to the total
+                        % marginalized variance
+                        fieldName = sprintf('total%s_%s', varStrForTotal, timeStr);
+                        total = s.(fieldName);
+                        
+                        margFieldName = sprintf('totalMarg%s_%s', varStrForTotal, timeStr);
+                        totalMarg = s.(margFieldName);
+                        
+                        thresh = thresh * (totalMarg(m) / total);
+                    end
+                
+                    
+                    h = TrialDataUtilities.Plotting.horizontalLine(thresh, 'Color', s.marginalizationColors(m, :), ...
+                        'Parent', axh);
+                    if p.Results.fractional
+                        TrialDataUtilities.Plotting.showInLegend(h, sprintf('%g%% %s Threshold', thresh*100, s.marginalizationNames{m}));
+                    else
+                        TrialDataUtilities.Plotting.hideInLegend(h);
+                    end
+               
+                    nMarg = find(data_margVar(m, :) > thresh, 1);
+                    if ~isempty(nMarg)
+%                         h = plot(axh, [nMarg nMarg], [0 data_mainVar(nMarg)], '-', ...
+%                             'Color', s.marginalizationColors(m, :));
+                        h = TrialDataUtilities.Plotting.verticalLine(nMarg, 'Color', s.marginalizationColors(m, :));
+                        TrialDataUtilities.Plotting.hideInLegend(h);
+                        if p.Results.fractional
                             debug('%d bases required to explain %g%% of %s variance\n', ...
                                 nMarg, thresh*100, s.marginalizationNames{m});
                         end
@@ -588,7 +631,7 @@ classdef StateSpaceProjectionStatistics
             title(titleStr);
             
             hold(axh, 'off');
-            xlim([0 s.nBasesProj]);
+            xlim([1 s.nBasesProj]);
             if p.Results.fractional
                 ylim([0 1]);
             end
@@ -597,10 +640,15 @@ classdef StateSpaceProjectionStatistics
             
             % legend
             if marginalize
-                au.addColoredLabels(cat(1, {'total'}, s.marginalizationNames), cat(1, [0 0 0], s.marginalizationColors), ...
-                    'posY', AutoAxis.PositionType.Top, 'posX', AutoAxis.PositionType.Left);
+                au.addColoredLabels(cat(1, {s.totalVarLabel}, s.marginalizationNames), cat(1, totalVarColor, s.marginalizationColors), ...
+                    'posY', AutoAxis.PositionType.Bottom, 'posX', AutoAxis.PositionType.Right);
+                au.update();
+            else
+                au.addColoredLabels({s.totalVarLabel}, totalVarColor, ...
+                    'posY', AutoAxis.PositionType.Bottom, 'posX', AutoAxis.PositionType.Right);
                 au.update();
             end
+            hold off;
             
             % fieldsPlotted = {fieldName; margFieldName; pcaFieldName}
         end
@@ -799,20 +847,31 @@ classdef StateSpaceProjectionStatistics
             end
             
             if pset.hasDataRandomized && p.Results.computeForRandomized
+                % compute variance per basis from original data
+%                 varByBasisReal = TensorUtils.varMultiDim(NvbyTAbyAttr, 0, [2:ndims(NvbyTAbyAttr)]);
+                
                 % do same statistics computation on 
                 prog = ProgressBar(pset.nRandomSamples, 'Computing projection statitics on dataMeanRandomized');
                 for iR = 1:pset.nRandomSamples
                     prog.update(iR);
-                    NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true, ...
+                    NvbyTAbyAttrRand = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true, ...
                         'type', 'meanRandom', 'dataRandomIndex', iR);
                     
+                    % normalize each variance to exactly match variance of
+                    % the real data
+                    if p.Results.meanSubtract
+                        NvbyTAbyAttrRand = bsxfun(@minus, NvbyTAbyAttrRand,  TensorUtils.meanMultiDim(NvbyTAbyAttrRand, [2:ndims(NvbyTAbyAttr)]));
+                    end
+%                     varByBasisRand = TensorUtils.varMultiDim(NvbyTAbyAttrRand, 0, [2:ndims(NvbyTAbyAttr)]);
+%                     NvbyTAbyAttrRand = bsxfun(@times, NvbyTAbyAttrRand,  sqrt(varByBasisReal ./ varByBasisRand));
+                    
                     sRand(iR) = s.copyExcludingComputedStatistics(); %#ok<AGROW>
-                    sRand(iR) = sRand(iR).computeStatistics(NvbyTAbyAttr, ...
+                    sRand(iR) = sRand(iR).computeStatistics(NvbyTAbyAttrRand, ...
                         decoderKbyNv, encoderNvbyK, 'combinedParams', s.combinedParams, ...
                         'meanSubtract', p.Results.meanSubtract, ...
                         'verbose', false, ...
                         'showWarnings', p.Results.showWarningsForRandomized, ...
-                        'scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(:, :, :, iR)); %#ok<AGROW>
+                        'scaledDifferenceOfTrialsNoiseEstimate_NbyTAbyAttr', pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(proj.basisValid, :, :, iR)); %#ok<AGROW>
                 end
                 prog.finish();
                 

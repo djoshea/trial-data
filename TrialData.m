@@ -1456,6 +1456,10 @@
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('keepScaling', false, @islogical);
             
+            % these pass thru to setChannelData but are useful for error
+            % checking here
+            p.addParameter('updateValidOnly', true, @islogical);
+
             % for internal use mostly, used to indicate that the data provided is for the full trial, 
             % not just the aligned window. this is for when times are not
             % provided, then when this flag is true, we know that the times
@@ -1519,6 +1523,14 @@
                 end
             end
             
+            if p.Results.updateValidOnly
+                % don't worry about data counts not matching for invalid
+                % trials if we're not updating them
+                validMask = td.valid;
+                times(~validMask) = {[]};
+                values(~validMask) = {[]};
+            end
+            
             % check that times have same length as data
             assert(numel(times) == numel(values), 'Times and values must have same number of trials');
             nTimes = cellfun(@numel, times);
@@ -1562,9 +1574,9 @@
             % setChannelData will call repairData which will update
             % memoryDataClassByField{1} to reflect the type of values
             if updateTimes
-                td = td.setChannelData(name, {values, times}, p.Unmatched);
+                td = td.setChannelData(name, {values, times}, 'updateValidOnly', p.Results.updateValidOnly, p.Unmatched);
             else
-                td = td.setChannelData(name, {values}, p.Unmatched);
+                td = td.setChannelData(name, {values}, 'updateValidOnly', p.Results.updateValidOnly, p.Unmatched);
             end
         end
         

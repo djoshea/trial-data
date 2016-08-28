@@ -25,12 +25,12 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
     methods
         function sf = GaussianSpikeFilter(varargin)
             p = inputParser;
-            p.addParamValue('sigma', 20, @isscalar); % in ms
-            p.addParamValue('halfWidthSigmas', 3, @isscalar);
+            p.addParameter('sigma', 20, @isscalar); % in ms
+            p.addParameter('halfWidthSigmas', 3, @isscalar);
             % center the peak of the Gaussian impulse this many ms in the future
-            p.addParamValue('delayPeak', 0, @isscalar);
-            p.addParamValue('truncateFuture', Inf, @isscalar);
-            p.addParamValue('truncatePast', Inf, @isscalar);
+            p.addParameter('delayPeak', 0, @isscalar);
+            p.addParameter('truncateFuture', Inf, @isscalar);
+            p.addParameter('truncatePast', Inf, @isscalar);
             p.parse(varargin{:});
 
             sf.sigma = p.Results.sigma;
