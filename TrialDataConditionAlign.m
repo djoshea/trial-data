@@ -3807,9 +3807,9 @@ classdef TrialDataConditionAlign < TrialData
             countsCell = td.groupElementsRandomized(counts);
         end
         
-        function rateCell = getSpikeMeanRateGrouped(td, unitName, varargin)
-            rates = td.getSpikeMeanRate(unitName, varargin{:});
-            rateCell = td.groupElements(rates);
+        function [rateCell, durationCell, containsBlankedCell] = getSpikeMeanRateGrouped(td, unitName, varargin)
+            [rates, durations, containsBlanked] = td.getSpikeMeanRate(unitName, varargin{:});
+            [rateCell, durationCell, containsBlankedCell] = td.groupElements(rates, durations, containsBlanked);
         end
         
         function rateCell = getSpikeMeanRateGroupedRandomized(td, unitName, varargin)
@@ -3823,7 +3823,7 @@ classdef TrialDataConditionAlign < TrialData
             meanByGroup = cellfun(@nanmean, rateCell);
             semByGroup = cellfun(@nansem, rateCell);
             stdByGroup = cellfun(@nanstd, rateCell);
-            nByGroup = cellfun(@numel, rateCell);
+            nByGroup = cellfun(@(x) nnz(~isnan(x)), rateCell);
         end
         
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeansRandomized(td, unitName, varargin) 

@@ -717,6 +717,15 @@ classdef ConditionDescriptor
             valueList = makecol(ci.axisValueLists{idx});
         end
         
+        function ci = setAllAxisValueListsAutoAll(ci)
+            ci.warnIfNoArgOut(nargout);
+            for idx = 1:ci.nAxes
+                ci.axisValueListsManual(idx) = {[]};
+                ci.axisValueListsOccupiedOnly(idx) = false;
+            end
+            ci = ci.notifyConditionsChanged();
+        end
+        
         function ci = setAxisValueListAutoAll(ci, axisSpec)
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
@@ -2402,7 +2411,7 @@ classdef ConditionDescriptor
                     case ci.AttributeValueListAuto
                         % auto list leave empty, must be determined when
                         % ConditionInfo applies it to data
-                        valueList{i} = {'?'};   
+                        valueList{i} = {'(automatically determined)'};   
                 end
                 valueList{i} = makecol(valueList{i});
             end

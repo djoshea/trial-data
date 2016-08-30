@@ -3463,7 +3463,7 @@
             counts = td.replaceInvalidMaskWithValue(counts, NaN);
         end
         
-        function rates = getSpikeMeanRate(td, unitName, varargin)
+        function [rates, durations, containsBlanked] = getSpikeMeanRate(td, unitName, varargin)
             p = inputParser();
             p.addParameter('invalidIfBlanked', false, @islogical); % if true, any trial that is partially blanked will be NaN, if false, the blanked region will be ignored and will not contribute to the time window used as the denominator for the rate calculation
             p.parse(varargin{:});
