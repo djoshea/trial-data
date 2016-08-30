@@ -185,13 +185,16 @@ classdef DrawOnData
             end
 
             color = app.Color;
-            if alpha < 1
-                color = AppearanceSpec.brightenColor(color, alpha);
-            end
+%             if alpha < 1
+%                 color = AppearanceSpec.brightenColor(color, alpha);
+%             end
 
             %fprintf('Interval pre patchrect: %s', get(gcf, 'Renderer'));
-            h = TrialDataUtilities.Plotting.patchrectangle(xStart, yStart, xStop, yStop, ...
-               'FaceColor', color, 'z', -0.09, 'axh', axh);
+           h = TrialDataUtilities.Plotting.patchrectangle(xStart, yStart, xStop, yStop, ...
+               'FaceColor', color, 'FaceAlpha', alpha, 'z', -0.09, 'axh', axh);
+%            if ~isempty(h)
+%                h.FaceAlpha = alpha;
+%            end
            %fprintf(', post patchrect: %s\n', get(gcf, 'Renderer'));
         end
         

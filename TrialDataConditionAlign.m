@@ -4331,7 +4331,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % for plotting interval and marks above each condition
             p.addParameter('annotateAboveEachCondition', false, @islogical);
-            p.addParameter('annotationHeight', 2, @islogical);
+            p.addParameter('annotationHeight', 2, @isscalar);
             p.addParameter('annotateUsingFirstTrialEachCondition', true, @islogical);
             
             % make room for labels using AutoAxis

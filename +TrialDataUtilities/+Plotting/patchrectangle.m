@@ -23,7 +23,7 @@ function h = patchrectangle(x1, y1, x2, y2, varargin)
 
     valid = ~all(isnan(X) | isnan(Y), 1);
     if ~any(valid), 
-        h = NaN;
+        h = [];
         return;
     end
     X = X(:, valid);

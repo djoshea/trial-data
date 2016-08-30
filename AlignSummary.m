@@ -1033,8 +1033,8 @@ classdef AlignSummary
             end
             if ~quick
                 axis off;
-                au.update();
-                au.installCallbacks();      
+%                 au.update();
+%                 au.installCallbacks();      
             end
         end
 
