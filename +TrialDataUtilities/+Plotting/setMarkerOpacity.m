@@ -16,25 +16,21 @@ function setMarkerOpacity(s, faceAlpha, edgeAlpha)
 
         if ~verLessThan('matlab', '8.4')
             mh = s.MarkerHandle;
-            if isa(mh, 'matlab.graphics.GraphicsPlaceholder')
-                drawnow;
-                mh = s.MarkerHandle;
-            end
-
-            if ~isempty(mh.EdgeColorData)
-                mh.EdgeColorType = 'truecoloralpha';
-                mh.EdgeColorData(4) = uint8(edgeAlpha*255);
-            end
-            if ~isempty(mh.FaceColorData)
-                mh.FaceColorType = 'truecoloralpha';
-                mh.FaceColorData(4) = uint8(faceAlpha*255);
+            if ~isa(mh, 'matlab.graphics.GraphicsPlaceholder')
+                if ~isempty(mh.EdgeColorData)
+                    mh.EdgeColorType = 'truecoloralpha';
+                    mh.EdgeColorData(4) = uint8(edgeAlpha*255);
+                end
+                if ~isempty(mh.FaceColorData)
+                    mh.FaceColorType = 'truecoloralpha';
+                    mh.FaceColorData(4) = uint8(faceAlpha*255);
+                end
             end
 
             % keep transparent
             addlistener(s(i),'MarkedClean',...
                 @(ObjH, EventData) keepAlpha(ObjH, EventData, faceAlpha, edgeAlpha));
         end
-
     end
 end
 

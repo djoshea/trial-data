@@ -52,7 +52,7 @@ function hLine = drawTickRaster(timesCell, varargin)
             hLine = plot(X(:), Y(:), 'Parent', p.Results.axh, 'Color', p.Results.color, ...
                 'LineWidth', p.Results.lineWidth);
             if p.Results.alpha < 1
-                SaveFigure.setLineOpacity(hLine, p.Results.alpha);
+                TrialDataUtilities.Plotting.setLineOpacity(hLine, p.Results.alpha);
             end
         else
             hLine = NaN;
@@ -78,7 +78,7 @@ function hLine = drawTickRaster(timesCell, varargin)
             hLine = line(X, Y, 'Parent', p.Results.axh, 'Color', p.Results.color, ...
                 'LineWidth', p.Results.lineWidth);
             if p.Results.alpha < 1
-                SaveFigure.setLineOpacity(hLine, p.Results.alpha);
+                TrialDataUtilities.Plotting.setLineOpacity(hLine, p.Results.alpha);
             end
         else
             hLine = NaN;
