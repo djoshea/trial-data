@@ -3781,18 +3781,24 @@
             end     
             
             if isempty(valueCell) && (~alreadyHasChannel || p.Results.clearIfPresent)
-                td = td.clearChannelData(cd.name, 'fieldMask', ~cd.isShareableByField);
+                td = td.clearChannelData(cd.name, 'fieldMask', ~cd.isShareableByField, ...
+                    'updateOnlyValidTrials', false);
             elseif ~isempty(valueCell)
                 % clear on fields where no values provided and it's not shared, 
                 % set on fields where values are provided
                 nonEmptyMask = ~cellfun(@isempty, valueCell);
-                td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask & ~cd.isShareableByField);
+                td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask & ~cd.isShareableByField, ...
+                    'updateOnlyValidTrials', false);
                 td = td.setChannelData(cd.name, valueCell, 'fieldMask', nonEmptyMask, ...
                     'updateValidOnly', p.Results.updateValidOnly);
             end
         end
         
-        function td = copyChannel(td, oldName, newName)
+        function td = copyChannel(td, oldName, newName, varargin)
+            p = inputParser();
+            p.addParameter('clearForInvalid', false, @islogical);
+            p.parse(varargin{:});
+            
             % copy channel oldName to newName
             td.warnIfNoArgOut(nargout); 
             
@@ -3820,6 +3826,10 @@
             if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix
                 td = td.separateAnalogChannelFromGroup(newName);
             end
+            
+             if p.Results.clearForInvalid
+                td = td.clearChannelData(newName, 'updateMask', ~td.valid, 'updateOnlyValidTrials', false);
+             end
                   
             td = td.updatePostChannelDataChange(newName);
         end
@@ -3942,6 +3952,8 @@
         function td = clearChannelData(td, name, varargin)
             p = inputParser();
             p.addParameter('fieldMask', [], @islogical);
+            p.addParameter('updateMask', truevec(td.nTrials), @islogical);
+            p.addParameter('updateOnlyValidTrials', false, @islogical);
             p.parse(varargin{:});
             
             cd = td.channelDescriptorsByName.(name);
@@ -3949,8 +3961,14 @@
             if isempty(fieldMask)
                 fieldMask = true(cd.nFields, 1);
             end
-            if ~any(p.Results.fieldMask)
+            if ~any(fieldMask)
                 return;
+            end
+            
+            updateMask = p.Results.updateMask;
+            updateMask = TensorUtils.vectorIndicesToMask(updateMask, td.nTrials);
+            if p.Results.updateOnlyValidTrials
+                updateMask = updateMask & td.valid;
             end
             
             td.warnIfNoArgOut(nargout);
@@ -3968,7 +3986,7 @@
             for iF = 1:nFields
                 if ~fieldMask(iF), continue; end
                 val = cd.missingValueByField{iF};
-                td.data = assignIntoStructArray(td.data, dataFields{iF}, val);
+                td.data = assignIntoStructArray(td.data, dataFields{iF}, val, updateMask);
 %                 for iT = 1:td.nTrials
 %                     td.data(iT).() = val;
 %                 end
@@ -4035,7 +4053,8 @@
             % check for fields that don't exist and clear them so that they
             % do exist
             fieldMissing = makecol(~ismember(dataFields, fieldnames(td.data)));
-            td = td.clearChannelData(cd.name, 'fieldMask', fieldMissing & fieldMask);
+            td = td.clearChannelData(cd.name, 'fieldMask', fieldMissing & fieldMask, ...
+                'updateOnlyValidTrials', false);
             
             % avoid overwriting data shared by other channels
             td = td.copyRenameSharedChannelFields(cd.name, fieldMask);
@@ -4095,7 +4114,7 @@
             
             fieldsUpdated = fieldMask;
             trialsUpdated = updateMask;
-        end
+        end 
     end
 
     methods % Plotting functions
