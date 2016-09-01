@@ -2849,6 +2849,14 @@ classdef TrialDataConditionAlign < TrialData
         function dCell = getEventGrouped(td, name)
             dCell = td.groupElements(td.getEvent(name));
         end
+        
+        function firstCell = getEventFirstGrouped(td, name)
+            firstCell = td.groupElements(td.getEventFirst(name));
+        end
+        
+        function lastCell = getEventLastGrouped(td, name)
+            lastCell = td.groupElements(td.getEventLast(name));
+        end
 
         function td = addEvent(td, varargin)
             td.warnIfNoArgOut(nargout);
