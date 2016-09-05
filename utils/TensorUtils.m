@@ -1337,6 +1337,9 @@ classdef TensorUtils
             % each axis of value cell
 
             nAx = ndims(valueCell);
+            if nAx == 2 && size(valueCell, 2) == 1
+                nAx = 1;
+            end
             sz = size(valueCell);
             
             if nargin < 2 || isempty(namesAlongAxes)
