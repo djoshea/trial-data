@@ -48,12 +48,13 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addRequired('dataCell', @(x) iscell(x));
     p.addRequired('timeCell', @(x) iscell(x));
     p.addParameter('assumeUniformSampling', false, @islogical);
-    p.addParamValue('tvec', [], @(x) isempty(x) || isvector(x));
-    p.addParamValue('interpolateMethod', 'linear', @ischar);
-    p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
-    p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
-    p.addParamValue('timeReference', 0, @isscalar);
+    p.addParameter('tvec', [], @(x) isempty(x) || isvector(x));
+    p.addParameter('interpolateMethod', 'linear', @ischar);
+    p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
+    p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+    p.addParameter('timeReference', 0, @isscalar);
     p.addParameter('showProgress', true, @islogical);
+%     p.addParameter('sparse', false, @islogical);
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
     
@@ -128,8 +129,9 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     T = numel(tvec);
     N = size(dataCell, 1);
     G = size(dataCell, 2);
-    mat = nan([N, T, C, G]); % we'll reshape this later
     
+    mat = nan([N, T, C, G]); % we'll reshape this later
+
     indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     

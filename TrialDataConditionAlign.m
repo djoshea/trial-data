@@ -3626,8 +3626,7 @@ classdef TrialDataConditionAlign < TrialData
             [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
                 td.getSpikeRateFilteredGroupMeans(unitName, 'eachAlign', true, varargin{:});
         end
-        
-                
+               
         function [snr, range, noise]  = getSpikeChannelSNR(td, unitName, varargin)
             % options same as getSpikeRateFilteredGroupMeansEachAlign
             [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, varargin{:});
@@ -3650,48 +3649,7 @@ classdef TrialDataConditionAlign < TrialData
             
             tbl = struct2table(s, 'RowNames', units, 'AsArray', true); 
         end
-        
-%             % *Mat will be nConditions x T matrices
-%             import TrialDataUtilities.Data.nanMeanSemMinCount;
-%             p = inputParser();
-%             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
-%             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
-%             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
-%             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
-%             p.addParameter('removeZeroSpikeTrials', true, @islogical);
-%             p.parse(varargin{:});
-%             
-%             if isempty(p.Results.minTrials)
-%                 minTrials = 1;
-%             else
-%                 minTrials = p.Results.minTrials;
-%             end
-%             
-%             if isempty(p.Results.minTrialFraction)
-%                 minTrialFraction = 0;
-%             else
-%                 minTrialFraction = p.Results.minTrialFraction;
-%             end
-%             
-%             [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
-%                 'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
-%             
-%             % remove trials from each group that have no spikes
-%             if p.Results.removeZeroSpikeTrials
-%                 for iC = 1:td.nConditions
-%                     rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
-%                 end
-%             end
-%             
-%             % comute the means
-%             [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
-%             for iC = 1:td.nConditions
-%                 if ~isempty(rateCell{iC})
-%                     [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-%                         nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
-%                 end
-%             end
-        
+       
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
                 getSpikeRateFilteredGroupMeansRandomized(td, unitNames, varargin)
             % *Mat will be nConditions x T x nRandomized
