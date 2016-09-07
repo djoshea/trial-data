@@ -133,14 +133,17 @@ classdef ConvolutionSpikeFilter < SpikeFilter
                 tMinByTrial+binOffsetStart, tMaxByTrial+binOffsetStop, sf.binWidthMs, sf.binAlignmentMode);
             
             % filter via valid convolution, which automatically removes the padding
-            nTrials = length(spikeCell);
-            rateCell = cellvec(nTrials);
+            rateCell = cell(size(spikeCell));
+            nTrials = size(rateCell, 1);
+            nUnits = size(rateCell(:, :), 2);
             for i = 1:nTrials
-                if ~isempty(spikeCell{i})
-                    countsPad = histc(spikeCell{i}, tbinsForHistcByTrial{i});
-                    rateCell{i} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
-                else
-                    rateCell{i} = zeros(size(timeCell{i}));
+                for j = 1:nUnits
+                    if ~isempty(spikeCell{i, j})
+                        countsPad = histc(spikeCell{i, j}, tbinsForHistcByTrial{i});
+                        rateCell{i, j} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
+                    else
+                        rateCell{i, j} = zeros(size(timeCell{i}));
+                    end
                 end
             end
         end

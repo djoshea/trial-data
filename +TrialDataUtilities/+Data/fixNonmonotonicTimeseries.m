@@ -7,23 +7,23 @@ function [time, data, tMask] = fixNonmonotonicTimeseries(time, data)
     end
     
     if iscell(time)
-        if isempty(data)
-            % time only, as cell
-            [time, tMask] = cellfun(@fixSingleTime, time, 'UniformOutput', false);
-        else
-            % time and data as cell
-            [time, data, tMask] = cellfun(@fixSingle, time, data, 'UniformOutput', false);
+        % time only, as cell
+        [time, tMask] = cellfun(@fixSingleTime, time, 'UniformOutput', false);
+        if ~isempty(data)
+            for i = 1:size(data, 1)
+                for j = 1:size(data(:, :), 2)
+                    % time and data as cell
+                    data{i, j} = data{i, j}(tMask{i}, :);
+                end
+            end
         end
     else
-        if isempty(data)
-            % time only as vector
-            [time, tMask] = fixSingleTime(time);
-        else
+        [time, tMask] = fixSingleTime(time);
+        if ~isempty(data)
             % time and data as vectors
-            [time, data, tMask] = fixSingle(time, data);
+            data = data(tMask, :);
         end
     end
-    
 end
    
 function [t, tMask] = fixSingleTime(t)

@@ -1002,8 +1002,10 @@ classdef AlignInfo < AlignDescriptor
                 return;
             end
 
-            assert(numel(rawTimesCell) == ad.nTrials, 'Size must match nTrials');
+            assert(size(rawTimesCell, 1) == ad.nTrials, 'Size must match nTrials');
 
+            J = size(rawTimesCell(:, :), 2);
+            
             % filter the spikes within the window and recenter on zero
             if p.Results.includePadding
                 start = ad.timeInfoValid.startPad;
@@ -1014,36 +1016,38 @@ classdef AlignInfo < AlignDescriptor
             end
             zero = ad.timeInfoValid.zero;
 
-            [alignedTimes, rawTimesMask] = deal(cell(ad.nTrials, 1));
+            [alignedTimes, rawTimesMask] = deal(cell(size(rawTimesCell)));
             valid = ad.valid; %#ok<*PROPLC>
             for i = 1:ad.nTrials
                 if valid(i)
-                    raw = rawTimesCell{i};
-                    if (stop(i) - start(i)) < eps
-                        % only one timepoint requested, get the closest
-                        % point if it's nearby  
-                        % provided that the sampling time is within the
-                        % trial start:stop boundaries
-                        if singleTimepointTolerance > 0 && start(i) >= ad.timeInfoValid.trialStart(i) && stop(i) <= ad.timeInfoValid.trialStop(i)
-                            rawTimesMask{i} = falsevec(numel(raw));
-                            [closestTime, closestIdx] = min(abs(raw - start(i)));
+                    for j = 1:J
+                        raw = rawTimesCell{i, j};
+                        if (stop(i) - start(i)) < eps
+                            % only one timepoint requested, get the closest
+                            % point if it's nearby  
+                            % provided that the sampling time is within the
+                            % trial start:stop boundaries
+                            if singleTimepointTolerance > 0 && start(i) >= ad.timeInfoValid.trialStart(i) && stop(i) <= ad.timeInfoValid.trialStop(i)
+                                rawTimesMask{i} = falsevec(numel(raw));
+                                [closestTime, closestIdx] = min(abs(raw - start(i)));
 
-                            if isnan(singleTimepointTolerance)
-                                % if a single timepoint is requested, grab the closest
-                                % sample in time provided it's within tolerance of the
-                                % requested time.
-                                % if no tolerance is provided, set it as twice the average
-                                % sampling rate
+                                if isnan(singleTimepointTolerance)
+                                    % if a single timepoint is requested, grab the closest
+                                    % sample in time provided it's within tolerance of the
+                                    % requested time.
+                                    % if no tolerance is provided, set it as twice the average
+                                    % sampling rate
 
-                                singleTimepointTolerance = 2* nanmean(cellfun(@(times) nanmean(diff(times)), rawTimesCell));
+                                    singleTimepointTolerance = 2* nanmean(cellfun(@(times) nanmean(diff(times)), rawTimesCell));
+                                end
+                                rawTimesMask{i,j}(closestIdx) = closestTime < singleTimepointTolerance;
                             end
-                            rawTimesMask{i}(closestIdx) = closestTime < singleTimepointTolerance;
+                        else
+                            % for time intervals, take only that interval
+                            rawTimesMask{i,j} = raw >= start(i) & raw <= stop(i);
                         end
-                    else
-                        % for time intervals, take only that interval
-                        rawTimesMask{i} = raw >= start(i) & raw <= stop(i);
+                        alignedTimes{i,j} = raw(rawTimesMask{i,j}) - zero(i);
                     end
-                    alignedTimes{i} = raw(rawTimesMask{i}) - zero(i);
                 end
             end
         end
@@ -1054,7 +1058,7 @@ classdef AlignInfo < AlignDescriptor
             if nargin < 2
                 includePadding = false;
             end
-            assert(numel(intervalCell) == ad.nTrials);
+            assert(size(intervalCell, 1) == ad.nTrials);
             
             if includePadding
                 start = ad.timeInfoValid.startPad;
@@ -1065,27 +1069,30 @@ classdef AlignInfo < AlignDescriptor
             end
             zero = ad.timeInfoValid.zero;
 
+            nEachTrial = size(intervalCell(:, :), 2);
             for iT = 1:ad.nTrials
-                % filter the spikes within the window and recenter on zero
-                rawTimesMatrix = intervalCell{iT};
-                
-                removeMask = falsevec(size(rawTimesMatrix, 1));
-                for iR = 1:size(rawTimesMatrix, 1)
-                    if any(isnan(rawTimesMatrix(iR, :)))
-                        removeMask(iR) = true;
-                        
-                    elseif rawTimesMatrix(iR, 2) < start(iT) || rawTimesMatrix(iR, 1) > stop(iT)
-                        % not within start:stop, remove
-                        removeMask(iR) = true;
-                        
-                    else
-                        % constrain the edges within start:stop
-                        rawTimesMatrix(iR, 1) = max(start(iT), rawTimesMatrix(iR, 1));
-                        rawTimesMatrix(iR, 2) = min(stop(iT),  rawTimesMatrix(iR, 2));
+                for j = 1:nEachTrial
+                    % filter the spikes within the window and recenter on zero
+                    rawTimesMatrix = intervalCell{iT, j};
+
+                    removeMask = falsevec(size(rawTimesMatrix, 1));
+                    for iR = 1:size(rawTimesMatrix, 1)
+                        if any(isnan(rawTimesMatrix(iR, :)))
+                            removeMask(iR) = true;
+
+                        elseif rawTimesMatrix(iR, 2) < start(iT) || rawTimesMatrix(iR, 1) > stop(iT)
+                            % not within start:stop, remove
+                            removeMask(iR) = true;
+
+                        else
+                            % constrain the edges within start:stop
+                            rawTimesMatrix(iR, 1) = max(start(iT), rawTimesMatrix(iR, 1));
+                            rawTimesMatrix(iR, 2) = min(stop(iT),  rawTimesMatrix(iR, 2));
+                        end
                     end
+
+                    intervalCell{iT, j} = rawTimesMatrix(~removeMask, :) - zero(iT);
                 end
-                
-                intervalCell{iT} = rawTimesMatrix(~removeMask, :) - zero(iT);
             end
         end
 
