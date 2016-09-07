@@ -94,7 +94,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         
         function [rates, tvec] = filterSpikeTrainsWindowByTrialAsMatrix(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
             % filters each trial individually and then embeds each filtered
-            % trace in a nTrials x nTime matrix, where missing samples are left as NaN
+            % trace in a nTrials x nTime x nUnits matrix, where missing samples are left as NaN
             % before and after each trial. tvec is the time vector that
             % indicates time along the columns.=
             p = inputParser;

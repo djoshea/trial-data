@@ -1136,27 +1136,34 @@
             durations = td.replaceInvalidMaskWithValue(durations, NaN);
         end
              
-        function [durations, containsBlanked] = getValidDurationsForSpikeChannel(td, unitName)
+        function [durations, containsBlanked] = getValidDurationsForSpikeChannel(td, unitName, varargin)
+            p = inputParser();
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
+            
             % similar to getValidDurations, except factors in the blanking
             % region
-            durations = td.getValidDurations();
+            durations = td.getValidDurations('combine');
             
-            blankIntervals = td.getSpikeBlankingRegions(unitName);
+            blankIntervals = td.getSpikeBlankingRegions(unitName, 'combine', p.Results.combine);
             
             % blankIntervals are guaranteed to be non-overlapping and lie
             % within the alignment window, so we can just add up the
             % individual intervals
             totalFn = @(mat) sum(mat(:, 2) - mat(:, 1), 1);
-            blankDurations = zerosvec(td.nTrials);
+            nUnits = size(blankIntervals, 2);
+            blankDurations = zerosvec(td.nTrials, nUnits);
             for iT = 1:td.nTrials
-                if ~isempty(blankIntervals{iT})
-                    blankDurations(iT) = totalFn(blankIntervals{iT});
+                for iU = 1:nUnits
+                    if ~isempty(blankIntervals{iT, iU})
+                        blankDurations(iT, iU) = totalFn(blankIntervals{iT, iU});
+                    end
                 end
             end
             
             containsBlanked = blankDurations > 0;
             
-            durations = durations - blankDurations;
+            durations = bsxfun(@minus, durations, blankDurations);
             if any(durations < 0)
                 error('Internal issue with blanking region durations');
             end
@@ -3058,10 +3065,11 @@
 
     methods % Spike channel methods
         function tf = hasSpikeChannel(td, name)
-            if td.hasChannel(name)
-                tf = isa(td.getChannelDescriptor(name), 'SpikeChannelDescriptor');
+            checkFn = @(name) td.hasChannel(name) && isa(td.getChannelDescriptor(name), 'SpikeChannelDescriptor');
+            if iscellstr(name)
+                tf = cellfun(checkFn, name);
             else
-                tf = false;
+                tf = checkFn(name);
             end
         end
         
@@ -3378,60 +3386,91 @@
             
             td.warnIfNoArgOut(nargout);
             
-            td.assertHasChannel(name);
-            cd = td.channelDescriptorsByName.(name);
-            assert(isa(cd, 'SpikeChannelDescriptor'));
+            if ischar(name)
+                nameList = {name};
+            else
+                nameList = name;
+            end
             
+            for iU = 1:numel(nameList)
+                name = nameList{iU};
+                td.assertHasChannel(name);
+                cd = td.channelDescriptorsByName.(name);
+                assert(isa(cd, 'SpikeChannelDescriptor'));
+
+                p = inputParser();
+                p.addParameter('isAligned', true, @islogical);
+                p.KeepUnmatched = true;
+                p.parse(varargin{:});
+
+                % need to request all spike times
+                [rawWaves, ~, rawTimes] = td.getRawSpikeWaveforms(name);
+
+                if ~iscell(intervalCell)
+                    % assume same for all trials
+                    assert(size(intervalCell, 2) == 2);
+                    intervalCell = repmat({intervalCell}, td.nTrials, 1);
+                else
+                    nonEmpty = ~cellfun(@isempty, intervalCell);
+                    nCols = cellfun(@(x) size(x, 2), intervalCell(nonEmpty));
+                    assert(all(nCols == 2), 'Interval cell contents must contain matrices of intervals with 2 columns');
+                end
+                assert(iscell(intervalCell));
+                intervalCell = makecol(intervalCell);
+
+                % then we need to unalign the intervals to match the raw times
+                if p.Results.isAligned
+                    offsets = td.getTimeOffsetsFromZeroEachTrial();
+                    intervalCell = cellfun(@plus, intervalCell, num2cell(offsets), 'UniformOutput', false);
+                end
+
+                % setSpikeChannel will take care of blanking the waveforms
+                % be sure we specify that the data are no longer aligned
+                td = td.setSpikeChannel(name, rawTimes, 'isAligned', false, ...
+                    'blankingRegions', intervalCell, 'waveforms', rawWaves);
+                end
+        end
+        
+        function intervalCell = getRawSpikeBlankingRegions(td, unitName, varargin)
             p = inputParser();
-            p.addParameter('isAligned', true, @islogical);
-            p.KeepUnmatched = true;
+            p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
-            
-            % need to request all spike times
-            [rawWaves, ~, rawTimes] = td.getRawSpikeWaveforms(name);
-            
-            if ~iscell(intervalCell)
-                % assume same for all trials
-                assert(size(intervalCell, 2) == 2);
-                intervalCell = repmat({intervalCell}, td.nTrials, 1);
-            else
-                nonEmpty = ~cellfun(@isempty, intervalCell);
-                nCols = cellfun(@(x) size(x, 2), intervalCell(nonEmpty));
-                assert(all(nCols == 2), 'Interval cell contents must contain matrices of intervals with 2 columns');
-            end
-            assert(iscell(intervalCell));
-            intervalCell = makecol(intervalCell);
-            
-            % then we need to unalign the intervals to match the raw times
-            if p.Results.isAligned
-                offsets = td.getTimeOffsetsFromZeroEachTrial();
-                intervalCell = cellfun(@plus, intervalCell, num2cell(offsets), 'UniformOutput', false);
+
+            if ischar(unitName)
+                unitName = {unitName};
             end
             
-            % setSpikeChannel will take care of blanking the waveforms
-            % be sure we specify that the data are no longer aligned
-            td = td.setSpikeChannel(name, rawTimes, 'isAligned', false, ...
-                'blankingRegions', intervalCell, 'waveforms', rawWaves);
-        end
-        
-        function intervalCell = getRawSpikeBlankingRegions(td, unitName)
-            cd = td.channelDescriptorsByName.(unitName);
-            fld = cd.blankingRegionsField;
-            if isempty(fld)
-                % no blanking regions, just return blank
-                intervalCell = cellvec(td.nTrials);
-            else
-                intervalCell = makecol({td.data.(fld)});
-                intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCell);
+            intervalCell = cell(td.nTrials, numel(unitName));
+            for iU = 1:numel(unitName)
+                cd = td.channelDescriptorsByName.(unitName{iU});
+                fld = cd.blankingRegionsField;
+                if ~isempty(fld)
+                    intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(makecol({td.data.(fld)}));
+                end
+            end
+    
+            if p.Results.combine
+                % combine the intervals in multiple units
+                intervalCellByUnit = cellvec(numel(unitNames));
+                for iU = 1:numel(unitNames)
+                    intervalCellByUnit{iU} = intervalCell(:, iU);
+                end
+                intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCellByUnit{:});
             end
         end
         
-        function intervalCell = getSpikeBlankingRegions(td, unitName)
-            intervalCell = td.getRawSpikeBlankingRegions(unitName);
+        function intervalCell = getSpikeBlankingRegions(td, unitName, varargin)
+            intervalCell = td.getRawSpikeBlankingRegions(unitName, varargin{:});
             intervalCell = td.replaceInvalidMaskWithValue(intervalCell, []);
         end
         
-        function timesCell = getRawSpikeTimes(td, unitNames)
+        function timesCell = getRawSpikeTimes(td, unitNames, varargin)
+            % timesCell is nTrials x nUnits (if unitNames is cellstr)
+            % if combine is true, all spikes will be interleaved
+            p = inputParser();
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
+            
             if ischar(unitNames)
                 timesCell = {td.data.(unitNames)}';
             elseif iscellstr(unitNames)
@@ -3440,9 +3479,13 @@
                 for iU = 1:nUnits
                     timesCellByUnit(:, iU) = {td.data.(unitNames{iU})}';
                 end
-                timesCell = cellvec(td.nTrials);
-                for iT = 1:td.nTrials
-                    timesCell{iT} = cat(1, timesCellByUnit{iT, :});
+                if p.Results.combine
+                    timesCell = cellvec(td.nTrials);
+                    for iT = 1:td.nTrials
+                        timesCell{iT} = cat(1, timesCellByUnit{iT, :});
+                    end
+                else
+                    timesCell = timesCellByUnit;
                 end
             else
                 error('Unsupported unit name argument');
@@ -3450,26 +3493,27 @@
         end
 
         function timesCell = getSpikeTimes(td, unitNames, varargin) 
-            timesCell = td.getSpikeTimesUnaligned(unitNames);
+            timesCell = td.getSpikeTimesUnaligned(unitNames, varargin{:});
         end
         
-        function timesCell = getSpikeTimesUnaligned(td, unitNames)
-            timesCell = td.getRawSpikeTimes(unitNames);
+        function timesCell = getSpikeTimesUnaligned(td, unitNames, varargin)
+            timesCell = td.getRawSpikeTimes(unitNames, varargin{:});
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
             
-        function counts = getSpikeCounts(td, unitName)
-            counts = cellfun(@numel, td.getSpikeTimes(unitName));
+        function counts = getSpikeCounts(td, unitName, varargin)
+            counts = cellfun(@numel, td.getSpikeTimes(unitName, varargin{:}));
             counts = td.replaceInvalidMaskWithValue(counts, NaN);
         end
         
         function [rates, durations, containsBlanked] = getSpikeMeanRate(td, unitName, varargin)
             p = inputParser();
             p.addParameter('invalidIfBlanked', false, @islogical); % if true, any trial that is partially blanked will be NaN, if false, the blanked region will be ignored and will not contribute to the time window used as the denominator for the rate calculation
+            p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
             
-            counts = td.getSpikeCounts(unitName);
-            [durations, containsBlanked] = td.getValidDurationsForSpikeChannel(unitName);
+            counts = td.getSpikeCounts(unitName, 'combine', p.Results.combine);
+            [durations, containsBlanked] = td.getValidDurationsForSpikeChannel(unitName, 'combine', p.Results.combine);
             
             if p.Results.invalidIfBlanked
                 durations(containsBlanked) = NaN;
@@ -3478,12 +3522,21 @@
         end
         
         function [tf, blankingRegionsField] = hasBlankingRegions(td, unitName)
-            if ~td.hasSpikeChannel(unitName)
-                tf = false;
-                return;
+            if ischar(unitName)
+                [tf, blankingRegionsField] = inner(unitName);
+            else
+                [tf, blankingRegionsField] = cellfun(@inner, unitName, 'UniformOutput', false);
+                tf = cell2mat(tf);
             end
-            tf = td.channelDescriptorsByName.(unitName).hasBlankingRegions;
-            blankingRegionsField = td.channelDescriptorsByName.(unitName).blankingRegionsField;
+            
+            function [tf, field] = inner(name)
+                if ~td.hasSpikeChannel(name)
+                    tf = false;
+                    return;
+                end
+                tf = td.channelDescriptorsByName.(name).hasBlankingRegions;
+                field = td.channelDescriptorsByName.(name).blankingRegionsField;
+            end
         end
         
         function tf = hasSpikeWaveforms(td, unitNames)
@@ -3531,39 +3584,68 @@
             td = td.dropChannelFields(wavefields(mask));
         end
         
-        function [wavesCell, waveTvec, timesCell, sortQuality] = getRawSpikeWaveforms(td, unitName)
-            cd = td.channelDescriptorsByName.(unitName);
-            wavefield = cd.waveformsField;
-            assert(~isempty(wavefield), 'Unit %s does not have waveforms', unitName);
-            wavesCell = {td.data.(wavefield)}';
-            % scale to appropriate units
-            wavesCell = cd.scaleWaveforms(wavesCell);
-            waveTvec = cd.waveformsTime;
+        function [wavesCell, waveTvec, timesCell, sortQuality] = getRawSpikeWaveforms(td, unitName, varargin)
+            p = inputParser();
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
             
-            % check number of timepoints 
-            waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(wavesCell);
-            if ~isempty(waveMat)
-                nSampleWave = size(waveMat, 2);
-                if nSampleWave < numel(waveTvec)
-                    warning('Waveforms have %d samples but waveformsTime has %d samples. Shortening waveforms to match', nSampleWave, numel(waveTvec));
-                    waveTvec = waveTvec(1:nSampleWave);
-                elseif nSampleWave > numel(waveTvec)
-                    error('Waveforms have %d samples but waveformsTime has %d samples. Provide new waveform time vector', nSampleWave, numel(waveTvec));
+            if ischar(unitName)
+                single = true;
+                unitNames = {unitName};
+            else
+                single = false;
+                unitNames = unitName;
+            end
+            
+            nUnits = numel(unitNames);
+            
+            [wavesCell, timesCell] = deal(cell(td.nTrials, nUnits));
+            waveTvec = cellvec(nUnits);
+            sortQuality = nanvec(nUnits);
+            
+            if nargout > 2
+                timesCell = td.getRawSpikeTimes(unitNames, 'combine', p.Results.combine);
+            end
+            
+            for iU = 1:numel(unitNames) 
+                unitName = unitNames{iU};
+                cd = td.channelDescriptorsByName.(unitName);
+                wavefield = cd.waveformsField;
+                assert(~isempty(wavefield), 'Unit %s does not have waveforms', unitName);
+                wavesCell(:, iU) = {td.data.(wavefield)}';
+                % scale to appropriate units
+                wavesCell(:, iU) = cd.scaleWaveforms(wavesCell(:, iU));
+                waveTvec{iU} = cd.waveformsTime;
+
+                % check number of timepoints 
+                waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(wavesCell(:, iU));
+                if ~isempty(waveMat)
+                    nSampleWave = size(waveMat, 2);
+                    if nSampleWave < numel(waveTvec{iU})
+                        warning('Waveforms have %d samples but waveformsTime has %d samples. Shortening waveforms to match', nSampleWave, numel(waveTvec));
+                        waveTvec{iU} = waveTvec{iU}(1:nSampleWave);
+                    elseif nSampleWave > numel(waveTvec{iU})
+                        error('Waveforms have %d samples but waveformsTime has %d samples. Provide new waveform time vector', nSampleWave, numel(waveTvec));
+                    end
+                end
+
+                if cd.hasSortQualityEachTrial
+                    qualityField = cd.sortQualityEachTrialField;
+                    sortQuality(iU) = {td.data.(qualityField)}';
+                else
+                    quality = cd.sortQuality;
+                    sortQuality(iU) = cellfun(@(times) repmat(quality, numel(times), 1), timesCell(:, iU), 'UniformOutput', false);
                 end
             end
-            timesCell = td.getRawSpikeTimes(unitName);
             
-            if cd.hasSortQualityEachTrial
-                qualityField = cd.sortQualityEachTrialField;
-                sortQuality = {td.data.(qualityField)}';
-            else
-                quality = cd.sortQuality;
-                sortQuality = cellfun(@(times) repmat(quality, numel(times), 1), timesCell, 'UniformOutput', false);
+            if single
+                % un-cellify the outputs
+                waveTvec = waveTvec{1};
             end
         end
         
-        function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName)
-            [wavesCell, waveTvec, timesCell] = td.getRawSpikeWaveforms(unitName);
+        function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName, varargin)
+            [wavesCell, waveTvec, timesCell] = td.getRawSpikeWaveforms(unitName, varargin{:});
             wavesCell = td.replaceInvalidMaskWithValue(wavesCell, []);
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end

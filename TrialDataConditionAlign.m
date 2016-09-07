@@ -3188,37 +3188,37 @@ classdef TrialDataConditionAlign < TrialData
     % Spike data related
     methods
         % return aligned unit spike times
-        function [timesCell] = getSpikeTimes(td, unitNames, includePadding)
-            if nargin < 3
-                includePadding = false;
+        function [timesCell] = getSpikeTimes(td, unitNames, varargin)
+            p = inputParser();
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
+            
+            timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, 'singleTimepointTolerance', 0);
+            if isempty(timesCell)
+                if ischar(unitNames)
+                    timesCell = cell(0, 1); 
+                else
+                    timesCell = cell(0, numel(unitNames)); 
+                end
             end
-            timesCell = getSpikeTimes@TrialData(td, unitNames);
-            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, includePadding, 'singleTimepointTolerance', 0);
-            if isempty(timesCell), timesCell = cell(0, 1); end
         end
         
         %%%%%
         % Spike blank intervals 
         %%%%%
         
-        function intervalCell = getSpikeBlankingRegions(td, unitNames, includePadding)
-            if nargin < 3
-                includePadding = false;
-            end
+        function intervalCell = getSpikeBlankingRegions(td, unitNames, varargin)
+            p = inputParser();
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
             
-            if ischar(unitNames)
-                intervalCell = getSpikeBlankingRegions@TrialData(td, unitNames);
-            else
-                % combine the intervals in multiple units
-                intervalCellByUnit = cellvec(numel(unitNames));
-                for iU = 1:numel(unitNames)
-                    intervalCellByUnit{iU} = getSpikeBlankingRegions@TrialData(td, unitNames{iU});
-                end
-                intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCellByUnit{:});
-            end
+            intervalCell = getSpikeBlankingRegions@TrialData(td, unitNames, 'combine', p.Results.combine);
             
             % align the intervals to the current align info
-            intervalCell = td.alignInfoActive.getAlignedIntervalCell(intervalCell, includePadding);
+            intervalCell = td.alignInfoActive.getAlignedIntervalCell(intervalCell, p.Results.includePadding);
         end
         
         function td = blankSpikesWithinAlignWindow(td, spikeCh)
@@ -3236,15 +3236,17 @@ classdef TrialDataConditionAlign < TrialData
         %%%%%%% 
         
         function [countsMat, tvec, hasSpikes, tBinEdges] = getSpikeBinnedCounts(td, unitName, varargin)
-            % countsMat is nTrials x T, tvec is T x 1, hasSpikes is nTrials x 1
+            % countsMat is nTrials x T x nUnits, tvec is T x 1, hasSpikes
+            % is nTrials x nUnits
             p = inputParser;
             p.addParameter('binWidthMs', 1, @isscalar);
             p.addParameter('binAlignmentMode', SpikeBinAlignmentMode.Causal, @(x) isa(x, 'SpikeBinAlignmentMode'));
+            p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
             binWidth = p.Results.binWidthMs;
             binAlignmentMode = p.Results.binAlignmentMode;
             
-            spikeCell = td.getSpikeTimes(unitName, false);
+            spikeCell = td.getSpikeTimes(unitName, 'includePadding', false, 'combine', p.Results.combine);
             
             % provide an indication as to which trials have spikes
             hasSpikes = ~cellfun(@isempty, spikeCell);
@@ -3263,28 +3265,31 @@ classdef TrialDataConditionAlign < TrialData
             blankIntervals = td.getSpikeBlankingRegions(unitName);
             
             % use hist c to bin the spike counts
+            nUnits = size(spikeCell, 2);
             nTrials = length(spikeCell);
-            countsMat = nan(nTrials, numel(tvec));
+            countsMat = nan(nTrials, numel(tvec), nUnits);
             for iTrial = 1:nTrials
                 if valid(iTrial)
-                    if ~isempty(spikeCell{iTrial})
-                        temp = histc(spikeCell{iTrial}, tbinsForHistc);
-                        countsMat(iTrial, :) = temp(1:end-1);
-                    else
-                        countsMat(iTrial, :) = zeros(1, numel(tvec));
+                    for iU = 1:nUnits
+                        if ~isempty(spikeCell{iTrial, iU})
+                            temp = histc(spikeCell{iTrial, iU}, tbinsForHistc);
+                            countsMat(iTrial, :, iU) = temp(1:end-1);
+                        else
+                            countsMat(iTrial, :, iU) = zeros(1, numel(tvec));
+                        end
+
+                        % update tbinsValidMat to reflect spike blanking intervals
+                        tvecValidMask = makecol(tbinsValidMat(iTrial, :));
+                        bi = blankIntervals{iTrial};
+                        for iInt = 1:size(bi, 1)
+                            % keep regions where the time bin starts after the
+                            % interval or ends before the interval
+                            tvecValidMask = tvecValidMask & makecol(tbinsForHistc(1:end-1) >= bi(iInt, 2) | tbinsForHistc(2:end) <= bi(iInt, 1));
+                        end
+
+                        % mark NaN bins not valid on that trial
+                        countsMat(iTrial, ~tvecValidMask, iU) = NaN;
                     end
-                    
-                    % update tbinsValidMat to reflect spike blanking intervals
-                    tvecValidMask = makecol(tbinsValidMat(iTrial, :));
-                    bi = blankIntervals{iTrial};
-                    for iInt = 1:size(bi, 1)
-                        % keep regions where the time bin starts after the
-                        % interval or ends before the interval
-                        tvecValidMask = tvecValidMask & makecol(tbinsForHistc(1:end-1) >= bi(iInt, 2) | tbinsForHistc(2:end) <= bi(iInt, 1));
-                    end
-                    
-                    % mark NaN bins not valid on that trial
-                    countsMat(iTrial, ~tvecValidMask) = NaN;
                 end
             end
             
@@ -3332,9 +3337,8 @@ classdef TrialDataConditionAlign < TrialData
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, tBinEdges] = ...
                 getSpikeBinnedCountsGroupMeans(td, varargin)
             % *Mat will be nConditions x T matrices
-            import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addRequired('unitName', @ischar);
+            p.addRequired('unitName', @(x) ischar(x) || iscellstr(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
@@ -3356,19 +3360,24 @@ classdef TrialDataConditionAlign < TrialData
             
             [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = td.getSpikeBinnedCountsGrouped(unitName, p.Unmatched);
             
-            % remove trials from each group that have no spikes
+            nUnits = size(countsGrouped{1}, 3);
+            
+            % remove trials from each group that have no spikes by setting
+            % the whole trial to NaN on per-unit basis
             if p.Results.removeZeroSpikeTrials
                 for iC = 1:td.nConditions
-                    countsGrouped{iC} = countsGrouped{iC}(hasSpikesGrouped{iC}, :);
+                    for iU = 1:nUnits
+                        countsGrouped{iC}(hasSpikesGrouped{iC}(:, iU), :, iU) = NaN;
+                    end
                 end
             end
             
             % comute the means
-            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec), nUnits));
             for iC = 1:td.nConditions
                 if ~isempty(countsGrouped{iC})
-                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-                        nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
+                    [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
+                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
                 end
             end
         end
@@ -3399,20 +3408,24 @@ classdef TrialDataConditionAlign < TrialData
             end
             
             [countsGrouped, tvec, hasSpikesGrouped] = td.getSpikeBinnedCountsGroupedEachAlign(unitName, p.Unmatched);
+            nUnits = size(countsGrouped{1}, 3);
             
-            % remove trials from each group that have no spikes
+            % remove trials from each group that have no spikes by setting
+            % the whole trial to NaN on per-unit basis
             if p.Results.removeZeroSpikeTrials
                 for iC = 1:td.nConditions
-                    countsGrouped{iC} = countsGrouped{iC}(hasSpikesGrouped{iC}, :);
+                    for iU = 1:nUnits
+                        countsGrouped{iC}(hasSpikesGrouped{iC}(:, iU), :, iU) = NaN;
+                    end
                 end
             end
             
             % comute the means
-            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec), nUnits));
             for iC = 1:td.nConditions
                 if ~isempty(countsGrouped{iC})
-                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-                        nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
+                    [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
+                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
                 end
             end
         end
@@ -3444,6 +3457,7 @@ classdef TrialDataConditionAlign < TrialData
         function [rateCell, timeCell, hasSpikes] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
             p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
+            p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -3451,7 +3465,7 @@ classdef TrialDataConditionAlign < TrialData
             % Pad trial data alignment for spike filter
             td = td.pad([sf.preWindow sf.postWindow]);
             
-            spikeCell = td.getSpikeTimes(unitName, true);
+            spikeCell = td.getSpikeTimes(unitName, 'includePadding', true, 'combine', p.Results.combine);
             timeInfo = td.alignInfoActive.timeInfo;
             
             % provide an indication as to which trials have spikes
@@ -3474,6 +3488,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -3493,7 +3508,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.pad([sf.preWindow sf.postWindow]);
             
             % critical to include the spike times in the padded window
-            spikeCell = td.getSpikeTimes(unitNames, true);
+            spikeCell = td.getSpikeTimes(unitNames, 'includePadding', true, 'combine', p.Results.combine);
             [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
             
             % provide an indication as to which trials have spikes
@@ -3513,11 +3528,24 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function [rates, tvec, hasSpikes, alignVec] = getSpikeRateFilteredAsMatrixEachAlign(td, unitName, varargin)
-            ratesCell = cellvec(td.nAlign);
-            tvecCell = cellvec(td.nAlign);
-            hasSpikesMat = nan(td.nTrials, td.nAlign);
+            p = inputParser;
+            p.addParameter('combine', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            if p.Results.combine || ischar(unitName);
+                nUnits = 1;
+            else
+                nUnits = numel(unitName);
+            end
+            
+            ratesCell = cell(td.nAlign, nUnits);
+            tvecCell = cell(td.nAlign, nUnits);
+            hasSpikesMat = nan(td.nTrials, td.nAlign, nUnits);
             for iA = 1:td.nAlign
-                [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA)] = td.useAlign(iA).getSpikeRateFilteredAsMatrix(unitName, varargin{:});
+                [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA, :)] = ...
+                    td.useAlign(iA).getSpikeRateFilteredAsMatrix(unitName, 'combine', p.Results.combine, ...
+                    p.Unmatched);
             end
             
             [rates, alignVec] = TensorUtils.catWhich(2, ratesCell{:});
@@ -3577,6 +3605,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
           
+            p.addParameter('combine', false, @islogical);
+            
             % these are to enable this function to support multiple roles
             p.addParameter('eachAlign', false, @islogical);
             p.parse(unitNames, varargin{:});
@@ -3597,25 +3627,33 @@ classdef TrialDataConditionAlign < TrialData
             % pick the right function to call
             if p.Results.eachAlign
                  [rateCell, tvec, hasSpikesGrouped, whichAlign] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitNames, ...
-                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
             else
                 [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
-                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
+                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             end
 
+            if p.Results.combine || ischar(unitNames)
+                nUnits = 1;
+            else
+                nUnits = numel(unitNames);
+            end
+            
             % remove trials from each group that have no spikes
             if p.Results.removeZeroSpikeTrials
                 for iC = 1:td.nConditions
-                    rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
+                    for iU = 1:nUnits
+                        rateCell{iC}(~hasSpikesGrouped{iC}(:, iU), :, iU) = NaN;
+                    end
                 end
             end
             
             % comute the means
-            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
+            [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec), nUnits));
             for iC = 1:td.nConditions
                 if ~isempty(rateCell{iC})
-                    [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
+                    [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
                         nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
                 end
             end
@@ -3626,72 +3664,25 @@ classdef TrialDataConditionAlign < TrialData
             [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
                 td.getSpikeRateFilteredGroupMeans(unitName, 'eachAlign', true, varargin{:});
         end
-        
-                
+               
         function [snr, range, noise]  = getSpikeChannelSNR(td, unitName, varargin)
             % options same as getSpikeRateFilteredGroupMeansEachAlign
             [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, varargin{:});
             
-            noise = nanmax(semMat(:));
-            range = nanmax(psthMat(:)) - nanmin(psthMat(:));
-            snr = range / noise;
+            noise = squeeze(TensorUtils.nanmaxMultiDim(semMat, [1 2]));
+            range = squeeze(TensorUtils.nanmaxMultiDim(psthMat, [1 2]) - TensorUtils.nanminMultiDim(psthMat, [1 2]));
+            snr = range ./ noise;
         end
         
         function tbl = getSpikeChannelSNRTable(td, varargin)
             units = td.listSpikeChannels();
-            nUnits = numel(units);
             
-            prog = ProgressBar(nUnits, 'Computing SNR');
-            for iU = 1:nUnits  
-                prog.update(iU, 'Computing SNR for %s', units{iU});
-                [s(iU).snr, s(iU).range, s(iU).noise] = td.getSpikeChannelSNR(units{iU}, varargin{:}); %#ok<AGROW>
-            end
-            prog.finish();
+            [snr, range, noise] = td.getSpikeChannelSNR(units, varargin{:}, 'combine', false);
             
+            s = struct('snr', num2cell(snr), 'range', num2cell(range), 'noise', num2cell(noise));
             tbl = struct2table(s, 'RowNames', units, 'AsArray', true); 
         end
-        
-%             % *Mat will be nConditions x T matrices
-%             import TrialDataUtilities.Data.nanMeanSemMinCount;
-%             p = inputParser();
-%             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
-%             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
-%             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
-%             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
-%             p.addParameter('removeZeroSpikeTrials', true, @islogical);
-%             p.parse(varargin{:});
-%             
-%             if isempty(p.Results.minTrials)
-%                 minTrials = 1;
-%             else
-%                 minTrials = p.Results.minTrials;
-%             end
-%             
-%             if isempty(p.Results.minTrialFraction)
-%                 minTrialFraction = 0;
-%             else
-%                 minTrialFraction = p.Results.minTrialFraction;
-%             end
-%             
-%             [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitName, ...
-%                 'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter);
-%             
-%             % remove trials from each group that have no spikes
-%             if p.Results.removeZeroSpikeTrials
-%                 for iC = 1:td.nConditions
-%                     rateCell{iC} = rateCell{iC}(hasSpikesGrouped{iC}, :);
-%                 end
-%             end
-%             
-%             % comute the means
-%             [psthMat, semMat, stdMat, nTrialsMat] = deal(nan(td.nConditions, numel(tvec)));
-%             for iC = 1:td.nConditions
-%                 if ~isempty(rateCell{iC})
-%                     [psthMat(iC, :), semMat(iC, :), nTrialsMat(iC, :), stdMat(iC, :)] = ...
-%                         nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
-%                 end
-%             end
-        
+       
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
                 getSpikeRateFilteredGroupMeansRandomized(td, unitNames, varargin)
             % *Mat will be nConditions x T x nRandomized
@@ -3934,7 +3925,7 @@ classdef TrialDataConditionAlign < TrialData
     
     methods % spike waveforms
         function [wavesCell, waveTvec, timesCell] = getSpikeWaveforms(td, unitName, varargin)
-            [wavesCell, waveTvec, timesCell] = getSpikeWaveforms@TrialData(td, unitName);
+            [wavesCell, waveTvec, timesCell] = getSpikeWaveforms@TrialData(td, unitName, varargin{:});
             [timesCell, maskCell] = td.alignInfoActive.getAlignedTimesCell(timesCell, true, 'singleTimepointTolerance', 0);
             wavesCell = cellfun(@(waves, mask) waves(mask, :), wavesCell, maskCell, 'UniformOutput', false);
             %timesCell = cellfun(@(times, mask) times(mask), timesCell, maskCell, 'UniformOutput', false);
@@ -3955,11 +3946,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showMean', false, @islogical);
             p.addParameter('clickable', false, @islogical); % add interactive clicking to identify waveforms
             p.addParameter('fast', false, @islogical);
-            p.KeepUnmatched = true;
             p.parse(varargin{:});
             clickable = p.Results.clickable;
-            
-            [axh, unmatched] = td.getRequestedPlotAxis(p.Unmatched);
             
             if ~iscell(unitName)
                 unitName = {unitName};
@@ -3979,14 +3967,15 @@ classdef TrialDataConditionAlign < TrialData
             end
            
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
+            [wavesCell, waveTvec, waveTimeCell] = td.getSpikeWaveforms(unitName, 'combine', false);
+                
             for iU = 1:nUnits
-                [wavesCell, waveTvec, waveTimeCell] = td.getSpikeWaveforms(unitName{iU}, unmatched);
-                wavesMat = cat(1, wavesCell{:});
+                wavesMat = cat(1, wavesCell{:, iU});
                 % wavesmat is nSpikes x nSamples;
                 
                 if clickable
                     % keep track of the details on each waveform
-                    [timeInTrial, whichTrial] = TensorUtils.catWhich(1, waveTimeCell{:});
+                    [timeInTrial, whichTrial] = TensorUtils.catWhich(1, waveTimeCell{:, iU});
                 end
 
                 if isempty(wavesMat)
@@ -4012,7 +4001,7 @@ classdef TrialDataConditionAlign < TrialData
 %                 h = TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat', ...
 %                     'Parent', axh, 'EdgeColor', colormap(iU, :), 'EdgeAlpha', p.Results.alpha);
                 
-                h = plot(waveTvec, wavesMat', 'Parent', axh, 'Color', colormap(iU, :));
+                h = plot(waveTvec{iU}, wavesMat', 'Parent', axh, 'Color', colormap(iU, :));
                 TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
                 TrialDataUtilities.Plotting.showFirstInLegend(h, unitName{iU});
                 
@@ -4029,7 +4018,7 @@ classdef TrialDataConditionAlign < TrialData
                 hold on;
                 
                 if p.Results.showMean
-                    hMean(iU) = plot(waveTvec, nanmean(wavesMat, 1), '-', 'Parent', axh, ...
+                    hMean(iU) = plot(waveTvec{iU}, nanmean(wavesMat, 1), '-', 'Parent', axh, ...
                         'Color', colormap(iU, :), 'LineWidth', 2);
                 end
             end

@@ -48,12 +48,13 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addRequired('dataCell', @(x) iscell(x));
     p.addRequired('timeCell', @(x) iscell(x));
     p.addParameter('assumeUniformSampling', false, @islogical);
-    p.addParamValue('tvec', [], @(x) isempty(x) || isvector(x));
-    p.addParamValue('interpolateMethod', 'linear', @ischar);
-    p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
-    p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
-    p.addParamValue('timeReference', 0, @isscalar);
+    p.addParameter('tvec', [], @(x) isempty(x) || isvector(x));
+    p.addParameter('interpolateMethod', 'linear', @ischar);
+    p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
+    p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+    p.addParameter('timeReference', 0, @isscalar);
     p.addParameter('showProgress', true, @islogical);
+%     p.addParameter('sparse', false, @islogical);
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
     
@@ -61,7 +62,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % okay to have one empty and the other not, simply ignore
     szData = cellfun(@(x) size(x, 1), dataCell);
     szTime = cellfun(@numel, timeCell);
-    empty = szData == 0 | szTime == 0;
+    empty = all(szData == 0, 2) | szTime == 0;
     
     if all(empty)
         mat = nan(size(dataCell, 1), 0, size(dataCell, 2));
@@ -69,11 +70,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         return;
     end
     
-    szData(empty) = 0;
-    szTime(empty) = 0;
-    dataCell(empty) = {[]};
-    timeCell(empty) = {[]};
-    assert(all(szData(:) == szTime(:)), 'Sizes of dataCell and timeCell contents must match');
+    szData(empty, :) = 0;
+    szTime(empty, :) = 0;
+    dataCell(empty, :) = {[]};
+    timeCell(empty, :) = {[]};
+    assert(all(TensorUtils.flatten(bsxfun(@eq, szData, szTime))), 'Sizes of dataCell and timeCell contents must match');
     
     % check column counts match
     cData = cellfun(@(x) size(x, 2), dataCell);
@@ -92,6 +93,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         [timeCell, dataCell] = TrialDataUtilities.Data.fixNonmonotonicTimeseries(timeCell, dataCell);
     end
 
+    if size(timeCell, 2) == 1 && size(dataCell, 2) > 1
+        timeCell = repmat(timeCell, 1, size(dataCell, 2));
+    end
+    assert(size(timeCell, 2) == size(dataCell, 2), 'Column counts of data cell and time cell must match');
+    
     if isempty(p.Results.tvec)
         % auto-compute appropriate time vector
         [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
@@ -128,10 +134,13 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     T = numel(tvec);
     N = size(dataCell, 1);
     G = size(dataCell, 2);
-    mat = nan([N, T, C, G]); % we'll reshape this later
     
+    mat = nan([N, T, C, G]); % we'll reshape this later
+
     indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
+    
+    
     
     if p.Results.showProgress
         prog = ProgressBar(N, 'Embedding data over trials into common time vector');
