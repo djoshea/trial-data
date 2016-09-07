@@ -213,6 +213,13 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     data = cellfun(@makerow, data, 'UniformOutput', false);
                     newClass = 'char';
                     
+                case cd.CELL
+                    okay = cellfun(@(x) isempty(x) || iscell(x), data);
+                    if ~all(okay)
+                        throwError('Data cell contents must be cells');
+                    end
+                    newClass = 'cell';
+                    
                 otherwise
                     throwError('Unknown element type')
             end
@@ -525,6 +532,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
             for iV = 1:numel(data)
                 if isempty(data{iV}), continue; end
+                if iscell(data{iV})
+                    newClass = 'cell';
+                    continue;
+                end
+                    
                 if all(isnan(data{iV}(:))) && strcmp(newClass, 'logical'), continue; end
                 if isempty(newClass)
                     newClass = class(data{iV});
