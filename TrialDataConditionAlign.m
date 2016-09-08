@@ -3196,13 +3196,13 @@ classdef TrialDataConditionAlign < TrialData
             
             timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine);
             timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, 'singleTimepointTolerance', 0);
-            if isempty(timesCell)
-                if ischar(unitNames)
-                    timesCell = cell(0, 1); 
-                else
-                    timesCell = cell(0, numel(unitNames)); 
-                end
-            end
+%             if isempty(timesCell)
+%                 if ischar(unitNames)
+%                     timesCell = cell(td.nTrials, 1); 
+%                 else
+%                     timesCell = cell(td.nTrials, numel(unitNames)); 
+%                 end
+%             end
         end
         
         %%%%%

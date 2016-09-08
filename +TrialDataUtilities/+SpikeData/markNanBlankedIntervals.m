@@ -22,6 +22,10 @@ if iscell(data)
 else
     nTrials = size(data, 1);
     
+    if isempty(data)
+        return;
+    end
+    
     for iT = 1:nTrials
         blank = blankingIntervals{iT};
         

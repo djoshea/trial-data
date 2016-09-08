@@ -106,8 +106,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % build filter
             
             if isempty(spikeCell)
-                rateCell = {};
-                timeCell = {};
+                rateCell = cell(size(spikeCell));
+                timeCell = cell(size(spikeCell, 1), 0);
                 return;
             end
             
