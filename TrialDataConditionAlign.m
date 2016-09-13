@@ -3780,19 +3780,13 @@ classdef TrialDataConditionAlign < TrialData
             snr = range / noise;
         end
         
-        function timesCellofCells = getSpikeTimesGrouped(td, unitName, includePadding)
-            if nargin < 3
-                includePadding = false;
-            end
-            timesCell = td.getSpikeTimes(unitName, includePadding);
+        function timesCellofCells = getSpikeTimesGrouped(td, unitName, varargin)
+            timesCell = td.getSpikeTimes(unitName, varargin{:});
             timesCellofCells = td.groupElements(timesCell);
         end
         
-        function timesCellofCells = getSpikeTimesGroupedRandomized(td, unitName, includePadding)
-            if nargin < 3
-                includePadding = false;
-            end
-            timesCell = td.getSpikeTimes(unitName, includePadding);
+        function timesCellofCells = getSpikeTimesGroupedRandomized(td, unitName, varargin)
+            timesCell = td.getSpikeTimes(unitName, varargin{:});
             timesCellofCells = td.groupElementsRandomized(timesCell);
         end
         
@@ -4338,6 +4332,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % shade start:stop intervals in gray to show valid time interval
             p.addParameter('shadeValidIntervals', false, @islogical);
+            p.addParameter('shadeInvalidIntervals', false, @islogical);
             
             % if true, draw spike waveforms instead of ticks
             p.addParameter('drawSpikeWaveforms', false, @islogical);
