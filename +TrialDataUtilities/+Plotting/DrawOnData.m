@@ -12,6 +12,7 @@ classdef DrawOnData
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
             p.addParameter('clipping', 'on', @ischar);
+            p.addParameter('frontLayer', true, @islogical);
             p.CaseSensitive = false;
             p.parse(varargin{:});
             xOffset = p.Results.xOffset;
@@ -47,6 +48,10 @@ classdef DrawOnData
                 end
             else
                 error('Invalid Dimensionality of data');
+            end
+            
+            if p.Results.frontLayer
+                TrialDataUtilities.Plotting.setMarkerLayerFront(h);
             end
         end
         

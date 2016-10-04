@@ -2748,7 +2748,7 @@ classdef PopulationTrajectorySet
                         
                     elseif src.hasSpikeChannel(chName)
                         %src = src.padForSpikeFilter(spikeFilter); % should have been done in applyAlignInfoSet already
-                        dataCell{iBasis, iAlign} = src.getSpikeTimes(chName, true); % include padding
+                        dataCell{iBasis, iAlign} = src.getSpikeTimes(chName, 'includePadding', true); % include padding
                         timeInfoCell{iBasis, iAlign} = src.alignInfoActive.timeInfo;
                         unitsPerSecondCell{iBasis, iAlign} = src.timeUnitsPerSecond;
                         isSpikeChannel(iBasis) = true;
@@ -5162,6 +5162,14 @@ classdef PopulationTrajectorySet
             p.addParameter('clipping', 'off', @ischar);
             
             p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
+            
+            p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
+            p.addParameter('spliceOptions', struct(), @isstruct);
+            
+            p.addParameter('plotTubes', false, @islogical);
+            p.addParameter('tubeRadius', 1, @isscalar);
+            p.addParameter('tubeOptions', struct(), @isstruct);
+            
             p.CaseSensitive = false;
             p.parse(varargin{:});
             
@@ -5195,66 +5203,121 @@ classdef PopulationTrajectorySet
                 otherwise
                     error('Number of bases must be 2 or 3. For 1 basis, use plotBases(''basisIdx'', idx)');
             end
+            
+            if p.Results.spliceAlignments
+                data = pset.buildNbyCbyTA('spliceAlignments', true, p.Results.spliceOptions);
+                dataMean = squeeze(TensorUtils.splitAlongDimension(data, 3, pset.nTimeDataMean));
+            else
+                dataMean = pset.dataMean;
+            end
 
-            for iAlign = 1:nAlignUsed
-                idxAlign = alignIdx(iAlign);
-                tvec = pset.tvecDataMean{idxAlign};
-                data = pset.dataMean{idxAlign};
-
+            if p.Results.spliceAlignments
+                data = pset.buildNbyCbyTA('spliceAlignments', true, ...
+                    'alignIdx', alignIdx, 'basisIdx', basisIdx, 'conditionIdx', conditionIdx, ...
+                    p.Results.spliceOptions);
+                
                 for iCondition = 1:nConditions
                     c = conditionIdx(iCondition);
                     appear = pset.conditionDescriptor.appearances(c);
                     plotArgsC = appear.getPlotArgs();
-                    
+
                     dataMat = squeeze(data(basisIdx, c, :));
-                    
-                    if p.Results.alpha < 1
-                        if use3d
-                            h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-                                'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
-                                'Clipping', p.Results.clipping, ...
-                                 plotArgs{:});
-                        else
-                            h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-                                'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
-                                'Clipping', p.Results.clipping, ...
-                                plotArgs{:});
-                        end
+
+                    if p.Results.plotTubes
+                        h = TrialDataUtilities.Plotting.tubeplot(dataMat(1:3, :), p.Results.tubeRadius, 'FaceAlpha', p.Results.alpha, ...
+                            'EdgeColor', 'none', 'FaceColor', appear.Color, 'Clipping', p.Results.clipping);
                     else
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
                                 '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         else
-%                             dataMat = [dataVec1 dataVec2];
                             h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
                                 'LineWidth', p.Results.lineWidth, ...
                                 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         end
+                        if p.Results.alpha < 1
+                            TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
+                        end
                     end
-                    
-                    if iAlign == 1
-                        TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{iCondition});
-                    else
-                        TrialDataUtilities.Plotting.hideInLegend(h);
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{c});
+                end
+            else
+                for iAlign = 1:nAlignUsed
+                    idxAlign = alignIdx(iAlign);
+%                     tvec = pset.tvecDataMean{idxAlign};
+                    data = dataMean{idxAlign};
+
+                    for iCondition = 1:nConditions
+                        c = conditionIdx(iCondition);
+                        appear = pset.conditionDescriptor.appearances(c);
+                        plotArgsC = appear.getPlotArgs();
+
+                        dataMat = squeeze(data(basisIdx, c, :));
+
+    %                     if p.Results.alpha < 1
+    %                         if use3d
+    %                             h = plot3(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+    %                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
+    %                                 'Color', appear.Color, ...
+    %                                 'Clipping', p.Results.clipping, ...
+    %                                  plotArgs{:});
+    %                              
+    %                         else
+    %                             h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
+    %                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
+    %                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
+    %                                 'Clipping', p.Results.clipping, ...
+    %                                 plotArgs{:});
+    %                         end
+    %                     else
+                        if use3d
+                            h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+                                '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
+                                plotArgsC{:}, plotArgs{:});
+                        else
+                        %                             dataMat = [dataVec1 dataVec2];
+                            h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
+                                'LineWidth', p.Results.lineWidth, ...
+                                'Clipping', p.Results.clipping, ...
+                                plotArgsC{:}, plotArgs{:});
+                        end
+                        if p.Results.alpha < 1
+                            TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
+                        end
+
+                        if iAlign == 1
+                            TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{c});
+                        else
+                            TrialDataUtilities.Plotting.hideInLegend(h);
+                        end
                     end
                 end
-            
-                % draw marks and intervals on the data traces
-                as = pset.alignSummaryAggregated{idxAlign};
-                % data is nBases x C x T; drawOnDataByConditions needs T x nBasesPlot x C
-                dataForDraw = permute(data(basisIdx, conditionIdx, :), [3 1 2]);
-                as.drawOnDataByCondition(tvec, dataForDraw, ...
-                    'conditionIdx', conditionIdx, 'markAlpha', p.Results.markAlpha, ...
-                    'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
-                    'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
-                    'alpha', p.Results.alpha, ...
-                    'intervalAlpha', p.Results.intervalAlpha, ...
-                    'showRanges', p.Results.showRangesOnData, ...
-                    'markSize', p.Results.markSize, 'clipping', p.Results.clipping); 
+            end
+                    
+            % plot marks and intervals on each condition
+            for iAlign = 1:nAlignUsed
+                idxAlign = alignIdx(iAlign);
+                tvec = pset.tvecDataMean{idxAlign};
+                data = dataMean{idxAlign};
+
+                for iCondition = 1:nConditions
+                    c = conditionIdx(iCondition);
+
+                    % draw marks and intervals on the data traces
+                    as = pset.alignSummaryAggregated{idxAlign};
+                    % data is nBases x C x T; drawOnDataByConditions needs T x nBasesPlot x C
+                    dataForDraw = permute(data(basisIdx, conditionIdx, :), [3 1 2]);
+                    as.drawOnDataByCondition(tvec, dataForDraw, ...
+                        'conditionIdx', conditionIdx, 'markAlpha', p.Results.markAlpha, ...
+                        'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
+                        'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
+                        'alpha', p.Results.alpha, ...
+                        'intervalAlpha', p.Results.intervalAlpha, ...
+                        'showRanges', p.Results.showRangesOnData, ...
+                        'markSize', p.Results.markSize, 'clipping', p.Results.clipping); 
+                end
             end
 
             box(axh, 'off')
@@ -5280,7 +5343,7 @@ classdef PopulationTrajectorySet
              set(get(axh, 'Parent'), 'CurrentAxes', axh);
              axis(axh, 'vis3d');
         end
-        
+         
     end
 
     methods % Build data matrices trial averaged
@@ -5304,6 +5367,8 @@ classdef PopulationTrajectorySet
             p.addParameter('validBasesOnly', false, @islogical);
             p.addParameter('type', 'mean', @ischar); % mean, sem, meanRandom
             p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
+            p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
+            p.addParameter('spliceOptions', struct(), @isstruct);
             p.parse(varargin{:});
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
@@ -5340,15 +5405,27 @@ classdef PopulationTrajectorySet
                 end
             end 
             
+            basisValidMask = pset.basisValid(basisIdx);
+            
+            if p.Results.spliceAlignments
+                data = cellfun(@(d) permute(d, [1 3 2]), data, 'UniformOutput', false);
+                
+                % data is N x T x C --> N x C x T
+                data = TrialDataUtilities.Data.spliceTrajectories(data, 'basisMask', basisValidMask, p.Results.spliceOptions);
+                data = ipermute(data, [1 3 2]);
+                
+                % reslice into cell
+                data = squeeze(TensorUtils.splitAlongDimension(data, 3, pset.nTimeDataMean));
+            end
+            
             [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
             avec = makecol(alignIdx(avecRaw));
             tvec = cat(1, pset.tvecDataMean{alignIdx});
             
             % nan out invalid bases
-            basisValidMask = pset.basisValid(basisIdx);
             NbyCbyTA(~basisValidMask, :, :) = NaN;
-        end
-
+        end 
+        
         function [CTAbyN, cvec, tvec, avec, nvec] = buildCTAbyN(pset, varargin)
             % out is C*T*A x N concatenated matrix
             p = inputParser();
@@ -5358,6 +5435,8 @@ classdef PopulationTrajectorySet
             p.addParameter('validBasesOnly', false, @islogical);
             p.addParameter('type', 'mean', @ischar);
             p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
+            p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
+            p.addParameter('spliceOptions', struct(), @isstruct);
             p.parse(varargin{:});
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             conditionIdx = TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
