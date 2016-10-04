@@ -16,7 +16,7 @@
     properties(SetAccess=protected)
         trialDataVersion = 20160313; % used for backwards compatibility
         
-        datasetMeta = struct(); % arbitrary, user determined data, use setMetaByKey and getMetaByKey to access
+        datasetMeta = struct(); % arbitrary, user determined data, use setMetaKey and getMetaKey to access
         
         initialized = false; % has initialize() been called yet?
 
@@ -454,7 +454,7 @@
             prog.finish();
         end
         
-        function v = getMetaByKey(td, key)
+        function v = getMetaKey(td, key)
             if isstruct(td.datasetMeta) && isfield(td.datasetMeta, key)
                 v = td.datasetMeta.(key);
             else
@@ -462,7 +462,7 @@
             end
         end
         
-        function td = setMetaByKey(td, key, value)
+        function td = setMetaKey(td, key, value)
             td.warnIfNoArgOut(nargout);
             assert(ischar(key), 'Key must be string');
             
@@ -3601,7 +3601,7 @@
             
             [wavesCell, timesCell] = deal(cell(td.nTrials, nUnits));
             waveTvec = cellvec(nUnits);
-            sortQuality = nanvec(nUnits);
+            sortQuality = cellvec(nUnits);
             
             if nargout > 2
                 timesCell = td.getRawSpikeTimes(unitNames, 'combine', p.Results.combine);
@@ -3631,10 +3631,10 @@
 
                 if cd.hasSortQualityEachTrial
                     qualityField = cd.sortQualityEachTrialField;
-                    sortQuality(iU) = {td.data.(qualityField)}';
+                    sortQuality{iU} = td.data.(qualityField)';
                 else
                     quality = cd.sortQuality;
-                    sortQuality(iU) = cellfun(@(times) repmat(quality, numel(times), 1), timesCell(:, iU), 'UniformOutput', false);
+                    sortQuality{iU} = cellfun(@(times) repmat(quality, numel(times), 1), timesCell(:, iU), 'UniformOutput', false);
                 end
             end
             
