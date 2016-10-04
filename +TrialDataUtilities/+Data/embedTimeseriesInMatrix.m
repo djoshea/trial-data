@@ -62,8 +62,14 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % okay to have one empty and the other not, simply ignore
     szData = cellfun(@(x) size(x, 1), dataCell);
     szTime = cellfun(@numel, timeCell);
-    empty = all(szData == 0, 2) | szTime == 0;
     
+    if isempty(szData) || isempty(szTime)
+        mat = nan(size(dataCell, 1), 0, 0);
+        tvec = zeros(0, 1);
+        return;
+    end
+    
+    empty = all(szData == 0, 2) | szTime == 0;
     if all(empty)
         mat = nan(size(dataCell, 1), 0, size(dataCell, 2));
         tvec = zeros(0, 1);

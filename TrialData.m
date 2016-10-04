@@ -3200,14 +3200,14 @@
             
             else
                 % no waveforms provided
-                if cd.hasSpikeWaveforms
+                if cd.hasWaveforms
                     % no waveforms provided, but channel has waveforms
                     % check that number of spikes isn't changing so that
                     % the correspondence is maintained
                     nSpikesProvided = cellfun(@numel, times);
-                    newWaves = td.getRawSpikeWaveforms(chName);
+                    newWaves = td.getRawSpikeWaveforms(name);
                     nSpikesWave = cellfun(@(w) size(w, 1), newWaves);
-                    assert(all(isequaln(nSpikesProvided, nSpikesWave), 'Number of spikes in each trial cannot change unless waveforms are also provided'));
+                    assert(isequaln(nSpikesProvided, nSpikesWave), 'Number of spikes in each trial cannot change unless waveforms are also provided');
                     
                     channelData = cat(1, channelData, {{}});
                     channelFieldMask(end+1) = false;
@@ -3558,6 +3558,10 @@
         
         function td = dropSpikeWaveforms(td, unitNames)
             td.warnIfNoArgOut(nargout);
+            
+            if nargin < 2
+                unitNames = td.listSpikeChannels();
+            end
             
             if ischar(unitNames)
                 unitNames = {unitNames};

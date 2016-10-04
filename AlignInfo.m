@@ -683,7 +683,7 @@ classdef AlignInfo < AlignDescriptor
             end
 
             % handle minimum duration window
-            mask = t.stop - t.start < ad.minDuration;
+            mask = max(0, t.stop - t.start) < ad.minDuration; % ignore start after stop
             valid(mask) = false;
             [t.invalidCause{mask}] = deal(sprintf('Trial duration is less than minDuration %g', ad.minDuration));
 

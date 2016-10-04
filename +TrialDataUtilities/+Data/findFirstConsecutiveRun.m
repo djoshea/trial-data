@@ -17,14 +17,12 @@ function [startIdx, inRunMask] = findFirstConsecutiveRun(v, nConsecutive, dim, n
         nToReturn = 1;
     end
     
-    if nargout > 1
-        % use morphological opening to find runs 
-        el = TensorUtils.orientSliceAlongDims(onesvec(nConsecutive), dim);
-        inRunMask = imopen(v, el);
-        
-        startRunMask = diff(inRunMask, 1, dim) == 1;
-        startIdx = TensorUtils.findNAlongDim(startRunMask, dim, nToReturn, 'first');
-    end
+    % use morphological opening to find runs 
+    el = TensorUtils.orientSliceAlongDims(onesvec(nConsecutive), dim);
+    inRunMask = imopen(v, el);
+
+    startRunMask = diff(inRunMask, 1, dim) == 1;
+    startIdx = TensorUtils.findNAlongDim(startRunMask, dim, nToReturn, 'first');
 end
     
     

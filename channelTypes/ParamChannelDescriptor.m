@@ -59,7 +59,10 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 
                 cd.originalDataClassByField = {cls};
 
-                if scalar
+                if strcmp(cls, 'cell')
+                    cd.elementTypeByField = cd.CELL;
+                    
+                elseif scalar
                     catData = cat(1, dataCell{:});
                     if strcmp(cls, 'logical') || (strcmp(cls, 'uint8') && all(ismember(catData, uint8([0 1]))))
                         cd.elementTypeByField = cd.BOOLEAN;
