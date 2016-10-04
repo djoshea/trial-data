@@ -4219,7 +4219,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showRandomizedQuantiles', [], @(x) isempty(x) || isvector(x));
             
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
-            p.addParameter('axisMarginLeft', 2.5, @isscalar);
+            %p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.addParameter('axh', gca, @ishandle);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -4294,8 +4294,8 @@ classdef TrialDataConditionAlign < TrialData
                 xlabel('time (ms)');
             else
                 au = AutoAxis(axh);
-                %au.addAutoAxisY();
-                au.axisMarginLeft = p.Results.axisMarginLeft;
+                au.addAutoAxisY();
+                %au.axisMarginLeft = p.Results.axisMarginLeft;
                 au.update();
             end
             
@@ -5612,17 +5612,17 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('quantileData', [], @(x) isnumeric(x) || iscell(x));
             
-            p.addParameter('markShowOnData', true, @islogical);
+            p.addParameter('markShowOnData', false, @islogical);
             p.addParameter('markShowOnAxis', true, @islogical);
             p.addParameter('markShowInLegend', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 4, @isscalar);
             
-            p.addParameter('intervalShowOnData', true, @islogical);
+            p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalShowOnAxis', true, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
             
-            p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
+            p.addParameter('showRangesOnData', false, @islogical); % show ranges for marks on traces
             p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
             
             p.addParameter('timeAxisStyle', 'marker', @ischar);

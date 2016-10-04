@@ -17,6 +17,10 @@ classdef AlignDescriptor
         
         % for description
         name % set manually, or will be auto-populated
+        
+        % minimum duration to mark as valid
+        minDuration = 0;
+         
     end
         
     properties(SetAccess=protected, Hidden)
@@ -24,9 +28,6 @@ classdef AlignDescriptor
         
         % how to handle the window falling outside of the trial
         outsideOfTrialMode = AlignDescriptor.TRUNCATE; % TRUNCATE or INVALIDATE or IGNORE
-
-        % minimum duration to mark as valid
-        minDuration = 0;
         
         % allow an additional time window around the alignment interval
         % see .setPadWindow below
