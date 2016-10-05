@@ -3941,7 +3941,6 @@ classdef TrialDataConditionAlign < TrialData
             % Timepoints that lie outside of TrialStart and TrialStop will
             % never be accessible via getTimes since they will be filtered
             % out by the AlignInfo
-            git 
             td.warnIfNoArgOut(nargout);
             % default is TrialStart and TrialEnd, so just pass it along
             td = td.trimSpikeChannel(unitNames);
