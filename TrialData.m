@@ -3428,7 +3428,7 @@
                 % be sure we specify that the data are no longer aligned
                 td = td.setSpikeChannel(name, rawTimes, 'isAligned', false, ...
                     'blankingRegions', intervalCell, 'waveforms', rawWaves);
-                end
+            end
         end
         
         function intervalCell = getRawSpikeBlankingRegions(td, unitName, varargin)
@@ -3584,7 +3584,7 @@
             td = td.dropChannelFields(wavefields(mask));
         end
         
-        function [wavesCell, waveTvec, timesCell, sortQuality] = getRawSpikeWaveforms(td, unitName, varargin)
+        function [wavesCell, waveTvec, timesCell, whichUnitCell] = getRawSpikeWaveforms(td, unitName, varargin)
             p = inputParser();
             p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
@@ -3593,7 +3593,11 @@
                 single = true;
                 unitNames = {unitName};
             else
-                single = false;
+                if p.Results.combine
+                    single = true;
+                else
+                    single = false;
+                end
                 unitNames = unitName;
             end
             
@@ -3601,7 +3605,7 @@
             
             [wavesCell, timesCell] = deal(cell(td.nTrials, nUnits));
             waveTvec = cellvec(nUnits);
-            sortQuality = cellvec(nUnits);
+%             sortQuality = cellvec(nUnits);
             
             if nargout > 2
                 timesCell = td.getRawSpikeTimes(unitNames, 'combine', p.Results.combine);
@@ -3629,12 +3633,26 @@
                     end
                 end
 
-                if cd.hasSortQualityEachTrial
-                    qualityField = cd.sortQualityEachTrialField;
-                    sortQuality{iU} = td.data.(qualityField)';
-                else
-                    quality = cd.sortQuality;
-                    sortQuality{iU} = cellfun(@(times) repmat(quality, numel(times), 1), timesCell(:, iU), 'UniformOutput', false);
+%                 if cd.hasSortQualityEachTrial
+%                     qualityField = cd.sortQualityEachTrialField;
+%                     sortQuality{iU} = td.data.(qualityField)';
+%                 else
+%                     quality = cd.sortQuality;
+%                     sortQuality{iU} = cellfun(@(waves) repmat(quality, size(waves,1), 1), wavesCell(:, iU), 'UniformOutput', false);
+%                 end
+            end
+            
+            if p.Results.combine
+                [wavesCellCat, whichUnitCell] = cellvec(td.nTrials);
+                for iT = 1:td.nTrials
+                    [wavesCellCat{iT}, whichUnitCell{iT}] = TensorUtils.catWhich(1, wavesCell{iT, :});
+                end
+                
+                wavesCell = wavesCellCat;
+                
+            else
+                if nargout > 4
+                    whichUnitCell = cellfun(@(x) ones(size(x), 1), wavesCell);
                 end
             end
             
