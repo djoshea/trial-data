@@ -4343,7 +4343,8 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('axh', gca, @ishandle);
             
-            p.KeepUnmatched = true;
+            p.addParameter('combine', false, @islogical); % combine units as one, if false, plot spikes in different colors
+%             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             if td.nTrialsValid == 0
@@ -4355,7 +4356,13 @@ classdef TrialDataConditionAlign < TrialData
             if ischar(unitNames)
                 unitNames = {unitNames};
             end
-            nUnits = numel(unitNames);
+            if p.Results.combine
+                nUnits = 1;
+                % wrap in another cell so that loop works
+                unitNames = {unitNames};
+            else
+                nUnits = numel(unitNames);
+            end
             
             axh = td.getRequestedPlotAxis('axh', p.Results.axh);
             
@@ -4382,11 +4389,11 @@ classdef TrialDataConditionAlign < TrialData
                     idxAlign = alignIdx(iAlign);
 
                     % get grouped spike times by alignment
-                    thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName);
+                    thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName, 'combine', p.Results.combine);
                     timesByAlign(iAlign, :, iUnit) = thisC(:);
 
                     if p.Results.drawSpikeWaveforms
-                        [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitName);
+                        [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitName, 'combine', p.Results.combine);
                         wavesByAlign(iAlign, :, iUnit) = wavesC(:);
                     end
 
@@ -4543,7 +4550,7 @@ classdef TrialDataConditionAlign < TrialData
                             color = p.Results.spikeColorMap(idx, :);
                         end
 
-                        if p.Results.drawSpikeWaveforms
+                        if p.Results.drawSpikeWaveforms && ~p.Results.quick
                             % draw waveforms in lieu of ticks
                                 TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
                                 'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
@@ -4554,7 +4561,7 @@ classdef TrialDataConditionAlign < TrialData
                             % draw vertical ticks
                             TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
                                 'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
-                                'color', color);
+                                'color', color, 'quick', p.Results.quick);
                         end
                         hold(axh, 'on');
                     end
@@ -4601,7 +4608,12 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitName);
+            if iscell(unitName)
+                unitNameStr = strjoin(unitName, ',');
+            else
+                unitNameStr = unitName;
+            end
+            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitNameStr);
             
             axis(axh, 'tight');
             if ~p.Results.quick

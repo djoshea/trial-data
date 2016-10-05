@@ -1,18 +1,21 @@
 function hLine = drawTickRaster(timesCell, varargin)
 
     p = inputParser();
-    p.addParamValue('axh', gca, @ishandle);
-    p.addParamValue('color', 'k', @(x) ischar(x) || isvector(x));
-    p.addParamValue('lineWidth', 1, @isscalar);
-    p.addParamValue('xOffset', 0, @isscalar);
-    p.addParamValue('yOffset', 0, @isscalar);
-    p.addParamValue('rowHeight', 1, @isscalar);
-    p.addParamValue('tickHeight', 0.99, @isscalar);
+    p.addParameter('axh', gca, @ishandle);
+    p.addParameter('color', 'k', @(x) ischar(x) || isvector(x));
+    p.addParameter('lineWidth', 1, @isscalar);
+    p.addParameter('xOffset', 0, @isscalar);
+    p.addParameter('yOffset', 0, @isscalar);
+    p.addParameter('rowHeight', 1, @isscalar);
+    p.addParameter('tickHeight', 0.99, @isscalar);
     p.addParameter('alpha', 1, @isscalar);
     p.addParameter('waveCell', [], @(x) isempty(x) || iscell(x));
     p.addParameter('waveformTimeRelative', [], @(x) isempty(x) || isvector(x));
     p.addParameter('waveScaleHeight', 1, @isscalar);
     p.addParameter('waveScaleTime', 1, @isscalar);
+    p.addParameter('quick', false, @islogical); % use ugly dots instead
+    p.addParameter('MarkerSize', 3, @isscalar); % only with quick
+    
     %p.addParameter('waveOffsetY', 0, @isscalar); % offset will be applied before waveScaleHeight
     
     p.parse(varargin{:});
@@ -22,7 +25,7 @@ function hLine = drawTickRaster(timesCell, varargin)
 
     nTrials = numel(timesCell);
     
-    if ~isempty(p.Results.waveCell)
+    if ~isempty(p.Results.waveCell) && ~p.Results.quick
         % plotting waveforms where the ticks would normally be
         tvec = makerow(p.Results.waveformTimeRelative * p.Results.waveScaleTime);
         
@@ -55,23 +58,28 @@ function hLine = drawTickRaster(timesCell, varargin)
                 TrialDataUtilities.Plotting.setLineOpacity(hLine, p.Results.alpha);
             end
         else
-            hLine = NaN;
+            hLine = gobjects(1,1);
         end
-    else
-        % draw vertical ticks
         
-        % build line commands
+    elseif ~p.Results.quick
+        % draw vertical ticks
+
+         % build line commands
         XByTrial = cell(1, nTrials);
         YByTrial = cell(1, nTrials);
         for iE = 1:nTrials 
             if ~isempty(timesCell{iE})
-                XByTrial{iE} = repmat(makerow(timesCell{iE}), 2, 1);
-                YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)-tickHeight], 1, numel(timesCell{iE}));
+                XByTrial{iE} = [repmat(makerow(timesCell{iE}), 2, 1); nan(1, numel(timesCell{iE}))];
+                YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)-tickHeight; NaN], 1, numel(timesCell{iE}));
             end
         end
 
         X = cell2mat(XByTrial) + p.Results.xOffset;
         Y = cell2mat(YByTrial) + p.Results.yOffset;
+        
+        % turn into columns so only one 1 is plotted
+        X = X(:);
+        Y = Y(:);
         
         % filter within time limits?
         if ~isempty(X)
@@ -81,11 +89,51 @@ function hLine = drawTickRaster(timesCell, varargin)
                 TrialDataUtilities.Plotting.setLineOpacity(hLine, p.Results.alpha);
             end
         else
-            hLine = NaN;
+            hLine = gobjects(1,1);
+        end
+  
+        % old separate line command        
+%         % build line commands
+%         XByTrial = cell(1, nTrials);
+%         YByTrial = cell(1, nTrials);
+%         for iE = 1:nTrials 
+%             if ~isempty(timesCell{iE})
+%                 XByTrial{iE} = repmat(makerow(timesCell{iE}), 2, 1);
+%                 YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)-tickHeight], 1, numel(timesCell{iE}));
+%             end
+%         end
+% 
+%         X = cell2mat(XByTrial) + p.Results.xOffset;
+%         Y = cell2mat(YByTrial) + p.Results.yOffset;
+%         
+%         % filter within time limits?
+%         if ~isempty(X)
+%             hLine = line(X, Y, 'Parent', p.Results.axh, 'Color', p.Results.color, ...
+%                 'LineWidth', p.Results.lineWidth);
+%             if p.Results.alpha < 1
+%                 TrialDataUtilities.Plotting.setLineOpacity(hLine, p.Results.alpha);
+%             end
+%         else
+%             hLine = gobjects(1,1);
+%         end
+
+    else
+        % draw dots quickly
+         % build line commands
+        XByTrial = cell(1, nTrials);
+        YByTrial = cell(1, nTrials);
+        for iE = 1:nTrials 
+            if ~isempty(timesCell{iE})
+                XByTrial{iE} = makecol(timesCell{iE});
+                YByTrial{iE} = repmat(-rowHeight*(iE-1) - tickHeight/2, numel(timesCell{iE}), 1);
+            end
         end
 
+        X = cat(1, XByTrial{:}) + p.Results.xOffset;
+        Y = cat(1, YByTrial{:}) + p.Results.yOffset;
+
+        hLine = plot(X, Y, '.', 'Color', p.Results.color, 'MarkerSize', p.Results.markerSize);
     end
-    
     
 end
 
