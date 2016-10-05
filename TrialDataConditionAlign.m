@@ -2341,6 +2341,16 @@ classdef TrialDataConditionAlign < TrialData
                     'isAligned', false, 'keepScaling', p.Results.keepScaling);
             end
         end
+        
+        function td = trimAnalogChannelToCurrentAlign(td, name)
+            td.warnIfNoArgOut(nargout);
+            td.assertHasAnalogChannel(name);
+           
+            cd = td.channelDescriptorsByName.(name);
+            timeField = cd.timeField;
+            [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
+            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField, startTimes, stopTimes);
+        end
     end
     
     methods % Analog channel group methods
@@ -2835,6 +2845,17 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             prog.finish();
+        end
+        
+        function td = trimAnalogChannelGroupToCurrentAlign(td, groupName)
+            td.warnIfNoArgOut(nargout);
+            td.assertHasAnalogChannelGroup(groupName);
+           
+            chList = td.listAnalogChannelsInGroup(groupName);
+            cd = td.channelDescriptorsByName.(chList{1});
+            timeField = cd.timeField;
+            [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
+            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField, startTimes, stopTimes);
         end
     end
 
@@ -3915,6 +3936,16 @@ classdef TrialDataConditionAlign < TrialData
             [spikeCounts, markCounts] = td.getMarkAlignedSpikeCounts(unitName, markIdx, window);
             [spikeCountsByGroup, markCountsByGroup] = td.groupElements(spikeCounts, markCounts);
         end
+        
+        function td = trimSpikeChannelToCurrentAlign(td, unitNames)
+            % Timepoints that lie outside of TrialStart and TrialStop will
+            % never be accessible via getTimes since they will be filtered
+            % out by the AlignInfo
+            git 
+            td.warnIfNoArgOut(nargout);
+            % default is TrialStart and TrialEnd, so just pass it along
+            td = td.trimSpikeChannel(unitNames);
+        end
     end
     
     methods % spike waveforms
@@ -4310,6 +4341,7 @@ classdef TrialDataConditionAlign < TrialData
 %             p.addParameter('spikeColor', 'k', @(x) true);
             p.addParameter('colorSpikesLikeCondition', false, @islogical);
             p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('tickHeight', 1, @isscalar);
             
             p.addParameter('markAlpha', 0.5, @isscalar);
             p.addParameter('markTickWidth', 2, @isscalar);
@@ -4506,6 +4538,7 @@ classdef TrialDataConditionAlign < TrialData
                                 'trialIdx', listByCondition{iCond}(listByConditionMask{iCond}), ...
                                 'showInLegend', iCond == 1, 'tOffsetZero', tOffsetByAlign(iAlign), ...
                                 'yOffsetTop', yOffsetByCondition(iCond), ...
+                                'tickHeight', p.Results.tickHeight, ...
                                 'intervalMinWidth', p.Results.intervalMinWidth, ...
                                 'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
                                 'shadeStartStopInterval', p.Results.shadeValidIntervals, ...
@@ -4562,7 +4595,8 @@ classdef TrialDataConditionAlign < TrialData
                             % draw vertical ticks
                             TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
                                 'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
-                                'color', color, 'quick', p.Results.quick);
+                                'color', color, 'quick', p.Results.quick, ...
+                                'tickHeight', p.Results.tickHeight);
                         end
                         hold(axh, 'on');
                     end

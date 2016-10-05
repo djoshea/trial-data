@@ -25,7 +25,7 @@ function hLine = drawTickRaster(timesCell, varargin)
     tickHeight = p.Results.tickHeight;
     nTrials = numel(timesCell);
     
-    if p.Results.normalizeWaveforms
+    if p.Results.normalizeWaveforms && ~isempty(p.Results.waveCell)
         minWave = nanmin(cellfun(@(w) nanmin(w(:)), p.Results.waveCell));
         maxWave = nanmax(cellfun(@(w) nanmax(w(:)), p.Results.waveCell));
     end

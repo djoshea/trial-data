@@ -1650,6 +1650,10 @@
             end
         end
         
+        function assertHasAnalogChannel(td, name)
+            assert(td.hasAnalogChannel(name), 'No analog channel %s found', name);
+        end
+        
         function names = listAnalogChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             if isempty(channelDescriptors)
@@ -2430,6 +2434,7 @@
             p = inputParser();
             p.addOptional('startTimes', {}, @isvector);
             p.addOptional('stopTimes', {}, @isvector);
+            p.addParameter('clearInvalidTrials', true, @islogical);
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
@@ -2448,6 +2453,11 @@
                 stopTimes = cellfun(@(x) x(1), td.getEventRaw('TrialEnd'));
             else
                 stopTimes = p.Results.stopTimes;
+            end
+            
+            if p.Results.clearInvalidTrials
+                startTimes(~td.valid) = NaN;
+                stopTimes(~td.valid) = NaN;
             end
             
             timesMask = cellvec(td.nTrials);
@@ -3582,6 +3592,68 @@
             end
             
             td = td.dropChannelFields(wavefields(mask));
+        end
+        
+        function td = trimSpikeChannelsRaw(td, unitNames, varargin)
+            % delete time points outside of a certain start stop interval
+            % defaults to TrialStart:TrialStop
+            p = inputParser();
+            p.addOptional('startTimes', {}, @isvector);
+            p.addOptional('stopTimes', {}, @isvector);
+            p.parse(varargin{:});
+
+            td.warnIfNoArgOut(nargout);
+
+            if ischar(unitNames)
+                unitNames = {unitNames};
+            end
+            
+            for iU = 1:numel(unitNames)
+                unitName = unitNames{iU};
+                assert(td.hasSpikeChannel(unitName), 'No spike channel named %s', unitName);
+                spikeField = unitName;
+                times = {td.data.(spikeField)}';
+
+                % in TDCA this is the equivalent of getAlignedTimesCell, but we
+                % don't have that infrastructure in TD, so we just do it here
+                % directly
+                if isempty(p.Results.startTimes)
+                    startTimes = cellfun(@(x) x(1), td.getEventRaw('TrialStart'));
+                else
+                    startTimes = p.Results.startTimes;
+                end
+                if isempty(p.Results.stopTimes)
+                    stopTimes = cellfun(@(x) x(1), td.getEventRaw('TrialEnd'));
+                else
+                    stopTimes = p.Results.stopTimes;
+                end
+
+                timesMask = cellvec(td.nTrials);
+                for iT = 1:td.nTrials
+                    timesMask{iT} = times{iT} >= startTimes(iT) & times{iT} <= stopTimes(iT);
+                end
+
+                maskNeedsModification = ~cellfun(@all, timesMask);
+                if ~any(maskNeedsModification)
+                    return;
+                end
+
+                for iT = 1:td.nTrials
+                    if ~maskNeedsModification(iT), continue; end
+                    td.data(iT).(spikeField) = times{iT}(timesMask{iT});
+                end
+            end
+            
+        end
+        
+        function td = trimSpikeChannelToTrialStartEnd(td, unitNames)
+            % Timepoints that lie outside of TrialStart and TrialStop will
+            % never be accessible via getTimes since they will be filtered
+            % out by the AlignInfo
+            
+            td.warnIfNoArgOut(nargout);
+            % default is TrialStart and TrialEnd, so just pass it along
+            td = td.trimSpikeChannel(unitNames);
         end
         
         function [wavesCell, waveTvec, timesCell, whichUnitCell] = getRawSpikeWaveforms(td, unitName, varargin)
