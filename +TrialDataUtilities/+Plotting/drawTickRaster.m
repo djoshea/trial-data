@@ -11,6 +11,7 @@ function hLine = drawTickRaster(timesCell, varargin)
     p.addParameter('alpha', 1, @isscalar);
     p.addParameter('waveCell', [], @(x) isempty(x) || iscell(x));
     p.addParameter('waveformTimeRelative', [], @(x) isempty(x) || isvector(x));
+    p.addParameter('normalizeWaveforms', true, @islogical); % if true, treat as unnormalized and scale them, if false, treat the values as normalized to [0 1]
     p.addParameter('waveScaleHeight', 1, @isscalar);
     p.addParameter('waveScaleTime', 1, @isscalar);
     p.addParameter('quick', false, @islogical); % use ugly dots instead
@@ -22,8 +23,12 @@ function hLine = drawTickRaster(timesCell, varargin)
     
     rowHeight = p.Results.rowHeight;
     tickHeight = p.Results.tickHeight;
-
     nTrials = numel(timesCell);
+    
+    if p.Results.normalizeWaveforms
+        minWave = nanmin(cellfun(@(w) nanmin(w(:)), p.Results.waveCell));
+        maxWave = nanmax(cellfun(@(w) nanmax(w(:)), p.Results.waveCell));
+    end
     
     if ~isempty(p.Results.waveCell) && ~p.Results.quick
         % plotting waveforms where the ticks would normally be
@@ -35,7 +40,15 @@ function hLine = drawTickRaster(timesCell, varargin)
                 waveYByTrial{iE} = zeros(0, 1);
                 waveTByTrial{iE} = zeros(0, 1);
             else
-                waves = (p.Results.waveCell{iE} - nanmin(p.Results.waveCell{iE}(:))) * p.Results.waveScaleHeight - rowHeight*iE;
+                waves = p.Results.waveCell{iE};
+                if p.Results.normalizeWaveforms
+                    waves = (waves - minWave)/ (maxWave-minWave) * p.Results.waveScaleHeight;
+                else
+                    % regard as [0 1] scaled already (for common scaling
+                    % purposes) and just multiply by height
+                    waves = waves * p.Results.waveScaleHeight;
+                end
+                waves = waves - rowHeight*iE;
                 tvecMat = bsxfun(@plus, repmat(tvec, size(waves, 1), 1), timesCell{iE});
                 if size(waves, 2) < size(tvecMat, 2)
                     tvecMat = tvecMat(:, 1:size(waves, 2));

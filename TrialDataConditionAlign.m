@@ -3995,7 +3995,7 @@ classdef TrialDataConditionAlign < TrialData
 %                 h = TrialDataUtilities.Plotting.patchline(waveTvec, wavesMat', ...
 %                     'Parent', axh, 'EdgeColor', colormap(iU, :), 'EdgeAlpha', p.Results.alpha);
                 
-                h = plot(waveTvec{iU}, wavesMat', 'Parent', axh, 'Color', colormap(iU, :));
+                h = plot(waveTvec{iU}, wavesMat', 'Color', colormap(iU, :));
                 TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
                 TrialDataUtilities.Plotting.showFirstInLegend(h, unitName{iU});
                 
@@ -4012,7 +4012,7 @@ classdef TrialDataConditionAlign < TrialData
                 hold on;
                 
                 if p.Results.showMean
-                    hMean(iU) = plot(waveTvec{iU}, nanmean(wavesMat, 1), '-', 'Parent', axh, ...
+                    hMean(iU) = plot(waveTvec{iU}, nanmean(wavesMat, 1), '-', ...
                         'Color', colormap(iU, :), 'LineWidth', 2);
                 end
             end
@@ -4515,8 +4515,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            % if we're drawing waveforms, figure out the global scale and
-            % offset so that fit within a unit height row
+            % if we're drawing waveforms, normalize all waveforms to the [0 1] range]
             if p.Results.drawSpikeWaveforms
                 [maxW, minW] = deal(nan(nAlignUsed, nConditionsUsed, nUnits));
                 for iU = 1:nUnits
@@ -4534,7 +4533,8 @@ classdef TrialDataConditionAlign < TrialData
                 
                 maxW = nanmax(maxW(:));
                 minW = nanmin(minW(:));
-                waveScale = 1 / (maxW - minW) * p.Results.spikeWaveformScaleHeight;
+                
+                wavesByAlign = cellfun(@(wc) cellfun(@(w) (w - minW) / (maxW - minW), wc, 'UniformOutput', false), wavesByAlign, 'UniformOutput', false);
             end
             
             % draw tick rasters in a grid pattern (conditions vertically,
@@ -4556,7 +4556,8 @@ classdef TrialDataConditionAlign < TrialData
                                 'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
                                 'color', color, ...
                                 'waveCell', wavesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), 'waveformTimeRelative', wavesTvec, ...
-                                'waveScaleHeight', waveScale, 'waveScaleTime', p.Results.spikeWaveformScaleTime);
+                                'normalizeWaveforms', false, ... % already normalized to [0 1]
+                                'waveScaleHeight', p.Results.spikeWaveformScaleHeight, 'waveScaleTime', p.Results.spikeWaveformScaleTime);
                         else
                             % draw vertical ticks
                             TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
