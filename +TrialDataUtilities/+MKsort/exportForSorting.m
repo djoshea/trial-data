@@ -188,6 +188,12 @@ for iAE = 1:size(uniqAE, 1)
 end
 prog.finish();
 
+if chWithSpikesCounter == 0
+    debug('No waveforms found for any units, aborting \n');
+    outData = [];
+    return;
+end
+
 %% Save previews and sorts
 if p.Results.writeToDisk
     debug('Saving sorts, previews, and exportMeta files\n');
