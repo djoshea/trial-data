@@ -368,7 +368,7 @@
                     fld = chd.dataFields{iF};
                     valueCell = {data.(fld)}';
                     [chd, valueCell] = chd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell); 
-                    data = assignIntoStructArray(data, fld, valueCell);
+                    data = TrialDataUtilities.Data.assignIntoStructArray(data, fld, valueCell);
                 end
                 channelDescriptorsByName.(names{iChannel}) = chd;
             end
@@ -1301,6 +1301,60 @@
             td = td.postDataChange(fieldsRemove);
         end
         
+        function td = trimAllChannelsRaw(td, varargin)
+            % Timepoints that lie outside of TrialStart and TrialStop will
+            % never be accessible via getTimes since they will be filtered
+            % out by the AlignInfo
+            p = inputParser();
+            p.addOptional('startTimes', {}, @isvector);
+            p.addOptional('stopTimes', {}, @isvector);
+            p.parse(varargin{:});
+
+            td.warnIfNoArgOut(nargout);
+            
+            % in TDCA this is the equivalent of getAlignedTimesCell, but we
+            % don't have that infrastructure in TD, so we just do it here
+            % directly
+            trialStart = cellfun(@(x) x(1), td.getEventRaw('TrialStart'));
+            if isempty(p.Results.startTimes)
+                startTimes = trialStart;
+            else
+                startTimes = p.Results.startTimes;
+            end
+            
+            trialEnd = cellfun(@(x) x(1), td.getEventRaw('TrialEnd'));
+            if isempty(p.Results.stopTimes)
+                stopTimes = trialEnd;
+            else
+                stopTimes = p.Results.stopTimes;
+            end
+            startTimes(~td.valid) = NaN;
+            stopTimes(~td.valid) = NaN;
+
+            debug('Trimming event channels\n');
+            ev = td.listEventChannels();
+            td = td.trimEventRaw(ev, startTimes, stopTimes);
+            
+            debug('Trimming spike channels\n');
+            sp = td.listSpikeChannels();
+            td = td.trimSpikeChannelRaw(sp, startTimes, stopTimes);
+            
+            debug('Trimming analog channels\n');
+            an = td.listAnalogChannelsNonGrouped();
+            td = td.trimAnalogChannelRaw(an, startTimes, stopTimes);
+            
+            debug('Trimming analog channel groups\n');
+            ag = td.listAnalogChannelGroups();
+            td = td.trimAnalogChannelGroupRaw(ag, startTimes, stopTimes);
+            
+            % move TrialStart and TrialEnd events inward to match
+            trialStart = max(trialStart, startTimes);
+            td = td.setEvent('TrialStart', trialStart, 'isAligned', false);
+            
+            trialEnd = min(trialEnd, stopTimes);
+            td = td.setEvent('TrialEnd', trialEnd, 'isAligned', false);
+        end
+        
     end
     
     methods(Access=protected)
@@ -1314,18 +1368,18 @@
         end
     end
     
-    methods
-        function saveTags = listSaveTags(td)
-            saveTags = td.getParamUnique('saveTag');
-        end
-        
-        function td = selectTrialsFromSaveTag(td, saveTags)
-            td.warnIfNoArgOut(nargout);
-            
-            mask = ismember(td.getParam('saveTag'), saveTags);
-            td = td.selectTrials(mask);
-        end
-    end
+%     methods
+%         function saveTags = listSaveTags(td)
+%             saveTags = td.getParamUnique('saveTag');
+%         end
+%         
+%         function td = selectTrialsFromSaveTag(td, saveTags)
+%             td.warnIfNoArgOut(nargout);
+%             
+%             mask = ismember(td.getParam('saveTag'), saveTags);
+%             td = td.selectTrials(mask);
+%         end
+%     end
     
     methods % Analog channel methods
         function td = addAnalog(td, name, varargin)
@@ -1664,6 +1718,12 @@
             names = {channelDescriptors(mask).name}';
         end
         
+        function names = listAnalogChannelsNonGrouped(td)
+            list = td.listAnalogChannels();
+            mask = cellfun(@(name) ~td.isAnalogChannelInGroup(name), list);
+            names = list(mask);
+        end
+        
         function names = listNonContinuousNeuralAnalogChannels(td)
             names = setdiff(td.listAnalogChannels(), td.listContinuousNeuralChannels());
         end
@@ -1713,8 +1773,14 @@
             fsHz = td.timeUnitsPerSecond / td.getAnalogTimeDelta(name);
         end
         
+        function timeField = getAnalogTimeField(td, name)
+            td.assertHasAnalogChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            timeField = cd.timeField;
+        end
+        
         function time = getAnalogTimeRaw(td, name)
-            td.assertHasChannel(name);
+            td.assertHasAnalogChannel(name);
             cd = td.channelDescriptorsByName.(name);
             assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
             time = {td.data.(cd.dataFields{2})}';
@@ -1843,6 +1909,135 @@
     end
     
     methods % Analog Group and multi-channel analog methods
+        function td = addAnalogChannelGroup(td, groupName, chNames, varargin)
+            % td = td.addAnalog(td, groupName, chNames, values, times)
+            % values may be cell of matrices
+            % corresponding to each trial.
+            % times may be cell of vectors or single vector (for the matrix
+            % values). Alternatively, times may be blank, and then the
+            % parameter 'timeField' can specify which time field in which
+            % to find the times for this channel
+            p = inputParser();
+            p.addOptional('values', {}, @(x) iscell(x));
+            p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x)); % char or time cell
+            p.addParameter('timeField', '', @ischar);
+            p.addParameter('units', '', @ischar);
+            p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
+            p.addParameter('isAligned', true, @islogical);
+            p.addParameter('clearForInvalid', false, @islogical);
+            p.addParameter('scaleFromLims', [], @isvector);
+            p.addParameter('scaleToLims', [], @isvector);
+            p.parse(varargin{:});
+            times = p.Results.times;
+            values = p.Results.values;
+            units = p.Results.units;
+
+            td.warnIfNoArgOut(nargout);
+            
+            if ischar(times)
+                % allow specifying char in times as well as timeField
+                timeField = times;
+                times = [];
+            else
+                timeField = p.Results.timeField;
+            end
+            
+            % remove NaN values from analog signals?
+%             if ~iscell(values) && ismatrix(values) && ~isempty(values)
+%                 assert(size(values, 1) == td.nTrials, 'Data matrix must be size nTrials along first dimension');
+%                 
+%                 % strip nans from values and times together
+%                 if ~isempty(times)
+%                     if isvector(times)
+%                         % same time vector for each row
+%                         [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times), makecol(1:td.nTrials), 'UniformOutput', false);
+%                     else
+%                         [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
+%                     end
+%                 else
+%                     values = arrayfun(@(idx) removenan(values(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
+%                 end
+%             end
+            
+            % times can either be a field/channel name, or it can be raw
+            % time values
+            if isempty(times)
+                % reference another time field or another analog channels
+                % time field
+                if ~isempty(timeField)
+                    if td.hasChannel(timeField)
+                        % treat timeField as analog channel name
+                        % share that existing channel's time field 
+                        cd = td.channelDescriptorsByName.(timeField);
+                        assert(isa(cd, 'AnalogChannelDescriptor'), ...
+                            'Channel %s is not an analog channel', timeField);
+                        timeField = cd.timeField;
+                        times = {td.data.(timeField)};
+
+                    elseif isfield(td.data, timeField)
+                        % use directly specified time field in .data
+                        times = {td.data.(timeField)};
+                    else
+                        % timeField not found
+                        error('%s is not a channel or data field name', timeField);
+                    end
+                    
+                else
+                    error('Time vector or cell of vectors must be passed in when not referencing an existing timeField');
+                end
+            else
+                % times were provided
+                % we'll set the field value for the new times field
+                
+                if isempty(timeField)
+                    % generate unique time field name
+                    timeField = matlab.lang.makeUniqueStrings(sprintf('%s_time', groupName), fieldnames(td.data));
+                else
+                    % check that we're not overwriting another channel's
+                    % time field
+                    if isfield(td.data, timeField)
+                        otherChannels = setdiff(td.getChannelsReferencingFields(timeField), name);
+                        if ~isempty(otherChannels)
+                            error('Analog channel time field %s conflicts with existing channel(s) %s. If you meant to reference their timeField, specify ''timeField'' parameter and leave times argument empty', ...
+                                name, strjoin(otherChannels, ','));
+                        end
+                    end
+                end
+            end
+            
+            if isfield(td.data, groupName)
+                error('Field %s already exists in data structure', groupName);
+            end
+            
+            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, times);
+            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, values);
+                
+            % loop over channels and create AnalogChannelDescriptors
+            opts.scaleFromLims = p.Results.scaleFromLims;
+            opts.scaleToLims = p.Results.scaleToLims;
+            opts.dataClass = ChannelDescriptor.getCellElementClass(values);
+            opts.timeClass = ChannelDescriptor.getCellElementClass(times);
+            
+            for iCh = 1:numel(chNames)
+                % build a channel descriptor for the data
+                if p.Results.isContinuousNeural
+                    cd = ContinuousNeuralChannelDescriptor.buildSharedMatrixColumnAnalog(chNames{iCh}, groupName, iCh, ...
+                        timeField, units, td.timeUnitName, opts);
+                else
+                    cd = AnalogChannelDescriptor.buildSharedMatrixColumnAnalog(chNames{iCh}, groupName, iCh, ...
+                        timeField, units, td.timeUnitName, opts);
+                end
+                
+                td = td.addChannel(cd, {}, 'ignoreDataFields', true);
+            end
+        end
+        
+        function td = addContinuousNeuralChannelGroup(td, groupName, chNames, varargin)
+            % see addAnalogChannelGroup, same signature
+            td.warnIfNoArgOut(nargout);
+            td = td.addAnalogChannelGroup(groupName, chNames, varargin{:}, 'isContinuousNeural', true);
+        end
+        
         function [groupNames, channelsByGroup] = listAnalogChannelGroups(td)
             chList = td.listAnalogChannels();
             
@@ -2012,6 +2207,7 @@
         function [tf, groupName] = isAnalogChannelInGroup(td, name, groupName)
             % [tf, groupName] = isAnalogChannelInGroup(td, name) % in any group?
             % tf = isAnalogChannelInGroup(td, groupName) % in specific group?
+            
             td.assertHasChannel(name);
             cd = td.channelDescriptorsByName.(name);
             if ~isa(cd, 'AnalogChannelDescriptor')
@@ -2198,6 +2394,13 @@
         
         function assertHasAnalogChannelGroup(td, groupName)
             assert(td.hasAnalogChannelGroup(groupName), 'No analog channel group %s found', groupName);
+        end
+        
+        function timeField = getAnalogChannelGroupTimeField(td, groupName)
+            td.assertHasAnalogChannelGroup(groupName);
+            chList = td.listAnalogChannelsInGroup(groupName);
+            cd = td.channelDescriptorsByName.(chList{1});
+            timeField = cd.timeField;
         end
         
         function time = getAnalogChannelGroupTime(td, groupName)
@@ -2397,35 +2600,42 @@
             prog.finish();
         end
         
-        function td = trimAnalogChannelGroupToTrialStartEnd(td, groupName)
-            % Timepoints that lie outside of TrialStart and TrialStop will
-            % never be accessible via getAnalog since they will be filtered
-            % out by the AlignInfo. This can create problems when using
-            % getAnalog to fetch data, and then setAnalog to change the
-            % data in place without altering the timepoints, since the
-            % timepoints outside of TrialStart:TrialStop will never be
-            % considered. This method strips those "hidden" timepoints from
-            % the analog channel group groupName
-            
+        function td = trimAnalogChannelGroupToTrialStartEnd(td, names)
             td.warnIfNoArgOut(nargout);
-            td.assertHasAnalogChannelGroup(groupName);
-           
-            chList = td.listAnalogChannelsInGroup(groupName);
-            
-            cd = td.channelDescriptorsByName.(chList{1});
-            timeField = cd.timeField;
-            
-            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField);
+            td = td.trimAnalogChannelGroupRaw(names); % defaults to trial start / end
         end
         
-        function td = trimAnalogChannelToTrialStartEnd(td, chName)
+        function td = trimAnalogChannelGroupRaw(td, groupNames, varargin)
             td.warnIfNoArgOut(nargout);
            
-            td.assertHasChannel(chName);
-            cd = td.channelDescriptorsByName.(chName);
-            timeField = cd.timeField;
+            groupNames = TrialDataUtilities.Data.wrapCell(groupNames);
+            timeFields = unique(cellfun(@(group) td.getAnalogChannelGroupTimeField(group), groupNames, 'UniformOutput', false));
             
-            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField);
+            prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
+            for i = 1:numel(timeFields)
+                prog.update(i, 'Trimming analog channels with time field %s', timeFields{i});
+                td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, varargin{:});
+            end
+            prog.finish();
+        end
+        
+        function td = trimAnalogChannelToTrialStartEnd(td, names)
+            td.warnIfNoArgOut(nargout);
+            td = td.trimAnalogChannelRaw(names); % defaults to trial start / end
+        end
+        
+        function td = trimAnalogChannelRaw(td, names, varargin)
+            td.warnIfNoArgOut(nargout);
+           
+            names = TrialDataUtilities.Data.wrapCell(names);
+            timeFields = unique(cellfun(@(name) td.getAnalogTimeField(name), names, 'UniformOutput', false));
+            
+            prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
+            for i = 1:numel(timeFields)
+                prog.update(i, 'Trimming analog channels sharing time field %s', timeFields{i});
+                td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, varargin{:});
+            end
+            prog.finish();
         end
             
         function td = trimAnalogChannelTimeFieldAndReferencingChannelsRaw(td, timeField, varargin)
@@ -2440,6 +2650,7 @@
             td.warnIfNoArgOut(nargout);
 
             times = {td.data.(timeField)}';
+            notEmpty = ~cellfun(@isempty, times);
             
             % in TDCA this is the equivalent of getAlignedTimesCell, but we
             % don't have that infrastructure in TD, so we just do it here
@@ -2479,27 +2690,27 @@
             groupList = unique(cellfun(@(cd) cd.primaryDataField, cdCell(inGroup), 'UniformOutput', false));
             chList = chList(~inGroup);
             
-            prog = ProgressBar(td.nTrials, 'Stripping timepoints outside of trial for %s', timeField);
-            for iT = 1:td.nTrials
-                if ~maskNeedsModification(iT), continue; end
-                prog.update(iT);
-                td.data(iT).(timeField) = times{iT}(timesMask{iT});
-                %
-                % loop over channels
-                for iC = 1:numel(chList)
-                    td.data(iT).(chList{iC}) = td.data(iT).(chList{iC})(timesMask{iT});
-                end
-                % loop over channel groups
-                for iG = 1:numel(groupList)
-%                     if isempty(td.data(iT).(groupList{iG}))
-%                         warning('Data for trial %d field %s empty but time vector %s is not', iT, groupList{iG}, timeField)
-%                         td.data(iT).(groupList{iG}) = zeros(;
-%                     else
-                        td.data(iT).(groupList{iG}) = td.data(iT).(groupList{iG})(timesMask{iT}, :);
-%                     end
-                end
+            prog = ProgressBar(numel(chList) + numel(groupList), 'Stripping analog channels sharing time field %s', timeField);
+            
+            % overwrite time field
+            times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), timesMask(notEmpty), 'UniformOutput', false);
+            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, times);
+            
+            for iC = 1:numel(chList)
+                prog.increment();
+                samples = {td.data.(chList{iC})}';
+                samples(notEmpty) = cellfun(@(v, m) v(m), samples(notEmpty), timesMask(notEmpty), 'UniformOutput', false);
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, chList{iC}, samples);
+            end
+            for iG = 1:numel(groupList)
+                prog.increment();
+                samples = {td.data.(groupList{iG})}';
+                samples(notEmpty) = cellfun(@(v, m) v(m, :), samples(notEmpty), timesMask(notEmpty), 'UniformOutput', false);
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupList{iG}, samples);
             end
             prog.finish();
+            
+            td = td.postDataChange(cat(1, chList, groupList));
         end
     end
     
@@ -2749,7 +2960,7 @@
             end
             times = cellfun(@(x) makecol(sort(x)), times, 'UniformOutput', false);
             
-            td = td.setChannelData(name, {times}, varargin{:});
+            td = td.setChannelData(name, {times});
         end
         
         function td = addOrSetEvent(td, name, times, varargin)
@@ -2759,6 +2970,75 @@
             else
                 td = td.addEvent(name, times, varargin{:});
             end
+        end
+        
+        function td = trimEventRaw(td, names, varargin)
+            % delete time points outside of a certain start stop interval
+            % defaults to TrialStart:TrialStop
+            p = inputParser();
+            p.addOptional('startTimes', {}, @isvector);
+            p.addOptional('stopTimes', {}, @isvector);
+            p.addParameter('clearInvalidTrials', true, @islogical);
+            p.parse(varargin{:});
+
+            td.warnIfNoArgOut(nargout);
+
+            if ischar(names)
+                names = {names};
+            end
+            
+            % in TDCA this is the equivalent of getAlignedTimesCell, but we
+            % don't have that infrastructure in TD, so we just do it here
+            % directly
+            if isempty(p.Results.startTimes)
+                startTimes = cellfun(@(x) x(1), td.getEventRaw('TrialStart'));
+            else
+                startTimes = p.Results.startTimes;
+            end
+            if isempty(p.Results.stopTimes)
+                stopTimes = cellfun(@(x) x(1), td.getEventRaw('TrialEnd'));
+            else
+                stopTimes = p.Results.stopTimes;
+            end
+            if p.Results.clearInvalidTrials
+                startTimes(~td.valid) = NaN;
+                stopTimes(~td.valid) = NaN;
+            end
+            
+            prog = ProgressBar(numel(names), 'Trimming event channels');
+            for i = 1:numel(names)
+                name = names{i};
+                prog.update(i, 'Trimming event %s', name);
+                assert(td.hasEventChannel(name), 'No event channel named %s', name);
+                times = {td.data.(name)}';
+
+                timesMask = cellvec(td.nTrials);
+                for iT = 1:td.nTrials
+                    timesMask{iT} = times{iT} >= startTimes(iT) & times{iT} <= stopTimes(iT);
+                end
+
+                maskNeedsModification = ~cellfun(@all, timesMask);
+                if ~any(maskNeedsModification)
+                    continue;
+                end
+
+                notEmpty = ~cellfun(@isempty, times);
+                times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), timesMask(notEmpty), 'UniformOutput', false);
+                
+                td = td.setEvent(name, times);
+%                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, name, times);
+            end
+            prog.finish();
+        end
+        
+        function td = trimEventToTrialStartEnd(td, names)
+            % Timepoints that lie outside of TrialStart and TrialStop will
+            % never be accessible via getTimes since they will be filtered
+            % out by the AlignInfo
+            
+            td.warnIfNoArgOut(nargout);
+            % default is TrialStart and TrialEnd, so just pass it along
+            td = td.trimEventRaw(names);
         end
             
     end
@@ -3081,6 +3361,10 @@
             else
                 tf = checkFn(name);
             end
+        end
+        
+        function assertHasSpikeChannel(td, name)
+            assert(td.hasSpikeChannel(name), 'No spike channel %s found', name);
         end
         
         function names = listSpikeChannels(td)
@@ -3594,12 +3878,35 @@
             td = td.dropChannelFields(wavefields(mask));
         end
         
-        function td = trimSpikeChannelsRaw(td, unitNames, varargin)
+        function td = maskSpikeChannelSpikesRaw(td, unitName, mask, varargin)
+            td.warnIfNoArgOut(nargout);
+            assert(isvector(mask) && numel(mask) == td.nTrials);
+
+            td.assertHasSpikeChannel(unitName);
+            cd = td.channelDescriptorsByName.(unitName);
+            
+            times = {td.data.(unitName)}';
+            notEmpty = ~cellfun(@isempty, times);
+            times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), mask(notEmpty), 'UniformOutput', false);
+            
+            hasWaves = cd.hasWaveforms;
+            if hasWaves
+                waves = {td.data.(cd.waveformsField)}';
+                waves(notEmpty) = cellfun(@(w, m) w(m, :), waves(notEmpty), mask(notEmpty), 'UniformOutput', false);
+            else
+                waves = {};
+            end
+            
+            td = td.setSpikeChannel(unitName, times, 'isAligned', false, 'waveforms', waves, varargin{:});
+        end
+        
+        function td = trimSpikeChannelRaw(td, unitNames, varargin)
             % delete time points outside of a certain start stop interval
             % defaults to TrialStart:TrialStop
             p = inputParser();
             p.addOptional('startTimes', {}, @isvector);
             p.addOptional('stopTimes', {}, @isvector);
+            p.addParameter('clearInvalidTrials', true, @islogical);
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
@@ -3608,25 +3915,31 @@
                 unitNames = {unitNames};
             end
             
+            % in TDCA this is the equivalent of getAlignedTimesCell, but we
+            % don't have that infrastructure in TD, so we just do it here
+            % directly
+            if isempty(p.Results.startTimes)
+                startTimes = cellfun(@(x) x(1), td.getEventRaw('TrialStart'));
+            else
+                startTimes = p.Results.startTimes;
+            end
+            if isempty(p.Results.stopTimes)
+                stopTimes = cellfun(@(x) x(1), td.getEventRaw('TrialEnd'));
+            else
+                stopTimes = p.Results.stopTimes;
+            end
+            if p.Results.clearInvalidTrials
+                startTimes(~td.valid) = NaN;
+                stopTimes(~td.valid) = NaN;
+            end
+            
+            prog = ProgressBar(numel(unitNames), 'Trimming spike channels');
             for iU = 1:numel(unitNames)
                 unitName = unitNames{iU};
+                prog.update(iU, 'Trimming spike channel %s', unitName);
                 assert(td.hasSpikeChannel(unitName), 'No spike channel named %s', unitName);
                 spikeField = unitName;
                 times = {td.data.(spikeField)}';
-
-                % in TDCA this is the equivalent of getAlignedTimesCell, but we
-                % don't have that infrastructure in TD, so we just do it here
-                % directly
-                if isempty(p.Results.startTimes)
-                    startTimes = cellfun(@(x) x(1), td.getEventRaw('TrialStart'));
-                else
-                    startTimes = p.Results.startTimes;
-                end
-                if isempty(p.Results.stopTimes)
-                    stopTimes = cellfun(@(x) x(1), td.getEventRaw('TrialEnd'));
-                else
-                    stopTimes = p.Results.stopTimes;
-                end
 
                 timesMask = cellvec(td.nTrials);
                 for iT = 1:td.nTrials
@@ -3635,15 +3948,12 @@
 
                 maskNeedsModification = ~cellfun(@all, timesMask);
                 if ~any(maskNeedsModification)
-                    return;
+                    continue;
                 end
-
-                for iT = 1:td.nTrials
-                    if ~maskNeedsModification(iT), continue; end
-                    td.data(iT).(spikeField) = times{iT}(timesMask{iT});
-                end
+                
+                td = td.maskSpikeChannelSpikesRaw(unitName, timesMask);
             end
-            
+            prog.finish();
         end
         
         function td = trimSpikeChannelToTrialStartEnd(td, unitNames)
@@ -3653,7 +3963,7 @@
             
             td.warnIfNoArgOut(nargout);
             % default is TrialStart and TrialEnd, so just pass it along
-            td = td.trimSpikeChannel(unitNames);
+            td = td.trimSpikeChannelRaw(unitNames);
         end
         
         function [wavesCell, waveTvec, timesCell, whichUnitCell] = getRawSpikeWaveforms(td, unitName, varargin)
@@ -3861,12 +4171,13 @@
         end
         
         function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrialRaw(td)
-            % overriden by TDCA to be zero-relative
             tMinByTrial = td.getEvent('TrialStart');
-            tMaxByTrial = td.getEvent('TrialStop');
+            tMaxByTrial = td.getEvent('TrialEnd');
         end
         
         function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrial(td)
+            % overriden by TDCA to be zero-relative
+            
             [tMinByTrial, tMaxByTrial] = td.getTimeStartStopEachTrialRaw();
             tMinByTrial(~td.valid) = NaN;
             tMaxByTrial(~td.valid) = NaN;
@@ -3923,6 +4234,8 @@
             p.addParameter('clearIfPresent', false, @islogical);
            % p.addParameter('ignoreOverwriteChannel', false, @islogical);
             p.addParameter('updateValidOnly', true, @islogical);
+            
+            p.addParameter('ignoreDataFields', false, @islogical); % if true, neither clear nor set channel data fields, used by addAnalogChannelGroup initially
             p.parse(varargin{:});
             valueCell = makecol(p.Results.valueCell);
             
@@ -3946,27 +4259,29 @@
 
             td.channelDescriptorsByName.(cd.name) = cd;
             
-            % touch each of the value fields to make sure they exist
-            for iF = 1:cd.nFields
-                missing = cd.missingValueByField{iF};
-                if ~isfield(td.data, cd.dataFields{iF}) || ~cd.isShareableByField(iF)
-                    % clear if it's missing, or if its there but not
-                    % shared, since we're overwriting it
-                    td.data = assignIntoStructArray(td.data, cd.dataFields{iF}, missing);
-                end
-            end     
+            if ~p.Results.ignoreDataFields
+                % touch each of the value fields to make sure they exist
+                for iF = 1:cd.nFields
+                    missing = cd.missingValueByField{iF};
+                    if ~isfield(td.data, cd.dataFields{iF}) || ~cd.isShareableByField(iF)
+                        % clear if it's missing, or if its there but not
+                        % shared, since we're overwriting it
+                        td.data = assignIntoStructArray(td.data, cd.dataFields{iF}, missing);
+                    end
+                end     
             
-            if isempty(valueCell) && (~alreadyHasChannel || p.Results.clearIfPresent)
-                td = td.clearChannelData(cd.name, 'fieldMask', ~cd.isShareableByField, ...
-                    'updateOnlyValidTrials', false);
-            elseif ~isempty(valueCell)
-                % clear on fields where no values provided and it's not shared, 
-                % set on fields where values are provided
-                nonEmptyMask = ~cellfun(@isempty, valueCell);
-                td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask & ~cd.isShareableByField, ...
-                    'updateOnlyValidTrials', false);
-                td = td.setChannelData(cd.name, valueCell, 'fieldMask', nonEmptyMask, ...
-                    'updateValidOnly', p.Results.updateValidOnly);
+                if isempty(valueCell) && (~alreadyHasChannel || p.Results.clearIfPresent)
+                    td = td.clearChannelData(cd.name, 'fieldMask', ~cd.isShareableByField, ...
+                        'updateOnlyValidTrials', false);
+                elseif ~isempty(valueCell)
+                    % clear on fields where no values provided and it's not shared, 
+                    % set on fields where values are provided
+                    nonEmptyMask = ~cellfun(@isempty, valueCell);
+                    td = td.clearChannelData(cd.name, 'fieldMask', ~nonEmptyMask & ~cd.isShareableByField, ...
+                        'updateOnlyValidTrials', false);
+                    td = td.setChannelData(cd.name, valueCell, 'fieldMask', nonEmptyMask, ...
+                        'updateValidOnly', p.Results.updateValidOnly);
+                end
             end
         end
         

@@ -1,8 +1,8 @@
 function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
 
     p = inputParser();
-    p.addParamValue('keepUnsortedUnit', false, @islogical);
-    p.addParamValue('useAlignedWaves', false, @islogical); % may make repeat sorting impossible since wave data may be dropped
+    p.addParameter('keepUnsortedUnit', false, @islogical);
+    p.addParamValue('useAlignedWaves', true, @islogical); % may make repeat sorting impossible since wave data may be dropped
     p.addParamValue('sortMethod', 'mksort', @ischar); % what to specify as the sort method, for reference only
     p.parse(varargin{:});
 
@@ -99,6 +99,8 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
         end
     end
     prog.finish();
+    
+    td = td.setMetaKey('spikeSorting', 'hand-sorted via mksort');
     
 end
 

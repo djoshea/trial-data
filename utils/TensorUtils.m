@@ -332,6 +332,12 @@ classdef TensorUtils
             if ~iscell(masks)
                 masks = {masks};
             end
+            for i = 1:numel(masks)
+                if ~islogical(masks{i})
+                    masks{i} = TensorUtils.vectorIndicesToMask(masks{i}, max(masks{i}));
+                end
+            end
+            
             assert(all(cellfun(@(x) islogical(x) && isvector(x), masks)), ...
                 'Mask must be (cell of) logical vectors. Use vectorIndicesToMask to convert.');
            

@@ -527,6 +527,13 @@ classdef TrialDataConditionAlign < TrialData
             % should nominally only change the condition names, not
             % anything related to .valid or the condition structure
         end
+        
+        function td = trimAllChannelsToCurrentAlign(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            td = td.trimAllChannelsRaw(startTimes + offsets, stopTimes + offsets);
+        end
     end
 
     % ConditionInfo control
@@ -1519,7 +1526,8 @@ classdef TrialDataConditionAlign < TrialData
             durations(~td.valid, :) = NaN;
         end
         
-        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrialRaw(td)
+        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrial(td)
+            % make relative to zero
             [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
         end
         
@@ -2342,14 +2350,17 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
-        function td = trimAnalogChannelToCurrentAlign(td, name)
+        function td = trimAnalogChannelToCurrentAlign(td, names)
             td.warnIfNoArgOut(nargout);
-            td.assertHasAnalogChannel(name);
-           
-            cd = td.channelDescriptorsByName.(name);
-            timeField = cd.timeField;
+            
             [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
-            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField, startTimes, stopTimes);
+            
+            names = TrialDataUtilities.Data.wrapCell(names);
+            timeFields = unique(cellfun(@(name) td.getAnalogTimeField(name), names, 'UniformOutput', false));
+                
+            for i = 1:numel(timeFields)
+                td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, startTimes, stopTimes);
+            end
         end
     end
     
@@ -2847,15 +2858,17 @@ classdef TrialDataConditionAlign < TrialData
             prog.finish();
         end
         
-        function td = trimAnalogChannelGroupToCurrentAlign(td, groupName)
+        function td = trimAnalogChannelGroupToCurrentAlign(td, groupNames)
             td.warnIfNoArgOut(nargout);
-            td.assertHasAnalogChannelGroup(groupName);
-           
-            chList = td.listAnalogChannelsInGroup(groupName);
-            cd = td.channelDescriptorsByName.(chList{1});
-            timeField = cd.timeField;
+            
             [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
-            td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField, startTimes, stopTimes);
+            
+            groupNames = TrialDataUtilities.Data.wrapCell(groupNames);
+            timeFields = unique(cellfun(@(group) td.getAnalogChannelGroupTimeField(group), groupNames, 'UniformOutput', false));
+            
+            for i = 1:numel(timeFields)
+                td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, startTimes, stopTimes);
+            end
         end
     end
 
@@ -2901,6 +2914,17 @@ classdef TrialDataConditionAlign < TrialData
             thresholdTimes = TrialDataUtilities.Data.findThresholdCrossings(data, time, level, p.Results.lockoutPeriod);
             
             td = td.addEvent(eventChName, thresholdTimes, p.Unmatched);
+        end
+        
+        function td = trimEventToCurrentAlign(td, names)
+            % Timepoints that lie outside of TrialStart and TrialStop will
+            % never be accessible via getTimes since they will be filtered
+            % out by the AlignInfo
+
+            td.warnIfNoArgOut(nargout);
+            % default is TrialStart and TrialEnd, so just pass it along
+            [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
+            td = td.trimSpikeChannel(names, startTimes, stopTimes);
         end
     end
 
@@ -3941,9 +3965,85 @@ classdef TrialDataConditionAlign < TrialData
             % Timepoints that lie outside of TrialStart and TrialStop will
             % never be accessible via getTimes since they will be filtered
             % out by the AlignInfo
+
             td.warnIfNoArgOut(nargout);
             % default is TrialStart and TrialEnd, so just pass it along
-            td = td.trimSpikeChannel(unitNames);
+            [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
+            td = td.trimSpikeChannel(unitNames, startTimes, stopTimes);
+        end
+    end
+    
+    methods % spike modification
+        function td = maskSpikeChannelSpikes(td, unitName, mask, varargin)
+            p = inputParser();
+            p.addParameter('keepRemovedSpikesAs', '', @ischar);
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            keepAs = p.Results.keepRemovedSpikesAs;
+            assert(isvector(mask) && numel(mask) == td.nTrials);
+
+            td.assertHasSpikeChannel(unitName);
+            cd = td.channelDescriptorsByName.(unitName);
+            
+            timesOrig = td.getSpikeTimes(unitName);
+            times = timesOrig;
+            notEmpty = ~cellfun(@isempty, times);
+            times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), mask(notEmpty), 'UniformOutput', false);
+            
+            hasWaves = cd.hasWaveforms;
+            if hasWaves
+                [wavesOrig, waveTvec] = td.getSpikeWaveforms(unitName);
+                waves = wavesOrig;
+                waves(notEmpty) = cellfun(@(w, m) w(m, :), waves(notEmpty), mask(notEmpty), 'UniformOutput', false);
+            else
+                waves = {};
+                waveTvec = [];
+            end
+
+            if ~isempty(p.Results.keepRemovedSpikesAs)
+                timesRem = timesOrig;
+                timesRem(notEmpty) = cellfun(@(t, m) t(~m), timesRem(notEmpty), mask(notEmpty), 'UniformOutput', false);
+                if hasWaves
+                    wavesRem = wavesOrig;
+                    wavesRem(notEmpty) = cellfun(@(w, m) w(~m, :), wavesRem(notEmpty), mask(notEmpty), 'UniformOutput', false);
+                else
+                    wavesRem = {};
+                end
+                
+                if td.hasSpikeChannel(keepAs)
+                    td = td.appendSpikesToSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem);
+                else
+                    td = td.addSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem, 'waveformsTime', waveTvec);
+                end
+            end
+                
+            td = td.setSpikeChannel(unitName, times, 'isAligned', true, 'waveforms', waves);
+        end
+        
+        function td = appendSpikesToSpikeChannel(td, unitName, newTimes, varargin)
+            p = inputParser();
+            p.addParameter('waveforms', [], @iscell);
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            
+            td.assertHasSpikeChannel(unitName);
+            cd = td.channelDescriptorsByName.(unitName);
+            
+            times = td.getSpikeTimes(unitName);
+            times = cellfun(@(t1, t2) cat(1, t1, t2), times, newTimes, 'UniformOutput', false);
+            
+            hasWaves = cd.hasWaveforms;
+            if hasWaves
+                waves = td.getSpikeWaveforms(unitName);
+                assert(~isempty(p.Results.waveforms), 'Must provide waveforms to append when existing unit has waveforms');
+                waves = cellfun(@(w1, w2) cat(1, w1, w2), waves, p.Results.waveforms, 'UniformOutput', false);
+            else
+                waves = {};
+            end
+                
+            td = td.setSpikeChannel(unitName, times, 'isAligned', true, 'waveforms', waves);
         end
     end
     
@@ -4370,11 +4470,13 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeWaveformScaleHeight', 1, @isscalar);
             p.addParameter('spikeWaveformScaleTime', 1, @isscalar);
             
+            p.addParameter('interUnitOffset', 0, @isscalar); % add a small offset between multiply plotted units to detect simultaneous spikes
+            
             p.addParameter('quick', false, @islogical);
             
             p.addParameter('axh', gca, @ishandle);
             
-            p.addParameter('combine', false, @islogical); % combine units as one, if false, plot spikes in different colors
+            p.addParameter('combine', false, @islogical); % combine units as -one, if false, plot spikes in different colors
 %             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -4432,7 +4534,8 @@ classdef TrialDataConditionAlign < TrialData
                     % TODO might want to update this for the selected
                     % conditions only
                     [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
-                    timePointsCell{iAlign} = [start; stop];
+                    mask = start <= stop;
+                    timePointsCell{iAlign} = [start(mask); stop(mask)];
 
                     % and store start/stop by trial in each align/condition
                     % cell
@@ -4571,6 +4674,8 @@ classdef TrialDataConditionAlign < TrialData
             
             % draw tick rasters in a grid pattern (conditions vertically,
             % aligns horizontally)
+            
+            offsetByUnit = (0:nUnits-1) * p.Results.interUnitOffset;
             for iU = 1:nUnits
                 for iAlign = 1:nAlignUsed
                     for iC = 1:nConditionsUsed
@@ -4585,7 +4690,7 @@ classdef TrialDataConditionAlign < TrialData
                         if p.Results.drawSpikeWaveforms && ~p.Results.quick
                             % draw waveforms in lieu of ticks
                                 TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
-                                'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
+                                'xOffset', tOffsetByAlign(iAlign) + offsetByUnit(iU), 'yOffset', yOffsetByCondition(iC), ...
                                 'color', color, ...
                                 'waveCell', wavesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), 'waveformTimeRelative', wavesTvec, ...
                                 'normalizeWaveforms', false, ... % already normalized to [0 1]
@@ -4593,7 +4698,7 @@ classdef TrialDataConditionAlign < TrialData
                         else
                             % draw vertical ticks
                             TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
-                                'xOffset', tOffsetByAlign(iAlign), 'yOffset', yOffsetByCondition(iC), ...
+                                'xOffset', tOffsetByAlign(iAlign) + offsetByUnit(iU), 'yOffset', yOffsetByCondition(iC), ...
                                 'color', color, 'quick', p.Results.quick, ...
                                 'tickHeight', p.Results.tickHeight);
                         end
