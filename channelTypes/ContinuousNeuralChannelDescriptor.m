@@ -1,13 +1,16 @@
 classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
-    properties(Dependent)
+    properties(Dependent) 
+        % these are encoded in the channel name
         array
         electrode
+        type
     end
     
-    properties(SetAccess=protected)
-        arrayManual = '';
-        electrodeManual = [];
-    end
+%     properties(SetAccess=protected)
+%         arrayManual = '';
+%         electrodeManual = [];
+%         typeManual = '';
+%     end
     
     methods
         function cd = ContinuousNeuralChannelDescriptor(name, timeField)
@@ -41,51 +44,67 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
     end
     
     methods
-        function cd = setArrayElectrode(cd, array, electrode)
-            cd.warnIfNoArgOut(nargout);
-            assert(ischar('array'));
-            assert(isnumeric(electrode));
-            cd.electrodeManual = electrode;
-            cd.arrayManual = array;
+        function name = getNameWithUpdatedArray(cd, array)
+            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(cd.type, array, cd.electrode);
         end
         
-        function a = get.array(cd)
-            if isempty(cd.arrayManual)
-                [a, ~] = ContinuousNeuralChannelDescriptor.parseArrayElectrode(cd.name);
-            else
-                a = cd.arrayManual;
-            end
+        function name = getNameWithUpdatedElectrode(cd, electrode)
+            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(cd.type, cd.array, electrode);
         end
         
-        function e = get.electrode(cd)
-            if isempty(cd.electrodeManual) || isnan(cd.electrodeManual)
-                [~, e] = ContinuousNeuralChannelDescriptor.parseArrayElectrode(cd.name);
-            else
-                e = cd.electrodeManual;
-            end
+        function name = getNameWithUpdatedType(cd, type)
+            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, cd.array, cd.electrode);
         end
+      
+        function type = get.type(cd)
+            type = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
+        end
+        
+        function array = get.array(cd)
+           [~, array] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
+        end
+        
+        function elec = get.electrode(cd)
+            [~, ~, elec] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
+        end
+       
     end
     
     methods(Static)
+        function cd = buildFromTypeArrayElectrode(type, array, electrode, timeField)
+            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode);
+            cd = ContinuousNeuralChannelDescriptor(name, timeField);
+        end
+        
         function cd = buildFromArrayElectrode(arrayElectrodeStr, timeField)
             name = ContinuousNeuralChannelDescriptor.convertArrayElectrodeToChannelName(arrayElectrodeStr);
             cd = ContinuousNeuralChannelDescriptor(name, timeField);
         end
         
         function [chName] = convertArrayElectrodeToChannelName(arrayElectrodeStr)
-            [array, electrode] = ContinuousNeuralChannelDescriptor.parseArrayElectrode(arrayElectrodeStr);
+            [type, array, electrode] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(arrayElectrodeStr);
             assert(~isnan(electrode), 'Could not parse array/electrode string %s', arrayElectrodeStr);
-            chName = sprintf('continuous_%s%02d', array, electrode);
+            chName = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode);
+        end
+        
+        function str = generateNameFromTypeArrayElectrode(type, array, electrode)
+            if isempty(type)
+                str = sprintf('%s%03d', array, electrode);
+            else
+                str = sprintf('%s_%s%03d', type, array, electrode);
+            end
         end
 
-        function [array, electrode] = parseArrayElectrode(str)
-            tokens = regexp(str, '(continuous_)?(?<array>[A-Za-z_]*)(?<electrode>\d+)', 'names', 'once');
+        function [type, array, electrode] = parseTypeArrayElectrode(str)
+            tokens = regexp(str, '(?<type>\w+_)?(?<array>[A-Za-z_]*)(?<electrode>\d+)', 'names', 'once');
             if isempty(tokens)
                 array = '';
                 electrode = NaN;
+                type = '';
             else
                 array = tokens.array;
                 electrode =str2double(tokens.electrode);
+                type = tokens.type(1:end-1); % strip trailing _
             end
         end
     end

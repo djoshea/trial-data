@@ -1738,6 +1738,34 @@
             names = {channelDescriptors(mask).name}';
         end
         
+        function td = setContinuousNeuralChannelArray(td, contCh, array)
+            td.warnIfNoArgOut(nargout);
+            contCh = TrialDataUtilities.Data.wrapCell(contCh);
+            
+            for iCh = 1:numel(contCh)
+                cd = td.getChannelDescriptor(contCh{iCh});
+                newName = cd.getNameWithUpdatedArray(array);
+                td = td.renameChannel(contCh{iCh}, newName);
+            end
+        end
+        
+        function td = renameContinuousNeuralChannelArray(td, arrayCurrent, arrayNew)
+            td.warnIfNoArgOut(nargout);
+            contChList = td.listContinuousNeuralChannelsOnArray(arrayCurrent);
+            td = td.setContinuousNeuralChannelArray(contChList, arrayNew);
+        end
+        
+        function td = setContinuousNeuralChannelType(td, contCh, type)
+            td.warnIfNoArgOut(nargout);
+            contCh = TrialDataUtilities.Data.wrapCell(contCh);
+            
+            for iCh = 1:numel(contCh)
+                cd = td.getChannelDescriptor(contCh{iCh});
+                newName = cd.getNameWithUpdatedType(type);
+                td = td.renameChannel(contCh{iCh}, newName);
+            end
+        end
+        
         function td = selectAnalogChannels(td, names)
             td.warnIfNoArgOut(nargout);
             full = td.listAnalogChannels();
@@ -3669,6 +3697,23 @@
                 'blankingRegions', blankingRegions);
         end
         
+        function td = setSpikeChannelArray(td, spikeCh, array)
+            td.warnIfNoArgOut(nargout);
+            spikeCh = TrialDataUtilities.Data.wrapCell(spikeCh);
+            
+            for iCh = 1:numel(spikeCh)
+                cd = td.getChannelDescriptor(spikeCh{iCh});
+                newName = cd.getNameWithUpdatedArray(array);
+                td = td.renameChannel(spikeCh{iCh}, newName);
+            end
+        end
+        
+        function td = renameSpikeChannelArray(td, arrayCurrent, arrayNew)
+            td.warnIfNoArgOut(nargout);
+            spikeChList = td.listSpikeChannelsOnArray(arrayCurrent);
+            td = td.setSpikeChannelArray(spikeChList, arrayNew);
+        end
+        
         function td = blankSpikesInTimeIntervals(td, name, intervalCell, varargin)
             % adds a blanking region to the spiking data
             % this both removes the spikes from that period of time each
@@ -4001,7 +4046,7 @@
                 wavesCell(:, iU) = {td.data.(wavefield)}';
                 % scale to appropriate units
                 wavesCell(:, iU) = cd.scaleWaveforms(wavesCell(:, iU));
-                waveTvec{iU} = cd.waveformsTime;
+                waveTvec{iU} = makecol(cd.waveformsTime);
 
                 % check number of timepoints 
                 waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(wavesCell(:, iU));

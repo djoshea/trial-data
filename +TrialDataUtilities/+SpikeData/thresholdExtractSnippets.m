@@ -14,6 +14,7 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
     p.addParameter('mode', 'leftToRight', @ischar); % or 'largestFirst'
     p.addParameter('lockoutPrePost', [], @(x) isempty(x) || isvector(x));
     p.addParameter('extremumWithin', 7, @islogical);
+    p.addParameter('thresholdPerTrial', false, @islogical);
     p.parse(varargin{:});
     if isempty(p.Results.lockoutPrePost)
       lockoutPrePost = snippetWindow;
@@ -23,11 +24,19 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
     lockoutPre = lockoutPrePost(1);
     lockoutPost = lockoutPrePost(2);
     extremumWithin = p.Results.extremumWithin;
-
+    perTrial = p.Results.thresholdPerTrial;
+    
     if iscell(data)
         nTrials = numel(data);
     elseif ismatrix(data)
         nTrials = size(data, 2);
+    end
+    
+    if perTrial
+        assert(numel(thresh) == nTrials);
+        threshByTrial = thresh;
+    else
+        threshByTrial = repmat(thresh, nTrials, 1);
     end
 
     snippetPre = snippetWindow(1);
@@ -35,7 +44,7 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
     snippetLength = snippetPre + snippetPost;
 
     % utility for finding all crossing times of thresh
-    function idx = findCrossings(dataVec)
+    function idx = findCrossings(dataVec, thresh)
         if thresh < 0
             % falling threshold < 0
             idx = find(diff(dataVec <= thresh) == 1);
@@ -46,9 +55,10 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
     end
 
     if iscell(data)
-        crossings = cellfun(@findCrossings, data, 'UniformOutput', false);
+        crossings = cellfun(@findCrossings, data, num2cell(threshByTrial), 'UniformOutput', false);
     else
-        crossings = arrayfun(@(trial) findCrossings(data(:, trial)), 1:nTrials, 'UniformOutput', false);
+        crossings = arrayfun(@(trial) findCrossings(data(:, trial)), (1:nTrials)', ...
+            num2cell(threshByTrial), 'UniformOutput', false);
     end
 
     % ensure they are spaced by at least 1 waveform

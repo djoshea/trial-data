@@ -1037,7 +1037,7 @@ classdef TensorUtils
             out = cat(dim, each{:});
         end
         
-        function out = selectSpecificIndicesAlongDimensionEachPosition(in, dim, idxForEachOtherDim)
+        function out = selectSpecificIndicesAlongDimensionEachPosition(in, dim, idxThatDim)
             % typically we do a selection along dim e.g. where dim = 2, using in(:, idx, :) 
             % this function enables idx to vary with the position along the
             % other dimensions. If size(in) = in szIn, and
@@ -1045,8 +1045,8 @@ classdef TensorUtils
             % dimension dim.
             % for example, if in = [1 2; 3 4], dim = 1, and
             % idxForEachOtherDim = [1 2], out is [1 4]
-        
-            out = cell2mat(TensorUtils.mapSlices(@(slice, idx) slice(idx), dim, in, idxForEachOtherDim));
+
+            out = cell2mat(TensorUtils.mapSlices(@(slice, idx) slice(idx), dim, in, idxThatDim));
         end
         
     end

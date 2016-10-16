@@ -26,11 +26,11 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         spikeThreshold = []; % set if known, otherwise this will be estimated from the waveforms
     end
     
-    properties(SetAccess=protected)
-        arrayManual = '';
-        electrodeManual = [];
-        unitManual = [];
-    end
+%     properties(SetAccess=protected)
+%         arrayManual = '';
+%         electrodeManual = [];
+%         unitManual = [];
+%     end
     
     methods(Access=protected)
         function cd = SpikeChannelDescriptor(name)
@@ -89,15 +89,21 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function cd = setArrayElectrodeUnit(cd, array, electrode, unit)
-            cd.warnIfNoArgOut(nargout);
-            assert(ischar('array'));
-            assert(isnumeric(electrode));
-            assert(isnumeric(unit));
-            cd.electrodeManual = electrode;
-            cd.arrayManual = array;
-            cd.unitManual = unit;
-        end
+%         function cd = setArrayElectrodeUnit(cd, array, electrode, unit)
+%             cd.warnIfNoArgOut(nargout);
+%             assert(ischar('array'));
+%             assert(isnumeric(electrode));
+%             assert(isnumeric(unit));
+%             cd.electrodeManual = electrode;
+%             cd.arrayManual = array;
+%             cd.unitManual = unit;
+%         end
+        
+%         function cd = clearManualArrayElectrode(cd)
+%             cd.warnIfNoArgOut(nargout);
+%             cd.electrodeManual = [];
+%             cd.arrayManual = [];
+%         end
         
         function cd = addWaveformsField(cd, waveField, varargin)
             p = inputParser;
@@ -186,28 +192,28 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function a = get.array(cd)
-            if isempty(cd.arrayManual)
-                [a, ~, ~] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
-            else
-                a = cd.arrayManual;
-            end
+        function name = getNameWithUpdatedArray(cd, array)
+            name = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(array, cd.electrode, cd.unit);
         end
         
-        function e = get.electrode(cd)
-            if isempty(cd.electrodeManual) || isnan(cd.electrodeManual)
-                [~, e, ~] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
-            else
-                e = cd.electrodeManual;
-            end
+        function name = getNameWithUpdatedElectrode(cd, electrode)
+            name = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(cd.array, electrode, cd.unit);
         end
         
-        function u = get.unit(cd)
-            if isempty(cd.unitManual) || isnan(cd.unitManual)
-                [~, ~, u] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
-            else
-                u = cd.unitManual;
-            end
+        function name = getNameWithUpdatedUnit(cd, unit)
+            name = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(cd.array, cd.electrode, unit);
+        end
+        
+        function array = get.array(cd)
+            array = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
+        end
+        
+        function elec = get.electrode(cd)
+            [~, elec] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
+        end
+        
+        function unit = get.unit(cd)
+            [~, ~, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(cd.name);
         end
         
         function tf = get.hasWaveforms(cd)
@@ -273,6 +279,9 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
         end
         
+        function name = generateNameFromArrayElectrodeUnit(array, electrode, unit)
+            name = sprintf('%s%02d_%d', array, electrode, unit);
+        end
     end
     
 end
