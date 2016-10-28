@@ -889,6 +889,7 @@ classdef AlignSummary
             p.addParameter('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
             p.addParameter('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
             p.addParameter('tUnits', 'ms', @ischar); % units for time
+            p.addParameter('timeScaleBarWidth', NaN, @isscalar);
             p.addParameter('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('labelFirstMarkOnly', true, @islogical);
@@ -1026,9 +1027,17 @@ classdef AlignSummary
                         end
                     end
                     
-                    au.addAutoScaleBarX();
+                    if isnan(p.Results.timeScaleBarWidth)
+                        au.addAutoScaleBarX();
+                    else
+                        au.addScaleBarX('length', p.Results.timeScaleBarWidth);
+                    end
                 case 'scaleBar'
-                    au.addAutoScaleBarX();
+                    if isnan(p.Results.timeScaleBarWidth)
+                        au.addAutoScaleBarX();
+                    else
+                        au.addScaleBarX('length', p.Results.timeScaleBarWidth);
+                    end
                     
             end
             if ~quick

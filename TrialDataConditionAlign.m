@@ -1229,7 +1229,7 @@ classdef TrialDataConditionAlign < TrialData
                 ad = varargin{i};
 
                 if iscell(ad)
-                    error('Please provide alignDescriptors as successive arguments');
+k                    error('Please provide alignDescriptors as successive arguments');
                 end
                 if ischar(ad)
                     adSet{i} = AlignInfo(ad);
@@ -1272,6 +1272,10 @@ classdef TrialDataConditionAlign < TrialData
             
             % and for convenience switch to make this new alignment active
             td = td.useAlign(td.nAlign);
+        end
+        
+        function td = selectAlign(td, mask)
+            td = td.align(td.alignInfoSet{mask});
         end
         
         function td = unalign(td)
@@ -3845,8 +3849,35 @@ classdef TrialDataConditionAlign < TrialData
             countsCell = td.groupElementsRandomized(counts);
         end
         
+        function [rates, durations, containsBlanked] = getSpikeMeanRateAllAlign(td, unitName, varargin)
+            p = inputParser();
+            p.addParameter('invalidIfBlanked', false, @islogical); % if true, any trial that is partially blanked will be NaN, if false, the blanked region will be ignored and will not contribute to the time window used as the denominator for the rate calculation
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
+            
+            [counts, durations] = zerosvec(td.nTrials);
+            containsBlanked = falsevec(td.nTrials);
+            
+            for iA = 1:td.nAlign
+                counts = counts + td.useAlign(iA).getSpikeCounts(unitName, 'combine', p.Results.combine);
+                [durations_this, containsBlanked_this] = td.useAlign(iA).getValidDurationsForSpikeChannel(unitName, 'combine', p.Results.combine);
+                durations = durations + durations_this;
+                containsBlanked = containsBlanked | containsBlanked_this;
+            end
+            
+            if p.Results.invalidIfBlanked
+                durations(containsBlanked) = NaN;
+            end
+            rates = counts ./ durations * td.timeUnitsPerSecond;
+        end
+        
         function [rateCell, durationCell, containsBlankedCell] = getSpikeMeanRateGrouped(td, unitName, varargin)
             [rates, durations, containsBlanked] = td.getSpikeMeanRate(unitName, varargin{:});
+            [rateCell, durationCell, containsBlankedCell] = td.groupElements(rates, durations, containsBlanked);
+        end
+        
+        function [rateCell, durationCell, containsBlankedCell] = getSpikeMeanRateGroupedAllAlign(td, unitName, varargin)
+            [rates, durations, containsBlanked] = td.getSpikeMeanRateAllAlign(unitName, varargin{:});
             [rateCell, durationCell, containsBlankedCell] = td.groupElements(rates, durations, containsBlanked);
         end
         
@@ -3857,6 +3888,15 @@ classdef TrialDataConditionAlign < TrialData
         
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName, varargin) 
             rateCell = td.getSpikeMeanRateGrouped(unitName, varargin{:});
+            
+            meanByGroup = cellfun(@nanmean, rateCell);
+            semByGroup = cellfun(@nansem, rateCell);
+            stdByGroup = cellfun(@nanstd, rateCell);
+            nByGroup = cellfun(@(x) nnz(~isnan(x)), rateCell);
+        end
+        
+        function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeansAllAlign(td, unitName, varargin) 
+            rateCell = td.getSpikeMeanRateGroupedAllAlign(unitName, varargin{:});
             
             meanByGroup = cellfun(@nanmean, rateCell);
             semByGroup = cellfun(@nansem, rateCell);
@@ -4423,10 +4463,10 @@ classdef TrialDataConditionAlign < TrialData
             if p.Results.quick
                 xlabel('time (ms)');
             else
-                au = AutoAxis(axh);
-                au.addAutoAxisY();
+%                 au = AutoAxis(axh);
+%                 au.addAutoAxisY();
                 %au.axisMarginLeft = p.Results.axisMarginLeft;
-                au.update();
+%                 au.update();
             end
             
             hold(axh, 'off');
@@ -5777,6 +5817,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
             
             p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('timeScaleBarWidth', NaN, @isscalar);
+            
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', true, @islogical);
             
@@ -6030,7 +6072,7 @@ classdef TrialDataConditionAlign < TrialData
 
                         % setup x axis 
                         alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign) + xOffset, ...
-                            'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), ...
+                            'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), 'timeScaleBarWidth', p.Results.timeScaleBarWidth, ...
                             'style', p.Results.timeAxisStyle,  'showIntervals', p.Results.intervalShowOnAxis, ...
                             'showMarks', p.Results.markShowOnAxis, 'showRanges', p.Results.showRangesOnAxis);
                     end
@@ -6098,7 +6140,6 @@ classdef TrialDataConditionAlign < TrialData
             if ~p.Results.quick
                 au = AutoAxis(axh);
                 au.update();
-                au.installCallbacks();
             end
             
             hold(axh, 'off');

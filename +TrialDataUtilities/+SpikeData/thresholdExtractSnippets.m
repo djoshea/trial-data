@@ -57,7 +57,7 @@ function [timeCellByTrial, waveformsByTrial, idxCellByTrial] = thresholdExtractS
     if iscell(data)
         crossings = cellfun(@findCrossings, data, num2cell(threshByTrial), 'UniformOutput', false);
     else
-        crossings = arrayfun(@(trial) findCrossings(data(:, trial)), (1:nTrials)', ...
+        crossings = arrayfun(@(trial, thresh) findCrossings(data(:, trial), thresh), (1:nTrials)', ...
             num2cell(threshByTrial), 'UniformOutput', false);
     end
 

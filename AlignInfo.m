@@ -829,6 +829,7 @@ classdef AlignInfo < AlignDescriptor
             ad.assertApplied();
             ti = ad.timeInfoValid;
             lengths = makecol([ti.stop] - [ti.start]); % was +1 here, not sure why this is necessary important 20160418
+            lengths(lengths < 0) = 0;
        end
 
        function [start, stop, zero] = getStartStopZeroByTrial(ad)

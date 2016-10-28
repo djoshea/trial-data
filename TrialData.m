@@ -1133,6 +1133,7 @@
             starts = td.getEventFirst('TrialStart');
             ends = td.getEventLast('TrialEnd');
             durations = ends-starts;
+            durations(durations < 0) = 0;
             durations = td.replaceInvalidMaskWithValue(durations, NaN);
         end
              
@@ -1143,7 +1144,7 @@
             
             % similar to getValidDurations, except factors in the blanking
             % region
-            durations = td.getValidDurations('combine');
+            durations = td.getValidDurations();
             
             blankIntervals = td.getSpikeBlankingRegions(unitName, 'combine', p.Results.combine);
             
@@ -1398,12 +1399,15 @@
             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
             p.addParameter('isAligned', true, @islogical);
             p.addParameter('clearForInvalid', false, @islogical);
-            p.addParameter('scaleFromLims', [], @isvector);
-            p.addParameter('scaleToLims', [], @isvector);
+            p.addParameter('scaleFromLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
+            
             p.parse(varargin{:});
             times = p.Results.times;
             values = p.Results.values;
             units = p.Results.units;
+            isAligned = p.Results.isAligned;
 
             td.warnIfNoArgOut(nargout);
             
@@ -1446,10 +1450,12 @@
                             'Channel %s is not an analog channel', timeField);
                         timeField = cd.timeField;
                         times = {td.data.(timeField)};
+                        isAligned = false;
 
                     elseif isfield(td.data, timeField)
                         % use directly specified time field in .data
                         times = {td.data.(timeField)};
+                        isAligned = false;
                     else
                         % timeField not found
                         error('%s is not a channel or data field name', timeField);
@@ -1492,7 +1498,8 @@
             
             if ~isempty(values)
                 td = td.setAnalog(name, values, times, ...
-                    'clearForInvalid', p.Results.clearForInvalid, 'isAligned', p.Results.isAligned);
+                    'clearForInvalid', p.Results.clearForInvalid, 'isAligned', isAligned, ...
+                    'keepScaling', true, 'dataInMemoryScale', p.Results.dataInMemoryScale); 
             end
             
 %             function [t, v] = removenanBoth(t, v)
@@ -1515,7 +1522,8 @@
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) ||  isnumeric(x));
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
-            p.addParameter('keepScaling', false, @islogical);
+            p.addParameter('keepScaling', true, @islogical); % if false, make the channel unscaled and convert the data to access class
+            p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
             
             % these pass thru to setChannelData but are useful for error
             % checking here
@@ -1624,9 +1632,15 @@
                 % data being passed in is now in original units
                 % so change scaling factors
                 cd = cd.withNoScaling();
+                
+                if p.Results.dataInMemoryScale
+                    values = cd.convertMemoryDataCellToAccess(1, values);
+                end
             else
-                % take new data back into scaled values
-                values = cd.convertAccessDataCellToMemory(1, values);
+                if ~p.Results.dataInMemoryScale
+                    % take new data back into scaled values
+                    values = cd.convertAccessDataCellToMemory(1, values);
+                end
             end
             
             % update the channel descriptor accordingly
@@ -1639,6 +1653,49 @@
             else
                 td = td.setChannelData(name, {values}, 'updateValidOnly', p.Results.updateValidOnly, p.Unmatched);
             end
+        end
+        
+        function td = addOrUpdateAnalog(td, name, data, times, varargin)
+            % set time samples of channel group if it exists where mask is true.
+            % By default mask is non-empty cells in times
+            % otherwise create channel
+            p = inputParser();
+            p.addParameter('mask', ~cellfun(@isempty, data), @islogical);
+%             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
+            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('keepScaling', false, @islogical);
+            
+            p.addParameter('dataInMemoryScale', false, @islogical);
+            
+            p.addParameter('timeField', '', @ischar);
+            p.addParameter('units', '', @ischar);
+            p.addParameter('scaleFromLims', [], @isvector);
+            p.addParameter('scaleToLims', [], @isvector);
+         
+            p.parse(varargin{:});
+            
+            mask = makecol(p.Results.mask) & td.valid;
+            
+            assert(iscell(data) && numel(data) == td.nTrials, 'Data must be nTrials cell vector');
+            
+            td.warnIfNoArgOut(nargout);
+            if td.hasAnalogChannel(name)
+                td = td.setAnalog(name, data, times, 'updateMask', mask, ...
+                    'isAligned', p.Results.isAligned, 'dataInMemoryScale', p.Results.dataInMemoryScale);
+            else
+                % clear masked out cells
+                [times{~mask}] = deal([]);
+                [data{~mask}] = deal([]);
+                td = td.addAnalog(name, data, times, ...
+                    TrialDataUtilities.Data.keepfields(p.Results, {'timeField', 'units', 'isContinuousNeural', 'isAligned', ...
+                    'scaleFromLims', 'scaleToLims', 'dataInMemoryScale'}));
+            end
+        end
+        
+        function td = addOrUpdateContinuousNeural(td, name, data, times, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            td = td.addOrUpdateAnalog(name, data, times, varargin{:}, 'isContinuousNeural', true);
         end
         
         function td = scaleAnalogTimeField(td, names, multiplyBy, varargin)
@@ -1955,10 +2012,12 @@
             p.addParameter('clearForInvalid', false, @islogical);
             p.addParameter('scaleFromLims', [], @isvector);
             p.addParameter('scaleToLims', [], @isvector);
+            p.addParameter('dataInMemoryScale', false, @islogical); % treat data as in memory scaling and class (don't reverse the scaling)
             p.parse(varargin{:});
             times = p.Results.times;
             values = p.Results.values;
             units = p.Results.units;
+            isAligned = p.Results.isAligned;
 
             td.warnIfNoArgOut(nargout);
             
@@ -1969,24 +2028,7 @@
             else
                 timeField = p.Results.timeField;
             end
-            
-            % remove NaN values from analog signals?
-%             if ~iscell(values) && ismatrix(values) && ~isempty(values)
-%                 assert(size(values, 1) == td.nTrials, 'Data matrix must be size nTrials along first dimension');
-%                 
-%                 % strip nans from values and times together
-%                 if ~isempty(times)
-%                     if isvector(times)
-%                         % same time vector for each row
-%                         [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times), makecol(1:td.nTrials), 'UniformOutput', false);
-%                     else
-%                         [values, times] = arrayfun(@(idx) removenanBoth(values(idx, :), times(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
-%                     end
-%                 else
-%                     values = arrayfun(@(idx) removenan(values(idx, :)), makecol(1:td.nTrials), 'UniformOutput', false);
-%                 end
-%             end
-            
+           
             % times can either be a field/channel name, or it can be raw
             % time values
             if isempty(times)
@@ -2001,10 +2043,12 @@
                             'Channel %s is not an analog channel', timeField);
                         timeField = cd.timeField;
                         times = {td.data.(timeField)};
+                        isAligned = false;
 
                     elseif isfield(td.data, timeField)
                         % use directly specified time field in .data
                         times = {td.data.(timeField)};
+                        isAligned = false;
                     else
                         % timeField not found
                         error('%s is not a channel or data field name', timeField);
@@ -2037,8 +2081,9 @@
                 error('Field %s already exists in data structure', groupName);
             end
             
-            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, times);
-            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, values);
+            % do the assignment
+            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, []);
+            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, []);
                 
             % loop over channels and create AnalogChannelDescriptors
             opts.scaleFromLims = p.Results.scaleFromLims;
@@ -2058,12 +2103,61 @@
                 
                 td = td.addChannel(cd, {}, 'ignoreDataFields', true);
             end
+            
+            % set the data and time field in td.data
+            td = td.setAnalogChannelGroup(groupName, values, times, 'isAligned', isAligned, ...
+               'keepScaling', true, 'dataInMemoryScale', p.Results.dataInMemoryScale);
         end
         
         function td = addContinuousNeuralChannelGroup(td, groupName, chNames, varargin)
             % see addAnalogChannelGroup, same signature
             td.warnIfNoArgOut(nargout);
             td = td.addAnalogChannelGroup(groupName, chNames, varargin{:}, 'isContinuousNeural', true);
+        end
+        
+        function td = addOrUpdateAnalogChannelGroup(td, groupName, chNames, data, times, varargin)
+            % set time samples of channel group if it exists where mask is true.
+            % By default mask is non-empty cells in times
+            % otherwise create channel
+            p = inputParser();
+            p.addParameter('mask', ~cellfun(@isempty, data), @islogical);
+%             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
+            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('keepScaling', false, @islogical);
+            
+            p.addParameter('dataInMemoryScale', false, @islogical);
+            
+            p.addParameter('timeField', '', @ischar);
+            p.addParameter('units', '', @ischar);
+            p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
+            p.addParameter('scaleFromLims', [], @isvector);
+            p.addParameter('scaleToLims', [], @isvector);
+            
+            p.parse(varargin{:});
+            td.warnIfNoArgOut(nargout);
+            
+            mask = makecol(p.Results.mask) & td.valid;
+            
+            td.warnIfNoArgOut(nargout);
+            if td.hasAnalogChannelGroup(groupName)
+                chNamesCurrent = td.listAnalogChannelsInGroup(groupName);
+                assert(isequal(chNamesCurrent, makecol(chNames)), ...
+                    'Channel names list does not match existing channel group %s', groupName);
+                td = td.setAnalogChannelGroup(groupName, data, times, 'updateMask', mask, ...
+                    'isAligned', p.Results.isAligned, 'dataInMemoryScale', p.Results.dataInMemoryScale);
+            else
+                % clear masked out cells
+                [times{~mask}] = deal([]);
+                [data{~mask}] = deal([]);
+                td = td.addAnalogChannelGroup(groupName, chNames, data, times, ...
+                    TrialDataUtilities.Data.keepfields(p.Results, {'timeField', 'units', 'isContinuousNeural', 'isAligned', ...
+                    'scaleFromLims', 'scaleToLims', 'dataInMemoryScale'}));
+            end
+        end
+        
+        function td = addOrUpdateContinuousNeuralChannelGroup(td, groupName, chNames, data, times, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.addOrUpdateAnalogChannelGroup(groupName, chNames, data, times, varargin{:}, 'isContinuousNeural', true);
         end
         
         function [groupNames, channelsByGroup] = listAnalogChannelGroups(td)
@@ -2512,7 +2606,9 @@
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
-            p.addParameter('keepScaling', false, @islogical);
+            p.addParameter('keepScaling', true, @islogical); % if false, drop the scaling of the channel in memory and convert everything to access class 
+            p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
@@ -2536,7 +2632,8 @@
             elseif iscell(values)
                 assert(numel(values) == td.nTrials, 'Values as cell must have numel == nTrials');
                 nCol = cellfun(@(x) size(x, 2), values);
-                assert(all(nCol == nCh), 'All elements of values must have same number of columns as channels (%d)', nCh);
+                isEmpty = cellfun(@isempty, values);
+                assert(all(nCol(~isEmpty) == nCh), 'All elements of values must have same number of columns as channels (%d)', nCh);
                 values = makecol(values);
             else
                 error('Values must be numeric tensor or cell array');
@@ -2589,16 +2686,25 @@
             times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
           
             if ~p.Results.keepScaling
+                if p.Results.dataInMemoryScale
+                    % we need to un-scale this memory-scale data back to
+                    % access scale
+                    values = td.channelDescriptorsByName.(chList{1}).convertMemoryDataCellToAccess(1, values);
+                end
                 % data being passed in is now in original units
                 % so change scaling factors of the channel and the data
                 td = td.convertAnalogChannelGroupToNoScaling(groupName);
+                
                 % and convert back to memory anyway in case the data class
                 % has changed, although this shouldn't do any scaling
+                % since the channel descriptor has changed
                 values = td.channelDescriptorsByName.(chList{1}).convertAccessDataCellToMemory(1, values);
             else
-                % take new data back into scaled values to match the
-                % existing
-                values = cd.convertAccessDataCellToMemory(1, values);
+                if ~p.Results.dataInMemoryScale
+                    % take new data back into scaled values to match the
+                    % existing
+                    values = cd.convertAccessDataCellToMemory(1, values);
+                end
             end
             
             if updateTimes
@@ -3130,6 +3236,26 @@
                 p.Unmatched);
         end
         
+        function td = addOrUpdateScalarParam(td, name, vals, varargin)
+            % set values of channel name if it exists where mask is true.
+            % By default mask is non-nan values of mask
+            % otherwise create channel
+            p = inputParser();
+            p.addParameter('mask', ~isnan(vals), @islogical);
+            p.addParameter('units', '', @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            mask = makecol(p.Results.mask) & td.valid;
+            td.warnIfNoArgOut(nargout);
+            if td.hasParamChannel(name)
+                td = td.setParam(name, vals, 'updateMask', mask);
+            else
+                vals(~mask) = NaN;
+                td = td.addScalarParam(name, vals, 'units', p.Results.units);
+            end
+        end
+        
         function td = addStringParam(td, name, varargin)
             td.warnIfNoArgOut(nargout);
             
@@ -3144,6 +3270,24 @@
                 p.Unmatched);
         end
         
+        function td = addOrUpdateStringParam(td, name, vals, varargin)
+            % set values of channel name if it exists where mask is true.
+            % By default mask is non-empty values
+            % otherwise create channel
+            p = inputParser();
+            p.addParameter('mask', ~cellfun(@isempty, vals), @islogical);
+            p.parse(varargin{:});
+            
+            mask = makecol(p.Results.mask) & td.valid;
+            td.warnIfNoArgOut(nargout);
+            if td.hasParamChannel(name)
+                td = td.setParam(name, vals, 'updateMask', mask);
+            else
+                [vals{~mask}] = deal([]);
+                td = td.addStringParam(name, vals);
+            end
+        end
+        
         function td = addBooleanParam(td, name, varargin)
             td.warnIfNoArgOut(nargout);
             
@@ -3156,6 +3300,25 @@
             values = p.Results.values;
             td = td.addParam(name, values, 'channelDescriptor', cd, ...
                 p.Unmatched);
+        end
+        
+        function td = addOrUpdateBooleanParam(td, name, vals, varargin)
+            % set values of channel name if it exists where mask is true.
+            % By default mask is non-empty values
+            % otherwise create channel
+            p = inputParser();
+            p.addParameter('mask', vals, @islogical);
+            p.parse(varargin{:});
+            
+            mask = makecol(p.Results.mask) & td.valid;
+            
+            td.warnIfNoArgOut(nargout);
+            if td.hasParamChannel(name)
+                td = td.setParam(name, vals, 'updateMask', mask);
+            else
+                vals(~mask) = false;
+                td = td.addBooleanParam(name, vals);
+            end
         end
         
         function tf = hasParamChannel(td, name) 
@@ -3626,6 +3789,44 @@
 
             % make the final update
             td = td.setChannelData(name, channelData, 'fieldMask', channelFieldMask, p.Unmatched);
+        end
+        
+        function td = addOrUpdateSpikeChannel(td, name, times, varargin)
+            % set spike times of channel name if it exists where mask is true.
+            % By default mask is non-empty cells in times
+            % otherwise create channel
+            p = inputParser();
+            p.addParameter('mask', ~cellfun(@isempty, times), @islogical);
+            p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
+            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('waveforms', [], @iscell);
+            p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
+            p.addParameter('sortQualityByTrial', [], @isvector); % nTrials x 1 vector of per-trial ratings
+            p.parse(varargin{:});
+            
+            mask = makecol(p.Results.mask) & td.valid;
+            
+            td.warnIfNoArgOut(nargout);
+            if td.hasParamChannel(name)
+                td = td.setSpikeChannel(name, times, 'updateMask', mask, ...
+                    'isAligned', p.Results.isAligned, 'waveforms', p.Results.waveforms, ...
+                    'blankingRegions', p.Results.blankingRegions, ...
+                    'sortQualityByTrial', p.Results.sortQuality);
+            else
+                % clear masked out cells
+                [times{~mask}] = deal([]);
+                if ~isempty(p.Results.waveforms)
+                    waves = p.Results.waveforms;
+                    [waves{~mask}] = deal([]);
+                else
+                    waves = p.Results.waveforms;
+                end
+                td = td.addSpikeChannel(name, times, 'updateMask', mask, ...
+                    'isAligned', p.Results.isAligned, 'waveforms', waves, ...
+                    'blankingRegions', p.Results.blankingRegions, ...
+                    'sortQualityByTrial', p.Results.sortQualityByTrial, ...
+                    'waveformsTime', p.Results.waveformsTime);
+            end
         end
         
         function td = mergeSpikeChannels(td, chList, varargin)

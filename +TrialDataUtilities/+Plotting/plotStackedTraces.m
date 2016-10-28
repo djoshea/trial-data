@@ -39,6 +39,7 @@ p.addParameter('dataUnits', [], @(x) ischar(x) || (isvector(x) && iscellstr(x)))
 p.addParameter('verticalScaleBarHideLabel', false, @islogical);
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
+p.addParameter('dataRangeFormat', '%.4g', @ischar);
 p.KeepUnmatched = true;
 p.CaseSensitive = false;
 p.parse(varargin{:});
@@ -385,8 +386,8 @@ if showYRanges && ~showScaleBars
             else
                 units = dataUnits;
             end
-            labelHigh = sprintf('%.4g %s', dataHighOrig(iT), units);
-            labelLow = sprintf('%.4g %s', dataLowOrig(iT), units);
+            labelHigh = sprintf([p.Results.dataRangeFormat, ' %s'], dataHighOrig(iT), units);
+            labelLow = sprintf([p.Results.dataRangeFormat, ' %s'], dataLowOrig(iT), units);
             
             au.addTickBridge('y', 'tick', [traceLows(iT) traceHighs(iT)], ...
                 'tickLabel', {labelLow; labelHigh}, 'tickAlignment', {'bottom', 'top'}, ...

@@ -4,7 +4,7 @@ p = inputParser();
 p.addOptional('unitNames', td.listSpikeChannels, @iscellstr);
 p.addOptional('minChannels', 5, @isscalar);
 p.addOptional('minFracChannels', 0, @isscalar);
-p.addOptional('timeWindow', 0.5, @isscalar);
+p.addOptional('timeWindow', 0.1, @isscalar);
 p.parse(varargin{:});
 
 unitNames = p.Results.unitNames;

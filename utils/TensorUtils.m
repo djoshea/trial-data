@@ -138,6 +138,12 @@ classdef TensorUtils
             nonSpanDims = TensorUtils.otherDims(size(resultCell{1}), spanDim, ndims(varargin{1}));
             varargout = cellfun(@(r) TensorUtils.reassemble(r, nonSpanDims, ndims(varargin{1})), ...
                 resultCell, 'UniformOutput', false);
+            
+            for iV = 1:numel(varargin)
+                if ~iscell(varargin{iV})
+                    varargout{iV} = cell2mat(varargout{iV});
+                end
+            end
         end
         
         function varargout = mapFromAxisLists(fn, axisLists, varargin)
