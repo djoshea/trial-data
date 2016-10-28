@@ -3210,7 +3210,7 @@ classdef PopulationTrajectorySet
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
                 
-                listOriginal = src.conditionInfo.listByCondition;
+                listOriginal = src.conditionInfo.listByCondition(:);
                 listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
@@ -3260,7 +3260,7 @@ classdef PopulationTrajectorySet
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
                 
-                listOriginal = src.conditionInfo.listByCondition;
+                listOriginal = src.conditionInfo.listByCondition(:);
                 listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
@@ -3307,7 +3307,7 @@ classdef PopulationTrajectorySet
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
                 
-                listOriginal = src.conditionInfo.listByCondition;
+                listOriginal = src.conditionInfo.listByCondition(:);
                 listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
@@ -3356,7 +3356,7 @@ classdef PopulationTrajectorySet
                 basisIdx = pset.getBasisIdxForDataSource(iSrc);
                 listByConditionCell(basisIdx, :, :) = repmat(list, [numel(basisIdx), 1, 1]);
                 
-                listOriginal = src.conditionInfo.listByCondition;
+                listOriginal = src.conditionInfo.listByCondition(:);
                 listByConditionCellOriginal(basisIdx, :) = repmat(listOriginal, [numel(basisIdx), 1, 1]);
             end
             prog.finish();
@@ -3402,6 +3402,8 @@ classdef PopulationTrajectorySet
             
             for iAlign = 1:nAlign
                 prog = ProgressBar(pset.nBases, 'Computing re-conditioned trial-averaged data for align %d', iAlign);
+                
+                [dataMeanRandomized{iAlign}, dataSemRandomized{iAlign}] = deal(nan(nBases, nConditions, nTimeDataMean, nRandomSamples));
                 for iBasis = 1:nBases    
 
                     % don't process invalid bases, leave these as NaNs
