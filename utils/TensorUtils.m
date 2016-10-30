@@ -155,7 +155,7 @@ classdef TensorUtils
             % {axis1{i}, axis2{j}, axis3{j}}
             
             p = inputParser;
-            p.addParamValue('asCell', true, @islogical);
+            p.addParameter('asCell', true, @islogical);
             p.parse(varargin{:});
             
             if isempty(fn)
@@ -1302,14 +1302,14 @@ classdef TensorUtils
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
             % will compute the mean in slices along dims 2 and 3. the
             % result will have size s1 x 1 x 1 x s4
-            t = cell2mat(TensorUtils.mapSlicesInPlace(@(slice) mean(slice(:)), dims, t));
+            t = TensorUtils.mapSlicesInPlace(@(slice) mean(slice(:)), dims, t);
         end
         
         function t = nanmeanMultiDim(t, dims)
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
             % will compute the mean in slices along dims 2 and 3. the
             % result will have size s1 x 1 x 1 x s4
-            t = cell2mat(TensorUtils.mapSlicesInPlace(@(slice) nanmean(slice(:)), dims, t));
+            t = TensorUtils.mapSlicesInPlace(@(slice) nanmean(slice(:)), dims, t);
         end
         
         function t = nansumMultiDim(t, dims)
@@ -1322,21 +1322,21 @@ classdef TensorUtils
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
             % will compute the mean in slices along dims 2 and 3. the
             % result will have size s1 x 1 x 1 x s4
-            t = cell2mat(TensorUtils.mapSlicesInPlace(@(slice) var(slice(:), normOpt), dims, t));
+            t = TensorUtils.mapSlicesInPlace(@(slice) var(slice(:), normOpt), dims, t);
         end
         
         function t = nanvarMultiDim(t, normOpt, dims)
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
             % will compute the mean in slices along dims 2 and 3. the
             % result will have size s1 x 1 x 1 x s4
-            t = cell2mat(TensorUtils.mapSlicesInPlace(@(slice) var(slice(:), normOpt, 'omitnan'), dims, t));
+            t = TensorUtils.mapSlicesInPlace(@(slice) var(slice(:), normOpt, 'omitnan'), dims, t);
         end
         
         function t = stdMultiDim(t, dims, varargin)
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
             % will compute the mean in slices along dims 2 and 3. the
             % result will have size s1 x 1 x 1 x s4
-            t = cell2mat(TensorUtils.mapSlicesInPlace(@(slice) std(slice(:), varargin{:}), dims, t));
+            t = TensorUtils.mapSlicesInPlace(@(slice) std(slice(:), varargin{:}), dims, t);
         end
         
         function [y, group] = buildAnovanInputs(valueCell, namesAlongAxes)
