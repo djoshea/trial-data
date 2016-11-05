@@ -4241,7 +4241,7 @@ k                    error('Please provide alignDescriptors as successive argume
             td.plotSpikeWaveforms(unitNames, p.Unmatched);
         end
         
-        function units = matchSpikeChannelsByRegex(td, units)
+        function units = listSpikeChannelsMatchingRegex(td, units)
             if ischar(units), units = {units}; end
             allUnits = td.listSpikeChannels();
             matches = cellvec(numel(units));
@@ -4252,7 +4252,7 @@ k                    error('Please provide alignDescriptors as successive argume
             units = cat(1, matches{:});
         end
         
-        function units = matchSpikeChannelsByWildcard(td, units)
+        function units = listSpikeChannelsMatchingWildcard(td, units)
             if ischar(units), units = {units}; end
             allUnits = td.listSpikeChannels();
             matches = cellvec(numel(units));
@@ -5742,6 +5742,10 @@ k                    error('Please provide alignDescriptors as successive argume
             ax = AutoAxis();
             ax.axisMarginLeft = 5;
             ax.update();
+        end
+        
+        function plotSingleTrialAnalogChannelGroup(td, groupName, varargin)
+            td.plotSingleTrialAnalogChannels(td.listAnalogChannelsInGroup(groupName), varargin{:});
         end
     end
     

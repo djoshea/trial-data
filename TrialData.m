@@ -828,6 +828,10 @@
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, td.nTrials));
             if p.Results.validOnly
                 mask = mask & td.valid;
+            else
+                % don't override reason for trials already permanently
+                % invalid
+                mask = mask & ~td.permanentlyInvalid;
             end
 
             td.manualValid(mask) = false;
@@ -847,6 +851,14 @@
                 reason = '';
             end
             td = td.markTrialsPermanentlyInvalid(td.valid, reason, 'validOnly', true);
+        end 
+        
+        function td = markInvalidTrialsPermanentlyInvalid(td, reason)
+            td.warnIfNoArgOut(nargout);
+            if nargin < 2
+                reason = '';
+            end
+            td = td.markTrialsPermanentlyInvalid(~td.valid, reason, 'validOnly', false);
         end 
         
         function td = setManualValidTo(td, mask)
@@ -1300,6 +1312,16 @@
             end
             
             td = td.postDataChange(fieldsRemove);
+        end
+        
+        function td = dropChannelsMatchingWildcard(td, search)
+            list = td.listChannelsMatchingWildcard(search);
+            td = td.dropChannels(list);
+        end
+        
+        function td = dropChannelsMatchingRegex(td, search)
+            list = td.listChannelsMatchingRegex(search);
+            td = td.dropChannels(list);
         end
         
         function td = trimAllChannelsRaw(td, varargin)
