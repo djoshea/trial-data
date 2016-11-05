@@ -738,7 +738,7 @@ classdef StateSpaceProjectionStatistics
                 
                 componentFracTotalVariance = s.componentVarByBasis_shared(iB) / s.totalVar_shared;
                 text(cumBasisMix(iB, end), nBases-iB+rowHeight/2, sprintf('  %.2f%%', componentFracTotalVariance*100), ...
-                    'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Left', 'Parent', axh); 
+                    'VerticalAlignment', 'Middle', 'HorizontalAlignment', 'Left', 'Parent', axh, 'BackgroundColor', 'none'); 
                % extent = get(h, 'Extent');
                 %xMax = max(extent(1)+extent(3), xMax);
             end

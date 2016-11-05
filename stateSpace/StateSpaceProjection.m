@@ -176,6 +176,10 @@ classdef StateSpaceProjection
         function proj = set.basisNamesProj(proj, names)
             assert(numel(names) == proj.nBasesProj);
             proj.basisNamesProjManual = names;
+%             if ~isempty(names)
+%                 % only have one or the other set
+%                 proj.basisNamesProjStem = '';
+%             end
         end
         
         function stem = get.basisNamesProjStem(proj)
@@ -188,9 +192,9 @@ classdef StateSpaceProjection
                 
         function proj = set.basisNamesProjStem(proj, stem)
             proj.basisNamesProjStem = stem;
-            if ~isempty(stem)
-                proj.basisNamesProjManual = {}; %#ok<MCSUP>
-            end
+%             if ~isempty(stem)
+%                 proj.basisNamesProjManual = {}; %#ok<MCSUP>
+%             end
         end
             
     end
@@ -539,7 +543,7 @@ classdef StateSpaceProjection
             % aggregate AlignSummary data. Each projected basis samples trials from all original
             % trials, so we aggregate all AlignSummary instances into one
             b.alignSummaryData = pset.alignSummaryAggregated';
-            b.basisAlignSummaryLookup = ones(pset.nBases, 1);
+            b.basisAlignSummaryLookup = ones(proj.nBasesProj, 1); % needs to match number of projected bases
             
             % ensure there is no translation normalization by default
             b.translationNormalization = [];
@@ -706,7 +710,9 @@ classdef StateSpaceProjection
             proj.encoderNbyK = proj.encoderNbyK(:, idx); % select on output bases
             proj.basisValidProj = proj.basisValidProj(idx);
             proj.basisInvalidCauseProj = proj.basisInvalidCauseProj(idx);
-            proj.basisNamesProj = proj.basisNamesProj(idx);
+            if ~isempty(proj.basisNamesProjManual)
+                proj.basisNamesProj = proj.basisNamesProjManual(idx);
+            end
             if ~isempty(proj.translationNormalizationPostProject)
                 proj.translationNormalizationPostProject = proj.translationNormalizationPostProject.filterBases(idx);
             end
