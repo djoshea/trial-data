@@ -2608,6 +2608,70 @@
             end
         end
         
+        function delta = getAnalogChannelGroupTimeDelta(td, groupName)
+            % compute the median delta betwen successive samples of an
+            % analog channel(s), returns the minimum timeDelta across all channels
+            % given in units of .timeUnits
+            
+            if ischar(groupName)
+                groupName = {groupName};
+            end
+
+            delta = nanvec(numel(groupName));
+            for i = 1:numel(groupName)
+                time = td.getAnalogChannelGroupTime(groupName{i});
+                % median of medians is faster and close enough
+                delta(i) = nanmedian(cellfun(@(x) nanmedian(diff(x)), time));
+            end
+
+            delta = nanmin(delta);
+        end
+        
+        function fsHz = getAnalogChannelGroupSamplingRateHz(td, name)
+            fsHz = td.timeUnitsPerSecond / td.getAnalogChannelGroupTimeDelta(name);
+        end
+        
+        function deltaMs = getAnalogChannelGroupTimeDeltaMs(td, name)
+            delta = td.getAnalogChannelGroupTimeDelta(name);
+            deltaMs = delta * td.timeUnitsPerSecond / 1000;
+        end
+        
+        function [dataUnif, timeUnif, delta] = getAnalogChannelGroupRawUniformlySampled(td, groupName, varargin)
+            p = inputParser();
+            p.addParameter('method', 'linear', @ischar);
+            p.addParameter('delta', [], @(x) isscalar(x) || isempty(x)); % in ms
+            p.parse(varargin{:});
+            
+            delta = p.Results.delta;
+            if isempty(delta)
+                delta = td.getAnalogChannelGroupTimeDelta(groupName);
+            end
+            [data, time] = td.getAnalogChannelGroupRaw(groupName);  %#ok<*PROP>
+            
+            [dataUnif, timeUnif] = cellvec(td.nTrials);
+            
+            % get first and last valid sample for all trials
+            % very important to use this in case data has NaN samples
+            [tmins, tmaxs] = TrialDataUtilities.Data.getValidTimeExtents(time, data);
+            for iT = 1:td.nTrials
+                if isempty(time{iT}) || isempty(data{iT})
+                    continue;
+                end
+                timeUnif{iT} = (tmins(iT):delta:tmaxs(iT))';
+                if nnz(~isnan(data{iT})) > 5
+                    dataUnif{iT} = interp1(time{iT}, data{iT}, timeUnif{iT}, p.Results.method);
+                else
+                    dataUnif{iT} = nan(size(timeUnif{iT}));
+                end
+            end
+        end
+        
+        function [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled(td, groupName, varargin)
+            [dataUnif, timeUnif, delta] = td.getAnalogChannelGroupRawUniformlySampled(groupName, varargin{:});
+            dataUnif = td.replaceInvalidMaskWithValue(dataUnif, []);
+            timeUnif = td.replaceInvalidMaskWithValue(timeUnif, []);
+        end
+        
         function [data, time] = getAnalogChannelGroup(td, groupName)
             [data, time] = td.getAnalogChannelGroupRaw(groupName);
             data = td.replaceInvalidMaskWithValue(data, []);

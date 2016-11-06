@@ -2568,6 +2568,12 @@ k                    error('Please provide alignDescriptors as successive argume
             dCell = td.groupElements(mat);
         end
         
+        function [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled(td, name, varargin)
+            [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled@TrialData(td, name, varargin{:});
+
+            [dataUnif, timeUnif] = td.alignInfoActive.getAlignedTimeseries(dataUnif, timeUnif, false);
+        end
+        
         function td = setAnalogChannelGroupWithinAlignWindow(td, groupName, values, varargin)
             % replace the analog data within the current align window with
             % the data in values.
