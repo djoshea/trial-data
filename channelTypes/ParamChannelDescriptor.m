@@ -28,7 +28,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.warnIfNoArgOut(nargout);
             
             if isempty(varargin)
-                error('Must provide at least 1 data cell');
+                error('Must prsinovide at least 1 data cell');
             end
            
             assert(numel(varargin) == 1, 'ParamChannels take only 1 data cell');

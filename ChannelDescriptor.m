@@ -463,10 +463,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function vals = get.missingValueByField(cd)
             missingVals = {false, NaN, [], [], '', NaN, []};
             vals = missingVals(cd.elementTypeByField);
-            memClasses = cd.memoryClassByField;
+            accClasses = cd.accessClassByField; % was memory class, changed to access class so that int types converted to single get filled as NaN
             for iF = 1:numel(vals)
                 if cd.elementTypeByField(iF) == cd.SCALAR
-                    vals{iF} = cast(vals{iF}, memClasses{iF});
+                    vals{iF} = cast(vals{iF}, accClasses{iF});
                 end
             end
         end

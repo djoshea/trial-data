@@ -2576,6 +2576,7 @@
             
             for i = 1:numel(data)
                 time{i} = makecol(time{i});
+                if isempty(data{i}), time{i} = []; continue; end
                 assert(size(data{i}, 1) == numel(time{i}), 'Number of timepoints in data on trial %d does not match time', i);
                 assert(size(data{i}, 2) == numel(chList), 'Number of channels on trial %d does not match channel count', i);
             end
