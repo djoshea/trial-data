@@ -4469,10 +4469,10 @@ k                    error('Please provide alignDescriptors as successive argume
             if p.Results.quick
                 xlabel('time (ms)');
             else
-%                 au = AutoAxis(axh);
+                au = AutoAxis(axh);
 %                 au.addAutoAxisY();
                 %au.axisMarginLeft = p.Results.axisMarginLeft;
-%                 au.update();
+                au.update();
             end
             
             hold(axh, 'off');
