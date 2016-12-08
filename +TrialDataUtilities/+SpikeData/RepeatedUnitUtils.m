@@ -189,6 +189,7 @@ classdef RepeatedUnitUtils
                 
                 nRemoved(cHigh) = nRemoved(cHigh) + sum(nRemovedMat(:));
             end
+            prog.finish();
         end     
     end
 end

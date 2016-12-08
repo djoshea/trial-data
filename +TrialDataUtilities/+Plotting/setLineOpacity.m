@@ -18,7 +18,9 @@ function setLineOpacity(s, alpha)
 %             end
             
             % use RGBA color specification
-            s(i).Color(4) = alpha;
+            if isvalid(s(i))
+                s(i).Color(4) = alpha;
+            end
         end
     end
     
