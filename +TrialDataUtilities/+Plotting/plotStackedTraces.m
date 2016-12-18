@@ -28,7 +28,7 @@ p.addParameter('intercalate', false, @islogical); % the traces should be squishe
 p.addParameter('spacingFraction', 1.2, @isscalar); % the gap between each trace / the height of those traces
 p.addParameter('colormap', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for superimposed traces 
 p.addParameter('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
-p.addParameter('labels', {}, @isvector); % labels over nTraces for the y axis
+p.addParameter('labels', {}, @(x) isempty(x) || isvector(x)); % labels over nTraces for the y axis
 p.addParameter('labelRotation', 0, @isvector);
 p.addParameter('labelsLinesWithinEachTrace', {}, @iscell); % labels over the nSuperimposed traces, for clickable descriptions
 p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the labels on the left axis, slow if too many traces, 'auto' is true if nTraces < 25
@@ -50,7 +50,7 @@ if ~iscell(data)
     nSuperimposed =size(data, 3);
     nTime = size(data, 1);
     if isempty(tvec)
-        tvec = makecol(1:nTime);
+        tvec = makecol(0:nTime-1);
     end
     assert(numel(tvec) == nTime, 'Time vector must match size(data, 1)');
     
@@ -153,7 +153,7 @@ if ~iscell(data)
         % plot simultaneously
         hLines = plot(tvec, matShift, '-', 'Color', map(1, :), p.Unmatched);
     else
-        set(gca, 'ColorOrder', map); % the map will superimpose automatically
+%         set(gca, 'ColorOrder', map); % the map will superimpose automatically
         hold on;
 
         % here we arrange so that all traces are stacked vertically but that
@@ -162,6 +162,10 @@ if ~iscell(data)
 
         hLines = plot(tvec, matShiftCat, '-', p.Unmatched);
         hLines = reshape(hLines, [nSuperimposed nTraces])';
+        
+        for iS = 1:nSuperimposed
+            set(hLines(:, iS), 'Color', map(iS, :));
+        end
     end
 
 else
@@ -371,6 +375,8 @@ else
     showYRanges = p.Results.showDataRanges;
 end
 
+axis tight
+
 % show y extents as tick bridges on the right hand side
 if showYRanges && ~showScaleBars
     if ~p.Results.maintainScaleSuperimposed
@@ -387,7 +393,7 @@ if showYRanges && ~showScaleBars
                 units = dataUnits;
             end
             labelHigh = sprintf([p.Results.dataRangeFormat, ' %s'], dataHighOrig(iT), units);
-            labelLow = sprintf([p.Results.dataRangeFormat, ' %s'], dataLowOrig(iT), units);
+            labelLow  = sprintf([p.Results.dataRangeFormat, ' %s'], dataLowOrig(iT), units);
             
             au.addTickBridge('y', 'tick', [traceLows(iT) traceHighs(iT)], ...
                 'tickLabel', {labelLow; labelHigh}, 'tickAlignment', {'bottom', 'top'}, ...

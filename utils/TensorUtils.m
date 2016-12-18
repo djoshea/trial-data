@@ -147,7 +147,7 @@ classdef TensorUtils
         end
         
         function varargout = mapFromAxisLists(fn, axisLists, varargin)
-            % varargout = mapToSizeFromAxisElements(sz, [fn = @(varargin) varargin], axis1, axis2, ...)
+            % varargout = mapFromAxisLists(fn = @(varargin) ..., axis1, axis2, ...)
             % build a tensor with size sz by setting
             % tensor(i,j,k,...) = fn(axis1{i}, axis2{j}, axis3{k})
             % (or axis(i) for numeric arrays)
@@ -156,10 +156,14 @@ classdef TensorUtils
             
             p = inputParser;
             p.addParameter('asCell', true, @islogical);
+            p.addParameter('collectArguments', false, @islogical); % if true, call as fn({arg 1, arg 2, arg 3}) rather than fn(arg1, arg2, arg3)
             p.parse(varargin{:});
             
             if isempty(fn)
                 fn = @(varargin) varargin;
+            end
+            if isa(axisLists, 'function_handle')
+                error('Usage: mapFromAxisLists(fn, axisLists, ...)');
             end
             if iscell(axisLists)
                 sz = cellfun(@numel, axisLists);
@@ -178,7 +182,12 @@ classdef TensorUtils
                         inputs{iAx} = axisLists{iAx}(varargin{iAx});
                     end
                 end
-                [varargout{1:nargout}] = fn(inputs{:});
+                
+                if p.Results.collectArguments
+                    [varargout{1:nargout}] = fn(inputs);
+                else
+                    [varargout{1:nargout}] = fn(inputs{:});
+                end
             end
             
         end
@@ -210,6 +219,33 @@ classdef TensorUtils
             % combined will be size [nByArg(:) nFieldsTotal)
             combined = cat(nargin+1, asCells{:});
             t = cell2struct(combined, allFields, nArg+1);
+        end
+        
+        function S = buildCombinatorialStringTensorFromLists(listsByDim, joinWith)
+            if nargin < 2
+                joinWith = ' ';
+            end
+            
+            % convert numerics to strings
+            for iL = 1:numel(listsByDim)
+                if isempty(listsByDim{iL}) || numel(listsByDim{iL}) == 1 && isempty(listsByDim{iL}{1})
+                    % just leave as singleton dimension, don't alter string
+                    listsByDim{iL} = {''};
+                else
+                    for iV = 1:numel(listsByDim{iL})
+                        if isnumeric(listsByDim{iL}{iV})
+                            listsByDim{iL}{iV} = num2str(listsByDim{iL}{iV});
+                        end
+
+                        % and add the joinWith string to the end
+                        if iL < numel(listsByDim)
+                            listsByDim{iL}{iV} = [listsByDim{iL}{iV}, joinWith];
+                        end
+                    end
+                end
+            end
+            
+            S = TensorUtils.mapFromAxisLists(@horzcat, listsByDim);
         end
         
         function t = mapCatToTensor(fn, varargin)
@@ -1124,7 +1160,8 @@ classdef TensorUtils
              end
         end
         
-        function t = shiftdimToFirstDim(t, dim)
+        function [t, ndimOrig] = shiftdimToFirstDim(t, dim)
+            ndimOrig = ndims(t);
             if dim ~= 1
                 t = shiftdim(t, dim-1);
             end
@@ -1135,7 +1172,7 @@ classdef TensorUtils
         end   
     end
     
-    methods(Static) % Size expansion
+    methods(Static) % Size expansion / truncation
         function out = singletonExpandToSize(in, szOut)
             % expand singleton dimensions to match szOut using repmat
             szIn = size(in);
@@ -1156,6 +1193,26 @@ classdef TensorUtils
             maskByDim = TensorUtils.maskByDimCellSelectPartialFromOrigin(size(out), dims, szInDims);
             
             out(maskByDim{:}) = in;
+        end
+        
+        
+        function t = expandOrTruncateToSize(t, dims, makeSize)
+            % along each dims(i), truncate or expand with NaN to be size sz(i)
+            
+            sz = TensorUtils.sizeMultiDim(t, dims);
+            makeSize = makerow(makeSize);
+            expandBy = makeSize - sz;
+                
+            tooSmall = expandBy > 0;
+            if any(tooSmall)
+                t = TensorUtils.expandAlongDims(t, dims(tooSmall), expandBy(tooSmall));
+            end
+            
+            tooLarge = expandBy < 0;
+            if any(tooLarge)
+                maskByDim = TensorUtils.maskByDimCellSelectPartialFromOrigin(size(t), dims(tooLarge), makeSize(tooLarge));
+                t = t(maskByDim{:});
+            end
         end
     end
     
@@ -1383,6 +1440,25 @@ classdef TensorUtils
             for a = 1:nAx
                 group{a} = cat(1, group{a}{:});
             end
+        end
+        
+        function [idxAlongDim, val] = argMin(t, dim)
+            % returns the position along dim of the minimum of each
+            % position
+            if nargin < 2
+                dim = TensorUtils.firstNonSingletonDim(t);
+            end
+            [val, idxAlongDim] = TensorUtils.mapSlices(@min, dim, t);
+            val = cell2mat(val);
+            idxAlongDim = cell2mat(idxAlongDim);
+        end
+        
+        function [idxAlongDim, val] = argMax(t, dim)
+            % returns the position along dim of the minimum of each
+            % position
+            [val, idxAlongDim] = TensorUtils.mapSlices(@max, dim, t);
+            val = cell2mat(val);
+            idxAlongDim = cell2mat(idxAlongDim);
         end
     end
     

@@ -675,7 +675,7 @@ classdef ConditionDescriptor
             idx = ci.axisLookupByAttributes(axisSpec);
                 
             if numel(idx) == 1 && numel(ci.axisAttributes{idx}) == 1
-                if isvector(valueList) && ~isstruct(valueList)
+                if isvector(valueList) && ~isstruct(valueList) && ~iscell(valueList)
                     valueList = num2cell(valueList);
                 end
                 if iscell(valueList) && ~isstruct(valueList{1})

@@ -6,6 +6,7 @@ function str = structToString(s, varargin)
     p.addParameter('useFieldNameForBoolean', true, @islogical); % if the value is true/false, then use the attribute name or ''
     p.addParameter('suffixByField', struct(), @isstruct);
     p.addParameter('logicalNotPrefix', 'Not ', @ischar);
+    p.addParameter('removeIsForLogical', true, @islogical); % "Not Is Something" --> "Not Something"
     p.parse(varargin{:});
     
     separator = p.Results.separator;
@@ -44,6 +45,11 @@ function str = structToString(s, varargin)
         if ischar(v)
             str = [prefix v suffix];
         elseif islogical(v) && p.Results.useFieldNameForBoolean
+            if p.Results.removeIsForLogical
+                if strncmp(fldSub, 'Is ', 3)
+                    fldSub = fldSub(4:end);
+                end
+            end
             if v
                 str = [fldSub, suffix];
             else

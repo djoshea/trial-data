@@ -5410,9 +5410,10 @@ classdef PopulationTrajectorySet
             basisValidMask = pset.basisValid(basisIdx);
             
             if p.Results.spliceAlignments
+                % data is N x C x T --> N x T x C
                 data = cellfun(@(d) permute(d, [1 3 2]), data, 'UniformOutput', false);
                 
-                % data is N x T x C --> N x C x T
+                
                 data = TrialDataUtilities.Data.spliceTrajectories(data, 'basisMask', basisValidMask, p.Results.spliceOptions);
                 data = ipermute(data, [1 3 2]);
                 
