@@ -1325,12 +1325,13 @@
         end
         
         function td = trimAllChannelsRaw(td, varargin)
-            % Timepoints that lie outside of TrialStart and TrialStop will
+            % Timepoints that lie outside of TrialStart (or startTimes and TrialStop (or endTimes) will
             % never be accessible via getTimes since they will be filtered
-            % out by the AlignInfo
+            % out by the AlignInfo. Optionally, re-zero all trials to
+            % zeroTimes; ignored if left empty;
             p = inputParser();
-            p.addOptional('startTimes', {}, @isvector);
-            p.addOptional('stopTimes', {}, @isvector);
+            p.addOptional('startTimes', {}, @(x) isempty(x) || isvector(x));
+            p.addOptional('stopTimes', {}, @(x) isempty(x) || isvector(x));
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
@@ -1351,6 +1352,7 @@
             else
                 stopTimes = p.Results.stopTimes;
             end
+            
             startTimes(~td.valid) = NaN;
             stopTimes(~td.valid) = NaN;
 
@@ -1376,8 +1378,7 @@
             
             trialEnd = min(trialEnd, stopTimes);
             td = td.setEvent('TrialEnd', trialEnd, 'isAligned', false);
-        end
-        
+        end       
     end
     
     methods(Access=protected)
