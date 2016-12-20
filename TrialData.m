@@ -3156,9 +3156,10 @@
             end
         end
         
-        function td = setEvent(td, name, times, varargin)
+        function [td, fieldsUpdated] = setEvent(td, name, times, varargin)
             p = inputParser();
             p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('deferPostDataChange', false, @islogical);
             p.parse(varargin{:});
             
             td.warnIfNoArgOut(nargout);
@@ -3181,7 +3182,7 @@
             end
             times = cellfun(@(x) makecol(sort(x)), times, 'UniformOutput', false);
             
-            td = td.setChannelData(name, {times});
+            [td, ~, fieldsUpdated] = td.setChannelData(name, {times}, 'deferPostDataChange', p.Results.deferPostDataChange);
         end
         
         function td = addOrSetEvent(td, name, times, varargin)
@@ -3227,11 +3228,13 @@
             end
             
             prog = ProgressBar(numel(names), 'Trimming event channels');
+            fieldsUpdated = cellvec(numel(names));
             for i = 1:numel(names)
                 name = names{i};
                 prog.update(i, 'Trimming event %s', name);
                 assert(td.hasEventChannel(name), 'No event channel named %s', name);
-                times = {td.data.(name)}';
+                times = td.getEventRaw(name);
+%                 times = {td.data.(name)}';
 
                 timesMask = cellvec(td.nTrials);
                 for iT = 1:td.nTrials
@@ -3246,9 +3249,13 @@
                 notEmpty = ~cellfun(@isempty, times);
                 times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), timesMask(notEmpty), 'UniformOutput', false);
                 
-                td = td.setEvent(name, times);
+                [td, fieldsUpdated{i}] = td.setEvent(name, times, ...
+                    'isAligned', false, 'deferPostDataChange', false);
 %                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, name, times);
             end
+            % defer post data change to the end so that align info need
+            % only be applied once
+            td = td.postDataChange(cat(1, fieldsUpdated{:}));
             prog.finish();
         end
         
@@ -4830,6 +4837,7 @@
             p.addParameter('clearForInvalid', false, @islogical);
             p.addParameter('updateValidOnly', true, @islogical);
             p.addParameter('updateMask', [], @isvector);
+            p.addParameter('deferPostDataChange', false, @islogical);
             p.parse(varargin{:});
             
             updateMaskManual = p.Results.updateMask;
@@ -4934,9 +4942,12 @@
             end 
             
             td.channelDescriptorsByName.(cd.name) = cd;
-            td = td.postDataChange(dataFields(fieldMask));
             
-            fieldsUpdated = fieldMask;
+            if p.Results.deferPostDataChange
+                td = td.postDataChange(dataFields(fieldMask));
+            end
+            
+            fieldsUpdated = dataFields(fieldMask);
             trialsUpdated = updateMask;
         end 
     end
