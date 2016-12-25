@@ -282,7 +282,7 @@ classdef StateSpaceTranslationNormalization
                 newData = cellfun(@(x, offset, mult) (x + offset) * mult, data, ...
                     offCell, normCell, 'UniformOutput', false);
             else
-                newData = bsxfun(@rdivide, bsxfun(@plus, data, obj.translationByBasis), obj.normalizationByBasis);
+                newData = bsxfun(@times, bsxfun(@plus, data, obj.translationByBasis), obj.normalizationByBasis);
             end
         end
         
@@ -312,7 +312,7 @@ classdef StateSpaceTranslationNormalization
                 newData = cellfun(@(x, norm) x .* norm, data, ...
                     normCell, 'UniformOutput', false);
             else
-                newData = bsxfun(@rdivide, data, obj.normalizationByBasis);
+                newData = bsxfun(@times, data, obj.normalizationByBasis);
             end
         end
         

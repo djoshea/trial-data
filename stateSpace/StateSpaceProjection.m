@@ -475,6 +475,37 @@ classdef StateSpaceProjection
                     pset.nConditions, pset.nTimeDataMean(iAlign));
             end
             
+            % project single trial data if any
+            if pset.simultaneous && ~isempty(pset.dataByTrial)
+                [b.dataByTrial, b.tMinByTrial, b.tMaxByTrial] = deal(cell(proj.nBasesProj, pset.nAlign));
+                
+                % dataByTrial is nBases x nAlign cell of nTrials (R) x T_a
+                for iAlign = 1:pset.nAlign
+                    % will be R x T x N
+                    tensor = cat(3, pset.dataByTrial{:, iAlign});
+                    tensor(:, :, ~proj.basisValid) = 0;
+                    tensor = TensorUtils.linearCombinationAlongDimension(...
+                        tensor, 3, proj.decoderKbyN, 'replaceNaNWithZero', true);
+                    
+                    b.dataByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(tensor, 3);
+                    
+                    b.tMinByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
+                        TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+                            cat(2, pset.tMinByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmax), 2);
+                    b.tMaxByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
+                        TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+                            cat(2, pset.tMaxByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmin), 2);
+                end
+                
+                b.tMinForDataByTrial = pset.tMinForDataByTrial;
+                b.tMaxForDataByTrial = pset.tMaxForDataByTrial;
+                b.alignValidByTrial = pset.alignValidByTrial;
+                
+                % preserve the trial lists
+                % nBases x nConditions --> nBasesProj x nConditions
+                b.trialLists = repmat(pset.trialLists(1, :), proj.nBasesProj, 1);
+            end
+            
             % project cached single trial data if any
             if ~isempty(pset.dataCachedSampledTrialsTensor)
                 tensor = pset.dataCachedSampledTrialsTensor;
@@ -551,7 +582,11 @@ classdef StateSpaceProjection
             b.basisValid = proj.basisValidProj;
             b.basisInvalidCause = proj.basisInvalidCauseProj;
             
-            psetProjected = b.buildManualWithTrialAveragedData();
+            if pset.simultaneous && ~isempty(pset.dataByTrial)
+                psetProjected = b.buildManualWithSingleTrialData();
+            else
+                psetProjected = b.buildManualWithTrialAveragedData();
+            end
             
             if p.Results.applyTranslationNormalizationPostProject && ~isempty(proj.translationNormalizationPostProject)
                 psetProjected = psetProjected.applyTranslationNormalization(proj.translationNormalizationPostProject);

@@ -2447,7 +2447,27 @@ classdef PopulationTrajectorySet
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             pset.warnIfNoArgOut(nargout);
-            pset = pset.normalize(pset.computeStdByBasis(p.Unmatched) + p.Results.denominatorOffset, 'normalizationDescription', 'std-normalized');
+            if p.Results.denominatorOffset ~= 0
+                desc = 'soft std-normalized';
+            else
+                desc = 'std-normalized';
+            end
+            pset = pset.normalize(1 ./ (pset.computeStdByBasis(p.Unmatched) + p.Results.denominatorOffset), 'normalizationDescription', desc);
+        end
+        
+        function pset = normalizeBasesByRange(pset, varargin)
+            p = inputParser();
+            p.addParameter('denominatorOffset', 0, @isscalar); % x = x / (std(x) + offset)
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            pset.warnIfNoArgOut(nargout);
+            if p.Results.denominatorOffset ~= 0
+                desc = 'soft range-normalized';
+            else
+                desc = 'range-normalized';
+            end
+                
+            pset = pset.normalize(1 ./ (pset.computeRangeByBasis(p.Unmatched) + p.Results.denominatorOffset), 'normalizationDescription', desc);
         end
         
         function pset = zscoreByBasis(pset, varargin)
