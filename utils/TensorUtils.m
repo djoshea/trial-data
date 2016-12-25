@@ -1088,7 +1088,10 @@ classdef TensorUtils
             % for example, if in = [1 2; 3 4], dim = 1, and
             % idxForEachOtherDim = [1 2], out is [1 4]
 
+            maskValid = ~isnan(idxThatDim);
+            idxThatDim(~maskValid) = 1;
             out = cell2mat(TensorUtils.mapSlices(@(slice, idx) slice(idx), dim, in, idxThatDim));
+            out(~maskValid) = NaN;
         end
         
     end
