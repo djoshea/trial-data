@@ -13,7 +13,7 @@ function [time, data, tMask] = fixNonmonotonicTimeseries(time, data)
             for i = 1:size(data, 1)
                 for j = 1:size(data(:, :), 2)
                     % time and data as cell
-                    data{i, j} = data{i, j}(tMask{i}, :);
+                    data{i, j} = data{i, j}(tMask{i,j}, :);
                 end
             end
         end

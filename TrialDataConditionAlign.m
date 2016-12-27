@@ -2064,7 +2064,7 @@ k                    error('Please provide alignDescriptors as successive argume
             p.addParameter('interpolationMethod', 'pchip', @ischar);
             p.addParameter('smoothing', NaN, @(x) isnan(x) || (isscalar(x) && mod(x, 2) == 1));
             p.addParameter('smoothingMs', 7, @isscalar); % 
-            p.addParameter('order', 1, @isscalar);
+            p.addParameter('differentiationOrder', 1, @isscalar);
             p.addParameter('polynomialOrder', 2, @isscalar);
             p.parse(varargin{:});
             
@@ -2084,7 +2084,7 @@ k                    error('Please provide alignDescriptors as successive argume
                 end
             end
             
-            w = -1 / (delta / td.timeUnitsPerSecond) ^ p.Results.order;
+%             w = -1 / (delta / td.timeUnitsPerSecond) ^ p.Results.order;
             prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', name);
             for iT = 1:td.nTrials
                 prog.update(iT);
@@ -2096,8 +2096,10 @@ k                    error('Please provide alignDescriptors as successive argume
                     % too few samples
                     diffData{iT} = nan(size(time{iT}));
                 else
-                    diffData{iT} = w * TrialDataUtilities.Data.savitzkyGolayFilt( ...
-                        data{iT}, p.Results.polynomialOrder, p.Results.order, smoothing)'; 
+                    error('check this implementation');
+                    diffData{iT} = TrialDataUtilities.Data.savitzkyGolayFilt( ...
+                        data{iT}, 'polynomialOrder', p.Results.polynomialOrder, 'differentiationOrder', p.Results.differentiationOrder, ...
+                        'frameSize', smoothing, 'samplingIntervalMs', delta / td.timeUnitsPerMs)'; 
                 end
             end
             prog.finish();

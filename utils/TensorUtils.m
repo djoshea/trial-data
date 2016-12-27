@@ -549,72 +549,6 @@ classdef TensorUtils
         end
     end
     
-    methods(Static) % Multi-dim extensions of any, all, find etc.
-        function t = applyFunctionComposedOverSuccessiveDimensions(t, fn, dims)
-            for iD = 1:numel(dims)
-                t = fn(t, dims(iD));
-            end
-        end
-        
-        function t = anyMultiDim(t, dims)
-            % works like any, except operates on multiple dimensions
-            for iD = 1:numel(dims)
-                t = any(t, dims(iD));
-            end
-        end
-        
-        function t = allMultiDim(t, dims)
-            % works like any, except operates on multiple dimensions
-            for iD = 1:numel(dims)
-                t = all(t, dims(iD));
-            end
-        end
-        
-        function t = nanmaxMultiDim(t, dims)
-            % works like any, except operates on multiple dimensions
-            for iD = 1:numel(dims)
-                t = nanmax(t, [], dims(iD));
-            end
-        end
-        
-        function t = nanminMultiDim(t, dims)
-            % works like any, except operates on multiple dimensions
-            for iD = 1:numel(dims)
-                t = nanmin(t, [], dims(iD));
-            end
-        end
-
-        function idxTensor = findNAlongDim(t, dim, N, direction)
-            % idxTensor = findNAlongDim(t, dim, N, direction)
-            % finds the first/last N non-zero values in t along dimension t
-            % proceeds in direction 'first' (default) or 'last'
-            % if less than N non-zero values are found, idxTensor will be
-            % NaN. idxTensor is the same size as t along all dimensions
-            % except dim, where it has size N.
-            
-            if nargin < 4
-                direction = 'first';
-            end
-            if ~islogical(t)
-                t = t ~= 0;
-            end
-            
-            % create a template for findInner to use with the correct size
-            % and orientation
-            sizeSlice = onesvec(max(dim, ndims(t)))';
-            sizeSlice(dim) = N;
-            emptySlice = nan(sizeSlice);
-            
-            idxTensor = cell2mat(TensorUtils.mapSlices(@findInner, dim, t));
-            
-            function w = findInner(v)
-                w = emptySlice;
-                idx = find(v, N, direction);
-                w(1:numel(idx)) = idx;
-            end
-        end
-    end
-    
     methods(Static) % Squeezing along particular dimensions
         function tsq = squeezeDims(t, dims)
             % like squeeze, except only collapses singleton dimensions in list dims
@@ -1090,7 +1024,15 @@ classdef TensorUtils
 
             maskValid = ~isnan(idxThatDim);
             idxThatDim(~maskValid) = 1;
-            out = cell2mat(TensorUtils.mapSlices(@(slice, idx) slice(idx), dim, in, idxThatDim));
+            
+            function out = selectIdx(slice, idx)
+                if isnan(idx)
+                    out = NaN;
+                else
+                    out = slice(idx);
+                end
+            end
+            out = cell2mat(TensorUtils.mapSlices(@selectIdx, dim, in, idxThatDim));
             out(~maskValid) = NaN;
         end
         
@@ -1357,6 +1299,72 @@ classdef TensorUtils
         
     end
    
+    methods(Static) % Multi-dim extensions of any, all, find etc.
+        function t = applyFunctionComposedOverSuccessiveDimensions(t, fn, dims)
+            for iD = 1:numel(dims)
+                t = fn(t, dims(iD));
+            end
+        end
+        
+        function t = anyMultiDim(t, dims)
+            % works like any, except operates on multiple dimensions
+            for iD = 1:numel(dims)
+                t = any(t, dims(iD));
+            end
+        end
+        
+        function t = allMultiDim(t, dims)
+            % works like any, except operates on multiple dimensions
+            for iD = 1:numel(dims)
+                t = all(t, dims(iD));
+            end
+        end
+        
+        function t = nanmaxMultiDim(t, dims)
+            % works like any, except operates on multiple dimensions
+            for iD = 1:numel(dims)
+                t = nanmax(t, [], dims(iD));
+            end
+        end
+        
+        function t = nanminMultiDim(t, dims)
+            % works like any, except operates on multiple dimensions
+            for iD = 1:numel(dims)
+                t = nanmin(t, [], dims(iD));
+            end
+        end
+
+        function idxTensor = findNAlongDim(t, dim, N, direction)
+            % idxTensor = findNAlongDim(t, dim, N, direction)
+            % finds the first/last N non-zero values in t along dimension t
+            % proceeds in direction 'first' (default) or 'last'
+            % if less than N non-zero values are found, idxTensor will be
+            % NaN. idxTensor is the same size as t along all dimensions
+            % except dim, where it has size N.
+            
+            if nargin < 4
+                direction = 'first';
+            end
+            if ~islogical(t)
+                t = t ~= 0;
+            end
+            
+            % create a template for findInner to use with the correct size
+            % and orientation
+            sizeSlice = onesvec(max(dim, ndims(t)))';
+            sizeSlice(dim) = N;
+            emptySlice = nan(sizeSlice);
+            
+            idxTensor = cell2mat(TensorUtils.mapSlices(@findInner, dim, t));
+            
+            function w = findInner(v)
+                w = emptySlice;
+                idx = find(v, N, direction);
+                w(1:numel(idx)) = idx;
+            end
+        end
+    end
+    
     methods(Static) % Statistics       
         function t = meanMultiDim(t, dims)
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
@@ -1493,6 +1501,26 @@ classdef TensorUtils
             t = TensorUtils.centerSlicesSpanningDimension(t, alongDims);
             stdTensor = TensorUtils.stdMultiDim(t, alongDims);
             t = bsxfun(@rdivide, t, stdTensor);
+        end
+        
+        function t = rescaleIntervalToInterval(t, varargin)
+            % Rescale t such that interval `from` is scaled to equal
+            % interval `to`.
+            %
+            % Args:
+            %   from (numeric interval) : defaults to [min, max]
+            %   to (numeric interval) : defaults to [0 1]
+            %
+          
+            p = inputParser();
+            p.addOptional('from', [nanmin(t(:)), nanmax(t(:))], @isvector);
+            p.addOptional('to', [0 1], @isvector);
+            p.parse(varargin{:});
+            
+            from = p.Results.from;
+            to = p.Results.to;
+            
+            t = (t - from(1)) / (from(2) - from(1)) * (to(2) - to(1)) + to(1);
         end
         
         function t = makeNonDecreasing(t, dim)

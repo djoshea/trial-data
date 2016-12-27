@@ -2,7 +2,7 @@ function [timeCrossHighCell, timeCrossLowCell, dataThresh] = findThresholdCrossi
 % [timeCrossHighCell, timeCrossLowCell, dataThresh] = findThresholdCrossingsViaSchmittTrigger(data, time, threshHighLow, varargin)
 %
 % either: 
-%   data is trials x time, time is vector
+%   data is time x trials matrix, time is vector
 %   data is trials cell of vectors, time is cell of time vectors
 % threshHighLow is [threshHigh threshLow]
 %
