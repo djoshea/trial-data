@@ -432,7 +432,7 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
 
-            times = times + offset;
+            times = times + double(offset);
 
             if ~isempty(roundRelativeTo) && ad.roundTimes
                 % shift event times to maintain an integer multiple of

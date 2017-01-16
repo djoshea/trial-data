@@ -501,7 +501,7 @@ classdef ConditionInfo < ConditionDescriptor
             vals = removenan(cell2mat(ci.values(:, attrIdx)));
             nBins = ci.attributeValueBinsAutoCount(attrIdx);
             
-            if isempty(vals);
+            if isempty(vals)
                 bins = [NaN, NaN];
             else
                 binEdges = makecol(quantile(vals, linspace(0, 1, nBins+1)));
@@ -538,11 +538,14 @@ classdef ConditionInfo < ConditionDescriptor
                         valueListAsStrings{i} = displayAs;
                     else
                         % convert populated list to cellstr
-                        if ci.attributeNumeric(i)
+                        if ~iscell(valueList{i})
                             valueListAsStrings{i} = arrayfun(@(x) [num2str(x), unitsStr], valueList{i}, 'UniformOutput', false);
 %                             valueListAsStrings{i} = arrayfun(@(x) num2str(x), valueList{i}, 'UniformOutput', false);
+                        elseif iscellstr(valueList{i})
+                            valueListAsStrings{i} = valueList{i}; % cellfun(@(x) [x, unitsStr], valueList{i}, 'UniformOutput', false);
+%                             valueListAsStrings{i} = [valueList{i}, unitsStr];
                         else
-                            valueListAsStrings{i} = [valueList{i}, unitsStr];
+                            error('Not sure how to convert attribute values to string');
                         end
                     end
                 end

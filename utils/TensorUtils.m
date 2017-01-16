@@ -335,7 +335,7 @@ classdef TensorUtils
     
     methods(Static) % Mask generation and mask utilities
        function idx = vectorMaskToIndices(mask)
-            if islogical(mask);
+            if islogical(mask)
                 idx = makecol(find(mask));
             else
                 idx = makecol(mask);
@@ -1277,9 +1277,13 @@ classdef TensorUtils
            % wrapper around mat2cell that splits t along dimension t so
            % that size(c) == [numel(nPerCell) 1] and size(c{i}, dim) == nPerCell(i)
            % if dim is a vector, then nPerCell may be a cell vector which
-           % will independently split along each dimension in dim
+           % will independently split along each dimension in dim. If
+           % nPerCell is omitted, will be ones(size(t, dim))
            
            args = cellvec(ndims(t));
+           if nargin < 3
+               nPerCell = arrayfun(@(dim) onesvec(size(t, dim)), dim, 'UniformOutput', false);
+           end
            if ~iscell(nPerCell)
                nPerCell = {nPerCell};
            end

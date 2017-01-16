@@ -28,7 +28,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.warnIfNoArgOut(nargout);
             
             if isempty(varargin)
-                error('Must prsinovide at least 1 data cell');
+                error('Must provide at least 1 data cell');
             end
            
             assert(numel(varargin) == 1, 'ParamChannels take only 1 data cell');
@@ -112,6 +112,11 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             end
             cd.originalDataClassByField = {'double'};
             cd.elementTypeByField = cd.SCALAR;
+        end
+        
+        function cd = buildVectorParamAccessAsMatrix(varargin)
+            cd = ParamChannelDescriptor.buildVectorParam(varargin{:});
+            cd.catAlongFirstDimByField = true;
         end 
         
         function cd = buildVectorParam(name, units)

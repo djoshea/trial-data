@@ -34,12 +34,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         % original class() of each field, used to maintain the same type in memory .memoryClassByFIeld
         originalDataClassByField = {};
+
+        catAlongFirstDimByField = {}; % manual override specifying that values may be concatenated along dim 1, this will set collectAsCell to be false
     end
 
     properties(Constant, Hidden) % element type constants
         UNKNOWN = 0;
-        BOOLEAN = 1;
-        SCALAR = 2;
+        BOOLEAN = 1; % scalar logical
+        SCALAR = 2; % scalar non-logical
         VECTOR = 3;
         NUMERIC = 4;
         STRING = 5;
@@ -131,18 +133,33 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 % convert to numeric vector, check for non-scalar values,
                 % and fill missing values
                 if iscell(data)
-                    missing = cd.missingValueByField{iF};
-                    assert(isscalar(missing));
-                    nVals = cellfun(@numel, data);
-                    if any(nVals > 1)
-                        throwError('Data must contain scalar values for each trial');
+                    if ismember(cd.elementTypeByField(iF), [cd.VECTOR, cd.NUMERIC])
+                        % numeric data cat along first dim
+                        nonEmpty = ~cellfun(@isempty, data);
+                        if cd.elementTypeByField(iF) == cd.VECTOR
+                            data = cellfun(@makerow, data, 'UniformOutput', false);
+                        end
+                        try
+                            mat = cell2mat(data(nonEmpty));
+                        catch
+                            error('Numeric data that is to be concatenated along first dim has uneven sizing');
+                        end
+                        
+                        data = TensorUtils.inflateMaskedTensor(mat, 1, nonEmpty, cd.missingValueByField{iF});
+                    else
+                        missing = cd.missingValueByField{iF};
+                        assert(isscalar(missing));
+                        nVals = cellfun(@numel, data);
+                        if any(nVals > 1)
+                            throwError('Data must contain scalar values for each trial');
+                        end
+                        [data{nVals==0}] = deal(missing);
+                        nel = numel(data);
+                        newClass = ChannelDescriptor.cellDetermineCommonClass(data);
+                        data = ChannelDescriptor.cellCast(data, newClass);
+                        data = cell2mat(data);
+                        assert(isvector(data) && numel(data) == nel);
                     end
-                    [data{nVals==0}] = deal(missing);
-                    nel = numel(data);
-                    newClass = ChannelDescriptor.cellDetermineCommonClass(data);
-                    data = ChannelDescriptor.cellCast(data, newClass);
-                    data = cell2mat(data);
-                    assert(isvector(data) && numel(data) == nel);
                 end
             end
         end
@@ -189,21 +206,41 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     data = cast(data, newClass);
                     
                 case cd.VECTOR
-                    okay = cellfun(@(x) isempty(x) || isvector(x), data);
-                    if ~all(okay)
-                        throwError('Data cell contents must be vectors or empty');
+                    if cd.collectAsCellByField(iF) && iscell(data)
+                        okay = cellfun(@(x) isempty(x) || isvector(x), data);
+                        if ~all(okay)
+                            throwError('Data cell contents must be vectors or empty');
+                        end
+                        newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
+                        data = ChannelDescriptor.cellCast(data, newClass);
+                    else
+                        newClass = ChannelDescriptor.determineCommonClass(data, memClass);
+                        if strcmp(newClass, 'logical')
+                            data(isnan(data)) = false;
+                        end
+                        data = cast(data, newClass);
+                    end   
+                    
+                    if cd.collectAsCellByField(iF) && iscell(data)
+                        % we'll be cat'ing them along dim 1.
+                        data = cellfun(@makerow, data, 'UniformOutput', false);
                     end
-                    newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
-                    data = ChannelDescriptor.cellCast(data, newClass);
-                    data = cellfun(@makecol, data, 'UniformOutput', false);
                         
                 case cd.NUMERIC
-                    okay = cellfun(@(x) isempty(x) || isnumeric(x), data);
-                    if ~all(okay)
-                        throwError('Data cell contents must be numeric');
-                    end
-                    newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
-                    data = ChannelDescriptor.cellCast(data, newClass);
+                    if cd.collectAsCellByField(iF) && iscell(data)
+                        okay = cellfun(@(x) isempty(x) || isnumeric(x), data);
+                        if ~all(okay)
+                            throwError('Data cell contents must be numeric');
+                        end
+                        newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
+                        data = ChannelDescriptor.cellCast(data, newClass);
+                    else
+                        newClass = ChannelDescriptor.determineCommonClass(data, memClass);
+                        if strcmp(newClass, 'logical')
+                            data(isnan(data)) = false;
+                        end
+                        data = cast(data, newClass);
+                    end   
                                         
                 case cd.STRING
                     okay = cellfun(@(x) isempty(x) || (ischar(x) && isvector(x)), data);
@@ -260,6 +297,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             data = ChannelDescriptor.cellCast(data, accClass);
                 % data = cellfun(@(a) cast(a, accClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
             if ~cd.collectAsCellByField(fieldIdx)
+                % for vector types, we can makerow the contents to ensure
+                % that cell2mat works as intended
+                if cd.isVectorByField(fieldIdx)
+                    data = cellfun(@makerow, data, 'UniformOutput', false);
+                end
                 data = cell2mat(data);
             end
         end
@@ -413,7 +455,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
         end
         
-        function data = correctMissingValueInData(cd, fieldIdx, data)
+        function data = correctMissingValueInData(cd, iF, data)
             missingValue = cd.missingValueByField{iF};
             
             if iscell(data)
@@ -425,17 +467,17 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
         end
 
-        function vec = vectorWithMissingValue(cd, n, fieldnum)
-            if nargin < 3
-                fieldnum = 1;
-            end
-            missing = cd.missingValueByField{fieldnum};
-            if cd.collectAsCellByField(fieldnum)
-                vec = repmat({missing}, n, 1);
-            else
-                vec = repmat(missing, n, 1);
-            end
-        end
+%         function vec = getMissingValuesForMultipleTrials(cd, n, fieldnum)
+%             if nargin < 3
+%                 fieldnum = 1;
+%             end
+%             missing = cd.missingValueByField{fieldnum};
+%             if cd.collectAsCellByField(fieldnum)
+%                 vec = repmat({missing}, n, 1);
+%             else
+%                 vec = repmat(missing, n, 1);
+%             end
+%         end
     end
 
     methods(Sealed)
@@ -454,7 +496,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function n = get.nFields(cd)
             n = numel(cd.dataFields);
         end
-
+        
         function tf = getIsShareableByField(cd)
             tf = true(cd.nFields, 1);
             tf(1) = false;
@@ -465,8 +507,17 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             vals = missingVals(cd.elementTypeByField);
             accClasses = cd.accessClassByField; % was memory class, changed to access class so that int types converted to single get filled as NaN
             for iF = 1:numel(vals)
-                if cd.elementTypeByField(iF) == cd.SCALAR
+                if ~cd.collectAsCellByField(iF) && ismember(cd.elementTypeByField, [cd.VECTOR, cd.NUMERIC])
+                    % replace [] with NaN since this will be collected as
+                    % matrix
+                    vals{iF} = nan(1, accClasses{iF});
+                    
+                elseif cd.elementTypeByField(iF) == cd.SCALAR
+                    if strcmp(accClasses{iF}, 'logical')
+                        vals{iF} = false;
+                    end
                     vals{iF} = cast(vals{iF}, accClasses{iF});
+                    
                 end
             end
         end
@@ -487,6 +538,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         function tf = get.collectAsCellByField(cd)
             tf = ~cd.isScalarByField;
+            if ~isempty(cd.catAlongFirstDimByField)
+                tf = tf & makecol(~cd.catAlongFirstDimByField);
+            end
         end
 
         function tf = get.isStringByField(cd)
@@ -495,6 +549,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         function tf = get.isScalarByField(cd) % returns true for boolean and scalar
             tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]);
+        end
+        
+        function tf = get.isVectorByField(cd)
+            tf = ismember(cd.elementTypeByField, cd.VECTOR);
         end
 
         function tf = get.isBooleanByField(cd)
@@ -531,29 +589,44 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 newClass = '';
             end
             for iV = 1:numel(data)
-                if isempty(data{iV}), continue; end
-                if iscell(data{iV})
-                    newClass = 'cell';
-                    continue;
-                end
+                newClass = ChannelDescriptor.determineCommonClass(data{iV}, newClass);
+            end
+        end
+        
+        function newClass = determineCommonClass(data, origClass)
+            if nargin > 1
+                newClass = origClass;
+            else
+                newClass = '';
+            end
+            
+            if isempty(data), return; end
+            if iscell(data)
+                newClass = 'cell';
+                return;
+            end
                     
-                if all(isnan(data{iV}(:))) && strcmp(newClass, 'logical'), continue; end
-                if isempty(newClass)
-                    newClass = class(data{iV});
-                else
-                    if ~isa(data{iV}, newClass)
-                        convertedData = cast(data{iV}, newClass);
-                        if ~isequal(convertedData, data{iV})
-                            newClass = class(data{iV});
-                        end
+            if all(isnan(data(:))) && strcmp(newClass, 'logical')
+                return;
+            end
+            
+            if isempty(newClass)
+                newClass = class(data);
+            else
+                if ~isa(data, newClass)
+                    convertedData = cast(data, newClass);
+                    if ~isequal(convertedData, data)
+                        newClass = class(data);
                     end
                 end
-            end      
+            end
         end
         
         function cls = getCellElementClass(dataCell)
             if isempty(dataCell)
                 cls = 'double';
+            elseif ~iscell(dataCell)
+                cls = class(dataCell);
             else
                 nonEmpty = ~cellfun(@isempty, dataCell);
                 if ~any(nonEmpty)

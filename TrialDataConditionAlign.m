@@ -2096,7 +2096,6 @@ k                    error('Please provide alignDescriptors as successive argume
                     % too few samples
                     diffData{iT} = nan(size(time{iT}));
                 else
-                    error('check this implementation');
                     diffData{iT} = TrialDataUtilities.Data.savitzkyGolayFilt( ...
                         data{iT}, 'polynomialOrder', p.Results.polynomialOrder, 'differentiationOrder', p.Results.differentiationOrder, ...
                         'frameSize', smoothing, 'samplingIntervalMs', delta / td.timeUnitsPerMs)'; 
@@ -4464,7 +4463,7 @@ k                    error('Please provide alignDescriptors as successive argume
                 'quick', p.Results.quick, ...
                 p.Unmatched);
             
-            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s : Unit %s', td.datasetName, strjoin(unitNames, ', '));
+            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s : Unit %s', td.datasetName, TrialDataUtilities.String.strjoin(unitNames, ', '));
             axis(axh, 'tight');
             
             ylabel('spikes/sec');

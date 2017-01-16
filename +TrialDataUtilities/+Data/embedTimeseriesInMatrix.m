@@ -174,7 +174,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
                     else
                         % don't assume uniform sampling, just interpolate
                         % to the right time vector
-                        mat(i, indStart(i,g):indStop(i,g), :, g) = interp1(timeCell{i, g}(mask), dataCell{i, g}(mask, :), ...
+                        mat(i, indStart(i,g):indStop(i,g), :, g) = interp1(double(timeCell{i, g}(mask)), dataCell{i, g}(mask, :), ...
                             tvec(indStart(i,g):indStop(i,g)), p.Results.interpolateMethod, 'extrap');
                     end
                 else

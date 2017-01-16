@@ -215,21 +215,25 @@ classdef PopulationTrajectorySetBuilder
             pset = pset.initialize();
         end
         
-        function pset = fromAnalogChannelsInTrialData(td)
-            chNames = td.listAnalogChannels();
+        function pset = fromAnalogChannelsInTrialData(td, chNames)
+            if nargin < 2
+                chNames = td.listAnalogChannels();
+            end
             
             pset = PopulationTrajectorySet();
             pset.datasetName = td.datasetName;
             
-            tdca = TrialDataConditionAlign(td);
-            pset.timeUnitName = tdca.timeUnitName;
-            pset.timeUnitsPerSecond = tdca.timeUnitsPerSecond;
-            pset.dataSources = {tdca};
+            if ~isa(td, 'TrialDataConditionAlign')
+                td = TrialDataConditionAlign(td);
+            end
+            pset.timeUnitName = td.timeUnitName;
+            pset.timeUnitsPerSecond = td.timeUnitsPerSecond;
+            pset.dataSources = {td};
             pset.basisDataSourceIdx = onesvec(numel(chNames));
             pset.basisDataSourceChannelNames = chNames;
             
-            pset = pset.setConditionDescriptor(tdca.conditionInfo);
-            pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
+            pset = pset.setConditionDescriptor(td.conditionInfo);
+            pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
         end
     end

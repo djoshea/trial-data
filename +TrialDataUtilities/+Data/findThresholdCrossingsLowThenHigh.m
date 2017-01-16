@@ -1,16 +1,17 @@
 function [timeCrossLow, idxCrossLow] = findThresholdCrossingsLowThenHigh(data, time, threshLow, threshHigh)
-% [timeCrossHighCell, timeCrossLowCell] = findThresholdCrossingsLowThenHigh(data, time, threshLow, threshHigh, varargin)
-% Find threshold crossings above high threshold, then return the time at
-% which the data most proximally crosses the low threshold. This enables a
-% very low "low threshold" which does not capture transients that do not
-% proceed to cross the high threshold.
-%
-% either: 
-%   data is time x trials matrix, time is vector
-%   data is trials cell of vectors, time is cell of time vectors
-% threshHighLow is [threshHigh threshLow]
-%
-% data is nTrials x 1 cell or nTrials x 
+    % [timeCrossHighCell, timeCrossLowCell] = findThresholdCrossingsLowThenHigh(data, time, threshLow, threshHigh)
+    % Find threshold crossings above high threshold, then return the time at
+    % which the data most proximally crosses the low threshold. This enables a
+    % very low "low threshold" which does not capture transients that do not
+    % proceed to cross the high threshold.
+    %
+    % either: 
+    %   data is time x trials matrix, time is vector
+    %   data is trials cell of vectors, time is cell of time vectors
+    % threshHighLow is [threshHigh threshLow]
+    %
+    % data is nTrials x 1 cell or nTrials x 1
+    
     if iscell(data)
         nTrials = numel(data);
     elseif ismatrix(data)

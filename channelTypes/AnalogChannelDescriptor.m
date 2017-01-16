@@ -194,8 +194,8 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         function cd = buildVectorAnalog(name, timeField, units, timeUnits, varargin)
             p = inputParser();
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'AnalogChannelDescriptor')); % used by subclasses
-            p.addParameter('scaleFromLims', [], @isvector);
-            p.addParameter('scaleToLims', [], @isvector);
+            p.addParameter('scaleFromLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataClass', 'double', @ischar);
             p.addParameter('timeClass', 'double', @ischar);
             p.parse(varargin{:});

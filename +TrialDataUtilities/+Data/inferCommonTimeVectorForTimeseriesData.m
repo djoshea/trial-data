@@ -29,7 +29,7 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
    % p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.parse(timeCell, varargin{:});
 
-    timeDelta = p.Results.timeDelta;
+    timeDelta = double(p.Results.timeDelta);
     timeReference = p.Results.timeReference;
     fixDuplicateTimes = p.Results.fixDuplicateTimes;
     interpolate = p.Results.interpolate;
@@ -49,7 +49,7 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
          % compute the median delta for each channel
          timeDelta = nanmedian(deltaCell(:), 1);
          % and use the minimum spacing
-         timeDelta = nanmin(timeDelta);
+         timeDelta = double(nanmin(timeDelta));
      end
      
     % auto-compute appropriate time vector

@@ -999,7 +999,8 @@
                 if isempty(value)
                     value = NaN;
                 end
-                vals(~td.valid, :) = value;
+                sel = TensorUtils.maskByDimCellSelectAlongDimension(size(vals), 1, ~td.valid);
+                vals(sel{:}) = value;
             end
         end
         
@@ -1247,12 +1248,16 @@
         
         function td = dropAnalogChannelGroup(td, groupName)
             td.warnIfNoArgOut(nargout);
-            if ~td.hasAnalogChannelGroup(groupName)
-                return;
-            end
             
-            chList = td.listAnalogChannelsInGroup(groupName);
-            td = td.dropChannels(chList);
+            if ~iscell(groupName)
+                groupName = {groupName};
+            end
+            groupName = groupName(td.hasAnalogChannelGroup(groupName));
+               
+            for iG = 1:numel(groupName)
+                chList = td.listAnalogChannelsInGroup(groupName{iG});
+                td = td.dropChannels(chList);
+            end
         end
         
         function td = dropChannels(td, names)
@@ -2026,8 +2031,8 @@
             % parameter 'timeField' can specify which time field in which
             % to find the times for this channel
             p = inputParser();
-            p.addOptional('values', {}, @(x) iscell(x));
-            p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x)); % char or time cell
+            p.addOptional('values', {}, @(x) iscell(x) || isnumeric(x));
+            p.addOptional('times', {}, @(x) isempty(x) || ischar(x) || iscell(x) || isvector(x)); % char or time cell
             p.addParameter('timeField', '', @ischar);
             p.addParameter('units', '', @ischar);
             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
@@ -2055,6 +2060,7 @@
             % times can either be a field/channel name, or it can be raw
             % time values
             if isempty(times)
+                assignTimesIntoData = false;
                 % reference another time field or another analog channels
                 % time field
                 if ~isempty(timeField)
@@ -2081,6 +2087,8 @@
                     error('Time vector or cell of vectors must be passed in when not referencing an existing timeField');
                 end
             else
+                assignTimesIntoData = true;
+                
                 % times were provided
                 % we'll set the field value for the new times field
                 
@@ -2091,10 +2099,10 @@
                     % check that we're not overwriting another channel's
                     % time field
                     if isfield(td.data, timeField)
-                        otherChannels = setdiff(td.getChannelsReferencingFields(timeField), name);
+                        otherChannels = setdiff(td.getChannelsReferencingFields(timeField), chNames);
                         if ~isempty(otherChannels)
                             error('Analog channel time field %s conflicts with existing channel(s) %s. If you meant to reference their timeField, specify ''timeField'' parameter and leave times argument empty', ...
-                                name, strjoin(otherChannels, ','));
+                                chNames, TrialDataUtilities.String.strjoin(otherChannels, ','));
                         end
                     end
                 end
@@ -2105,7 +2113,9 @@
             end
             
             % do the assignment
-            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, []);
+            if assignTimesIntoData
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, []);
+            end
             td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, []);
                 
             % loop over channels and create AnalogChannelDescriptors
@@ -2128,6 +2138,9 @@
             end
             
             % set the data and time field in td.data
+            if ~assignTimesIntoData
+                times = []; % times weren't specified but copied from another channel, so there's no need to write into them in setAnalogChannelGroup
+            end
             td = td.setAnalogChannelGroup(groupName, values, times, 'isAligned', isAligned, ...
                'keepScaling', true, 'dataInMemoryScale', p.Results.dataInMemoryScale);
         end
@@ -2520,25 +2533,30 @@
         end
         
         function tf = hasAnalogChannelGroup(td, groupName)
-            if ~isfield(td.data, groupName)
-                tf = false;
-            else
-                % check if there are any channels in that group, do not
-                % call listAnalogChannelsInGroup b/c of infinite recursion
-                chList = td.listAnalogChannels();
-                for iC = 1:numel(chList)
-                    cd = td.channelDescriptorsByName.(chList{iC});  
-                    if cd.isColumnOfSharedMatrix && strcmp(cd.primaryDataField, groupName)
-                        tf = true;
-                        return;
+            if ~iscell(groupName)
+                groupName = {groupName};
+            end
+            
+            chList = td.listAnalogChannels();
+            
+            tf = falsevec(numel(groupName));
+            for iG = 1:numel(groupName)
+                if isfield(td.data, groupName{iG})
+                    % check if there are any channels in that group, do not
+                    % call listAnalogChannelsInGroup b/c of infinite recursion
+                    for iC = 1:numel(chList)
+                        cd = td.channelDescriptorsByName.(chList{iC});  
+                        if cd.isColumnOfSharedMatrix && strcmp(cd.primaryDataField, groupName{iG})
+                            tf(iG) = true;
+                            break;
+                        end
                     end
                 end
-                tf = false;
             end
         end 
         
         function assertHasAnalogChannelGroup(td, groupName)
-            assert(td.hasAnalogChannelGroup(groupName), 'No analog channel group %s found', groupName);
+            assert(all(td.hasAnalogChannelGroup(groupName)), 'No analog channel group %s found', TrialDataUtilities.String.strjoin(groupName));
         end
         
         function timeField = getAnalogChannelGroupTimeField(td, groupName)
@@ -2711,7 +2729,7 @@
                 
                 % convert to cellvec
                 tensor = values;             
-                values = cellvec(td.nTrials, 1);
+                values = cellvec(td.nTrials);
                 for r = 1:td.nTrials
                     values{r} = TensorUtils.squeezeDims(tensor(r, :, :), 1);
                 end
@@ -2791,6 +2809,7 @@
                 if ~p.Results.dataInMemoryScale
                     % take new data back into scaled values to match the
                     % existing
+                    cd = td.channelDescriptorsByName.(chList{1});
                     values = cd.convertAccessDataCellToMemory(1, values);
                 end
             end
@@ -2802,7 +2821,7 @@
                 timeField = td.channelDescriptorsByName.(chList{1}).timeField;
             end
             
-            prog = ProgressBar(td.nTrials, 'Overwriting analog channel group data on valid trials');
+            prog = ProgressBar(td.nTrials, 'Writing analog channel group data on valid trials');
             for t = 1:td.nTrials
                 prog.update(t);
                 if ~td.valid(t), continue; end
@@ -3331,6 +3350,25 @@
                 p.Unmatched);
         end
         
+        function td = addVectorParamAccessAsMatrix(td, name, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addOptional('values', {}, @(x) isempty(x) || ismatrix(x) || iscell(x));
+            p.addParameter('units', '', @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            cd = ParamChannelDescriptor.buildVectorParamAccessAsMatrix(name, p.Results.units);
+            values = p.Results.values;
+            
+            if isnumeric(values)
+                values = TensorUtils.splitAlongDimension(values, 1);
+            end
+            td = td.addParam(name, values, 'channelDescriptor', cd, ...
+                p.Unmatched);
+        end 
+        
         function td = addOrUpdateScalarParam(td, name, vals, varargin)
             % set values of channel name if it exists where mask is true.
             % By default mask is non-nan values of mask
@@ -3529,6 +3567,7 @@
             p.addParameter('includeValidColumn', false, @islogical);
             p.parse(varargin{:});
             
+            names = TrialDataUtilities.Data.wrapCell(names);
             valueCell = td.getParamMultiAsCell(names);
             units = cellfun(@(name) td.getChannelUnitsPrimary(name), names, 'UniformOutput', false);
             
@@ -3601,6 +3640,12 @@
             if isscalar(vals)
                 vals = repmat(vals, td.nTrials, 1);
             end  
+            if isnumeric(vals) && cd.collectAsCellByField(1)
+                % provided as matrix but must be split along dim 1
+                assert(size(vals, 1) == td.nTrials, 'Size of matrix along dim 1 must equal nTrials');
+                vals = TensorUtils.splitAlongDimension(vals, 1);
+            end
+            
             td = td.setChannelData(name, {vals}, varargin{:});
         end
         
@@ -3613,8 +3658,17 @@
             valuesCurrent = td.getParam(name);
             
             cd = td.channelDescriptorsByName.(name);
-            filler = cd.vectorWithMissingValue(n);
-            values = cat(1, filler, valuesCurrent(1:(td.nTrials-n)));
+            
+            missing = cd.missingValueByField{1};
+            if iscell(valuesCurrent)
+                filler = repmat({missing}, n, 1);
+                values = cat(1, filler, valuesCurrent(1:(td.nTrials-n)));
+            else
+                sz = size(valuesCurrent);
+                sz(1) = n;
+                filler = repmat(missing, sz);
+                values = cat(1, filler, TensorUtils.selectAlongDimension(valuesCurrent, 1, 1:(td.nTrials-n)));
+            end
             
             % flush values on currently invalid trials
             values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
@@ -4394,7 +4448,7 @@
     
     methods % spike / continuous neural channel correspondence
         function info = listArrayElectrodesWithSpikeChannelsAsTable(td)
-            % info is struct with fields array (char) and electrode
+            % info is table with fields array (char) and electrode
             % (numeric)
             names = td.listSpikeChannels();
             cdCell = td.getChannelDescriptorMulti(names);
@@ -4412,6 +4466,19 @@
                 chMatch{r} = channels(idx == r);
             end
             info.channelList = chMatch;
+        end
+        
+        function info = listSpikeChannelsAsTable(td)
+            % info is table
+            names = td.listSpikeChannels();
+            cdCell = td.getChannelDescriptorMulti(names);
+            
+            name = cellfun(@(cd) cd.name, cdCell, 'UniformOutput', false);
+            array = cellfun(@(cd) cd.array, cdCell, 'UniformOutput', false);
+            electrode = cellfun(@(cd) cd.electrode, cdCell);
+            unit = cellfun(@(cd) cd.unit, cdCell);
+            
+            info = table(name, array, electrode, unit);
         end
         
         function [names, units] = listSpikeChannelsOnArray(td, arrayName)
@@ -4487,6 +4554,11 @@
              % chName is spike channel or continuous neural channel name
             cd = td.channelDescriptorsByName.(chName);
             [names] = td.listContinuousNeuralChannelsOnArrayElectrode(cd.array, cd.electrode);
+         end
+         
+         function names = listSpikeChannelsWithUnitNumber(td, unit)
+             info = td.listSpikeChannelsAsTable();
+             names = info(ismember(info.unit, unit), :).name;
          end
     end
 
@@ -4902,6 +4974,11 @@
             for iF = 1:nFields
                 % only touch specified fields
                 if ~fieldMask(iF), continue; end
+
+                % validate the overall structure of the data (scalar vs.
+                % numeric vs. vector, etc.) and update the memory class to
+                % match the data passed in (e.g. uint16 --> double)
+                [cd, valueCell{iF}] = cd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell{iF});
                 
                 if p.Results.clearForInvalid
                     % here we want the update mask to stay the same as
@@ -4910,11 +4987,6 @@
                     valueCell{iF} = td.replaceInvalidMaskWithValue(valueCell{iF}, cd.missingValueByField{iF});
                 end
                
-                % validate the overall structure of the data (scalar vs.
-                % numeric vs. vector, etc.) and update the memory class to
-                % match the data passed in (e.g. uint16 --> double)
-                [cd, valueCell{iF}] = cd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell{iF});
-                
                 if iF == 1 && isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix
                     colIdx = cd.primaryDataFieldColumnIndex;
                     % shared analog channel, just replace that column
@@ -4932,7 +5004,11 @@
                     prog.finish();
                 else
                     % normal field
-                    td.data = assignIntoStructArray(td.data, dataFields{iF}, valueCell{iF}(updateMask, :), updateMask);
+                    vals = valueCell{iF};
+                    if ~iscell(vals)
+                        vals = TensorUtils.splitAlongDimension(vals, 1);
+                    end
+                    td.data = assignIntoStructArray(td.data, dataFields{iF}, TensorUtils.selectAlongDimension(vals, 1, updateMask), updateMask);
                     
 %                   for iT = 1:numel(td.data)
 %                       if updateMask(iT)
