@@ -130,7 +130,7 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
                 else
                     % lookup the desired lambda first, in case there's an
                     % issue
-                    if proj.useOptimizedLambdaForMarginalization
+                    if ~isempty(proj.useOptimizedLambdaForMarginalization)
                         idxMargLambda = StateSpaceProjectionStatistics.staticFindFlatMarginalizationSpecInList(...
                             proj.useOptimizedLambdaForMarginalization, proj.marginalizationList, 'ignoreMissingTime', true);
                         lambdaMarg = proj.useOptimizedLambdaForMarginalization;
@@ -173,7 +173,7 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
                         'nBasesPerMarginalization', nBasesProjPerMarginalization, ...
                         'numRep', proj.nIterationsOptimizeLambda);
                     
-                    if proj.useOptimizedLambdaForMarginalization
+                    if ~isempty(proj.useOptimizedLambdaForMarginalization)
                         % looked up which lambda above
                         debug('Using lambda optimized for marginalization %s\n', strjoin(lambdaMarg, ' x '));
                         proj.lambda = proj.optimizedLambdaPerMarginalization(idxMargLambda);
