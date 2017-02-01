@@ -39,20 +39,27 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
      [tMinRaw, tMaxRaw] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
 %      [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
 
+     nTimes = cellfun(@numel, timeCell);
+
      if isempty(timeDelta)
-         % auto-compute time delta
-         %warning('Auto-computing time-delta from timeseries. Specify time delta for consistent results');
-         if fixDuplicateTimes
-            timeCell = cellfun(@fixDup, timeCell, 'UniformOutput', false);
-        end
-         deltaCell = cellfun(@(x) nanmedian(diff(x)), timeCell);
-         % compute the median delta for each channel
-         timeDelta = nanmedian(deltaCell(:), 1);
-         % and use the minimum spacing
-         timeDelta = double(nanmin(timeDelta));
+         if all(nTimes == 1)
+            timeDelta = 1;
+         else
+             % auto-compute time delta
+             %warning('Auto-computing time-delta from timeseries. Specify time delta for consistent results');
+
+             if fixDuplicateTimes
+                 timeCell = cellfun(@fixDup, timeCell, 'UniformOutput', false);
+             end
+             deltaCell = cellfun(@(x) nanmedian(diff(x)), timeCell);
+             % compute the median delta for each channel
+             timeDelta = nanmedian(deltaCell(:), 1);
+             % and use the minimum spacing
+             timeDelta = double(nanmin(timeDelta));
+         end
      end
-     
-    % auto-compute appropriate time vector
+
+% auto-compute appropriate time vector
 
     % expand the global min / max timestamps to align with timeReference
     if interpolate

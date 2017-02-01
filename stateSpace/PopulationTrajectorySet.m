@@ -3423,11 +3423,16 @@ classdef PopulationTrajectorySet
             for iAlign = 1:nAlign
                 prog = ProgressBar(pset.nBases, 'Computing re-conditioned trial-averaged data for align %d', iAlign);
                 
-                [dataMeanRandomized{iAlign}, dataSemRandomized{iAlign}] = deal(nan(nBases, nConditions, nTimeDataMean, nRandomSamples));
+                [dataMeanRandomized{iAlign}, dataSemRandomized{iAlign}] = deal(nan(nBases, nConditions, nTimeDataMean(iAlign), nRandomSamples));
+                
+                if nRandomSamples == 0
+                    continue;
+                end
+                
                 for iBasis = 1:nBases    
 
                     % don't process invalid bases, leave these as NaNs
-                    if ~pset.basisValid(iBasis);
+                    if ~pset.basisValid(iBasis)
                         continue;
                     end
 

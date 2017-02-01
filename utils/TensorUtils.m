@@ -1301,6 +1301,14 @@ classdef TensorUtils
            c = mat2cell(t, args{:});
         end
         
+        function out = splitAlongDimensionByIndex(t, dim, which)
+            % undoes catWhich, at each position along dim, places that
+            % slice of t into out{which}
+            
+            N = max(which);
+            out = arrayfun(@(i) TensorUtils.selectAlongDimension(t, dim, which == i), (1:N)', 'UniformOutput', false);
+        end
+        
     end
    
     methods(Static) % Multi-dim extensions of any, all, find etc.

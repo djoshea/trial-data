@@ -433,11 +433,11 @@ classdef TrialDataConditionAlign < TrialData
                 lines = {};
                 lines{1} = sprintf('Trial %d%s', i, validStr);
                 if valid(i)
-                    lines{2} = sprintf('Condition %d (%s): %s', cIdx(i), strjoin(cSubs(i, :), ','), cNames{i});
+                    lines{2} = sprintf('Condition %d (%s): %s', cIdx(i), TrialDataUtilities.String.strjoin(cSubs(i, :), ','), cNames{i});
                     lines{3} = valueStrings{i};
                 end
                 
-                desc{i} = strjoin(lines, sep);
+                desc{i} = TrialDataUtilities.String.strjoin(lines, sep);
             end
         end
         
@@ -479,7 +479,7 @@ classdef TrialDataConditionAlign < TrialData
                 mask = ismember(alignEvents, names);
                 if any(mask)
                     error('TrialData alignment depends on event %s', ...
-                        strjoin(alignEvents(mask)));
+                        TrialDataUtilities.String.strjoin(alignEvents(mask)));
                 end
             end
             
@@ -488,7 +488,7 @@ classdef TrialDataConditionAlign < TrialData
             mask = ismember(conditionParams, names);
             if any(mask)
                 error('TrialData conditioning depends on params %s', ...
-                    strjoin(conditionParams(mask)));
+                    TrialDataUtilities.String.strjoin(conditionParams(mask)));
             end
             
             td = dropChannels@TrialData(td, names);
@@ -2371,9 +2371,14 @@ k                    error('Please provide alignDescriptors as successive argume
     
     methods % Analog channel group methods
         % return aligned analog channel
-        function [data, time] = getAnalogChannelGroup(td, groupName)
+        function [data, time] = getAnalogChannelGroup(td, groupName, varargin)
+            p = inputParser();
+            p.addParameter('singleTimepointTolerance', Inf, @isscalar);
+            p.parse(varargin{:});
+           
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName);
-            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false);
+            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false, ...
+                'singleTimepointTolerance', p.Results.singleTimepointTolerance);
         end
         
         function time = getAnalogChannelGroupTime(td, groupName)
@@ -3610,7 +3615,7 @@ k                    error('Please provide alignDescriptors as successive argume
         end
 
         function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGrouped(td, unitName, varargin)
-            [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
+            [rateCell, timeCell, hasSpikes] = td.getSpikeRateFiltered(unitName, varargin{:});
             rateCell = td.groupElements(rateCell);
             timeCell = td.groupElements(timeCell);
             hasSpikesGrouped = td.groupElements(hasSpikes);
@@ -4203,7 +4208,7 @@ k                    error('Please provide alignDescriptors as successive argume
                 TrialDataUtilities.Plotting.horizontalLine(threshEst, 'Color', 'r');
             end
             
-            ht = title(sprintf('Spike Waveforms for %s', strjoin(unitName, ', ')));
+            ht = title(sprintf('Spike Waveforms for %s', TrialDataUtilities.String.strjoin(unitName, ', ')));
             set(ht, 'Interpreter', 'none');
             
             axis tight;
@@ -4795,7 +4800,7 @@ k                    error('Please provide alignDescriptors as successive argume
             end
             
             if iscell(unitName)
-                unitNameStr = strjoin(unitName, ',');
+                unitNameStr = TrialDataUtilities.String.strjoin(unitName, ',');
             else
                 unitNameStr = unitName;
             end
@@ -5408,7 +5413,14 @@ k                    error('Please provide alignDescriptors as successive argume
             p.parse(varargin{:});
             
             % grab raw data (for marking) and grouped data (for plotting)
-            [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);
+            if td.hasAnalogChannel(name)
+                [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);
+            elseif td.hasSpikeChannel(name)
+                [dataByGroup, timeByGroup] = td.getSpikeRateFilteredGrouped(name);
+            else
+                error('Unknown channel type');
+            end
+            
             td.plotProvidedAnalogDataGroupedEachTrial(1, 'time', timeByGroup, ...
                 'data', dataByGroup, 'axisInfoY', td.channelDescriptorsByName.(name), ...
                 p.Unmatched);
