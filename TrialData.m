@@ -2448,7 +2448,9 @@
             prog = ProgressBar(td.nTrials, 'Cleaning columns of analog channel group data');
             for t = 1:td.nTrials
                 prog.update(t);
-                td.data(t).(groupName) = td.data(t).(groupName)(:, colIdx);
+                if ~isempty(td.data(t).(groupName))
+                    td.data(t).(groupName) = td.data(t).(groupName)(:, colIdx);
+                end
             end
             prog.finish();
             
