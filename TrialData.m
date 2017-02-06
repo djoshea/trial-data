@@ -421,7 +421,17 @@ classdef TrialData
                 okay = truevec(td.nTrials);
                 
                 for iT = 1:td.nTrials
-                    nTime = numel(td.data(iT).(timeField));
+                    sz = size(td.data(iT).(timeField));
+                    if sz(2) > 1 && sz(1) == 1
+                        td.data(iT).(timeField) = td.data(iT).(timeField)';
+                    end
+                    
+                    sz = size(td.data(iT).(dataField));
+                    if sz(2) > 1 && sz(1) == 1
+                        td.data(iT).(dataField) = td.data(iT).(dataField)';
+                    end
+                    
+                    nTime = size(td.data(iT).(timeField), 1);
                     nData = size(td.data(iT).(dataField), 1);
                     okay(iT) = nTime == nData;
                 end
