@@ -174,7 +174,7 @@ classdef RepeatedUnitUtils
                 if isempty(chListLow), continue, end
                 cLowList = intersect(cHigh-span:cHigh-1, electrodeNums);
                 
-                prog.increment('Removing spikes from electrode %d also in %s', cHigh, strjoin(cLowList));
+                prog.increment('Removing spikes from electrode %d also in %s', cHigh, TrialDataUtilities.String.strjoin(cLowList));
                     
                 if p.Results.keepRemovedSpikes
                     keepAs = sprintf('%s%02d_255', array, cHigh);
