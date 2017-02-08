@@ -140,7 +140,7 @@ classdef TrialData
             % check for reserved channel names
             overlap = intersect(specialNames, regularNames);
             if ~isempty(overlap)
-                error('getChannelDescriptors() returned the following reserved channel names: %s', strjoin(overlap, ', '));
+                error('getChannelDescriptors() returned the following reserved channel names: %s', TrialDataUtilities.String.strjoin(overlap, ', '));
             end
             
             % combine all channelDescriptors together
@@ -335,10 +335,10 @@ classdef TrialData
                             % fill in missing values for optional channels but
                             % issue a warning
                             tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
-                                chd.describe(), strjoin(missing{iChannel}, ', '));
+                                chd.describe(), TrialDataUtilities.String.strjoin(missing{iChannel}, ', '));
                         else
                             tcprintf('inline', '{yellow}Warning: {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
-                                chd.describe(), strjoin(missing{iChannel}, ', '));
+                                chd.describe(), TrialDataUtilities.String.strjoin(missing{iChannel}, ', '));
                         end
                     end
                     if p.Results.addMissingFields || ~chd.required
@@ -352,7 +352,7 @@ classdef TrialData
                 chDescs = chDescs(~ok);
                 for i = 1:length(missing)
                     tcprintf('inline', '{red}Error:   {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
-                        chDescs{i}, strjoin(missing{i}, ', '));
+                        chDescs{i}, TrialDataUtilities.String.strjoin(missing{i}, ', '));
                 end
                 error('Required channel data fields not provided by getChannelData');
             end
@@ -604,7 +604,7 @@ classdef TrialData
             end
             
             if ~all(okay)
-                error('TrialData instances differ on ChannelDescriptor for channel(s): %s', strjoin(chListAll(~okay), ', '));
+                error('TrialData instances differ on ChannelDescriptor for channel(s): %s', TrialDataUtilities.String.strjoin(chListAll(~okay), ', '));
             end
         end
     end
@@ -638,13 +638,13 @@ classdef TrialData
             analogChNonGroup = setdiff(analogCh, allGroupChannels);
             continuousChNonGroup = setdiff(continuousCh, allGroupChannels);
             
-            tcprintf('inline', '{yellow}Param: {none}%s\n', strjoin(td.listParamChannels(), ', '));
-            tcprintf('inline', '{yellow}Event: {none}%s\n', strjoin(td.listEventChannels(), ', '));
-            tcprintf('inline', '{yellow}Analog: {none}%s\n', strjoin(analogChNonGroup, ', '));
+            tcprintf('inline', '{yellow}Param: {none}%s\n', TrialDataUtilities.String.strjoin(td.listParamChannels(), ', '));
+            tcprintf('inline', '{yellow}Event: {none}%s\n', TrialDataUtilities.String.strjoin(td.listEventChannels(), ', '));
+            tcprintf('inline', '{yellow}Analog: {none}%s\n', TrialDataUtilities.String.strjoin(analogChNonGroup, ', '));
             for iG = 1:numel(groups)
                 isect = groupChannels{iG}(ismember(groupChannels{iG}, analogCh)); % want them in the group order
                 if ~isempty(isect)
-                    tcprintf('inline', '  {blue}%s: \{{none}%s\}\n', groups{iG}, strjoin(isect, ', '));
+                    tcprintf('inline', '  {blue}%s: \{{none}%s\}\n', groups{iG}, TrialDataUtilities.String.strjoin(isect, ', '));
                 end
             end
             
@@ -665,11 +665,11 @@ classdef TrialData
             str = [str, '\n'];
             tcprintf('inline', str);
             
-            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', strjoin(continuousChNonGroup, ', '));
+            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', TrialDataUtilities.String.strjoin(continuousChNonGroup, ', '));
             for iG = 1:numel(groups)
                 isect = groupChannels{iG}(ismember(groupChannels{iG}, continuousCh)); % want them in the group order
                 if ~isempty(isect)
-                    tcprintf('inline', '  {bright blue}%s: {none}\{%s\}\n', groups{iG}, strjoin(isect, ', '));
+                    tcprintf('inline', '  {bright blue}%s: {none}\{%s\}\n', groups{iG}, TrialDataUtilities.String.strjoin(isect, ', '));
                 end
             end
         end
@@ -1050,7 +1050,7 @@ classdef TrialData
             elseif iscellstr(name)
                 tf = td.hasChannel(name);
                 missing = name(~tf);
-                assert(all(tf), 'Trial data does not have channels %s', strjoin(missing, ','));
+                assert(all(tf), 'Trial data does not have channels %s', TrialDataUtilities.String.strjoin(missing, ','));
             else
                 error('Name must be string or cellstr');
             end
@@ -1516,7 +1516,7 @@ classdef TrialData
 %                         otherChannels = setdiff(td.getChannelsReferencingFields(timeField), name);
 %                         if ~isempty(otherChannels)
 %                             error('Analog channel time field %s conflicts with existing channel(s) %s. If you meant to reference their timeField, specify ''timeField'' parameter and leave times argument empty', ...
-%                                 name, strjoin(otherChannels, ','));
+%                                 name, TrialDataUtilities.String.strjoin(otherChannels, ','));
 %                         end
 %                     end
                 end
@@ -1869,7 +1869,7 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             full = td.listAnalogChannels();
             assert(all(ismember(names, full)), 'Missing analog channels %s', ...
-                strjoin(setdiff(names, full), ', '));
+                TrialDataUtilities.String.strjoin(setdiff(names, full), ', '));
             td = td.dropChannels(setdiff(full, names));
         end
         
@@ -2492,7 +2492,7 @@ classdef TrialData
             if ~strcmp(groupName, newGroupName)
                 % name is changing
                 conflicts = td.getChannelsReferencingFields(newGroupName);
-                assert(isempty(conflicts), 'Channel(s) %s already reference field %s. This field name cannot be used to store analog channel group.', strjoin(conflicts, ', '), newGroupName);
+                assert(isempty(conflicts), 'Channel(s) %s already reference field %s. This field name cannot be used to store analog channel group.', TrialDataUtilities.String.strjoin(conflicts, ', '), newGroupName);
                 
             elseif ~isempty(setdiff(chAll, names))
                 error('When group name is not changing, all channels must be included in the new ordering');
@@ -2993,7 +2993,7 @@ classdef TrialData
             
             td.warnIfNoArgOut(nargout);
             
-            if isvector(times)
+            if isvector(times) && ~iscell(times)
                 times = repmat({times}, td.nTrials, 1);
             end
             if isnumeric(values)
