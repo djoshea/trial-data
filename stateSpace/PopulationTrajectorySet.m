@@ -478,7 +478,7 @@ classdef PopulationTrajectorySet
         
         % nAlign x nBases x nConditions logical indicating which bases have valid
         % trial averages on each condition
-        alignBasisConditionsWithValidTrialAverage
+%         alignBasisConditionsWithValidTrialAverage
         
         % nAlign x nConditions logical indicating which align/conditions
         % have trial averages on at least one basis
@@ -830,10 +830,10 @@ classdef PopulationTrajectorySet
             hcprintf('  %d / %d conditions have valid trial averages for all aligns, non-empty bases\n    {999}[.conditionHasValidTrialAverageAllAlignsBases]\n', ...
                 nnz(pset.conditionHasValidTrialAverageAllAlignsBases), pset.nConditions);
             for iAlign = 1:pset.nAlign
-                hcprintf('  Align %d : %d conditions lack valid trial average for at least 1 valid, non-empty basis\n', ...
+                hcprintf('  Align %d : %d conditions lack valid trial average on all valid bases\n', ...
                     iAlign, nnz(~pset.alignConditionsWithTrialAverage(iAlign, :)));
             end
-            hcprintf('    {999}[.alignConditionsWithTrialAverage, .alignBasisConditionsWithValidTrialAverage]\n');
+            hcprintf('    {999}[.alignConditionsWithTrialAverage, .hasValidTrialAverageByAlignBasisCondition]\n');
 
             hcprintf('\nValid time windows for dataMean: hypotheticals for ''dropFraction'' = %g%% \n  {999}[.tMinForDataMean, .tMaxForDataMean]\n', ...
                 p.Results.dropFraction * 100);
@@ -1366,14 +1366,14 @@ classdef PopulationTrajectorySet
         function v = get.conditionHasValidTrialAverageAllAlignsBases(pset)
             % here is where conditionIncludeMask is factored in
             hasAvg = pset.hasValidTrialAverageByAlignBasisCondition;
-            v = makecol(squeeze(TensorUtils.allMultiDim(hasAvg(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, :), [1 2])));
+            v = makecol(squeeze(TensorUtils.allMultiDim(hasAvg(:, pset.basisValid, :), [1 2])));
             v(~pset.conditionIncludeMask) = false;
         end
         
         function v = get.tMinValidAllBasesByAlignCondition(pset)
             % generate on the fly, no caching
-            % only consider conditions that have the potential to
-            % contribute data to the trial averages on all bases
+            % generate the minimum time over all bases that have a trial
+            % average for that align condition
             
             % @djoshea changing this 20160728 since not all bases need to
             % be present. the window can be the tightest for all bases with
@@ -1384,10 +1384,19 @@ classdef PopulationTrajectorySet
             if ~any(cMask)
                 v = nan(pset.nAlign, pset.nConditions);
             else
-                v = nanmax(pset.tMinValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
-                % but then reexpand this to have the full complement of
-                % conditions, using NaNs for non-contributing conditions
-                v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
+                hasAvg = pset.hasValidTrialAverageByAlignBasisCondition;
+                tMinABC = pset.tMinValidByAlignBasisCondition;
+
+                % for each align condition, take the max of all bases
+                % having that 
+                tMinABC(~hasAvg) = NaN;
+                tMinABC(:, :, ~cMask) = NaN;
+                
+                v = TensorUtils.squeezeDims(nanmax(tMinABC, [], 2),  2);
+%                 v = nanmax(pset.tMinValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
+%                 % but then reexpand this to have the full complement of
+%                 % conditions, using NaNs for non-contributing conditions
+%                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
             end
         end
         
@@ -1401,8 +1410,17 @@ classdef PopulationTrajectorySet
             if ~any(cMask)
                 v = nan(pset.nAlign, pset.nConditions);
             else
-                v = nanmin(pset.tMaxValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
-                v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
+                hasAvg = pset.hasValidTrialAverageByAlignBasisCondition;
+                tMaxABC = pset.tMaxValidByAlignBasisCondition;
+
+                % for each align condition, take the max of all bases
+                % having that 
+                tMaxABC(~hasAvg) = NaN;
+                tMaxABC(:, :, ~cMask) = NaN;
+                
+                v = TensorUtils.squeezeDims(nanmin(tMaxABC, [], 2),  2);
+%                 v = nanmin(pset.tMaxValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
+%                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
             end
         end
 
@@ -3069,7 +3087,9 @@ classdef PopulationTrajectorySet
             tMinForDataMean = makecol(nanmin(pset.tMinValidAllBasesByAlignCondition, [], 2));
             tMaxForDataMean = makecol(nanmax(pset.tMaxValidAllBasesByAlignCondition, [], 2));
             
-            basisMask = pset.basisValidWithTrialAverageAllNonEmptyConditionAligns;
+            basisMask = pset.basisValid;
+            
+            cMask = pset.conditionIncludeMask;
             
             alignInvalid = isnan(tMinForDataMean) | isnan(tMaxForDataMean);
             if any(alignInvalid)
@@ -3107,7 +3127,7 @@ classdef PopulationTrajectorySet
 %             end
            
             % copy temp values for for slicing
-            conditionHasValidTrialAverageAllAlignsBases = pset.conditionHasValidTrialAverageAllAlignsBases;
+%             conditionHasValidTrialAverageAllAlignsBases = pset.conditionHasValidTrialAverageAllAlignsBases;
             dataByTrial = pset.dataByTrial;
             tMinForDataByTrial = pset.tMinForDataByTrial;
             tMaxForDataByTrial = pset.tMaxForDataByTrial;
@@ -3158,7 +3178,7 @@ classdef PopulationTrajectorySet
                     % will generate a warning above). For instance, if
                     % condition 1 has some bases with really long trials,
                     % and basis 2 is missing condition 1, then it might
-                    % have all shorter trials, even though 
+                    % have all shorter trials
                     
                     tMaskValid = tvecAll >= tMinValid & tvecAll <= tMaxValid;
                     
@@ -3173,7 +3193,8 @@ classdef PopulationTrajectorySet
                         'UniformOutput', false);
                     
                     for iCondition = 1:pset.nConditions
-                        if ~conditionHasValidTrialAverageAllAlignsBases(iCondition), continue, end
+%                         if ~conditionHasValidTrialAverageAllAlignsBases(iCondition), continue, end
+                        if ~cMask(iCondition), continue; end 
                         mat = byCondition{iCondition};
                         nTrials = size(mat, 1);
                         if nTrials == 0, continue, end;
@@ -3199,12 +3220,12 @@ classdef PopulationTrajectorySet
                 prog.finish();
             end
             
-            if ~any(pset.conditionHasValidTrialAverageAllAlignsBases)
-                warning('No conditions have valid trial averages for all alignments and bases, so no dataMean will be computed. Use .findBasesMissingTrialAverageForNonEmptyConditionAligns to identify the bases lacking trial averages on each condition');
-            end
+%             if ~any(pset.conditionHasValidTrialAverageAllAlignsBases)
+%                 warning('No conditions have valid trial averages for all alignments and bases, so no dataMean will be computed. Use .findBasesMissingTrialAverageForNonEmptyConditionAligns to identify the bases lacking trial averages on each condition');
+%             end
             
             if any(basisHasNoValidTimepoints)
-                warning('%d bases had no valid timepoints. Check .explain()', nnz(basisHasNoValidTimepoints));
+                warning('Valid trial averages were not computed (left NaN) for %d bases. Check .explain()', nnz(basisHasNoValidTimepoints));
             end
             
             % old way of accomplishing the same thing
@@ -4415,18 +4436,18 @@ classdef PopulationTrajectorySet
         
         function c = get.alignConditionsWithTrialAverage(pset)
             % c is nAlign x nConditions
-            c = TensorUtils.squeezeDims(any(pset.alignBasisConditionsWithValidTrialAverage(:, pset.basisValid, :), 2), 2);
+            c = TensorUtils.squeezeDims(any(pset.hasValidTrialAverageByAlignBasisCondition(:, pset.basisValid, :), 2), 2);
         end
         
-        function c = get.alignBasisConditionsWithValidTrialAverage(pset)
-            % c is nAlign x nBases x nConditions
-            c = ~isnan(pset.tMinValidByAlignBasisCondition) & ...
-                ~isnan(pset.tMaxValidByAlignBasisCondition);
-        end
+%         function c = get.alignBasisConditionsWithValidTrialAverage(pset)
+%             % c is nAlign x nBases x nConditions
+%             c = ~isnan(pset.tMinValidByAlignBasisCondition) & ...
+%                 ~isnan(pset.tMaxValidByAlignBasisCondition);
+%         end
         
         function c = get.basisConditionsWithValidTrialAverage(pset)
             % c is nBases x nConditions
-            c = TensorUtils.squeezeDims(all(pset.alignBasisConditionsWithValidTrialAverage, 1), 1);
+            c = TensorUtils.squeezeDims(all(pset.hasValidTrialAverageByAlignBasisCondition, 1), 1);
         end
 %         
         function basesMissingTrialAverages = get.basesMissingTrialAverageForNonEmptyConditionAligns(pset)
@@ -4436,7 +4457,7 @@ classdef PopulationTrajectorySet
             
             % nAlign x nBases x nConditions
             shouldHaveTrialAverage = repmat(permute(pset.alignConditionsWithTrialAverage, [1 3 2]), [1 pset.nBasesValid 1]);
-            hasTrialAverage = pset.alignBasisConditionsWithValidTrialAverage(:, pset.basisValid, :);
+            hasTrialAverage = pset.hasValidTrialAverageByAlignBasisCondition(:, pset.basisValid, :);
             
             % nBases x 1
             basesValidMissingTrialAverages = makecol(TensorUtils.squeezeDims(any(any(shouldHaveTrialAverage & ~hasTrialAverage, 3), 1), [1 3]));
@@ -4449,7 +4470,7 @@ classdef PopulationTrajectorySet
         
         function bMask = get.basesNonEmpty(pset)
             % nBases x 1 logical
-            bMask = pset.basisValid & makecol(any(any(pset.alignBasisConditionsWithValidTrialAverage, 1), 3));
+            bMask = pset.basisValid & makecol(any(any(pset.hasValidTrialAverageByAlignBasisCondition, 1), 3));
         end
         
         function cMask = get.conditionsWithValidTrialAverageOnNonEmptyBases(pset)
@@ -4458,7 +4479,7 @@ classdef PopulationTrajectorySet
             % satisfying this?
             bMask = pset.basesNonEmpty;
             % any alignment, all bases
-            cMask = squeeze(all(any(pset.alignBasisConditionsWithValidTrialAverage(:,bMask,:), 1), 2));
+            cMask = squeeze(all(any(pset.hasValidTrialAverageByAlignBasisCondition(:,bMask,:), 1), 2));
         end
            
     end
