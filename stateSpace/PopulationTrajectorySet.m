@@ -1287,14 +1287,15 @@ classdef PopulationTrajectorySet
 %             end
         end
         
-%         function pset = set.basisValid(pset, v)
-%             if ~pset.dataSourceManual
+        function pset = set.basisValid(pset, v)
+            if ~pset.dataSourceManual
+                error('Can only be set for dataSourceManual');
 %                 pset.odc = pset.odc.copy();
 %                 pset.odc.basisValid = v;
-%             else
-%                 pset.basisValidManual = v;
-%             end
-%         end
+            else
+                pset.basisValidManual = v;
+            end
+        end
         
         function v = get.basisInvalidCause(pset)
 %             if ~pset.dataSourceManual
@@ -1308,14 +1309,15 @@ classdef PopulationTrajectorySet
 %             end
         end
         
-%         function pset = set.basisInvalidCause(pset, v)
-%             if ~pset.dataSourceManual
+        function pset = set.basisInvalidCause(pset, v)
+            if ~pset.dataSourceManual
+                error('Can only be set for dataSourceManual');
 %                 pset.odc = pset.odc.copy();
 %                 pset.odc.basisInvalidCause = v;
-%             else
-%                 pset.basisInvalidCauseManual = v;
-%             end
-%         end
+            else
+                pset.basisInvalidCauseManual = v;
+            end
+        end
         
         function v = get.tMinValidByAlignBasisCondition(pset)
             if ~pset.dataSourceManual
@@ -4106,7 +4108,7 @@ classdef PopulationTrajectorySet
         function pset = markBasesPermanentlyInvalid(pset, mask, cause)
             pset.warnIfNoArgOut(nargout);
             
-            [permValid, permCause] = pset.getPermamentValid();
+            [permValid, permCause] = pset.getPermanentValid();
             
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
             mask = mask & ~permValid;
@@ -4121,7 +4123,7 @@ classdef PopulationTrajectorySet
             end
             cause = makecol(cause);
             if numel(cause) == nnz(mask)
-                cause = TensorUtils.inflateMaskedTensor(1, cause, mask, {''});
+                cause = TensorUtils.inflateMaskedTensor(cause, 1, mask, {''});
             end
             assert(numel(cause) == numel(mask), 'Length of cellstr cause must match nnz(mask) or numel(mask)');
            

@@ -3847,7 +3847,7 @@ classdef TrialData
                 % consider it aligned to trial start
                 offsets = zerosvec(td.nTrials);
             end
-            spikes = cellfun(@plus, p.Results.spikes, num2cell(offsets), 'UniformOutput', false);
+            spikes = cellfun(@(x, y) makecol(x+y), p.Results.spikes, num2cell(offsets), 'UniformOutput', false);
             
             channelData = {spikes};
             
@@ -4280,6 +4280,8 @@ classdef TrialData
             else
                 error('Unsupported unit name argument');
             end
+            timesCell = cellfun(@makecol, timesCell, 'UniformOutput', false);
+            
         end
         
         function timesCell = getSpikeTimes(td, unitNames, varargin)

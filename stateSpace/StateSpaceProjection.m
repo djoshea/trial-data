@@ -594,7 +594,7 @@ classdef StateSpaceProjection
 
             % mark output bases invalid if requested
             if ~isempty(proj.basisValidProj)
-                psetProjected = psetProjected.setBasesInvalid(~proj.basisValidProj, proj.basisInvalidCauseProj(~proj.basisValidProj));
+                psetProjected = psetProjected.markBasesPermanentlyInvalid(~proj.basisValidProj, proj.basisInvalidCauseProj(~proj.basisValidProj));
             end
             
             if nargout > 1
