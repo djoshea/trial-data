@@ -4111,7 +4111,7 @@ classdef PopulationTrajectorySet
             [permValid, permCause] = pset.getPermanentValid();
             
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
-            mask = mask & ~permValid;
+            mask = mask & permValid;
             permValid(mask) = false;
             
             if nargin < 3
@@ -4140,7 +4140,7 @@ classdef PopulationTrajectorySet
             [tempValid, tempCause] = pset.getTemporaryValid();
             
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
-            mask = mask & ~tempValid;
+            mask = mask & tempValid;
             tempValid(mask) = false;
             
             if nargin < 3

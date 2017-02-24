@@ -968,12 +968,15 @@ classdef AlignDescriptor
         end
        
         function ad = lag(ad, tDelay)
-            % shift the alignment tDelay forward in time, instead of
-            % start/stop at Event, start/stop at Event-tDelay. keeps zero
-            % the same so that the time vector shifts according to the lag
+            % shift the alignment tDelay units forward in time, instead of
+            % start/stop at Event, start/stop at Event-tDelay. We must move
+            % the zero so that the time reference for interpolation /
+            % re-sampling remains fixed when we lag, otherwise we end up
+            % with different numbers of samples
             ad.warnIfNoArgOut(nargout);
             ad.startOffset = ad.startOffset - tDelay;
             ad.stopOffset = ad.stopOffset - tDelay;
+            ad.zeroOffset = ad.zeroOffset - tDelay;
             ad = ad.update();
         end
     end

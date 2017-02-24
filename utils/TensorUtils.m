@@ -1126,12 +1126,16 @@ classdef TensorUtils
             out = repmat(in, repCounts);
         end
         
-        function out = expandAlongDims(in, dims, by)
+        function out = expandAlongDims(in, dims, by, fillWith)
             % expand by adding nans or empty cells for cell array
             sz = size(in);
             sz(dims) = sz(dims) + by;
             
-            out = TensorUtils.emptyWithSameType(in, sz);
+            if nargin < 4
+                out = TensorUtils.emptyWithSameType(in, sz);
+            else
+                out = repmat(fillWith, sz);
+            end
             
             % build the mask over out to assign in into
             szInDims = TensorUtils.sizeMultiDim(in, dims);

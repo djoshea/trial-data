@@ -1746,6 +1746,8 @@ k                    error('Please provide alignDescriptors as successive argume
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.addParameter('assumeUniformSampling', false, @islogical);
+            p.addParameter('minTrials', 0, @isscalar);
+            p.addParameter('minTrialFraction', 0, @isscalar);
             p.parse(varargin{:});
 %             
 %             if isempty(p.Results.tvec)
@@ -1771,7 +1773,9 @@ k                    error('Please provide alignDescriptors as successive argume
             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
                 'timeReference', 0, 'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
                 'interpolateMethod', p.Results.interpolateMethod, ...
-                'assumeUniformSampling', p.Results.assumeUniformSampling);
+                'assumeUniformSampling', p.Results.assumeUniformSampling, ...
+                'minTrials', p.Results.minTrials, ...
+                'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
         end
         
         function [matCell, tvec] = getAnalogAsMatrixGrouped(td, name, varargin)
@@ -2537,6 +2541,8 @@ k                    error('Please provide alignDescriptors as successive argume
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('tvec', [], @isvector);
             p.addParameter('assumeUniformSampling', false, @islogical); 
+            p.addParameter('minTrials', 0, @isscalar);
+            p.addParameter('minTrialFraction', 0, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -2545,7 +2551,9 @@ k                    error('Please provide alignDescriptors as successive argume
             % interpolate to common time vector
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
                 'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
-                'assumeUniformSampling', p.Results.assumeUniformSampling);
+                'assumeUniformSampling', p.Results.assumeUniformSampling, ...
+                'minTrials', p.Results.minTrials, ...
+                'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
         end
         
         function [mat, tvec, alignIdx] = getAnalogMultiAsTensorEachAlign(td, names, varargin)

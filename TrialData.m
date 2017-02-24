@@ -1890,7 +1890,8 @@ classdef TrialData
             for i = 1:numel(name)
                 [~, time] = td.getAnalog(name{i});
                 % median of medians is faster and close enough
-                delta(i) = nanmedian(cellfun(@(x) nanmedian(diff(x)), time));
+                emptyMask = cellfun(@(t) numel(t) < 2, time);
+                delta(i) = nanmedian(cellfun(@(x) nanmedian(diff(x)), time(~emptyMask)));
             end
             
             delta = nanmin(delta);
@@ -1907,10 +1908,23 @@ classdef TrialData
         end
         
         function time = getAnalogTimeRaw(td, name)
-            td.assertHasAnalogChannel(name);
-            cd = td.channelDescriptorsByName.(name);
-            assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
-            time = {td.data.(cd.dataFields{2})}';
+            if td.hasAnalogChannel(name)
+                timeField = td.getAnalogTimeField(name);
+            elseif isfield(td.data, name)
+                timeField = name;
+            else
+                error('%s is not an analog channel or time field');
+            end
+
+            time = {td.data.(timeField)}';
+            time = cellfun(@makecol, time, 'UniformOutput', false);
+        end
+        
+        function time = getAnalogTimeRawMinusOffsetFromZero(td, name)
+            time = td.getAnalogTimeRaw(name);
+            offsets = td.getTimeOffsetsFromZeroEachTrial();
+            
+            time = cellfun(@minus, time, num2cell(offsets), 'UniformOutput', false);
         end
         
         function [data, time] = getAnalogRaw(td, name, varargin)
@@ -2101,8 +2115,6 @@ classdef TrialData
                     error('Time vector or cell of vectors must be passed in when not referencing an existing timeField');
                 end
             else
-                assignTimesIntoData = true;
-                
                 % need to trim data coming in to TrialStart:TrialStop to
                 % avoid conflicts with other channels
                 [times, values] = td.trimIncomingAnalogChannelData(times, values, 'isAligned', isAligned);
@@ -2111,22 +2123,42 @@ classdef TrialData
                 % we'll set the field value for the new times field
                 
                 if isempty(timeField)
+                    assignTimesIntoData = true;
+                
                     % generate unique time field name
                     timeField = matlab.lang.makeUniqueStrings(sprintf('%s_time', groupName), fieldnames(td.data));
-                    %                 else
-                    % actually, this is what we want, to use the other
-                    % channel's time field to avoid duplicated timestamps
+                else
+                    if td.hasChannel(timeField)
+                        % treat timeField as analog channel name
+                        % share that existing channel's time field
+                        cd = td.channelDescriptorsByName.(timeField);
+                        assert(isa(cd, 'AnalogChannelDescriptor'), ...
+                            'Channel %s is not an analog channel', timeField);
+                        timeField = cd.timeField;
+                    end
                     
-                    %                     % check that we're not overwriting another channel's
-                    %                     % time field
-                    %                     if isfield(td.data, timeField)
-                    %                         otherChannels = setdiff(td.getChannelsReferencingFields(timeField), chNames);
-                    %                         if ~isempty(otherChannels)
-                    %                             error('Analog channel time field %s conflicts with existing channel(s) %s. If you meant to reference their timeField, specify ''timeField'' parameter and leave times argument empty', ...
-                    %                                 chNames, TrialDataUtilities.String.strjoin(otherChannels, ','));
-                    %                         end
-                    %                     end
-                    %                 end
+                    if isfield(td.data, timeField)
+                        % use the other channel's time field to avoid duplicated timestamps
+                        % but check that the time data is the same
+                        assignTimesIntoData = false;
+                    
+                        % need to trim the associated channels so that
+                        % everything matches
+                        td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeField);
+                        
+                        % then check for equality
+                        if isAligned
+                            existingTimeData = td.getAnalogTimeRawMinusOffsetFromZero(timeField);
+                        else
+                            existingTimeData = td.getAnalogTimeRaw(timeField);
+                        end
+                          
+                        eqByTrial = cellfun(@(x, y) isequal(makecol(x), makecol(y)), times, existingTimeData);
+                        assert(all(eqByTrial), 'Time passed in differ from existing times in .times on some trials. Note that incoming data is trimmed.');
+                    else
+                        % new, specified time field
+                        assignTimesIntoData = true;
+                    end
                 end
             end
             
@@ -2134,7 +2166,7 @@ classdef TrialData
                 error('Field %s already exists in data structure', groupName);
             end
             
-            % do the assignment
+            % assign an empty field
             if assignTimesIntoData
                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, []);
             end
@@ -2584,10 +2616,14 @@ classdef TrialData
         end
         
         function timeField = getAnalogChannelGroupTimeField(td, groupName)
-            td.assertHasAnalogChannelGroup(groupName);
-            chList = td.listAnalogChannelsInGroup(groupName);
-            cd = td.channelDescriptorsByName.(chList{1});
-            timeField = cd.timeField;
+            if td.hasAnalogChannel(groupName)
+                timeField = td.getAnalogTimeField();
+            else
+                td.assertHasAnalogChannelGroup(groupName);
+                chList = td.listAnalogChannelsInGroup(groupName);
+                cd = td.channelDescriptorsByName.(chList{1});
+                timeField = cd.timeField;
+            end
         end
         
         function time = getAnalogChannelGroupTime(td, groupName)
@@ -4267,7 +4303,7 @@ classdef TrialData
                 nUnits = numel(unitNames);
                 timesCellByUnit = cell(td.nTrials, nUnits);
                 for iU = 1:nUnits
-                    timesCellByUnit(:, iU) = {td.data.(unitNames{iU})}';
+                    timesCellByUnit(:, iU) = cellfun(@makecol, {td.data.(unitNames{iU})}', 'UniformOutput', false);
                 end
                 if p.Results.combine
                     timesCell = cellvec(td.nTrials);

@@ -43,6 +43,15 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %    interpolateMethod: string. See interp1 help for description of 
 %       interpolation methods. default = 'pchip'.
 %
+%    minTrials : if > 0, will shrink the edges of mat and tvec to timepoints where
+%    at least this many trials have data
+%
+%    minTrialFraction : if > 0, will shrink the edges of mat and tvec to timepoints where
+%    at least this fraction of trials have data. the fraction will be taken
+%    of valid trials only.
+%
+%    trialValid : mask of which trials to consider when computing minTrials
+%    and minTrialFraction
 
     p = inputParser();
     p.addRequired('dataCell', @(x) iscell(x));
@@ -54,6 +63,9 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('timeReference', 0, @isscalar);
     p.addParameter('showProgress', true, @islogical);
+    p.addParameter('minTrials', 0, @isscalar);
+    p.addParameter('minTrialFraction', 0, @isscalar);
+    p.addParameter('trialValid', [], @islogical);
 %     p.addParameter('sparse', false, @islogical);
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
@@ -92,6 +104,12 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         mat = [];
         tvec = zeros(0, 1);
         return;
+    end
+    
+    N = size(dataCell, 1);
+    trialValid = p.Results.trialValid;
+    if isempty(trialValid)
+        trialValid = truevec(N);
     end
     
     % fix duplicate timestamps
@@ -138,7 +156,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % build the data matrix by inserting the interpolated segment of each timeseries
     % in the appropriate location in each row, keeping the non-spanned timepoints as NaN
     T = numel(tvec);
-    N = size(dataCell, 1);
+    
     G = size(dataCell, 2);
     
     mat = nan([N, T, C, G]); % we'll reshape this later
@@ -146,12 +164,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     
-    
-    
     if p.Results.showProgress
         prog = ProgressBar(N, 'Embedding data over trials into common time vector');
     end
     for i = 1:N
+        if ~trialValid(i), continue; end
         if p.Results.showProgress, prog.update(i); end
         for g = 1:G
             if ~isnan(indStart(i,g)) && ~isnan(indStop(i,g))
@@ -187,7 +204,19 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         prog.finish();
     end
     
-    mat = reshape(mat, [N T C*G]);
+    % pare down time points from edges with insufficient trial counts
+    if p.Results.minTrials > 0 || p.Results.minTrialFraction > 0
+        nTrialsOverTime = sum(all(~isnan(mat(trialValid, :, :)), 3), 1);
+        minTrials = max(p.Results.minTrials, nnz(trialValid) * p.Results.minTrialFraction);
+        
+        tMask= falsevec(T);
+        tMask(find(nTrialsOverTime >= minTrials, 1, 'first') : find(nTrialsOverTime >= minTrials, 1, 'last')) = true;
+    else
+        tMask = truevec(T);
+    end
+    
+    mat = reshape(mat(:, tMask, :, :), [N nnz(tMask) C*G]);
+    tvec = tvec(tMask);
 end
 
 function timeDelta = inferTimeDelta(tvec)
