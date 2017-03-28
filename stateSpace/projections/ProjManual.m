@@ -68,7 +68,7 @@ classdef ProjManual < StateSpaceProjection
                 error('Second arg must be StateSpaceProjection or decoderKbyN');
             end
             
-            Xv = pset.buildCTAbyN('validBasesOnly', true);
+            Xv = pset.buildCTAbyN('validBasesOnly', true, 'validTimepointsAllBasesOnly', true);
             
             decoderKbyNv = decoderKbyN(:, pset.basisValid);
             encoderNvbyK = ((Xv*decoderKbyNv') \ (Xv))';
