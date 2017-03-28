@@ -1229,7 +1229,7 @@ classdef TrialDataConditionAlign < TrialData
                 ad = varargin{i};
 
                 if iscell(ad)
-k                    error('Please provide alignDescriptors as successive arguments');
+                    error('Please provide alignDescriptors as successive arguments');
                 end
                 if ischar(ad)
                     adSet{i} = AlignInfo(ad);
