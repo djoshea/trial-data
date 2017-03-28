@@ -47,6 +47,7 @@ classdef TrialDataConditionAlign < TrialData
         
         nConditions
         listByCondition
+        nTrialsByCondition
         conditionIdx
         conditionSubs
         conditions
@@ -270,8 +271,8 @@ classdef TrialDataConditionAlign < TrialData
             % invalid by each align info
             for iA = 1:td.nAlign
                 amask = ~td.alignInfoSet{iA}.computedValid & ~explained;
-                cause(amask) = cellfun(@(s) ['(temporary) AlignInfo ', num2str(iA), ': ', s], ...
-                    td.alignInfoSet{iA}.invalidCause(amask), 'UniformOutput', false);
+                cause(amask) = cellfun(@(s) sprintf('(temporary) AlignInfo %d: %s', ...
+                    iA, s), td.alignInfoSet{iA}.invalidCause(amask), 'UniformOutput', false);
             end
             
             cause(valid) = {''};
@@ -1180,6 +1181,10 @@ classdef TrialDataConditionAlign < TrialData
         
         function v = get.listByCondition(td)
             v = td.conditionInfo.listByCondition;
+        end
+        
+        function v = get.nTrialsByCondition(td)
+            v = cellfun(@numel, td.listByCondition);
         end
 
         function v = get.conditionIdx(td)
@@ -3558,6 +3563,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('combine', false, @islogical);
+            p.addParameter('showProgress', true, @islogical);    
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
@@ -3587,7 +3593,7 @@ classdef TrialDataConditionAlign < TrialData
             % will be in (when called in this class)
             [rates, tvec] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
                 tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond, ...
-                'timeDelta', timeDelta);
+                'timeDelta', timeDelta, 'showProgress', p.Results.showProgress);
             tvec = makecol(tvec);
             
             % now we need to nan out the regions affected by blanking
