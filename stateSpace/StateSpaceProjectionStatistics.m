@@ -772,7 +772,7 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
             p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
             p.addParameter('combineAxesWithTime', true, @(x) islogical(x) || iscell(x));
-            p.KeepUnmatched = true;
+            p.KeepUnmatched = false; % experimental, not sure if this should accept unwanted args
             p.parse(varargin{:});
             
             s = StateSpaceProjectionStatistics();

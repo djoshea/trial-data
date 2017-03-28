@@ -12,6 +12,7 @@ classdef TensorUtils
             p.addRequired('size', @(x) isempty(x) || (isvector(x) && isnumeric(x)));
             p.addOptional('contentsFn', [], @(x) isa(x, 'function_handle'));
             p.addOptional('asCell', false, @islogical);
+            p.addOptional('minDims', 2, @isscalar); 
             p.parse(sz, varargin{:});
             asCell = p.Results.asCell;
             contentsFn = p.Results.contentsFn;
@@ -28,7 +29,7 @@ classdef TensorUtils
                 return
             end
             
-            sz = TensorUtils.expandScalarSize(sz);
+            sz = TensorUtils.expandSizeToNDims(sz, p.Results.minDims);
             nDims = length(sz);
             idxEachDim = arrayfun(@(n) 1:n, sz, 'UniformOutput', false);
             [subsGrids{1:nDims}] = ndgrid(idxEachDim{:});
@@ -403,6 +404,11 @@ classdef TensorUtils
             if nargin < 4
                 if iscell(maskedTensor)
                     fillWith = {[]};
+                elseif isstruct(maskedTensor)
+                    flds = fieldnames(maskedTensor);
+                    args = cell(numel(flds)*2, 1);
+                    args(1:2:end) = flds;
+                    fillWith = struct(args{:});
                 else
                     fillWith = NaN;
                 end
@@ -652,6 +658,11 @@ classdef TensorUtils
             end
         end
         
+        function t = assignIntoTensorAlongDimension(t, assignThis, dims, select)
+            sz = size(t);
+            maskByDim = TensorUtils.maskByDimCellSelectAlongDimension(sz, dims, select);
+            t(maskByDim{:}) = assignThis;
+        end
                 
         function sel = selectAlongDimensionWithNaNs(t, dim, select, varargin)
             assert(numel(dim) == 1, 'Must be single dimension');
@@ -685,7 +696,7 @@ classdef TensorUtils
             szResult(dimMask) = 1;
             
             % oh so clever
-            tCell = TensorUtils.mapToSizeFromSubs(szResult, 'asCell', true, ...
+            tCell = TensorUtils.mapToSizeFromSubs(szResult, 'minDims', max(dim), 'asCell', true, ...
                 'contentsFn', @(varargin) TensorUtils.selectAlongDimension(t, dim, ...
                 varargin(dim), squeezeEach));
         end
@@ -780,24 +791,87 @@ classdef TensorUtils
             end
         end
         
-%         function out = catPad(dim, with, varargin)
-%             % works like cat, except pads each element to be the same size
-%             % along dimension dim before concatenating
-%             szAlongDim = cellfun(@(x) size(x, dim), varargin);
-%             if numel(unique(szAlongDim)) == 1
-%                 % no padding needed
-%                 out = cat(dim, varargin{:});
-%             else
-%                 newSzAlongDim = max(szAlongDim);
-%                 paddedCell = cell(size(varargin));
-%                 for iA = 1:numel(varargin)
-%                     szVec = size(varargin{iA});
-%                     szVec(dim) = newSzAlongDim - szVec(dim);
-%                     paddedCell{iA} = cat(dim, varargin{iA}, repmat(with, szVec));
-%                 end
-%                 out = cat(dim, paddedCell{:});
-%             end
-%         end
+        function paddedCell = expandToSameSizeAlongDims(dims, varargin)
+            nd = max(max(dims), max(cellfun(@ndims, varargin)));
+            szMat = cell2mat(cellfun(@(x) TensorUtils.sizeNDims(x, nd), makecol(varargin), 'UniformOutput', false));
+            
+            szPadTo = max(szMat, [], 1);
+            padFn = @(x) TensorUtils.expandOrTruncateToSize(x, dims, szPadTo(dims));
+            
+            paddedCell = cellfun(padFn, makecol(varargin), 'UniformOutput', false);
+        end
+        
+        function out = catPad(dim, varargin)
+            % works like cat, except pads each element to be the same size
+            % along dimension dim before concatenating
+            
+            nd = max(cellfun(@ndims, varargin));
+            otherDims = setdiff(1:nd, dim);
+            paddedCell = TensorUtils.expandToSameSizeAlongDims(otherDims, varargin{:});
+            out = cat(dim, paddedCell{:});
+        end
+        
+        function [out, tvec] = concatenateAlignedToCommonTimeVector(timeCell, dataCell, timeDim, catDim, varargin)
+            p = inputParser();
+            p.addParameter('timeVec', [], @isvector);
+            p.addParameter('timeDelta', [], @isscalar);
+            p.parse(varargin{:});
+            
+            if isempty(p.Results.timeVec)
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    timeDelta = nanmedian(timeCell{1});
+                end
+
+                % first find common time vector
+                tMin = min(cellfun(@min, timeCell));
+                tMax = min(cellfun(@max, timeCell));
+            
+                tvec = tMin:timeDelta:tMax;
+            else
+                % use provided time vector
+                tvec = p.Results.timeVec;
+            end
+            
+            % expand / align each dataCell to live on time vector
+            nd = max(max([timeDim, catDim]), max(cellfun(@ndims, dataCell)));
+            szMat = cell2mat(cellfun(@(x) TensorUtils.sizeNDims(x, nd), dataCell, 'UniformOutput', false));
+            
+            finalSize = szMat;
+            finalSize(catDim) = sum(szMat(:, catDim));
+            finalSize(timeDim) = numel(vec);
+            out = nan(finalSize, 'like', dataCell{1});
+            
+            % assume uniform sampling
+            Ncat = numel(dataCell);
+            for i = 1:Ncat
+                ti = timeCell{i};
+                idxStart = TensorUtils.argMin(abs(ti(1) - tvec));
+                idxEnd = idxStart + numel(ti) - 1;
+                
+                dims = [catDim, timeDim];
+                masks = {i, idxStart:idxEnd};
+                
+                out = TensorUtils.assignIntoTensorAlongDimension(out, dataCell{i}, dims, masks);
+            end                 
+        end
+        
+        function dataNew = sliceOrExpandToAlignTimeVector(tvecCurrent, dataCurrent, tvecNew, timeDim)
+            assert(size(dataCurrent, timeDim) == numel(tvecCurrent));
+            
+            % first slice off ends if needed
+            mask = tvecCurrent >= min(tvecNew) & tvecCurrent <= max(tvecNew);
+            dataSlice = TensorUtils.selectAlongDimension(dataCurrent, timeDim, mask);
+            
+            % then expand as neede
+            sz = TensorUtils.sizeNDims(dataSlice, timeDim);
+            sz(timeDim) = numel(tvecCurrent);
+            dataNew = nan(sz, 'like', dataSlice);
+            
+            idxStart = TensorUtils.argMin(abs(min(tvecCurrent) - tvecNew));
+            idxEnd = idxStart + numel(tvecCurrent) - 1;
+            dataNew = TensorUtils.assignIntoTensorAlongDimension(dataNew, dataSlice, timeDim, idxStart:idxEnd);
+        end
         
         function [out, which] = catWhichIgnoreEmpty(dim, varargin)
             % works like cat, but returns a vector indicating which of the
@@ -889,7 +963,7 @@ classdef TensorUtils
                 'whichDims must contain each dim in 1:length(whichDims)');
             % add any trailing dimensions which are missing from the list
             % automatically
-            if max(allDims) < ndimsIn;
+            if max(allDims) < ndimsIn
                 whichDims = cat(1, whichDims, num2cell(max(allDims)+1:ndimsIn));
                 % recompute allDims in case trailing dims were added
                 allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
