@@ -100,6 +100,7 @@ assert(size(trials_NbyTAbyAttrbyR, ndims(trials_NbyTAbyAttrbyR)) >= options.numR
 % Xsum = bsxfun(@times, Xfull, numOfTrials);
 %Xsum = nansum(Xtrial,5);
 
+
 prog = ProgressBar(options.numRep, 'Optimizing lambda');
 for rep = 1:options.numRep
     prog.update(rep);
@@ -137,7 +138,9 @@ for rep = 1:options.numRep
     end
 
     progInner = ProgressBar(length(options.lambdas), 'Testing lambda values');
-    for l = 1:length(options.lambdas)
+    progInner.enableParallel();
+    parfor l = 1:length(options.lambdas)
+        errorsThisLambda = nanvec(length(XtestMargs))
         progInner.update(l);
         
         [W,V,whichMarg] = TrialDataUtilities.DPCA.dpca(Xtrain, ...
@@ -171,12 +174,17 @@ for rep = 1:options.numRep
                 % end
             end
             
-            errorsMarg(i, l, rep) = recError/margVar_toNormalize(i);
+            errorsThisLambda(i) = recError/margVar_toNormalize(i);
+%             errorsMarg(i, l, rep) = recError/margVar_toNormalize(i);
             cumError = cumError + recError;
         end
         
+        errorsMarg(:, l, rep) = errorsThisLambda;
+        
         errors(l,rep) = cumError / sum(margVar_toNormalize);
     end
+    
+    
     progInner.finish();
 %     fprintf('\n')
 end

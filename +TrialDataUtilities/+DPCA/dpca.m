@@ -130,37 +130,41 @@ for i=1:length(Xmargs)
     XfN = Xf(:, ~skip);
     
     % matlab's recommended way @djoshea made this default
-    C = XfN/XrN;
-    [U,~,~] = svd(C*XrN);
-    U = U(:,1:nc);
+    try
+        C = XfN/XrN;
+        [U,~,~] = svd(C*XrN);
+        U = U(:,1:nc);
+        
+    catch
+        % fast dirty way, exception will have to do with large matrix
+        % beyond memory capacity
     
-    % fast dirty way
+        % catching possible warning
+        s1 = warning('error','MATLAB:singularMatrix');
+        s2 = warning('error','MATLAB:nearlySingularMatrix');
+        try
+            % fixing C
+            C = XfN*XrN'/(XrN*XrN');
+        catch 
+            fprintf('Matrix close to singular, using tiny regularization, lambda = 1e-10\n')
+            thisLambda = 1e-10;
+            Xr = [X totalVar * thisLambda * eye(size(X,1))];
+            Xf = [Xmargs{i} zeros(size(X,1))];
+            
+            % @djoshea nan fix
+            skip = any(isnan(Xr), 1);
+            XrN = Xr(:, ~skip);
+            XfN = Xf(:, ~skip);
+            
+            C = XfN*XrN'/(XrN*XrN');
+        end
+        warning(s1)
+        warning(s2)
+        
+        M = C*XrN;
+        [U,~,~] = eigs(M*M', nc);
+    end
     
-%     % catching possible warning
-%     s1 = warning('error','MATLAB:singularMatrix');
-%     s2 = warning('error','MATLAB:nearlySingularMatrix');
-%     try
-%         % fixing C
-%         C = XfN*XrN'/(XrN*XrN');
-%     catch exception
-%         display('Matrix close to singular, using tiny regularization, lambda = 1e-10')
-%         thisLambda = 1e-10;
-%         Xr = [X totalVar * thisLambda * eye(size(X,1))];
-%         Xf = [Xmargs{i} zeros(size(X,1))];
-%         
-%         % @djoshea nan fix
-%         skip = any(isnan(Xr), 1);
-%         XrN = Xr(:, ~skip);
-%         XfN = Xf(:, ~skip);
-%         
-%         C = XfN*XrN'/(XrN*XrN');
-%     end
-%     warning(s1)
-%     warning(s2)
-%     
-%     M = C*XrN;
-%     [U,~,~] = eigs(M*M', nc);
-
     P = U;
     D = U'*C;
     

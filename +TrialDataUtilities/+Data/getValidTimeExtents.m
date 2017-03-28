@@ -1,6 +1,7 @@
 function [tMin, tMax] = getValidTimeExtents(time, data)
 % for cells time and data, return the min and max time for which
-% data is present on each trial. If data is a a matri
+% data is present on each trial. If data is a a matrix, the first dim must
+% be over trials. If data is a cell over trials, time runs over dim 1
 
 [tMin, tMax] = deal(nan(size(time)));
 

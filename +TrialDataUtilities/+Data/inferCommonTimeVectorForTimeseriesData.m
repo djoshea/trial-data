@@ -22,10 +22,10 @@ function [tvec, tMinCell, tMaxCell] = inferCommonTimeVectorForTimeseriesData(tim
 
     p = inputParser();
     p.addRequired('timeCell', @(x) iscell(x));
-    p.addParamValue('timeDelta', [], @(x) isempty(x) || isscalar(x));
-    p.addParamValue('timeReference', 0, @isscalar);
-    p.addParamValue('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
-    p.addParamValue('interpolate', true, @(x) islogical(x) && isscalar(x));
+    p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+    p.addParameter('timeReference', 0, @isscalar);
+    p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
+    p.addParameter('interpolate', true, @(x) islogical(x) && isscalar(x));
    % p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.parse(timeCell, varargin{:});
 
