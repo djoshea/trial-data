@@ -209,19 +209,20 @@ classdef PopulationTrajectorySet
         % Basis info 
         
         % nBases x 1 cellstr: names for each basis 
-        basisNames = {};
+        basisNames
         
         % nBases x 1 cellstr: units for each basis 
-        basisUnits = {}
+        basisUnits
         
         % nBases x 1 logical: which bases are considered included in the
         % present analyses and time-vector computations. updating this will
         % invalidate data means. it is added to make basis filtering
         % operations simpler (since all psets can maintain the same logical
         % vector
-        basisValid = []
+        basisValid
+        basisValidPermanent
         
-        basisInvalidCause = {};
+        basisInvalidCause
         
         %% BELOW ARE FOR INDIVIDUAL TRIAL DATA
         
@@ -234,6 +235,7 @@ classdef PopulationTrajectorySet
         % along the columns is given by 
         % nanmin(tMinByTrial{..}) : nanmax(tMaxByTrial{..})
         dataByTrial
+        dataByTrialValidOnly
         
         % nBases x nAlign numeric matrix containing the start and stop
         % times for the time vector indicating the time along the columns
@@ -448,6 +450,7 @@ classdef PopulationTrajectorySet
         
         nBasesValid % number of bases currently marked valid
 
+        nBasesValidPermanent
         nBasesPermanentlyInvalid
         
         nBasesTemporarilyInvalid
@@ -819,8 +822,10 @@ classdef PopulationTrajectorySet
             hcprintf('%d / %d conditions marked for inclusion\n  {999}[.conditionIncludeMask, .nConditions]\n', pset.nConditions, nnz(pset.conditionIncludeMask));
             
             hcprintf('\nExistence of valid trial averages:\n');
-            hcprintf('  %d / %d bases lack a trial average for some align/condition where other bases have one\n    {999}These will be ignored when computing .dataMean and trial averaged time windows\n    .basesMissingTrialAverageForNonEmptyConditionAligns, findBasesMissingTrialAverageForNonEmptyConditionAligns]\n', ...
-                nnz(pset.basesMissingTrialAverageForNonEmptyConditionAligns), pset.nBases);
+            hcprintf('  %d / %d bases are marked temporarily invalid as they lack a trial average for all align/conditions.\n', ...
+                nnz(pset.basesMissingTrialAverageForNonEmptyConditionAligns & pset.basisValidPermanent & ~pset.basisValid), pset.nBases);
+            hcprintf('   %d / %d valid bases lack a trial average for some align/conditions where other bases have trial averages\n  .  {999}These will be ignored when computing .dataMean and trial averaged time windows\n    .basesMissingTrialAverageForNonEmptyConditionAligns, findBasesMissingTrialAverageForNonEmptyConditionAligns]\n', ...
+                nnz(pset.basesMissingTrialAverageForNonEmptyConditionAligns & pset.basisValid), pset.nBases);
             if nnz(pset.basesMissingTrialAverageForNonEmptyConditionAligns) > 0
                 hcprintf('    {FF9}Consider using {999}.markBasesPermanentlyInvalidMissingTrialAverages{FF9} to invalidate these bases.\n');
             end
@@ -1102,12 +1107,16 @@ classdef PopulationTrajectorySet
             else
                 v = pset.dataByTrialManual;
             end
+        end
+        
+        function v = get.dataByTrialValidOnly(pset)
+            v = pset.dataByTrial;
             
             % clear out data for invalid bases
             if ~isempty(v)
                 v = TensorUtils.assignValueMaskedSelectionAlongDimension(v, 1, ~pset.basisValid, []);
             end
-        end 
+        end
         
         function pset = set.dataByTrial(pset, v)
             if ~pset.dataSourceManual
@@ -1295,6 +1304,10 @@ classdef PopulationTrajectorySet
             else
                 pset.basisValidManual = v;
             end
+        end
+        
+        function v = get.basisValidPermanent(pset)
+            v = pset.getPermanentValid();
         end
         
         function v = get.basisInvalidCause(pset)
@@ -2618,6 +2631,12 @@ classdef PopulationTrajectorySet
                 tempCause = cellstrvec(pset.nBases);
             end
             
+            % now mark additional bases temporarily invalid that have no
+            % valid trial averages for any condition or align
+            basesEmpty = tempValid & permValid & ~makecol(any(any(pset.hasValidTrialAverageByAlignBasisCondition, 1), 3));
+            tempValid(basesEmpty) = false;
+            tempCause(basesEmpty) = {'basis has no valid trial averages for any align./ condition'};
+            
             emptyMask = cellfun(@isempty, tempCause);
             tempCause(~tempValid & emptyMask) = {'marked invalid permanently'};
             tempCause(tempValid) = {''};
@@ -2625,7 +2644,7 @@ classdef PopulationTrajectorySet
         
         function buildBasisValid(pset)
             [permValid, permCause] = pset.getPermanentValid();
-            [tempValid, tempCause] = pset.getPermanentValid();
+            [tempValid, tempCause] = pset.getTemporaryValid();
             
             valid = permValid & tempValid;
             
@@ -2961,11 +2980,14 @@ classdef PopulationTrajectorySet
             dataNTrials = nan(pset.nAlign, pset.nBases, pset.nConditions);
             dataValid = false(pset.nAlign, pset.nBases, pset.nConditions);
             
+            
+            basisValid = pset.basisValidPermanent; % cant use valid here since it depends on dataNTrials
+            
             hasSpikesByBasis = pset.trialHasSpikesMaskByBasis;
             prog = ProgressBar(pset.nBases, 'Computing trial-counts by condition');
             for iBasis = 1:pset.nBases
                 prog.update(iBasis); 
-                if ~pset.basisValid(iBasis), continue, end
+                if ~basisValid(iBasis), continue, end
                 % note, this src will not be aligned to this iAlign,
                 % but this isn't necessary since we've already
                 % extracted the aligned data
@@ -3027,8 +3049,9 @@ classdef PopulationTrajectorySet
             
             prog = ProgressBar(pset.nBases, 'Computing trial-averaged time windows by basis/align/condition');
             
+            basisValid = pset.basisValidPermanent; % don't use valid here to avoid infinite recursion.
             for iBasis = 1:pset.nBases
-                if ~pset.basisValid(iBasis)
+                if ~basisValid(iBasis)
                     continue;
                 end
                 for iAlign = 1:pset.nAlign
@@ -3128,9 +3151,9 @@ classdef PopulationTrajectorySet
             alignInvalid = isnan(tMinForDataMean) | isnan(tMaxForDataMean);
             if any(alignInvalid)
                  warning('No valid time window is valid across all bases across all conditions for alignment %s. Use .explain to advise', ...
-                     strjoin(find(alignInvalid), ','));
+                     TrialDataUtilities.String.strjoin(find(alignInvalid), ',')); %#ok<FNDSB>
             end
-                
+ 
             nTimeByAlign = zerosvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
                 if alignInvalid(iAlign)
@@ -3155,6 +3178,11 @@ classdef PopulationTrajectorySet
                                     
             if pset.nBasesValid == 0
                 warning('No valid bases found to compute trial-averaged data. Check .basisValid and .basisInvalidCause');
+            end
+            
+            if all(alignInvalid)
+                warning('No alignments have any valid time points across all bases');
+                return;
             end
 %             if isempty(tMinForDataMean) || isempty(tMaxForDataMean) || ~all(tMinForDataMean <= tMaxForDataMean)
 %                 warning('No time window is valid across all bases for some al. Try using .setBasesInvalidMissingTrialsOnNonEmptyConditions() or use .explain to advise');
@@ -4189,7 +4217,7 @@ classdef PopulationTrajectorySet
             end
             cause = makecol(cause);
             if numel(cause) == nnz(mask)
-                cause = TensorUtils.inflateMaskedTensor(1, cause, mask, {''});
+                cause = TensorUtils.inflateMaskedTensor(cause, 1, mask, {''});
             end
             assert(numel(cause) == numel(mask), 'Length of cellstr cause must match nnz(mask) or numel(mask)');
            
@@ -4239,7 +4267,12 @@ classdef PopulationTrajectorySet
 %             pset = pset.updateValid();
 %         end
         
-        
+        function [pset, mask] = markBasesTemporarilyInvalidMissingTrialAverages(pset)  
+            pset.warnIfNoArgOut(nargout);
+            mask = pset.basesMissingTrialAverageForNonEmptyConditionAligns;
+            pset = pset.markBasesTemporarilyInvalid(mask, 'missing trial average for non empty condition aligns');
+        end        
+
         function [pset, mask] = markBasesPermanentlyInvalidMissingTrialAverages(pset)  
             pset.warnIfNoArgOut(nargout);
             mask = pset.basesMissingTrialAverageForNonEmptyConditionAligns;
@@ -4384,8 +4417,12 @@ classdef PopulationTrajectorySet
             n = nnz(pset.basisValid);
         end
         
+        function n = get.nBasesValidPermanent(pset)
+            n = nnz(pset.basisValidPermanent);
+        end
+        
         function n = get.nBasesPermanentlyInvalid(pset)
-            n = nnz(~pset.getPermanentValid());
+            n = nnz(~pset.basisValidPermanent);
         end
         
         function n = get.nBasesTemporarilyInvalid(pset)
@@ -4495,12 +4532,12 @@ classdef PopulationTrajectorySet
             % nBases x 1 logical vector
             
             % nAlign x nBases x nConditions
-            shouldHaveTrialAverage = repmat(permute(pset.alignConditionsWithTrialAverage, [1 3 2]), [1 pset.nBasesValid 1]);
-            hasTrialAverage = pset.hasValidTrialAverageByAlignBasisCondition(:, pset.basisValid, :);
+            shouldHaveTrialAverage = repmat(permute(pset.alignConditionsWithTrialAverage, [1 3 2]), [1 pset.nBasesValidPermanent 1]);
+            hasTrialAverage = pset.hasValidTrialAverageByAlignBasisCondition(:, pset.basisValidPermanent, :);
             
             % nBases x 1
             basesValidMissingTrialAverages = makecol(TensorUtils.squeezeDims(any(any(shouldHaveTrialAverage & ~hasTrialAverage, 3), 1), [1 3]));
-            basesMissingTrialAverages = TensorUtils.inflateMaskedTensor(basesValidMissingTrialAverages, 1, pset.basisValid, false);
+            basesMissingTrialAverages = TensorUtils.inflateMaskedTensor(basesValidMissingTrialAverages, 1, pset.basisValidPermanent, false);
         end
         
         function v = get.basisValidWithTrialAverageAllNonEmptyConditionAligns(pset)
@@ -5556,13 +5593,14 @@ classdef PopulationTrajectorySet
         % conditionIdx, basisIdx, alignIdx - pick which ones you want
         %   included
         
-        function [NbyCbyTA, tvec, avec] = buildNbyCbyTA(pset, varargin)
+        function [NbyCbyTA, tvec, avec, basisIdx] = buildNbyCbyTA(pset, varargin)
             % [NbyCbyTA, tvec, avec] = buildNbyCbyTA(pset, ...)
             p = inputParser();
             p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
             p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.addParameter('validBasesOnly', false, @islogical);
+            p.addParameter('validTimepointsAllConditionsBasesOnly', false, @islogical); % keep only timepoints where all bases have data
             p.addParameter('type', 'mean', @ischar); % mean, sem, meanRandom
             p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
             p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
@@ -5608,8 +5646,7 @@ classdef PopulationTrajectorySet
             if p.Results.spliceAlignments
                 % data is N x C x T --> N x T x C
                 data = cellfun(@(d) permute(d, [1 3 2]), data, 'UniformOutput', false);
-                
-                
+                               
                 data = TrialDataUtilities.Data.spliceTrajectories(data, 'basisMask', basisValidMask, p.Results.spliceOptions);
                 data = ipermute(data, [1 3 2]);
                 
@@ -5620,9 +5657,14 @@ classdef PopulationTrajectorySet
             [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
             avec = makecol(alignIdx(avecRaw));
             tvec = cat(1, pset.tvecDataMean{alignIdx});
-            
             % nan out invalid bases
             NbyCbyTA(~basisValidMask, :, :) = NaN;
+            
+            if p.Results.validTimepointsAllConditionsBasesOnly
+                TAmask = all(all(~isnan(NbyCbyTA(basisValidMask, :, :)), 1), 2);
+                NbyCbyTA = NbyCbyTA(:, :, TAmask);
+            end
+            % nan out invalid tiempoints
         end 
         
         function [CTAbyN, cvec, tvec, avec, nvec] = buildCTAbyN(pset, varargin)
@@ -5632,21 +5674,32 @@ classdef PopulationTrajectorySet
             p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.addParameter('validBasesOnly', false, @islogical);
+            p.addParameter('validTimepointsAllConditionsBasesOnly', false, @islogical); % keep only timepoints where all bases have data
+            p.addParameter('validTimepointsAllBasesOnly', false, @islogical); % keep only timepoints where all bases have data
             p.addParameter('type', 'mean', @ischar);
             p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
-            p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
+            p.addParameter('spliceAlignments', false, @islogical); % use spline interpolation to splice
             p.addParameter('spliceOptions', struct(), @isstruct);
             p.parse(varargin{:});
-            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
+            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx); %#ok<NASGU>
             conditionIdx = TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
 
-            [NbyCbyTA, tvec, avec] = pset.buildNbyCbyTA(p.Results);
-            nvec = basisIdx;
+            results = rmfield(p.Results, {'validTimepointsAllBasesOnly'});
+            [NbyCbyTA, tvec, avec, nvec] = pset.buildNbyCbyTA(results);
             cvec = conditionIdx;
             labels = {nvec, cvec, [tvec, avec]};
             % we include dim 4 as this would hold randomized samples
             [CTAbyN, labelsOut] = TensorUtils.reshapeByConcatenatingDims(NbyCbyTA, {[3 2], 1}, labels);
 
+            if p.Results.validTimepointsAllBasesOnly
+                if p.Results.validBasesOnly
+                    CTAmask = all(~isnan(CTAbyN), 2);
+                else
+                    CTAmask = all(~isnan(CTAbyN(:, pset.basisValid)), 2);
+                end
+                CTAbyN = CTAbyN(CTAmask, :);
+            end
+            
             cvec = labelsOut{1}(:, 1);
             tvec = labelsOut{1}(:, 2);
             avec = labelsOut{1}(:, 3);
