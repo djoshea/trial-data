@@ -30,7 +30,7 @@ p.addParameter('colormap', [], @(x) isempty(x) || isa(x, 'function_handle') || i
 p.addParameter('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
 p.addParameter('labels', {}, @(x) isempty(x) || isvector(x)); % labels over nTraces for the y axis
 p.addParameter('labelRotation', 0, @isvector);
-p.addParameter('labelsLinesWithinEachTrace', {}, @iscell); % labels over the nSuperimposed traces, for clickable descriptions
+p.addParameter('labelsSuperimposed', {}, @iscell); % labels over the nSuperimposed traces, for clickable descriptions
 p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the labels on the left axis, slow if too many traces, 'auto' is true if nTraces < 25
 p.addParameter('clickable', false, @islogical); % make each trace clickable and show a description
 p.addParameter('timeUnits', '', @ischar); 
@@ -40,6 +40,7 @@ p.addParameter('verticalScaleBarHideLabel', false, @islogical);
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('dataRangeFormat', '%.4g', @ischar);
+% p.addParameter('lineStyle', '-', @ischar);
 p.KeepUnmatched = true;
 p.CaseSensitive = false;
 p.parse(varargin{:});
@@ -76,10 +77,10 @@ end
 labels = makecol(labels);
 
 % construct labels for each superimposed line within each trace
-if isempty(p.Results.labelsLinesWithinEachTrace)
+if isempty(p.Results.labelsSuperimposed)
     labelsLinesWithinEachTrace = arrayfun(@num2str, 1:nSuperimposed, 'UniformOutput', false);
 else
-    labelsLinesWithinEachTrace = p.Results.labelsLinesWithinEachTrace;
+    labelsLinesWithinEachTrace = p.Results.labelsSuperimposed;
 end
 
 if ~iscell(data)
@@ -151,7 +152,7 @@ if ~iscell(data)
 
     if nSuperimposed == 1
         % plot simultaneously
-        hLines = plot(tvec, matShift, '-', 'Color', map(1, :), p.Unmatched);
+        hLines = plot(tvec, matShift, '-', 'Color', map(1, :), 'MarkerFaceColor', map(1, :), 'MarkerEdgeColor', map(1, :), p.Unmatched);
     else
 %         set(gca, 'ColorOrder', map); % the map will superimpose automatically
         hold on;
@@ -164,7 +165,7 @@ if ~iscell(data)
         hLines = reshape(hLines, [nSuperimposed nTraces])';
         
         for iS = 1:nSuperimposed
-            set(hLines(:, iS), 'Color', map(iS, :));
+            set(hLines(:, iS), 'Color', map(iS, :), 'MarkerFaceColor', map(iS, :), 'MarkerEdgeColor', map(iS, :));
         end
     end
 
@@ -231,7 +232,8 @@ else
                 tvecThis = tvec{iT, iS};
             end
 
-            hLines{iT, iS} = plot(tvecThis, matShift, '-', 'Color', map(iS, :), p.Unmatched);
+            hLines{iT, iS} = plot(tvecThis, matShift, '-', 'Color', map(iS, :), ...
+                'MarkerFaceColor', map(iS, :), 'MarkerEdgeColor', map(iS, :), p.Unmatched);
             hold on;
         end
     end

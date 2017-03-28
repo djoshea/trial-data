@@ -11,8 +11,8 @@ if iscell(data)
         if ~isempty(data{i}) && ~isempty(time{i})
             mask = ~all(isnan(data{i}), 2);
             if any(mask)
-                tMin(i) = nanmin(time{i}(mask));
-                tMax(i) = nanmax(time{i}(mask));
+                tMin(i) = min(time{i}(mask), [], 'omitnan');
+                tMax(i) = max(time{i}(mask), [], 'omitnan');
             end
         end
     end

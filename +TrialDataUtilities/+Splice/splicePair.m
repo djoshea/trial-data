@@ -26,6 +26,10 @@ function [dataSpliced, info] = splicePair(dataPre, dataPost, varargin)
     % constrain the number of timepoints that could be overlapping between
     % the two trajectories
     p.addParameter('commonOverlapAcrossTrajectories', true, @islogical);
+    
+    % common timepoint where the splicing occurs, true requires
+    % commonOverlapAcrossTrajectories to be true also
+    p.addParameter('commonJoinAcrossTrajectories', false, @islogical);
     p.addParameter('minOverlap', 0, @isscalar); 
     p.addParameter('maxOverlap', Inf, @isscalar);
     
@@ -49,16 +53,29 @@ function [dataSpliced, info] = splicePair(dataPre, dataPost, varargin)
     
     % then we assume that overlap and use the best splice point on a per
     % trajectory basis (i.e. for each traj along dims 3)
-    [joinIdxInPre, ~, dataCat] = TrialDataUtilities.Splice.computeBestJoinPoint(dataPre, dataPost, nTimepointsOverlap, ...
-        p.Results.joinAfterIndexPre, p.Results.joinBeforeIndexPost);
+    [info.joinIdxInPre, info.nextIdxInPost, dataCat] = TrialDataUtilities.Splice.computeBestJoinPoint(dataPre, dataPost, nTimepointsOverlap, ...
+        'joinAfterIndexPre', p.Results.joinAfterIndexPre, 'joinBeforeIndexPost', p.Results.joinBeforeIndexPost, ...
+        'commonJoinAcrossTrajectories', p.Results.commonJoinAcrossTrajectories && p.Results.commonOverlapAcrossTrajectories);
     
+    % build info matrices describing where each point of the concatenated
+    % timeseries pulls its data from for pre and post
+    T = size(dataCat, 2);
+    C = numel(info.joinIdxInPre);
+    szCat = size(dataCat);
+    [info.idxFromPre, info.idxFromPost] = deal(nan([T, szCat(3:end)]));
+    for c = 1:C
+        info.idxFromPre(1:info.joinIdxInPre(c), c) = 1:info.joinIdxInPre(c);
+        info.idxFromPost(info.joinIdxInPre(c)+1:end, c) = info.nextIdxInPost(c) : nPost;
+    end
+    
+    % do smooth interpolation at the join
     if strcmp(p.Results.interpolateMethod, 'spline')
-        dataSpliced = TrialDataUtilities.Splice.interpolateSpline(dataCat, joinIdxInPre+1, ...
+        dataSpliced = TrialDataUtilities.Splice.interpolateSpline(dataCat, info.joinIdxInPre+1, ...
             p.Results.interpFitWindow, p.Results.interpIgnoreWindow);
 
     elseif ismember(p.Results.interpolateMethod, {'linear', 'nearest', 'next', 'previous', 'cspline', 'pchip', 'pchip', 'cubic', 'v5cubic'})
         % do linear interpolation
-        dataSpliced = TrialDataUtilities.Splice.interpolateLinear(dataCat, joinIdxInPre+1, ...
+        dataSpliced = TrialDataUtilities.Splice.interpolateLinear(dataCat, info.joinIdxInPre+1, ...
             p.Results.interpolateMethod, p.Results.interpFitWindow, p.Results.interpIgnoreWindow);
     else
         

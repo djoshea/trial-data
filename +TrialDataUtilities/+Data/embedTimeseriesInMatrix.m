@@ -70,6 +70,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
     
+    assumeUniformSampling = p.Results.assumeUniformSampling;
+    
     % check sizes match
     % okay to have one empty and the other not, simply ignore
     szData = cellfun(@(x) size(x, 1), dataCell);
@@ -164,17 +166,17 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     
-    if p.Results.showProgress
-        prog = ProgressBar(N, 'Embedding data over trials into common time vector');
-    end
+%     if p.Results.showProgress
+%         prog = ProgressBar(N, 'Embedding data over trials into common time vector');
+%     end
     for i = 1:N
         if ~trialValid(i), continue; end
-        if p.Results.showProgress, prog.update(i); end
+%         if mod(i, 100) && p.Results.showProgress, prog.update(i); end
         for g = 1:G
             if ~isnan(indStart(i,g)) && ~isnan(indStop(i,g))
                 if numel(indStart(i,g):indStop(i,g)) > 1
                     mask = ~all(isnan(dataCell{i, g}), 2);
-                    if p.Results.assumeUniformSampling
+                    if assumeUniformSampling
                         % in this case, we just make sure the timepoint
                         % closest to zero ends up in gthe right place
                         [thisTimeRef, thisIndRef] = min(abs(timeCell{i, g}));
@@ -200,9 +202,9 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
             end
         end
     end
-    if p.Results.showProgress
-        prog.finish();
-    end
+%     if p.Results.showProgress
+%         prog.finish();
+%     end
     
     % pare down time points from edges with insufficient trial counts
     if p.Results.minTrials > 0 || p.Results.minTrialFraction > 0

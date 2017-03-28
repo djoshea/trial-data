@@ -4,9 +4,9 @@ classdef StateSpaceComparison
         %%%%%%%%%
         % kruskal wallis
         %%%%%%%%%
-        
-        function [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = kruskalWallisAlongAxisVsTimeEachAlign(pset, varargin) 
-            % [pTensorByAlign] = kruskalWallisAlongAxisVsTime(pset, varargin) 
+
+        function [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = kruskalWallisAlongAxisVsTimeEachAlign(pset, varargin)
+            % [pTensorByAlign] = kruskalWallisAlongAxisVsTime(pset, varargin)
             % pTensorByAlign is nAlign x 1 cell, each contains N x T x
             % conditionDescriptorSansAxis.conditionsSize
             p = inputParser();
@@ -14,9 +14,9 @@ classdef StateSpaceComparison
             p.addParamValue('removeZeroSpikeTrials', false, @islogical);
             p.parse(varargin{:});
 
-            fn = @TrialData.TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime;
+            fn = @TrialDataUtilities.Stats.TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime;
             [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
-                TrialData.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, ...
+                TrialDataUtilities.Stats.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, ...
                 'functionName', 'Kruskal Wallis', p.Results);
         end
 
@@ -26,79 +26,79 @@ classdef StateSpaceComparison
             %    fractionKruskalWallisSignificantAlongAxisVsTime(tdca, varargin)
             %
             % let Cnew = conditionDescriptorSansAxis.conditionsSize;
-            % 
+            %
             % fractionSignificantByAlign: nAlign x 1 containing T x Cnew
-            % 
+            %
             % firstSignificantTimeAlign: nBases x nAlign. either zero or
             %   one value per row will be non-NaN, so that the time of first
             %   significance across all aligns will be present in the
             %   iAlign'th column where that basis first reaches significant
             p = inputParser();
-            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
-            p.addParameter('nConsecutive', TrialData.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
+            p.addParameter('nConsecutive', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
             p.addParameter('axis', 1, @(x) true);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            
+
             [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
-                TrialData.StateSpaceComparison.kruskalWallisAlongAxisVsTimeEachAlign(pset, ...
+                TrialDataUtilities.Stats.StateSpaceComparison.kruskalWallisAlongAxisVsTimeEachAlign(pset, ...
                 'axis', p.Results.axis);
             [fractionSignificantByAlign, firstSignificantTimeByAlign] = ...
-                TrialData.StateSpaceComparison.findSignificantRunsInPValueTensor(pset, pTensorByAlign, ...
+                TrialDataUtilities.Stats.StateSpaceComparison.findSignificantRunsInPValueTensor(pset, pTensorByAlign, ...
                 'nConsecutive', p.Results.nConsecutive, 'alpha', p.Results.alpha);
         end
-        
+
         %%%%%%%%%
         % anova
         %%%%%%%%%
-        
-        function [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = anovaAlongAxisVsTimeEachAlign(pset, varargin) 
-            % [pTensorByAlign] = kruskalWallisAlongAxisVsTime(pset, varargin) 
+
+        function [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = anovaAlongAxisVsTimeEachAlign(pset, varargin)
+            % [pTensorByAlign] = kruskalWallisAlongAxisVsTime(pset, varargin)
             % pTensorByAlign is nAlign x 1 cell, each contains N x T x
             % conditionDescriptorSansAxis.conditionsSize
             p = inputParser();
             p.addParamValue('axis', 1, @(x) true);
             p.parse(varargin{:});
 
-            fn = @TrialData.TimeseriesComparisonStatistics.anovaAlongAxisVsTime;
+            fn = @TrialDataUtilities.Stats.TimeseriesComparisonStatistics.anovaAlongAxisVsTime;
             [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
-                TrialData.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, ...
+                TrialDataUtilities.Stats.StateSpaceComparison.evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, ...
                 'functionName', 'anova', p.Results);
         end
-                   
+
         function [fractionSignificantByAlign, firstSignificantTimeByAlign, pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
                 fractionAnovaSignificantAlongAxisVsTimeEachAlign(pset, varargin)
             % [fractionSignificantByAlign, firstSignificantTime, pTensorByAlign, conditionDescriptorSansAxis] = ...
             %    fractionKruskalWallisSignificantAlongAxisVsTime(tdca, varargin)
             %
             % let Cnew = conditionDescriptorSansAxis.conditionsSize;
-            % 
+            %
             % fractionSignificantByAlign: nAlign x 1 containing T x Cnew
-            % 
+            %
             % firstSignificantTimeAlign: nBases x nAlign. either zero or
             %   one value per row will be non-NaN, so that the time of first
             %   significance across all aligns will be present in the
             %   iAlign'th column where that basis first reaches significant
             p = inputParser();
-            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
-            p.addParameter('nConsecutive', TrialData.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
+            p.addParameter('nConsecutive', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
             p.addParameter('axis', 1, @(x) true);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            
+
             [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
-                TrialData.StateSpaceComparison.anovaAlongAxisVsTimeEachAlign(pset, ...
+                TrialDataUtilities.Stats.StateSpaceComparison.anovaAlongAxisVsTimeEachAlign(pset, ...
                 'axis', p.Results.axis);
             [fractionSignificantByAlign, firstSignificantTimeByAlign] = ...
-                TrialData.StateSpaceComparison.findSignificantRunsInPValueTensor(pset, pTensorByAlign, ...
+                TrialDataUtilities.Stats.StateSpaceComparison.findSignificantRunsInPValueTensor(pset, pTensorByAlign, ...
                 'nConsecutive', p.Results.nConsecutive, 'alpha', p.Results.alpha);
         end
     end
-    
-    methods(Static) % Generic utilities for evaluating functions for all bases / aligns over time     
+
+    methods(Static) % Generic utilities for evaluating functions for all bases / aligns over time
         function [pTensorByAlign, conditionDescriptorSansAxis, tvecByAlign] = ...
-                evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, varargin) 
-            % [pTensorByAlign] = kruskalWallisAlongAxisVsTime(pset, varargin) 
+                evaluateTimeseriesComparisonFnAlongAxisVsTimeEachAlign(pset, fn, varargin)
+            % [pTensorByAlign] = kruskalWallisAlongAxisVsTime(pset, varargin)
             % pTensorByAlign is nAlign x 1 cell, each contains N x T x
             % conditionDescriptorSansAxis.conditionsSize
             p = inputParser();
@@ -127,16 +127,16 @@ classdef StateSpaceComparison
                         'axis', axisIdx, 'data', dataThis);
                     pTensorByAlign{iA}(iB, :) = pTensor(:);
                 end
-                prog.finish();             
+                prog.finish();
             end
 
             tvecByAlign = pset.tvecDataMean;
         end
 
-        function [fractionSignificantByAlign, firstSignificantTimeByAlign] = findSignificantRunsInPValueTensor(pset, pTensorByAlign, varargin) 
+        function [fractionSignificantByAlign, firstSignificantTimeByAlign] = findSignificantRunsInPValueTensor(pset, pTensorByAlign, varargin)
             p = inputParser();
-            p.addParameter('alpha', TrialData.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
-            p.addParameter('nConsecutive', TrialData.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
+            p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
+            p.addParameter('nConsecutive', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.nConsecutiveDefault, @isscalar);
             p.addParameter('axis', 1, @(x) true);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
