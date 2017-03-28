@@ -1060,7 +1060,16 @@ classdef TensorUtils
             % flattened dim or set of dims
             sz = size(in);
             assert(isequal(makecol(whichDims), makecol(min(whichDims):max(whichDims))), 'Dims must be consecutive');
-            assert(prod(newSizeInThoseDims) == prod(TensorUtils.sizeMultiDim(in, whichDims)), 'Size must not change during reshape');
+            
+            nElements = prod(TensorUtils.sizeMultiDim(in, whichDims));
+            if nnz(isnan(newSizeInThoseDims)) == 1
+                mask = isnan(newSizeInThoseDims);
+                fillIn = nElements / prod(newSizeInThoseDims(~mask));
+                assert(fillIn == round(fillIn), 'Size specification cannot be satisfied');
+                newSizeInThoseDims(mask) = fillIn;
+            else
+                assert(prod(newSizeInThoseDims) == nElements, 'Size must not change during reshape');
+            end
             mind = min(whichDims);
             maxd = max(whichDims);
             
@@ -1106,8 +1115,17 @@ classdef TensorUtils
                     out = slice(idx);
                 end
             end
-            out = cell2mat(TensorUtils.mapSlices(@selectIdx, dim, in, idxThatDim));
-            out(~maskValid) = NaN;
+            out = TensorUtils.mapSlices(@selectIdx, dim, in, idxThatDim);
+            if ~iscell(in)
+                out = cell2mat(out);
+                out(~maskValid) = NaN;
+            else
+                if dim == 1
+                    out = cat(2, out{:});
+                else
+                    out = cat(1, out{:});
+                end
+            end
         end
         
     end
@@ -1217,7 +1235,6 @@ classdef TensorUtils
             
             out(maskByDim{:}) = in;
         end
-        
         
         function t = expandOrTruncateToSize(t, dims, makeSize)
             % along each dims(i), truncate or expand with NaN to be size sz(i)
