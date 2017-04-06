@@ -417,8 +417,21 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p.addParameter('aggregateMarks', true, @islogical);
             p.addParameter('aggregateIntervals', true, @islogical);
             p.addParameter('conditionAppearanceFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
-            
+            p.addParameter('equalizeTimeVectors', false, @islogical); % takes time but necessary if time vectors (min to max) are not matched exactly 
             p.parse(varargin{:});
+            
+            % expand the time vectors of each pset to the full common
+            tMinByAlign = min(cell2mat(cellfun(@(p) p.tMinForDataMean, makerow(psetCell), 'UniformOutput', false)), [], 2);
+            tMaxByAlign = max(cell2mat(cellfun(@(p) p.tMaxForDataMean, makerow(psetCell), 'UniformOutput', false)), [], 2);
+            
+            if p.Results.equalizeTimeVectors
+                prog = ProgressBar(numel(psetCell), 'Equalizing time vectors across psets');
+                for iP = 1:numel(psetCell)
+                    prog.update(iP);
+                    psetCell{iP} = psetCell{iP}.manualSliceOrExpandTimeWindow(tMinByAlign, tMaxByAlign);
+                end
+                prog.finish();
+            end
             
 %             PopulationTrajectorySet.assertBasesMatch(psetCell{:});
 %             assert(PopulationTrajectorySet.checkSameBasesValid(psetCell{:}), ...
@@ -479,9 +492,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             debug('Concatenating trial-averaged data\n');
             for iAlign = 1:pset.nAlign
                 % N x C x T
-                timeDim = 3;
-                b.dataMean{iAlign} = catConditionsFlat(psetCell, @(p) p.dataMean{iAlign}, 2, cSize, cAxis, timeDim, @(p) p.tvecDataMean);
-                b.dataSem{iAlign} = catConditionsFlat(psetCell, @(p) p.dataSem{iAlign}, 2, cSize, cAxis, timeDim, @(p) p.tvecDataMean);
+                b.dataMean{iAlign} = catConditionsFlat(psetCell, @(p) p.dataMean{iAlign}, 2, cSize, cAxis);
+                b.dataSem{iAlign} = catConditionsFlat(psetCell, @(p) p.dataSem{iAlign}, 2, cSize, cAxis);
             end
             
             % A x N x C
@@ -494,13 +506,11 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             b.trialLists = catConditionsFlat(psetCell, @(p) p.trialLists, 2, cSize, cAxis);
             
             % N x TA x C
-            timeDim = 2;
-            b.dataDifferenceOfTrialsScaledNoiseEstimate = catConditionsFlat(psetCell, @(p) p.dataDifferenceOfTrialsScaledNoiseEstimate, 3, cSize, cAxis, timeDim);
+            b.dataDifferenceOfTrialsScaledNoiseEstimate = catConditionsFlat(psetCell, @(p) p.dataDifferenceOfTrialsScaledNoiseEstimate, 3, cSize, cAxis);
         
             % N x TA x C x Trials
-            timeDim = 2;
-            b.dataCachedSampledTrialsTensor = catConditionsFlat(psetCell, @(p) p.dataCachedSampledTrialsTensor, 3, cSize, cAxis, timeDim);
-            b.dataCachedMeanExcludingSampledTrialsTensor = catConditionsFlat(psetCell, @(p) p.dataCachedMeanExcludingSampledTrialsTensor, 3, cSize, cAxis, timeDim);
+            b.dataCachedSampledTrialsTensor = catConditionsFlat(psetCell, @(p) p.dataCachedSampledTrialsTensor, 3, cSize, cAxis);
+            b.dataCachedMeanExcludingSampledTrialsTensor = catConditionsFlat(psetCell, @(p) p.dataCachedMeanExcludingSampledTrialsTensor, 3, cSize, cAxis);
             
             % N x C 
             b.dataCachedSampledTrialCounts = catConditionsFlat(psetCell, @(p) p.dataCachedSampledTrialCounts, 2, cSize, cAxis);
@@ -559,13 +569,13 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             psetCat = b.buildManualWithTrialAveragedData();
 
-            function res = catConditionsFlat(objCell, accessFn, conditionDim, conditionsSize, conditionAxis, timeDim, timeAccessFn)
-                if ~exist('timeDim', 'var')
-                    timeDim = [];
-                    timeCell = {};
-                else
-                    timeCell = cellfun(timeAccessFn, objCell, 'UniformOutput', false);
-                end
+            function res = catConditionsFlat(objCell, accessFn, conditionDim, conditionsSize, conditionAxis)
+%                 if ~exist('timeDim', 'var')
+%                     timeDim = [];
+%                     timeCell = {};
+%                 else
+%                     timeCell = cellfun(timeAccessFn, objCell, 'UniformOutput', false);
+%                 end
                 
                 % grab from each obj in cell
                 tensorCell = cellfun(accessFn, objCell, 'UniformOutput', false);
@@ -578,12 +588,12 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 % concatenate along the condition axis
                 catAxis = conditionDim + conditionAxis-1;
                 
-                if isempty(timeDim)
+%                 if isempty(timeDim)
                     catTensor = cat(catAxis, tensorCell{:});
-                else
-                    [catTensor, tvec] = TensorUtils.concatenateAlignedToCommonTimeVector(timeCell, tensorCell, timeDim, catAxis);
-                    sz(timeDim) = numel(tvec);
-                end
+%                 else
+%                     [catTensor, tvec] = TensorUtils.concatenateAlignedToCommonTimeVector(timeCell, tensorCell, timeDim, catAxis);
+%                     sz(timeDim) = numel(tvec);
+%                 end
                 
                 % reshape the result to be flat again
                 catSz = sz;
