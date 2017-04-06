@@ -837,9 +837,9 @@ classdef TensorUtils
             nd = max(max([timeDim, catDim]), max(cellfun(@ndims, dataCell)));
             szMat = cell2mat(cellfun(@(x) TensorUtils.sizeNDims(x, nd), dataCell, 'UniformOutput', false));
             
-            finalSize = szMat;
+            finalSize = szMat(1, :);
             finalSize(catDim) = sum(szMat(:, catDim));
-            finalSize(timeDim) = numel(vec);
+            finalSize(timeDim) = numel(tvec);
             out = nan(finalSize, 'like', dataCell{1});
             
             % assume uniform sampling
@@ -862,10 +862,11 @@ classdef TensorUtils
             % first slice off ends if needed
             mask = tvecCurrent >= min(tvecNew) & tvecCurrent <= max(tvecNew);
             dataSlice = TensorUtils.selectAlongDimension(dataCurrent, timeDim, mask);
+            tvecCurrent = tvecCurrent(mask);
             
             % then expand as neede
             sz = TensorUtils.sizeNDims(dataSlice, timeDim);
-            sz(timeDim) = numel(tvecCurrent);
+            sz(timeDim) = numel(tvecNew);
             dataNew = nan(sz, 'like', dataSlice);
             
             idxStart = TensorUtils.argMin(abs(min(tvecCurrent) - tvecNew));
