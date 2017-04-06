@@ -223,7 +223,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     
                     if cd.collectAsCellByField(iF) && iscell(data)
                         % we'll be cat'ing them along dim 1.
-                        data = cellfun(@makerow, data, 'UniformOutput', false);
+                        data = cellfun(@makecol, data, 'UniformOutput', false);
                     end
                         
                 case cd.NUMERIC
