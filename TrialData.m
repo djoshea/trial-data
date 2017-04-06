@@ -419,21 +419,37 @@ classdef TrialData
                 timeField = timeFields{iA};
                 
                 okay = truevec(td.nTrials);
+                [transpose_time, transpose_data] = falsevec(td.nTrials);
                 
                 for iT = 1:td.nTrials
                     sz = size(td.data(iT).(timeField));
                     if sz(2) > 1 && sz(1) == 1
-                        td.data(iT).(timeField) = td.data(iT).(timeField)';
+                        transpose_time(iT) = true;
+                        nTime = size(td.data(iT).(timeField), 2);
+                    else
+                        nTime = size(td.data(iT).(timeField), 1);
                     end
                     
                     sz = size(td.data(iT).(dataField));
                     if sz(2) > 1 && sz(1) == 1
-                        td.data(iT).(dataField) = td.data(iT).(dataField)';
+                        transpose_data(iT) = true;
+                        nData = size(td.data(iT).(dataField), 2);
+                    else
+                        nData = size(td.data(iT).(dataField), 1);
                     end
                     
-                    nTime = size(td.data(iT).(timeField), 1);
-                    nData = size(td.data(iT).(dataField), 1);
                     okay(iT) = nTime == nData;
+                end
+                
+                % do the actual transposing down here for efficiency
+                if any(transpose_time)
+                    tr_time = cellfun(@transpose, {td.data(transpose_time).(timeField)}, 'UniformOutput', false);
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, tr_time, transpose_time);
+                end
+                
+                if any(transpose_data)
+                    tr_data = cellfun(@transpose, {td.data(transpose_data).(dataField)}, 'UniformOutput', false);
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, tr_data, transpose_data);
                 end
                 
                 if any(~okay)
@@ -457,8 +473,8 @@ classdef TrialData
                         end
                     end
                     
-                    td.data = assignIntoStructArray(td.data, timeField, zeros(0, 1), ~okay);
-                    td.data = assignIntoStructArray(td.data, dataField, emptyVal, ~okay);
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, zeros(0, 1), ~okay);
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, emptyVal, ~okay);
                 end
             end
             prog.finish();
@@ -1702,7 +1718,7 @@ classdef TrialData
             % By default mask is non-empty cells in times
             % otherwise create channel
             p = inputParser();
-            p.addParameter('mask', ~cellfun(@isempty, data), @islogical);
+            p.addParameter('mask', ~cellfun(@isempty, data), @isvector);
             %             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('keepScaling', false, @islogical);
@@ -1716,7 +1732,7 @@ classdef TrialData
             
             p.parse(varargin{:});
             
-            mask = makecol(p.Results.mask) & td.valid;
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
             
             assert(iscell(data) && numel(data) == td.nTrials, 'Data must be nTrials cell vector');
             
@@ -2210,7 +2226,7 @@ classdef TrialData
             % By default mask is non-empty cells in times
             % otherwise create channel
             p = inputParser();
-            p.addParameter('mask', ~cellfun(@isempty, data), @islogical);
+            p.addParameter('mask', ~cellfun(@isempty, data), @isvector);
             %             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('keepScaling', false, @islogical);
@@ -2226,7 +2242,7 @@ classdef TrialData
             p.parse(varargin{:});
             td.warnIfNoArgOut(nargout);
             
-            mask = makecol(p.Results.mask) & td.valid;
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
             
             td.warnIfNoArgOut(nargout);
             if td.hasAnalogChannelGroup(groupName)
@@ -2774,10 +2790,12 @@ classdef TrialData
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('keepScaling', true, @islogical); % if false, drop the scaling of the channel in memory and convert everything to access class
             p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
-            
-            p.KeepUnmatched = true;
+            p.addParameter('updateMask', td.valid, @isvector);
+            p.KeepUnmatched = false;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
+            
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.updateMask), td.nTrials) & td.valid;
             
             chList = td.listAnalogChannelsInGroup(groupName);
             nCh = numel(chList);
@@ -2881,15 +2899,20 @@ classdef TrialData
                 timeField = td.channelDescriptorsByName.(chList{1}).timeField;
             end
             
-            prog = ProgressBar(td.nTrials, 'Writing analog channel group data on valid trials');
-            for t = 1:td.nTrials
-                prog.update(t);
-                if ~td.valid(t), continue; end
-                
-                td.data(t).(groupName) = values{t};
-                if updateTimes
-                    td.data(t).(timeField) = times{t};
-                end
+%             prog = ProgressBar(td.nTrials, 'Writing analog channel group data on valid trials');
+%             for t = 1:td.nTrials
+%                 prog.update(t);
+%                 if ~td.valid(t), continue; end
+%                 
+%                 td.data(t).(groupName) = values{t};
+%                 if updateTimes
+%                     td.data(t).(timeField) = times{t};
+%                 end
+%             end
+            
+            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, values, mask);
+            if updateTimes
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, times, mask);
             end
             
             if updateTimes
@@ -2898,7 +2921,7 @@ classdef TrialData
                 td = td.postDataChange({groupName});
             end
             
-            prog.finish();
+%             prog.finish();
         end
         
         function td = trimAnalogChannelGroupToTrialStartEnd(td, names)
@@ -3511,12 +3534,12 @@ classdef TrialData
             % By default mask is non-nan values of mask
             % otherwise create channel
             p = inputParser();
-            p.addParameter('mask', ~isnan(vals), @islogical);
+            p.addParameter('mask', ~isnan(vals), @isvector);
             p.addParameter('units', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            mask = makecol(p.Results.mask) & td.valid;
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
             td.warnIfNoArgOut(nargout);
             if td.hasParamChannel(name)
                 td = td.setParam(name, vals, 'updateMask', mask);
@@ -3545,10 +3568,10 @@ classdef TrialData
             % By default mask is non-empty values
             % otherwise create channel
             p = inputParser();
-            p.addParameter('mask', ~cellfun(@isempty, vals), @islogical);
+            p.addParameter('mask', ~cellfun(@isempty, vals), @isvector);
             p.parse(varargin{:});
             
-            mask = makecol(p.Results.mask) & td.valid;
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
             td.warnIfNoArgOut(nargout);
             if td.hasParamChannel(name)
                 td = td.setParam(name, vals, 'updateMask', mask);
@@ -3577,10 +3600,10 @@ classdef TrialData
             % By default mask is non-empty values
             % otherwise create channel
             p = inputParser();
-            p.addParameter('mask', vals, @islogical);
+            p.addParameter('mask', vals, @isvector);
             p.parse(varargin{:});
             
-            mask = makecol(p.Results.mask) & td.valid;
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
             
             td.warnIfNoArgOut(nargout);
             if td.hasParamChannel(name)
@@ -3926,7 +3949,7 @@ classdef TrialData
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('waveforms', [], @iscell);
             p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
-            p.addParameter('sortQualityByTrial', [], @isvector); % nTrials x 1 vector of per-trial ratings
+            p.addParameter('sortQualityByTrial', [], @(x) isempty(x) || isvector(x)); % nTrials x 1 vector of per-trial ratings
             p.KeepUnmatched = true; % we don't want to capture a fieldMask because this would necessitate thinking about the logic of whether to apply the blanking
             p.parse(varargin{:});
             
@@ -4082,7 +4105,7 @@ classdef TrialData
             % By default mask is non-empty cells in times
             % otherwise create channel
             p = inputParser();
-            p.addParameter('mask', ~cellfun(@isempty, times), @islogical);
+            p.addParameter('mask', ~cellfun(@isempty, times), @isvector);
             p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('waveforms', [], @iscell);
@@ -4090,14 +4113,14 @@ classdef TrialData
             p.addParameter('sortQualityByTrial', [], @isvector); % nTrials x 1 vector of per-trial ratings
             p.parse(varargin{:});
             
-            mask = makecol(p.Results.mask) & td.valid;
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
             
             td.warnIfNoArgOut(nargout);
-            if td.hasParamChannel(name)
+            if td.hasSpikeChannel(name)
                 td = td.setSpikeChannel(name, times, 'updateMask', mask, ...
                     'isAligned', p.Results.isAligned, 'waveforms', p.Results.waveforms, ...
                     'blankingRegions', p.Results.blankingRegions, ...
-                    'sortQualityByTrial', p.Results.sortQuality);
+                    'sortQualityByTrial', p.Results.sortQualityByTrial);
             else
                 % clear masked out cells
                 [times{~mask}] = deal([]);
@@ -4818,7 +4841,7 @@ classdef TrialData
                     if ~isfield(td.data, cd.dataFields{iF}) || ~cd.isShareableByField(iF)
                         % clear if it's missing, or if its there but not
                         % shared, since we're overwriting it
-                        td.data = assignIntoStructArray(td.data, cd.dataFields{iF}, missing);
+                        td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, cd.dataFields{iF}, missing);
                     end
                 end
                 
@@ -5029,7 +5052,7 @@ classdef TrialData
             for iF = 1:nFields
                 if ~fieldMask(iF), continue; end
                 val = cd.missingValueByField{iF};
-                td.data = assignIntoStructArray(td.data, dataFields{iF}, val, updateMask);
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataFields{iF}, val, updateMask);
                 %                 for iT = 1:td.nTrials
                 %                     td.data(iT).() = val;
                 %                 end
@@ -5147,7 +5170,7 @@ classdef TrialData
                     if ~iscell(vals)
                         vals = TensorUtils.splitAlongDimension(vals, 1);
                     end
-                    td.data = assignIntoStructArray(td.data, dataFields{iF}, TensorUtils.selectAlongDimension(vals, 1, updateMask), updateMask);
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataFields{iF}, TensorUtils.selectAlongDimension(vals, 1, updateMask), updateMask);
                     
                     %                   for iT = 1:numel(td.data)
                     %                       if updateMask(iT)
@@ -5193,7 +5216,7 @@ classdef TrialData
             hold(axh, 'on');
             
             for i = 1:td.nTrialsValid
-                if isempty(dataCell{i}), continue, end;
+                if isempty(dataCell{i}), continue, end
                 
                 % allow for derivative channels to have one fewer time
                 % point
