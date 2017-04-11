@@ -3263,6 +3263,7 @@ classdef TrialDataConditionAlign < TrialData
     methods
         % return aligned unit spike times
         function [timesCell] = getSpikeTimes(td, unitNames, varargin)
+            % nTrials x nUnits
             p = inputParser();
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('combine', false, @islogical);
@@ -3270,13 +3271,21 @@ classdef TrialDataConditionAlign < TrialData
             
             timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine);
             timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, 'singleTimepointTolerance', 0);
-%             if isempty(timesCell)
-%                 if ischar(unitNames)
-%                     timesCell = cell(td.nTrials, 1); 
-%                 else
-%                     timesCell = cell(td.nTrials, numel(unitNames)); 
-%                 end
-%             end
+        end
+        
+        function timesCell = getSpikeTimesEachAlign(td, unitNames, varargin)
+            % nTrials x nUnits x nAlign
+            p = inputParser();
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
+            
+            timesCellUnaligned = td.getSpikeTimesUnaligned(unitNames, 'combine', p.Results.combine);
+            
+            timesCell = cell([size(timesCellUnaligned) td.nAlign]);
+            for iA = 1:td.nAlign
+                timesCell(:, :, iA) = td.alignInfoSet{iA}.getAlignedTimesCell(timesCellUnaligned, p.Results.includePadding, 'singleTimepointTolerance', 0);
+            end
         end
         
         %%%%%
@@ -4832,6 +4841,11 @@ classdef TrialDataConditionAlign < TrialData
             hold(axh, 'off');
         end
     end
+    
+    % Plotting raster single trial
+    methods
+       
+    end
 
     % Plotting Analog each trial
     methods
@@ -5748,6 +5762,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addOptional('channels', td.listAnalogChannels(), @iscellstr);
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
             p.addParameter('trialIdx', [], @isvector); % selection into all trials
+            p.addParameter('normalize', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -5765,10 +5780,12 @@ classdef TrialDataConditionAlign < TrialData
             chList = p.Results.channels;
             cdCell = td.getChannelDescriptorMulti(chList);
             dataUnits = cellfun(@(cd) cd.unitsPrimary, cdCell, 'UniformOutput', false);
-            [data, time] = td.selectTrials(idx).getAnalogMulti(chList);
+            
+            td = td.selectTrials(idx);
+            [data, time] = td.getAnalogMulti(chList);
             
             TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList, ...
-                'showLabels', true, 'dataUnits', dataUnits, p.Unmatched);
+                'showLabels', true, 'dataUnits', dataUnits, 'normalize', p.Results.normalize, p.Unmatched);
             xlabel('');
             td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', 'labelFirstMarkOnly', true);
             
@@ -5780,6 +5797,163 @@ classdef TrialDataConditionAlign < TrialData
         function plotSingleTrialAnalogChannelGroup(td, groupName, varargin)
             td.plotSingleTrialAnalogChannels(td.listAnalogChannelsInGroup(groupName), varargin{:});
         end
+        
+        function plotSingleTrialRaster(td, varargin)
+            p = inputParser();
+            p.addOptional('trialIdx', [], @(x) isnumeric(x) && isscalar(x)); % selection into all trials
+            p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
+            p.addParameter('unitNames', td.listSpikeChannels(), @iscellstr);
+            p.addParameter('alignIdx', 1:td.nAlign, @isvector);
+            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('tickHeight', 1, @isscalar);
+            
+%             % if true, draw spike waveforms instead of ticks
+            p.addParameter('drawSpikeWaveforms', false, @islogical);
+            p.addParameter('spikeWaveformScaleHeight', 1, @isscalar);
+            p.addParameter('spikeWaveformScaleTime', 1, @isscalar);
+          
+            p.addParameter('quick', false, @islogical);
+            p.addParameter('axh', gca, @ishandle);
+            p.parse(varargin{:});
+            
+            if td.nTrialsValid == 0
+                error('No valid trials found');
+            end
+            
+            if isempty(p.Results.validTrialIdx)
+                if isempty(p.Results.trialIdx)
+                    % auto choose first valid trial
+                    idx = find(td.valid, 1);
+                else
+                    idx = p.Results.trialIdx;
+                end
+            else
+                idx = mi2ui(p.Results.validTrialIdx, td.valid);
+            end
+            
+            td = td.selectTrials(idx);
+            
+            % for multiple unit simultaneous plotting, can be useful for
+            % looking at spike sorting issues
+            unitNames = p.Results.unitNames;
+            if ischar(unitNames)
+                unitNames = {unitNames};
+            end
+            nUnits = numel(unitNames);
+
+            axh = td.getRequestedPlotAxis('axh', p.Results.axh);
+            
+            alignIdx = p.Results.alignIdx;
+            nAlignUsed = numel(alignIdx);
+            
+            timesByAlign = cell(nAlignUsed, nUnits);
+            if p.Results.drawSpikeWaveforms
+                wavesByAlign = cell(nAlignUsed, nUnits);
+            end
+            
+            % compute x-axis offsets for each align
+            timePointsCell = cell(nAlignUsed, 1);
+            
+            for iAlign = 1:nAlignUsed
+                idxAlign = alignIdx(iAlign);
+                % figure out time validity window for this alignment
+                % TODO might want to update this for the selected
+                % conditions only
+                [start(iAlign), stop(iAlign)] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
+                timePointsCell{iAlign} = [start(iAlign); stop(iAlign)];
+            end
+            
+            % get grouped spike times by alignment
+            timesByAlign = td.useAlign(idxAlign).getSpikeTimesEachAlign(unitNames);
+
+            if p.Results.drawSpikeWaveforms
+                [waves, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsEachAlign(unitName);
+            end
+            tOffsetByAlign = zerosvec(nAlignUsed);
+%             tOffsetByAlign = td.getAlignPlottingTimeOffsets(timePointsCell);
+
+            % if we're drawing waveforms, normalize all waveforms to the [0 1] range]
+%             if p.Results.drawSpikeWaveforms
+%                 [maxW, minW] = deal(nan(nAlignUsed, nConditionsUsed, nUnits));
+%                 for iU = 1:nUnits
+%                     for iA = 1:nAlignUsed
+%                             waves = cat(1, wavesByAlign{iA, iU});
+%                             if isempty(waves)
+%                                 continue;
+%                             end
+%                             maxW(iA, iC, iU) = nanmax(waves(:));
+%                             minW(iA, iC, iU) = nanmin(waves(:));
+%                     end
+%                 end
+%                 
+%                 maxW = nanmax(maxW(:));
+%                 minW = nanmin(minW(:));
+%                 
+%                 wavesByAlign = cellfun(@(wc) cellfun(@(w) (w - minW) / (maxW - minW), wc, 'UniformOutput', false), wavesByAlign, 'UniformOutput', false);
+%             end
+            
+            % draw tick rasters in a grid pattern (conditions vertically,
+            % aligns horizontally)
+            for iAlign = 1:nAlignUsed
+                color = 'k';
+                timesThis = squeeze(timesByAlign(1, :, iAlign));
+                if p.Results.drawSpikeWaveforms && ~p.Results.quick
+                    wavesThis = squeeze(wavesByAlign(1, :, iAlign));
+                    % draw waveforms in lieu of ticks
+                        TrialDataUtilities.Plotting.drawTickRaster(timesThis, ...
+                        'xOffset', tOffsetByAlign(iAlign), ...
+                        'color', color, ...
+                        'waveCell', wavesThis, 'waveformTimeRelative', wavesTvec, ...
+                        'normalizeWaveforms', false, ... % already normalized to [0 1]
+                        'waveScaleHeight', p.Results.spikeWaveformScaleHeight, 'waveScaleTime', p.Results.spikeWaveformScaleTime);
+                else
+                    % draw vertical ticks
+                    TrialDataUtilities.Plotting.drawTickRaster(timesThis, ...
+                        'xOffset', tOffsetByAlign(iAlign), ...
+                        'color', color, ...
+                        'tickHeight', p.Results.tickHeight);
+                end
+                hold(axh, 'on');
+            end
+            
+            
+            if ~p.Results.quick
+                au = AutoAxis(axh);
+            else
+                set(gca, 'YTick', []);
+            end
+                
+            % setup time axis markers
+            if p.Results.quick
+                td.alignSummarySet{1}.setupTimeAutoAxis('which', 'x', ...
+                    'style', 'quick');
+            else
+                % use marks or tickBridges via AlignSummary
+                for iAlign = 1:nAlignUsed
+                    idxAlign = alignIdx(iAlign);
+                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', ...
+                        'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign));
+                end
+            end
+            
+            if iscell(unitNames)
+                unitNameStr = TrialDataUtilities.String.strjoin(unitNames, ',');
+            else
+                unitNameStr = unitName;
+            end
+            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitNameStr);
+            
+            axis(axh, 'tight');
+            if ~p.Results.quick
+%                 au = AutoAxis(axh);
+%                 au.axisMarginLeft = p.Results.axisMarginLeft; % make room for left hand side labels
+%                 axis(axh, 'off');
+                au.update();
+            else
+                box(axh, 'off');
+            end
+            hold(axh, 'off');
+       end
     end
     
     methods(Static) % Utility drawing methods
