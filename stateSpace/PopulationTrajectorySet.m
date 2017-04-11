@@ -5383,6 +5383,8 @@ classdef PopulationTrajectorySet
                 all(inRange(x, [1 pset.nBases])));
             p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
             p.addParameter('alignIdx', [], @isnumeric);
+            p.addParameter('timeDelta', pset.timeDelta, @isscalar); % allow for data to be resampled in time
+            
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.addParameter('lineWidth', 2, @isscalar);
             p.addParameter('alpha', 1, @isscalar);
@@ -5440,13 +5442,6 @@ classdef PopulationTrajectorySet
             end
             
             if p.Results.spliceAlignments
-                data = pset.buildNbyCbyTA('spliceAlignments', true, p.Results.spliceOptions, 'timeDelta', p.Results.timeDelta);
-                dataMean = squeeze(TensorUtils.splitAlongDimension(data, 3, pset.nTimeDataMean));
-            else
-                dataMean = pset.buildNbyCbyTA('timeDelta', p.Results.timeDelta);
-            end
-
-            if p.Results.spliceAlignments
                 data = pset.buildNbyCbyTA('spliceAlignments', true, ...
                     'alignIdx', alignIdx, 'basisIdx', basisIdx, 'conditionIdx', conditionIdx, ...
                     p.Results.spliceOptions);
@@ -5479,11 +5474,13 @@ classdef PopulationTrajectorySet
                     TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{c});
                 end
             else
+                [dataMean, tvecCell] = pset.buildNbyCbyTA('timeDelta', p.Results.timeDelta, 'splitByAlign', true);
+%                 dataMean = squeeze(TensorUtils.splitAlongDimension(dataMean, 3, pset.nTimeDataMean));
+
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
 %                     tvec = pset.tvecDataMean{idxAlign};
                     data = dataMean{idxAlign};
-
                     for iCondition = 1:nConditions
                         c = conditionIdx(iCondition);
                         appear = pset.conditionDescriptor.appearances(c);
@@ -5534,8 +5531,8 @@ classdef PopulationTrajectorySet
             % plot marks and intervals on each condition
             for iAlign = 1:nAlignUsed
                 idxAlign = alignIdx(iAlign);
-                tvec = pset.tvecDataMean{idxAlign};
-                data = dataMean{idxAlign};
+                tvec = tvecCell{iAlign};
+                data = dataMean{iAlign};
 
                 for iCondition = 1:nConditions
                     c = conditionIdx(iCondition);
@@ -5606,6 +5603,7 @@ classdef PopulationTrajectorySet
             p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
             p.addParameter('spliceOptions', struct(), @isstruct);
             p.addParameter('timeDelta', pset.timeDelta, @isscalar); % allow for data to be resampled in time
+            p.addParameter('splitByAlign', false, @islogical);
             p.parse(varargin{:});
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
@@ -5643,6 +5641,7 @@ classdef PopulationTrajectorySet
             end 
             
             basisValidMask = pset.basisValid(basisIdx);
+            tvecCell = pset.tvecDataMean(alignIdx);
             
             if p.Results.spliceAlignments
                 % data is N x C x T --> N x T x C
@@ -5655,19 +5654,38 @@ classdef PopulationTrajectorySet
                 data = squeeze(TensorUtils.splitAlongDimension(data, 3, pset.nTimeDataMean));
             end
             
-            
-            
-            [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
-            avec = makecol(alignIdx(avecRaw));
-            tvec = cat(1, pset.tvecDataMean{alignIdx});
-            % nan out invalid bases
-            NbyCbyTA(~basisValidMask, :, :) = NaN;
-            
-            if p.Results.validTimepointsAllConditionsBasesOnly
-                TAmask = all(all(~isnan(NbyCbyTA(basisValidMask, :, :)), 1), 2);
-                NbyCbyTA = NbyCbyTA(:, :, TAmask);
+            if p.Results.timeDelta ~= pset.timeDelta
+                % interp to new time delta
+                for iA = 1:nAlign
+                    [data{iA}, tvecCell{iA}] = TrialDataUtilities.Data.resampleTensorInTime(data{iA}, 3 ,...
+                        tvecCell{iA}, 'timeDelta', p.Results.timeDelta);
+                end
             end
-            % nan out invalid tiempoints
+            
+            if p.Results.splitByAlign
+                for iA = 1:nAlign
+                    data{iA}(~basisValidMask, :, :) = NaN;
+                    if p.Results.validTimepointsAllConditionsBasesOnly
+                        Tmask = all(all(~isnan(data{iA}(basisValidMask, :, :)), 1), 2);
+                        data{iA} = data{iA}(:, :, Tmask);
+                    end
+                end
+                NbyCbyTA = data;
+                tvec = tvecCell;
+                avec = [];
+            else
+                [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
+                avec = makecol(alignIdx(avecRaw));
+                tvec = cat(1, tvecCell);
+                % nan out invalid bases
+                NbyCbyTA(~basisValidMask, :, :) = NaN;
+            
+                if p.Results.validTimepointsAllConditionsBasesOnly
+                    TAmask = all(all(~isnan(NbyCbyTA(basisValidMask, :, :)), 1), 2);
+                    NbyCbyTA = NbyCbyTA(:, :, TAmask);
+                end
+                % nan out invalid tiempoints
+            end
         end 
         
         function [CTAbyN, cvec, tvec, avec, nvec] = buildCTAbyN(pset, varargin)
