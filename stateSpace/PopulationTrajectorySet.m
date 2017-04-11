@@ -5440,10 +5440,10 @@ classdef PopulationTrajectorySet
             end
             
             if p.Results.spliceAlignments
-                data = pset.buildNbyCbyTA('spliceAlignments', true, p.Results.spliceOptions);
+                data = pset.buildNbyCbyTA('spliceAlignments', true, p.Results.spliceOptions, 'timeDelta', p.Results.timeDelta);
                 dataMean = squeeze(TensorUtils.splitAlongDimension(data, 3, pset.nTimeDataMean));
             else
-                dataMean = pset.dataMean;
+                dataMean = pset.buildNbyCbyTA('timeDelta', p.Results.timeDelta);
             end
 
             if p.Results.spliceAlignments
@@ -5605,6 +5605,7 @@ classdef PopulationTrajectorySet
             p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
             p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
             p.addParameter('spliceOptions', struct(), @isstruct);
+            p.addParameter('timeDelta', pset.timeDelta, @isscalar); % allow for data to be resampled in time
             p.parse(varargin{:});
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
@@ -5653,6 +5654,8 @@ classdef PopulationTrajectorySet
                 % reslice into cell
                 data = squeeze(TensorUtils.splitAlongDimension(data, 3, pset.nTimeDataMean));
             end
+            
+            
             
             [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
             avec = makecol(alignIdx(avecRaw));
