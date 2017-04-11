@@ -5806,7 +5806,6 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.addParameter('tickHeight', 1, @isscalar);
-            
 %             % if true, draw spike waveforms instead of ticks
             p.addParameter('drawSpikeWaveforms', false, @islogical);
             p.addParameter('spikeWaveformScaleHeight', 1, @isscalar);
