@@ -892,6 +892,7 @@ classdef AlignSummary
             p.addParameter('timeScaleBarWidth', NaN, @isscalar);
             p.addParameter('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
             p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showScaleBar', true, @islogical);
             p.addParameter('labelFirstMarkOnly', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('allowedRange', 0, @isscalar); % allowed size of min - max range before surrounding label with < >
@@ -1027,10 +1028,12 @@ classdef AlignSummary
                         end
                     end
                     
-                    if isnan(p.Results.timeScaleBarWidth)
-                        au.addAutoScaleBarX();
-                    else
-                        au.addScaleBarX('length', p.Results.timeScaleBarWidth);
+                    if p.Results.showScaleBar
+                        if isnan(p.Results.timeScaleBarWidth)
+                            au.addAutoScaleBarX();
+                        else
+                            au.addScaleBarX('length', p.Results.timeScaleBarWidth);
+                        end
                     end
                 case 'scaleBar'
                     if isnan(p.Results.timeScaleBarWidth)

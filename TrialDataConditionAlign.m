@@ -1595,11 +1595,19 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
+            p.addParameter('timeDelta', []);
+            p.addParameter('timeReference', 0, @isscalar);
             p.parse(varargin{:});
             
             [data, time] = getAnalog@TrialData(td, name);
             [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false, ...
                 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+            
+            % resample if requested
+            if ~isempty(p.Results.timeDelta)
+                [data, time] = cellfun(@(d, t) TrialDataUtilities.Data.resampleTensorInTime(d, 1, t, ...
+                    'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference), data, time, 'UniformOutput', false);
+            end
             
             % subtract baseline on condition by condition
             if ~isempty(p.Results.subtractConditionBaselineAt)
@@ -5763,6 +5771,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
             p.addParameter('trialIdx', [], @isvector); % selection into all trials
             p.addParameter('normalize', true, @islogical);
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('quick', false, @islogical);
+            p.addParameter('commonTime', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -5782,16 +5793,27 @@ classdef TrialDataConditionAlign < TrialData
             dataUnits = cellfun(@(cd) cd.unitsPrimary, cdCell, 'UniformOutput', false);
             
             td = td.selectTrials(idx);
-            [data, time] = td.getAnalogMulti(chList);
+            if p.Results.commonTime
+                [data, time] = td.getAnalogMultiCommonTime(chList, 'timeDelta', p.Results.timeDelta);
+                data = data{1};
+                time = time{1};
+            else
+                [data, time] = td.getAnalogMulti(chList, 'timeDelta', p.Results.timeDelta);
+                time = time';
+                data = data';
+            end
             
-            TrialDataUtilities.Plotting.plotStackedTraces(time', data', 'labels', chList, ...
-                'showLabels', true, 'dataUnits', dataUnits, 'normalize', p.Results.normalize, p.Unmatched);
+            TrialDataUtilities.Plotting.plotStackedTraces(time, data, 'labels', chList, ...
+                'showLabels', true, 'dataUnits', dataUnits, 'normalize', p.Results.normalize, 'quick', p.Results.quick, ...
+                p.Unmatched);
             xlabel('');
-            td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', 'labelFirstMarkOnly', true);
-            
-            ax = AutoAxis();
-            ax.axisMarginLeft = 5;
-            ax.update();
+            if ~p.Results.quick
+                td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', 'labelFirstMarkOnly', true);
+
+                ax = AutoAxis();
+                ax.axisMarginLeft = 5;
+                ax.update();
+            end
         end
         
         function plotSingleTrialAnalogChannelGroup(td, groupName, varargin)
@@ -5935,12 +5957,12 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            if iscell(unitNames)
-                unitNameStr = TrialDataUtilities.String.strjoin(unitNames, ',');
-            else
-                unitNameStr = unitName;
-            end
-            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitNameStr);
+%             if iscell(unitNames)
+%                 unitNameStr = TrialDataUtilities.String.strjoin(unitNames, ',');
+%             else
+%                 unitNameStr = unitName;
+%             end
+%             TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitNameStr);
             
             axis(axh, 'tight');
             if ~p.Results.quick

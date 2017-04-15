@@ -162,7 +162,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     G = size(dataCell, 2);
     
     mat = nan([N, T, C, G]); % we'll reshape this later
-
+    
     indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
     indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     
@@ -173,7 +173,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         if ~trialValid(i), continue; end
 %         if mod(i, 100) && p.Results.showProgress, prog.update(i); end
         for g = 1:G
-            if ~isnan(indStart(i,g)) && ~isnan(indStop(i,g))
+            if ~isnan(tMin(i,g)) && ~isnan(tMax(i,g))
                 if numel(indStart(i,g):indStop(i,g)) > 1
                     mask = ~all(isnan(dataCell{i, g}), 2);
                     if assumeUniformSampling
@@ -193,8 +193,15 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
                     else
                         % don't assume uniform sampling, just interpolate
                         % to the right time vector
-                        mat(i, indStart(i,g):indStop(i,g), :, g) = interp1(double(timeCell{i, g}(mask)), dataCell{i, g}(mask, :), ...
-                            tvec(indStart(i,g):indStop(i,g)), p.Results.interpolateMethod, 'extrap');
+%                         mat(i, indStart(i,g):indStop(i,g), :, g) = interp1(double(timeCell{i, g}(mask)), dataCell{i, g}(mask, :), ...
+%                             tvec(indStart(i,g):indStop(i,g)), p.Results.interpolateMethod, 'extrap');
+                        
+                        % first interp to a uniform grid with known time
+                        % points
+                        interp1(double(timeCell{i, g}(mask)), dataCell{i, g}(mask, :), )
+
+                        [mat(i, indStart(i,g):indStop(i,g), :, g), ty] = resample(dataCell{i,g}(mask, :), timeCell{i, g}(mask), 1/timeDelta, p.Results.interpolateMethod);
+                        assert(isequal(ty, tvec));
                     end
                 else
                     mat(i, indStart(i,g), :, g) = dataCell{i, g};
