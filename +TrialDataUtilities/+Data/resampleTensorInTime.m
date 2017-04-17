@@ -10,6 +10,7 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     p.addParameter('origDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x));
+    p.addParameter('uniformlySampled', false, @islogical); % can speed things up if you know it's arleady uniform
     p.parse(varargin{:});
     
     if isempty(data)
@@ -55,7 +56,7 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
             else
                 % use resampling
                 [data, ty] = TrialDataUtilities.Data.resamplePadEdges(data, time, p.Results.timeReference, origDelta, timeDelta, ...
-                    interpolateMethod, p.Results.binAlignmentMode);
+                    interpolateMethod, p.Results.binAlignmentMode, p.Results.uniformlySampled);
                 mask = ty >= tMin & ty <= tMax;
                 data = data(mask, :, :, :);
                 assert(size(data, 1) == numel(timeNew));

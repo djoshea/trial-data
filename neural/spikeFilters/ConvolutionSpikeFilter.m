@@ -118,8 +118,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
                     tMinByTrial-tPadPre, tMaxByTrial+tPadPost, sf.binWidthMs);
                 
             % timeCell contains time vector without padding bins
-            binOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs);
-            binOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs);
+%             binOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs);
+%             binOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs);
             
             timeDeltaOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.timeDelta);
             timeDeltaOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.timeDelta);
@@ -129,16 +129,16 @@ classdef ConvolutionSpikeFilter < SpikeFilter
                 tMinByTrial+timeDeltaOffsetStart, tMaxByTrial+timeDeltaOffsetStop, sf.binWidthMs);
             
             % filter via valid-region convolution, which automatically removes the padding
-            rateCell = cell(size(spikeCell));
+            rateCell = cellvec(size(spikeCell, 1));
             nTrials = size(rateCell, 1);
-            nUnits = size(rateCell(:, :), 2);
+            nUnits = size(spikeCell(:, :), 2);
             for i = 1:nTrials
+                nTimeThis = numel(timeCell{i});
+                rateCell{i} = zeros(nTimeThis, nUnits); 
                 for j = 1:nUnits
                     if ~isempty(spikeCell{i, j})
                         countsPad = histc(spikeCell{i, j}, tbinsForHistcByTrial{i});
-                        rateCell{i, j} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
-                    else
-                        rateCell{i, j} = zeros(size(timeCell{i}));
+                        rateCell{i}(:, j) = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
                     end
                 end
             end
@@ -147,7 +147,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             if sf.timeDelta ~= sf.binWidthMs
                 [rateCell, timeCell] = TrialDataUtilities.Data.resampleDataCellInTime(rateCell, timeCell, 'timeDelta', sf.timeDelta, ...
                     'timeReference', 0, 'binAlignmentMode', sf.binAlignmentMode, ...
-                    'resampleMethod', sf.resampleMethod, ...
+                    'resampleMethod', sf.resampleMethod, 'uniformlySampled', true, ...
                     'tMinExcludingPadding', tMinByTrial, 'tMaxExcludingPadding', tMaxByTrial);
             end
         end
