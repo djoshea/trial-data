@@ -1910,6 +1910,9 @@ classdef TrialData
                 delta(i) = nanmedian(cellfun(@(x) nanmedian(diff(x)), time(~emptyMask)));
             end
             
+            % pick good sampling rate for all channels, since we'll be
+            % resampling anyway, all we need to do is respect the nyquist
+            % rates
             delta = nanmin(delta);
         end
         

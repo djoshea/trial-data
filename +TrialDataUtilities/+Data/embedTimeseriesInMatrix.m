@@ -3,12 +3,16 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 % 
 % N is trial count, G and C are channel counts (depending on the
 % configuration of dataCell, you can have multiple channels inside each element or
-% have dataCell be a cell matrix where each column (G) is a channel (C==1) or group of channels (C > 1))
+% have dataCell be a cell matrix where each column (G) is a channel (C==1)
+% or group of channels (C > 1)). In the latter case, the timestamps are
+% shared across the C channels. The G channels in the former case need not
+% share a time vector.
+%
 %   dataCell is N x G cell of T_n x C matrices
-%   timeCell is N x G cell of T_n vectors
+%   timeCell is N x G cell of T_n x 1 vectors
 %
 % mat will be N x T x (C*G), where T is the length of the time vector tvec to
-% which all data have been interpolated
+% which all data have been resampled to the same sampling frequency.
 % 
 % Combines a cell of N timeseries into a matrix with size N x T with a
 % common time vector tvec. dataCell is a N x 1 cell of numeric vectors.
@@ -23,7 +27,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %       data onto. if not specified, will be computed automatically.
 %
 %    timeDelta: scalar indicating the time delta between successive
-%       timestamps. default = 1.
+%       timestamps. defaults to the minimum delta automatically determined
+%       across all G channels in the outer cell
 %
 %    timeReference: scalar indicating the reference point for generating
 %       time vectors. Time vectors will be generated using the
@@ -56,21 +61,28 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p = inputParser();
     p.addRequired('dataCell', @(x) iscell(x));
     p.addRequired('timeCell', @(x) iscell(x));
-    p.addParameter('assumeUniformSampling', false, @islogical);
+    p.addParameter('assumeUniformSampling', false, @islogical); % allows us to skip the interp/resample step if the data are known to be uniform
     p.addParameter('tvec', [], @(x) isempty(x) || isvector(x));
     p.addParameter('interpolateMethod', 'linear', @ischar);
+    
     p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
     p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('timeReference', 0, @isscalar);
+    p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+    p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+    
     p.addParameter('showProgress', true, @islogical);
     p.addParameter('minTrials', 0, @isscalar);
     p.addParameter('minTrialFraction', 0, @isscalar);
     p.addParameter('trialValid', [], @islogical);
-%     p.addParameter('sparse', false, @islogical);
+    
+    % these are used as a secondary guard to truncate data within tMin :
+    % tMax, when the input data includes padded edges to facilitate
+    % resampling
+    p.addParameter('tMinExcludingPadding', [], @ismatrix);
+    p.addParameter('tMaxExcludingPadding', [], @ismatrix);
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
-    
-    assumeUniformSampling = p.Results.assumeUniformSampling;
     
     % check sizes match
     % okay to have one empty and the other not, simply ignore
@@ -126,21 +138,23 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     if isempty(p.Results.tvec)
         % auto-compute appropriate time vector
-        [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
+        [tvec, tMin, tMax, origDelta] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
             'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
-            'interpolate', ~p.Results.assumeUniformSampling);
+            'binAlignmentMode', p.Results.binAlignmentMode, ...
+            'tMinExcludingPadding', p.Results.tMinExcludingPadding, 'tMaxExcludingPadding', p.Results.tMaxExcludingPadding);
     else
-        tvec = p.Results.tvec;
-        % compute the global min / max timestamps or each trial
-        [tMinRaw, tMaxRaw] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
-%         [tMinRaw, tMaxRaw] = cellfun(@minmax, timeCell);
-        
-        % then shift these to lie within tvec, without overwriting nans
-        tMin = max(min(tvec), tMinRaw);
-        tMin(isnan(tMinRaw)) = NaN;
-        
-        tMax = min(max(tvec), tMaxRaw);
-        tMax(isnan(tMaxRaw)) = NaN;
+        error('Not sure if direct specification of the time vector is still working');
+%         tvec = p.Results.tvec;
+%         % compute the global min / max timestamps or each trial
+%         [tMinRaw, tMaxRaw, origDelta] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell, ...
+%             'tMinExcludingPadding', p.Results.tMinExcludingPadding, 'tMaxExcludingPadding', p.Results.tMaxExcludingPadding);
+% 
+%         % then shift these to lie within tvec, without overwriting nans
+%         tMin = max(min(tvec), tMinRaw);
+%         tMin(isnan(tMinRaw)) = NaN;
+%         
+%         tMax = min(max(tvec), tMaxRaw);
+%         tMax(isnan(tMaxRaw)) = NaN;
     end
     
     % tMin and tMax are now vectors of the start and stop times of each
@@ -148,11 +162,14 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     tvec = makecol(tvec);
     
     tMinGlobal = nanmin(tvec);
-    if numel(tvec) == 1
-        % special case with one sample
-        timeDelta = 1;
-    else
-        timeDelta = inferTimeDelta(tvec);
+    timeDelta = p.Results.timeDelta;
+    if isempty(timeDelta)
+        if numel(tvec) == 1
+            % special case with one sample
+            timeDelta = 1;
+        else
+            timeDelta = nanmin(origDelta);
+        end
     end
     
     % build the data matrix by inserting the interpolated segment of each timeseries
@@ -163,55 +180,48 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     mat = nan([N, T, C, G]); % we'll reshape this later
     
-    indStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
-    indStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
+    indPutStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
+    indPutStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
     
-%     if p.Results.showProgress
-%         prog = ProgressBar(N, 'Embedding data over trials into common time vector');
-%     end
+    % if specified, we can skip the resampling step which makes this quick
+    uniformSampling = p.Results.assumeUniformSampling && all(timeDelta == origDelta);
+    
     for i = 1:N
         if ~trialValid(i), continue; end
 %         if mod(i, 100) && p.Results.showProgress, prog.update(i); end
         for g = 1:G
+            % TODO add non-resample implementation when origDelta ==
+            % timeDelta
             if ~isnan(tMin(i,g)) && ~isnan(tMax(i,g))
-                if numel(indStart(i,g):indStop(i,g)) > 1
-                    mask = ~all(isnan(dataCell{i, g}), 2);
-                    if assumeUniformSampling
-                        % in this case, we just make sure the timepoint
-                        % closest to zero ends up in gthe right place
-                        [thisTimeRef, thisIndRef] = min(abs(timeCell{i, g}));
-                        [~, tvecIndRef] = min(abs(thisTimeRef - tvec));
-
-                        locationInMat = (1:numel(timeCell{i, g})) + tvecIndRef-thisIndRef;
-                        locationInMat = locationInMat(mask);
-
-                        mask = mask(locationInMat >= 1 & locationInMat <= T);
-                        locationInMat = locationInMat(mask);
-
-                        % data cell is T x C
-                        mat(i, locationInMat, :, g) = dataCell{i, g}(mask, :);
-                    else
-                        % don't assume uniform sampling, just interpolate
-                        % to the right time vector
-%                         mat(i, indStart(i,g):indStop(i,g), :, g) = interp1(double(timeCell{i, g}(mask)), dataCell{i, g}(mask, :), ...
-%                             tvec(indStart(i,g):indStop(i,g)), p.Results.interpolateMethod, 'extrap');
-                        
-                        % first interp to a uniform grid with known time
-                        % points
-                        interp1(double(timeCell{i, g}(mask)), dataCell{i, g}(mask, :), )
-
-                        [mat(i, indStart(i,g):indStop(i,g), :, g), ty] = resample(dataCell{i,g}(mask, :), timeCell{i, g}(mask), 1/timeDelta, p.Results.interpolateMethod);
-                        assert(isequal(ty, tvec));
-                    end
+                
+                if uniformSampling
+                    % just figure out where to insert this into the matrix,
+                    % no need for resampling
+                    indTake = timeCell{i, g} >= tMin(i,g) & timeCell{i,g} <= tMax(i,g);
+                    mat(i, indPutStart(i,g):indPutStop(i,g), :, g) = dataCell{i,g}(indTake, :);
+                    
                 else
-                    mat(i, indStart(i,g), :, g) = dataCell{i, g};
+                    mask = ~all(isnan(dataCell{i, g}), 2);
+
+                    % use resampleTensorInTime to support multiple resampling
+                    % methods
+                    vals = TrialDataUtilities.Data.resampleTensorInTime(dataCell{i,g}(mask, :), 1, timeCell{i, g}(mask), ...
+                        'origDelta', origDelta(g), 'timeDelta', timeDelta, 'interpolateMethod', p.Results.interpolateMethod, ...
+                        'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, ...
+                        'origDelta', origDelta(g), 'tMin', tMin(i,g), 'tMax', tMax(i,g));
+
+    %                 [vals, ty] = TrialDataUtilities.Data.resamplePadEdges(dataCell{i,g}(mask, :), timeCell{i, g}(mask), ...
+    %                     origDelta(g), timeDelta, p.Results.interpolateMethod, p.Results.binAlignmentMode);
+    % 
+    %                 % we only want to include data > tMin-timeDelta. This
+    %                 % ensures that we take the valid resampled data
+    %                 maskResample = ty > tMin(i, g)-timeDelta & ty <= tMax(i, g);
+
+                    mat(i, indPutStart(i,g):indPutStop(i,g), :, g) = vals;
                 end
             end
         end
     end
-%     if p.Results.showProgress
-%         prog.finish();
-%     end
     
     % pare down time points from edges with insufficient trial counts
     if p.Results.minTrials > 0 || p.Results.minTrialFraction > 0
@@ -230,14 +240,4 @@ end
 
 function timeDelta = inferTimeDelta(tvec)
      timeDelta = nanmedian(diff(tvec));
-end
-
-function [mn, mx] = minmax(x)
-    if isempty(x)
-        mn = NaN;
-        mx = NaN;
-    else
-        mn = nanmin(x);
-        mx = nanmax(x);
-    end
 end
