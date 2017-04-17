@@ -3,6 +3,12 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
 
+    properties
+        timeDelta = 1; % sampling interval for the filtered output
+        binAlignmentMode = BinAlignmentMode.Centered;
+        resampleMethod = 'filter';
+    end
+    
     % Dependent properties are provided as a convenience, override the underlying methods
     properties(Dependent)
         preWindow
@@ -12,11 +18,13 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
 
     methods(Abstract, Access=protected) 
         % return the time window of preceding spike data in ms required to estimate
-        % the rate at any particular time 
+        % the rate at any particular time, including both the spike filtering and
+        % the timeDelta binning
         t = getPreWindow(sf)
 
         % return the time window of preceding spike data in ms required to estimate
-        % the rate at any particular time 
+        % the rate at any particular time, including both the spike filtering and
+        % the timeDelta binning
         t = getPostWindow(sf)
 
         % spikeCell is nTrains x 1 cell array of time points
@@ -28,6 +36,10 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         % multiplierToSpikesPerSec is the factor by which rates in the
         % spikeCell time units should be multiplied to get sec (e.g. 1000
         % for spikeCell in ms)
+        % 
+        % this subclass method should respect sf.timeDelta,
+        % sf.binAlignmentMode, and sf.resampleMethod. We could do this work
+        % here, but not doing so leaves flexibility to the subclass
         [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowPerTrial, multiplierToSpikesPerSec)
     end
     
@@ -38,14 +50,13 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             str = '';
         end
         
-        function checkTimeDeltaOkay(sf, timeDelta) %#ok<INUSD>
-            % if the timeDelta used is not okay, subclass should throw an
-            % error
+        function checkOkay(sf)
+            % throw an error if the settings are wrong
             return;
         end
         
         function tf = getIsCausal(sf) % allows subclasses to override
-            tf = sf.getPreWindow() >= 0;
+            tf = sf.getPreWindow() >= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
         end
     end
 
@@ -60,6 +71,33 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
 
         function tf = get.isCausal(sf)
             tf = sf.getIsCausal();
+        end
+        
+        % these allow subclasses to override the behavior
+        function sf = set.timeDelta(sf, v)
+            sf.timeDelta = v;
+            sf = sf.postSetTimeDelta();
+        end
+        
+        function sf = postSetTimeDelta(sf)
+        end
+        
+        % these allow subclasses to override the behavior
+        function sf = set.binAlignmentMode(sf, v)
+            sf.binAlignmentMode = v;
+            sf = sf.postSetBinAlignmentMode();
+        end
+        
+        function sf = postSetBinAlignmentMode(sf)
+        end
+        
+        function sf = set.resampleMethod(sf, v)
+            sf.resampleMethod = v;
+            sf = sf.postSetResampleMethod();
+        end
+        
+        function sf = postSetResampleMethod(sf)
+            
         end
         
         function str = getDescription(sf)
@@ -85,11 +123,11 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
     end
 
     methods
-        function [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec)
+        function [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
             % filters each trial individually, using a cell array to return
             % filtered rates and timeCell 
             tWindowMat = [makecol(tMinByTrial), makecol(tMaxByTrial)];
-            [rateCell, timeCell] = sf.subclassFilterSpikeTrains(spikeCell, tWindowMat, multiplierToSpikesPerSec);
+            [rateCell, timeCell] = sf.subclassFilterSpikeTrains(spikeCell, tWindowMat, multiplierToSpikesPerSec, varargin{:});
         end
         
         function [rates, tvec] = filterSpikeTrainsWindowByTrialAsMatrix(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
@@ -98,25 +136,27 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             % before and after each trial. tvec is the time vector that
             % indicates time along the columns.=
             p = inputParser;
-            p.addParameter('timeDelta', 1, @isscalar);
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x))
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('interpolateMethod', 'linear', @ischar);
             p.addParameter('showProgress', true, @islogical);    
+            p.addParameter('tMinByTrialExcludingPadding', [], @isvector);
+            p.addParameter('tMaxByTrialExcludingPadding', [], @isvector);
             p.parse(varargin{:});
             
-            % give the subclass a chance to complain about the chosen time
-            % delta
-            sf.checkTimeDeltaOkay(p.Results.timeDelta);
+            if ~isempty(p.Results.timeDelta)
+                sf.checkTimeDeltaOkay(p.Results.timeDelta);
+            end
             
-            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
+            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, ...
+                'timeDelta', p.Results.timeDelta);
             
             % convert to matrix
             [rates, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(rateCell, timeCell, ...
-                'assumeUniformSampling', false, ... % no need for interp1 calls
-                'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
-                'interpolateMethod', p.Results.interpolateMethod, ...
-                'showProgress', p.Results.showProgress, ...
-                'fixDuplicateTimes', false); % no need for this since we know the time vectors are monotonic
+                'assumeUniformSampling', true, ...
+                'fixDuplicateTimes', false, ... % no need for this since we know the time vectors are monotonic
+                'tMinExcludingPadding', p.Results.tMinByTrialExcludingPadding, ...
+                'tMaxExcludingPadding', p.Results.tMaxByTrialExcludingPadding); 
         end
     end
     

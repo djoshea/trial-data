@@ -1307,18 +1307,33 @@ classdef TrialDataConditionAlign < TrialData
         
         % the following methods pass-thru to alignInfo:
         
-        function td = pad(td, window)
+        function td = pad(td, window, expand)
             % add a padding window to the AlignInfo
             % may change which trials are valid
             % usage: pad([pre post]) or pad(pre, post)
             % pre > 0 means add padding before the start (typical case)
             td.warnIfNoArgOut(nargout);
             
+            if nargin < 3
+                expand = false;
+            end
+            
             updated = false;
-            for iA = 1:td.nAlign
-                if td.alignInfoSet{iA}.padPre ~= window(1) || td.alignInfoSet{iA}.padPost ~= window(2)
-                    td.alignInfoSet{iA} = td.alignInfoSet{iA}.pad(window);
-                    updated = true;
+            
+            if expand
+                for iA = 1:td.nAlign
+                    if td.alignInfoSet{iA}.padPre < window(1) || td.alignInfoSet{iA}.padPost < window(2)
+                        window = max(window, [td.alignInfoSet{iA}.padPre td.alignInfoSet{iA}.padPost]);
+                        td.alignInfoSet{iA} = td.alignInfoSet{iA}.pad(window);
+                        updated = true;
+                    end
+                end
+            else
+                for iA = 1:td.nAlign
+                    if td.alignInfoSet{iA}.padPre ~= window(1) || td.alignInfoSet{iA}.padPost ~= window(2)
+                        td.alignInfoSet{iA} = td.alignInfoSet{iA}.pad(window);
+                        updated = true;
+                    end
                 end
             end
 
@@ -1326,6 +1341,29 @@ classdef TrialDataConditionAlign < TrialData
                 % to synchronize any changes in alignment validity
                 td = td.postUpdateAlignInfo();
             end
+        end
+        
+        function td = padForTimeBinning(td, timeDelta, binAlignmentMode, expand)
+            % pad the edges of the alignment by the appropriate amount to
+            % include data needed for time bin sampling
+            td.warnIfNoArgOut(nargout);
+            
+            if nargin < 4
+                expand = false;
+            end
+            
+            switch binAlignmentMode
+                case BinAlignmentMode.Acausal
+                    window = [0 timeDelta];
+                case BinAlignmentMode.Causal
+                    window = [timeDelta 0];
+                case BinAlignmentMode.Centered
+                    window = [timeDelta/2 timeDelta/2];
+                otherwise
+                    error('Unknown binAlignmentMode');
+            end
+            
+            td = td.pad(window, expand);
         end
         
         function td = padForSpikeFilter(td, sf)
@@ -1540,6 +1578,11 @@ classdef TrialDataConditionAlign < TrialData
             [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
         end
         
+        function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrialWithPadding(td)
+            % make relative to zero
+            [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrialWithPadding();
+        end
+        
         function [tStartRelByTrial, tStopRelByTrial, tZeroRelByTrial] = getTimeStartStopZeroRelativeToTrialStartEachTrial(td)
             [tStartRelByTrial, tStopRelByTrial, tZeroRelByTrial] = td.alignInfoActive.getStartStopZeroRelativeToTrialStartByTrial();
             tStartRelByTrial(~td.valid) = NaN;
@@ -1595,18 +1638,47 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
+            p.addParameter('includePadding', false, @islogical);
+            
+            % if these are specified, the data for each trial will be resampled
+            p.addParameter('ensureUniformSampling', false, @islogical);
             p.addParameter('timeDelta', []);
             p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+            p.addParameter('interpolateMethod', 'linear', @ischar);   
+            
             p.parse(varargin{:});
+
+            includePadding = p.Results.includePadding;
             
             [data, time] = getAnalog@TrialData(td, name);
-            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false, ...
-                'singleTimepointTolerance', p.Results.singleTimepointTolerance);
             
-            % resample if requested
-            if ~isempty(p.Results.timeDelta)
-                [data, time] = cellfun(@(d, t) TrialDataUtilities.Data.resampleTensorInTime(d, 1, t, ...
-                    'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference), data, time, 'UniformOutput', false);
+            % resample if requested, don't use this when embedding in a
+            % common matrix, better to figure out the common time vector
+            % first
+            if ~isempty(p.Results.timeDelta) || p.Results.ensureUniformResampling
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    timeDelta = td.getAnalogTimeDelta(name);
+                end
+                if p.Results.includePadding
+                    [tMin, tMax] = td.getTimeStartStopEachTrialWithPadding();
+                else
+                    [tMin, tMax] = td.getTimeStartStopEachTrial();
+                end
+                
+                % pad a bit forward or backwards depending on binning
+                td = td.padForTimeBinning(p.Results.timeDelta, p.Results.binAlignmentMode, p.Results.includePadding);
+                [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, true, ...
+                    'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                [data, time] = TrialDataUtilities.Data.resampleDataCellInTime(data, time, 'timeDelta', timeDelta, ...
+                    'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
+                    'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax);
+            else
+                [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, includePadding, ...
+                    'singleTimepointTolerance', p.Results.singleTimepointTolerance);
             end
             
             % subtract baseline on condition by condition
@@ -1753,7 +1825,10 @@ classdef TrialDataConditionAlign < TrialData
             
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('tvec', [], @isvector);
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+            
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
@@ -1762,31 +1837,53 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
             p.parse(varargin{:});
-%             
-%             if isempty(p.Results.tvec)
-%                 % infer timeDelta to use
-%                 timeDelta = p.Results.timeDelta;
-%                 if isempty(timeDelta)
-%                     timeDelta = td.alignInfoActive.minTimeDelta;
-%                     if isempty(timeDelta)
-%                         timeDelta = td.getAnalogTimeDelta(name);
-%                         warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-%                     end
-%                 end
+
+%             if ~isempty(p.Results.timeDelta)
+%                 % need the data one bin back since this will be labeled as
+%                 % tvec(1)
+%                 td = td.padForTimeBinning(p.Results.timeDelta, p.Results.binAlignmentMode, false);
+%                 includePadding = true;
+%             else
+%                 includePadding = false;
 %             end
             
-            % build nTrials cell of data/time vectors
+%             % build nTrials cell of data/time vectors
+%             [dataCell, timeCell] = td.getAnalog(name, ...
+%                 'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
+%                 'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
+%                 'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
+%                 'includePadding', includePadding);
+%             
+%             [tMinExcludingPadding, tMaxExcludingPadding] = td.getTimeStartStopEachTrial();
+% 
+%             % interpolate to common time vector
+%             % mat is nTrials x nTime
+%             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
+%                 'timeReference', 0, 'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
+%                 'binAlignmentMode', p.Results.binAlignmentMode, ...
+%                 'resampleMethod', p.Results.resampleMethod, ...
+%                 'interpolateMethod', p.Results.interpolateMethod, ...
+%                 'minTrials', p.Results.minTrials, ...
+%                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid, ...
+%                 'tMinExcludingPadding', tMinExcludingPadding, 'tMaxExcludingPadding', tMaxExcludingPadding);
+           
+            % build nTrials cell of data/time vectors, and have getAnalog
+            % do any resampling
             [dataCell, timeCell] = td.getAnalog(name, ...
                 'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                 'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
-                'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt);
-
-            % interpolate to common time vector
+                'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
+                'includePadding', false, ...
+                'ensureUniformSampling', true, ...
+                'timeReference', 0, 'timeDelta', p.Results.timeDelta, ...
+                'binAlignmentMode', p.Results.binAlignmentMode, ...
+                'resampleMethod', p.Results.resampleMethod, ...
+                'interpolateMethod', p.Results.interpolateMethod);
+           
+            % interpolate to common time vector 
             % mat is nTrials x nTime
             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-                'timeReference', 0, 'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
-                'interpolateMethod', p.Results.interpolateMethod, ...
-                'assumeUniformSampling', p.Results.assumeUniformSampling, ...
+                'assumeUniformSampling', true, ... % since getAnalog already ensured uniform sampling
                 'minTrials', p.Results.minTrials, ...
                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
         end
@@ -2391,11 +2488,48 @@ classdef TrialDataConditionAlign < TrialData
         function [data, time] = getAnalogChannelGroup(td, groupName, varargin)
             p = inputParser();
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
+            p.addParameter('includePadding', false, @islogical);
+            
+            % if these are specified, the data for each trial will be resampled
+            p.addParameter('ensureUniformSampling', false, @islogical);
+            p.addParameter('timeDelta', []);
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+            p.addParameter('interpolateMethod', 'linear', @ischar);   
             p.parse(varargin{:});
            
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName);
-            [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, false, ...
-                'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+            
+            includePadding = p.Results.includePadding;
+            
+            % resample if requested, don't use this when embedding in a
+            % common matrix, better to figure out the common time vector
+            % first
+            if ~isempty(p.Results.timeDelta) || p.Results.ensureUniformResampling
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    timeDelta = td.getAnalogChannelGroupTimeDelta(groupName);
+                end
+                if p.Results.includePadding
+                    [tMin, tMax] = td.getTimeStartStopEachTrialWithPadding();
+                else
+                    [tMin, tMax] = td.getTimeStartStopEachTrial();
+                end
+                
+                % pad a bit forward or backwards depending on binning
+                td = td.padForTimeBinning(p.Results.timeDelta, p.Results.binAlignmentMode, p.Results.includePadding);
+                
+                [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, true, ...
+                    'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                [data, time] = TrialDataUtilities.Data.resampleDataCellInTime(data, time, 'timeDelta', timeDelta, ...
+                    'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
+                    'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod,  ...
+                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax);
+            else
+                [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, includePadding, ...
+                    'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+            end
         end
         
         function time = getAnalogChannelGroupTime(td, groupName)
@@ -2433,16 +2567,16 @@ classdef TrialDataConditionAlign < TrialData
             % build nTrials x nChannels cell of data/time vectors
             C = numel(name);
             [dataCell, timeCell] = deal(cell(td.nTrials, C));
-            prog = ProgressBar(C, 'Fetching analog channels');
+%             prog = ProgressBar(C, 'Fetching analog channels');
             for c = 1:C
-                prog.update(c);
+%                 prog.update(c);
                 if p.Results.raw
                     [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(name{c});
                 else
                     [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, 'subtractTrialBaseline', subBase{c}, p.Unmatched);
                 end
             end
-            prog.finish();
+%             prog.finish();
         end
         
         function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
@@ -2456,6 +2590,10 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -2466,9 +2604,12 @@ classdef TrialDataConditionAlign < TrialData
                 % fetch the data as a group and rearrange the signals to
                 % match the requested order
                 
-                % this is a much faster way of fetching the data whole
+                % this is a much faster way of fetching the data whole, and
+                % getAnalogChannelGroup will do the resampling
                 dataCell = cellvec(td.nTrials);
-                [matCell, timeCell] = td.getAnalogChannelGroup(groupName);
+                [matCell, timeCell] = td.getAnalogChannelGroup(groupName, 'timeDelta', p.Results.timeDelta, ...
+                    'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
                 
                 % then go and grab the correct columns
                 colIdx = td.getAnalogChannelColumnIdxInGroup(names);
@@ -2480,39 +2621,31 @@ classdef TrialDataConditionAlign < TrialData
                 prog.finish();
                 
             else
-                sameTime = td.checkAnalogChannelsShareTimeField(names);
+%                 sameTime = td.checkAnalogChannelsShareTimeField(names);
                 
-                [dataCellRaw, timeCellRaw] = td.getAnalogMulti(names, p.Unmatched);
-                
-                if sameTime
-                    % no need to interpolate, just take the first channel's
-                    % time vectors and build matrices out of the data
-                    % across channnels
-                    dataCell = arrayfun(@(i) cat(2, dataCellRaw{i, :}), (1:td.nTrials)', 'UniformOutput', false); 
-                    timeCell = timeCellRaw(:, 1);
-                else
-                    % need to interpolate each signal's data on each trial to a common per-trial  time vector
-                
-                    timeDelta = p.Results.timeDelta;
+                % pick common sampling rate up front
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    % use common sampling rate and upsample
+                    timeDelta = td.getAnalogTimeDelta(names); % will choose smallest sampling interval
                     if isempty(timeDelta)
                         timeDelta = td.alignInfoActive.minTimeDelta;
-                        if isempty(timeDelta)
-                            timeDelta = td.getAnalogTimeDelta(name);
-                            warning('timeDelta auto-computed from analog timestamps. Specify manually or call .round for consistent results');
-                        end
                     end
-
-                    [dataCell, timeCell] = deal(cell(td.nTrials, 1));
-                    prog = ProgressBar(td.nTrials, 'Interpolating analog channels to common time vectors');
-                    for iT = 1:td.nTrials
-                        prog.update(iT);
-                        % build matrix from all data on this trial
-                        [dataCell{iT}, timeCell{iT}] = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
-                            dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
-                            'timeDelta', timeDelta, 'timeReference', 0, ...
-                            'assumeUniformSampling', false, 'interpolateMethod', p.Results.interpolateMethod);
-                    end
-                    prog.finish();
+                end
+                
+                [dataCellRaw, timeCellRaw] = td.getAnalogMulti(names, 'timeDelta', timeDelta, ...
+                    'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
+                
+                % interpolate to common per-trial time vector in quick insertion mode
+                % mat is nTrials x nTime
+                [dataCell, timeCell] = deal(cell(td.nTrials, 1));
+                    
+                for iT = 1:td.nTrials
+                    if ~td.valid(iT), continue; end
+                    [dataCell{iT}, timeCell{iT}]  = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
+                        dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
+                        'assumeUniformSampling', true);  % since getAnalog already ensured uniform sampling          
                 end
             end
         end
@@ -2530,41 +2663,64 @@ classdef TrialDataConditionAlign < TrialData
             %   assumeUniformScaling [false]: % assumes that all trials use consistent sampling 
             %     relative to alignment 0, setting this true avoids an interpolation step
             %
-            
             p = inputParser;
+            
+            % for resampling
             p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('tvec', [], @isvector);
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+            p.addParameter('interpolateMethod', 'linear', @ischar);
             p.addParameter('assumeUniformSampling', false, @islogical); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
             assert(iscell(names));
-               
+            
+            % pick common sampling rate up front
+            timeDelta = p.Results.timeDelta;
+            if isempty(timeDelta)
+                % use common sampling rate and upsample
+                timeDelta = td.getAnalogTimeDelta(names); % will choose smallest sampling interval
+                if isempty(timeDelta)
+                    timeDelta = td.alignInfoActive.minTimeDelta;
+                end
+            end
+            
             % build nTrials x nTime x nChannels cell of data/time vectors
-            [dataCell, timeCell] = td.getAnalogMulti(names, p.Unmatched);
+            [dataCell, timeCell] = td.getAnalogMulti(names, ...
+                'timeDelta', timeDelta, ...
+                'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
+                'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
             
             % interpolate to common time vector
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-                'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
-                'assumeUniformSampling', p.Results.assumeUniformSampling);
+                'assumeUniformSampling', true);
         end
         
         function [dataTensor, tvec] = getAnalogChannelGroupAsTensor(td, groupName, varargin)
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('tvec', [], @isvector);
             p.addParameter('assumeUniformSampling', false, @islogical); 
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp     
+            p.addParameter('interpolateMethod', 'linear', @ischar);
+            
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            [dataCell, timeCell] = td.getAnalogChannelGroup(groupName);
+            [dataCell, timeCell] = td.getAnalogChannelGroup(groupName, ...
+                'ensureUniformSampling', true, ...
+                'timeDelta', p.Results.timeDelta, ...
+                'binAlignmentMode', p.Results.binAlignmentMode, ...
+                'resampleMethod', p.Results.resampleMethod, ...
+                'interolateMethod', p.Results.interpolateMethod, p.Unmatched);
             
             % interpolate to common time vector
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-                'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
-                'assumeUniformSampling', p.Results.assumeUniformSampling, ...
+                'assumeUniformSampling', true, ...
                 'minTrials', p.Results.minTrials, ...
                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
         end
@@ -3331,7 +3487,7 @@ classdef TrialDataConditionAlign < TrialData
             % is nTrials x nUnits
             p = inputParser;
             p.addParameter('binWidthMs', 1, @isscalar);
-            p.addParameter('binAlignmentMode', SpikeBinAlignmentMode.Causal, @(x) isa(x, 'SpikeBinAlignmentMode'));
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Causal, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
             binWidth = p.Results.binWidthMs;
@@ -3349,7 +3505,7 @@ classdef TrialDataConditionAlign < TrialData
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
             
-            [tvec, tbinsForHistc, tbinsValidMat] = SpikeBinAlignmentMode.generateCommonBinnedTimeVector(...
+            [tvec, tbinsForHistc, tbinsValidMat] = BinAlignmentMode.generateCommonBinnedTimeVector(...
                 tMinByTrial, tMaxByTrial, binWidth, binAlignmentMode);
             
             % get spike blanking regions
@@ -3527,7 +3683,7 @@ classdef TrialDataConditionAlign < TrialData
             % mode
             p = inputParser;
             p.addParameter('binWidthMs', 1, @isscalar);
-            p.addParameter('binAlignmentMode', SpikeBinAlignmentMode.Causal, @(x) isa(x, 'SpikeBinAlignmentMode'));
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Causal, @(x) isa(x, 'BinAlignmentMode'));
             p.parse(varargin{:});
             binWidth = p.Results.binWidthMs;
             binAlignmentMode = p.Results.binAlignmentMode;
@@ -3541,10 +3697,9 @@ classdef TrialDataConditionAlign < TrialData
             hold off;
         end
         
-        %%%%%%% 
-        % Filtered spike rates
-        %%%%%%% 
-        
+    end
+    
+    methods % Filtered spike rates     
         function [rateCell, timeCell, hasSpikes] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
             p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
@@ -3554,7 +3709,7 @@ classdef TrialDataConditionAlign < TrialData
             sf = p.Results.spikeFilter;
             
             % Pad trial data alignment for spike filter
-            td = td.pad([sf.preWindow sf.postWindow]);
+            td = td.padForSpikeFilter(sf);
             
             spikeCell = td.getSpikeTimes(unitName, 'includePadding', true, 'combine', p.Results.combine);
             timeInfo = td.alignInfoActive.timeInfo;
@@ -3578,7 +3733,6 @@ classdef TrialDataConditionAlign < TrialData
         function [rates, tvec, hasSpikes] = getSpikeRateFilteredAsMatrix(td, unitNames, varargin)
             p = inputParser;
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
-            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('combine', false, @islogical);
             p.addParameter('showProgress', true, @islogical);    
             p.parse(varargin{:});
@@ -3587,17 +3741,9 @@ classdef TrialDataConditionAlign < TrialData
             if isempty(sf)
                 sf = SpikeFilter.getDefaultFilter();
             end
-            timeDelta = p.Results.timeDelta;
-            if isempty(timeDelta)
-                timeDelta = td.alignInfoActive.minTimeDelta;
-                if isempty(timeDelta)
-                    timeDelta = 1;
-                    warning('Using timeDelta=%d for spike rate timepoints. Specify ''timeDelta'' or call .round for consistent results', timeDelta);
-                end
-            end
             
             % Pad trial data alignment for spike filter
-            td = td.pad([sf.preWindow sf.postWindow]);
+            td = td.padForSpikeFilter(sf);
             
             % critical to include the spike times in the padded window
             spikeCell = td.getSpikeTimes(unitNames, 'includePadding', true, 'combine', p.Results.combine);
@@ -3610,7 +3756,7 @@ classdef TrialDataConditionAlign < TrialData
             % will be in (when called in this class)
             [rates, tvec] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
                 tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond, ...
-                'timeDelta', timeDelta, 'showProgress', p.Results.showProgress);
+                'showProgress', p.Results.showProgress);
             tvec = makecol(tvec);
             
             % now we need to nan out the regions affected by blanking
@@ -3687,13 +3833,11 @@ classdef TrialDataConditionAlign < TrialData
                 getSpikeRateFilteredGroupMeans(td, unitNames, varargin)
             % *Mat will be nConditions x T matrices
             % if randomized, will be nConditions x T x nRandomized
-            import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addRequired('unitNames', @(x) ischar(x) || iscellstr(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             
-            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
           
@@ -3719,10 +3863,10 @@ classdef TrialDataConditionAlign < TrialData
             % pick the right function to call
             if p.Results.eachAlign
                  [rateCell, tvec, hasSpikesGrouped, whichAlign] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitNames, ...
-                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
+                     'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
             else
                 [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
-                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
+                    'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             end
 
@@ -3746,7 +3890,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(rateCell{iC})
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
+                        TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
                 end
             end
         end
@@ -4446,7 +4590,7 @@ classdef TrialDataConditionAlign < TrialData
                 [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getSpikeRateFilteredGroupMeans(unitNames, ...
                     'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
-                    'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
+                    'spikeFilter', p.Results.spikeFilter, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
             
                 [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
