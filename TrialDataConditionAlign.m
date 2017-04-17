@@ -2506,7 +2506,7 @@ classdef TrialDataConditionAlign < TrialData
             % resample if requested, don't use this when embedding in a
             % common matrix, better to figure out the common time vector
             % first
-            if ~isempty(p.Results.timeDelta) || p.Results.ensureUniformResampling
+            if ~isempty(p.Results.timeDelta) || p.Results.ensureUniformSampling
                 timeDelta = p.Results.timeDelta;
                 if isempty(timeDelta)
                     timeDelta = td.getAnalogChannelGroupTimeDelta(groupName);
@@ -2518,7 +2518,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
                 
                 % pad a bit forward or backwards depending on binning
-                td = td.padForTimeBinning(p.Results.timeDelta, p.Results.binAlignmentMode, p.Results.includePadding);
+                td = td.padForTimeBinning(timeDelta, p.Results.binAlignmentMode, p.Results.includePadding);
                 
                 [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, true, ...
                     'singleTimepointTolerance', p.Results.singleTimepointTolerance);
@@ -2716,7 +2716,7 @@ classdef TrialDataConditionAlign < TrialData
                 'timeDelta', p.Results.timeDelta, ...
                 'binAlignmentMode', p.Results.binAlignmentMode, ...
                 'resampleMethod', p.Results.resampleMethod, ...
-                'interolateMethod', p.Results.interpolateMethod, p.Unmatched);
+                'interpolateMethod', p.Results.interpolateMethod, p.Unmatched);
             
             % interpolate to common time vector
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
