@@ -19,6 +19,8 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     tMinExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMinExcludingPadding, size(dataCell));
     tMaxExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMaxExcludingPadding, size(dataCell));
    
+    timeCell = TensorUtils.singletonExpandToSize(timeCell, size(dataCell));
+    
     for iD = 1:numel(dataCell)
         [d, t] = TrialDataUtilities.Data.resampleTensorInTime(dataCell{iD}, 1, timeCell{iD}, ...
             'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
