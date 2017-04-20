@@ -5,6 +5,8 @@ function [tMin, tMax, timeDelta, indMin, indMax] = getValidTimeExtents(time, dat
 %
 % if data is nTrials x nChannels cell, then origDelta is nChannels x 1 of 
 % the time between samples for each channel
+% if data is a matrix, it is nTrials x nTime
+%
 
 p = inputParser();
 % these are used as a secondary guard to truncate data within tMin :
@@ -14,9 +16,9 @@ p.addParameter('tMinExcludingPadding', -Inf, @ismatrix);
 p.addParameter('tMaxExcludingPadding', Inf, @ismatrix);
 p.parse(varargin{:});
 
-[tMin, tMax, indMin, indMax] = deal(nan(size(time)));
-
 if iscell(data)
+    [tMin, tMax, indMin, indMax] = deal(nan(size(data)));
+    
     tMinExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMinExcludingPadding, size(time));
     tMaxExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMaxExcludingPadding, size(time));
 
@@ -37,14 +39,18 @@ if iscell(data)
     
     timeDelta = nanmedian(timeDelta, 1);
 else
+    [tMin, tMax, indMin, indMax] = deal(nan(size(data, 1), 1));
+    
     tMinExcludingPadding = p.Results.tMinExcludingPadding;
     tMaxExcludingPadding = p.Results.tMaxExcludingPadding;
 
     % assume matrix data and vector time
     assert(ismatrix(data) && isvector(time));
     
-    for i = 1:numel(time)
-        mask = ~isnan(data(i, :)) & time >= tMinExcludingPadding & time <= tMaxExcludingPadding;
+    time = makecol(time);
+    
+    for i = 1:size(data, 1)
+        mask = ~isnan(data(i, :))' & time >= tMinExcludingPadding & time <= tMaxExcludingPadding;
         if any(mask)
             indMin(i) = find(mask, 1, 'first');
             tMin(i) = time(indMin(i));

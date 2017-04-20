@@ -232,6 +232,8 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceIdx = onesvec(numel(chNames));
             pset.basisDataSourceChannelNames = chNames;
             
+            pset.timeDelta = td.getAnalogTimeDelta(chNames);
+            
             pset = pset.setConditionDescriptor(td.conditionInfo);
             pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
