@@ -666,9 +666,9 @@ classdef PopulationTrajectorySet
 %                     StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
 %             end
             
-            if isempty(pset.timeDelta)
-                pset.timeDelta = 1;
-            end 
+%             if isempty(pset.timeDelta)
+%                 pset.timeDelta = 1;
+%             end 
             
             if isempty(pset.spikeFilter)
                 pset.spikeFilter = SpikeFilter.getDefaultFilter();
