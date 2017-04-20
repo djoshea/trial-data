@@ -1,4 +1,4 @@
-function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, interpMethod, binAlignmentMode)
+function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, interpMethod, binAlignmentMode, uniformlySampled)
     % time runs along first dim of x
     % tx is timestamps associated with x, txReference is a timepoint that
     % will line up with the time sampling in y
@@ -28,7 +28,13 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
     tx = [tpre; tx; tpost];
     x = padarray(x, P, 'replicate', 'both');
 
-    [y,ty] = resample(x, tx, 1./timeDeltaY, interpMethod);
+    if uniformlySampled
+        [P, Q] = rat(timeDeltaX / timeDeltaY);
+        [y] = resample(x, P, Q);
+        ty = tx(1) + (0:timeDeltaY:(size(y, 1)-1)*timeDeltaY)';
+    else
+        [y,ty] = resample(x, tx, 1./timeDeltaY, interpMethod);
+    end
     ty = ty+addToTy;
 
 end
