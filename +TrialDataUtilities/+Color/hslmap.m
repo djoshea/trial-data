@@ -5,7 +5,7 @@ function map = hslmap(n, varargin)
     
     p = inputParser();
     p.addParameter('fracHueShift', 0.001, @issscalar); % between 0 and 1
-    p.addParameter('saturation', 0.6, @isscalar);
+    p.addParameter('saturation', 0.7, @isscalar);
     p.addParameter('luminance', 0.65, @isscalar);
     p.addParameter('fracHueSpan', 1, @isscalar);
     p.parse(varargin{:});
