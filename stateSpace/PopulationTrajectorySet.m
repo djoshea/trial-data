@@ -914,6 +914,13 @@ classdef PopulationTrajectorySet
             pset = pset.setAlignDescriptorSet(pset.alignDescriptorSet);
         end
         
+        function sf = get.spikeFilter(pset)
+            sf = pset.spikeFilter;
+            if isempty(sf)
+                sf = SpikeFilter.getDefaultFilter();
+            end
+        end
+        
         function d = get.timeDelta(pset)
             d = pset.spikeFilter.timeDelta;
         end
