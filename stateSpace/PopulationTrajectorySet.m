@@ -2911,8 +2911,14 @@ classdef PopulationTrajectorySet
                     % trial that comprises that matrix. Essential that all
                     % padding be done to src before this call to ensure
                     % that the tvec returned above matches these numbers
+                    
+                    % switching this to deal with analog channel resampling
+%                     [tMinByTrial{iBasis, iAlign}, ...
+%                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
+
                     [tMinByTrial{iBasis, iAlign}, ...
-                     tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
+                     tMaxByTrial{iBasis, iAlign}] = ...
+                     TrialDataUtilities.Data.getValidTimeExtents(tvec, dataByTrial{iBasis, iAlign});
                 end
             end
             prog.finish();

@@ -1657,7 +1657,7 @@ classdef TrialDataConditionAlign < TrialData
             % resample if requested, don't use this when embedding in a
             % common matrix, better to figure out the common time vector
             % first
-            if ~isempty(p.Results.timeDelta) || p.Results.ensureUniformResampling
+            if ~isempty(p.Results.timeDelta) || p.Results.ensureUniformSampling
                 timeDelta = p.Results.timeDelta;
                 if isempty(timeDelta)
                     timeDelta = td.getAnalogTimeDelta(name);
