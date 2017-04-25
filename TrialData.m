@@ -379,6 +379,8 @@ classdef TrialData
         function [td, globalOkay] = fixCheckAnalogDataMatchesTimeVectors(td)
             td.warnIfNoArgOut(nargout);
             
+            td = td.reset();
+            
             analogCh = td.listAnalogChannels();
             [groupNames, channelsByGroup] = td.listAnalogChannelGroups();
             analogChNotInGroup = setdiff(analogCh, cat(1, channelsByGroup{:}));
@@ -476,8 +478,27 @@ classdef TrialData
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, zeros(0, 1), ~okay);
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, emptyVal, ~okay);
                 end
+                
+                % check sorted and no duplicates
+                resort = truevec(td.nTrials);
+                for iT = 1:td.nTrials
+                    timeThis = td.data(iT).(timeField);
+                    resort(iT) = ~issorted(timeThis) || numel(timeThis) > numel(unique(timeThis));
+                end
+                if any(resort)
+                    warning('%d trials have duplicate or non-monotonically increasing timestamps for %s', dataField); 
+                    [timeInsert, dataInsert] = cellfun(@resortTimeDedup, {td.data(resort).(timeField)}, {td.data(resort).(dataField)}, 'UniformOutput', false);
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, timeInsert, resort);
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, dataInsert, resort);
+                end
+                
             end
             prog.finish();
+            
+            function [time, data] = resortTimeDedup(time, data)
+                [time, idx] = unique(time, 'last');
+                data = data(idx, :, :, :, :);
+            end
         end
         
         function v = getMetaKey(td, key)

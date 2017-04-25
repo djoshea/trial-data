@@ -21,13 +21,21 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
         otherwise
             error('Unknown binAlignmentMode');
     end
+    
+    
     idxFirst = find(isInt((tpre-txReference+addToTy) ./ timeDeltaY), 1);
     tpre = tpre(idxFirst:end);
     P = numel(tpre);
     tpost = tx(end) + (1:P)' .* timeDeltaX;
     tx = [tpre; tx; tpost];
     x = padarray(x, P, 'replicate', 'both');
-
+    
+    castDouble = ~isa(x, 'double');
+    if castDouble
+        clsX = class(x);
+        x = double(x);
+    end
+    
     if uniformlySampled
         [P, Q] = rat(timeDeltaX / timeDeltaY);
         [y] = resample(x, P, Q);
@@ -36,5 +44,8 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
         [y,ty] = resample(x, tx, 1./timeDeltaY, interpMethod);
     end
     ty = ty+addToTy;
-
+    
+    if castDouble
+        x = cast(x, clsX);
+    end
 end
