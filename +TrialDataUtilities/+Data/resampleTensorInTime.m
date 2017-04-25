@@ -44,6 +44,13 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     timeNew = (tMin:timeDelta:tMax)';
     nDimsOrig = ndims(data);
     data = TensorUtils.shiftdimToFirstDim(data, timeDim);
+
+    deltaIsChanging = ~TrialDataUtilities.Stats.isequaltol(timeDelta, origDelta, origDelta / 1000);
+    
+    % do this to avoid off by one errors when generating time vectors
+    if ~deltaIsChanging
+        origDelta = timeDelta;
+    end
     
     % build time vector for the original that starts at the appropriate
     % tMin so that we end up with the right samples
@@ -51,12 +58,16 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     
     switch p.Results.resampleMethod
         case 'filter'
-            if timeDelta == origDelta
-                data = interp1(time, data, timeNew, interpolateMethod);
-            else
+            if ~p.Results.uniformlySampled
+                % sample to uniform grid
+                data = interp1(time, data, timeUniform, interpolateMethod);
+                time = timeUniform;
+            end
+
+            if deltaIsChanging
                 % use resampling
                 [data, ty] = TrialDataUtilities.Data.resamplePadEdges(data, time, p.Results.timeReference, origDelta, timeDelta, ...
-                    interpolateMethod, p.Results.binAlignmentMode, p.Results.uniformlySampled);
+                    interpolateMethod, p.Results.binAlignmentMode, true);
                 mask = ty >= tMin & ty <= tMax;
                 data = data(mask, :, :, :);
                 assert(size(data, 1) == numel(timeNew));
@@ -75,7 +86,7 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
                 % trim extra copies at the end
                 data = data(1:numel(timeNew), :, :);
                 
-            elseif timeDelta == origDelta
+            elseif ~deltaIsChanging
                 % fine as is
             else
                 error('Cannot use repeat when downsampling');
@@ -94,7 +105,7 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
                 % trim average from partial blocks at the end
                 data = data(1:numel(timeNew), :, :);
                 
-            elseif timeDelta == origDelta
+            elseif ~deltaIsChanging
                 % fine as is
             else
                 error('Cannot use repeat when downsampling');
@@ -105,7 +116,6 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
             
         otherwise
             error('Unknown resampleMethod %s', p.Results.resampleMethod)
-            
     end
     
     data = TensorUtils.unshiftdimToFirstDim(data, timeDim, nDimsOrig);
