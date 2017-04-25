@@ -28,6 +28,12 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
     tx = [tpre; tx; tpost];
     x = padarray(x, P, 'replicate', 'both');
 
+    % make into 2d matrix
+    szX = size(x);
+    x = x(:, :);
+    colMask = ~all(isnan(x), 1);
+    x = x(:, colMask);
+    
     if uniformlySampled
         [P, Q] = rat(timeDeltaX / timeDeltaY);
         [y] = resample(x, P, Q);
@@ -36,5 +42,10 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
         [y,ty] = resample(x, tx, 1./timeDeltaY, interpMethod);
     end
     ty = ty+addToTy;
+    
+    y = TensorUtils.inflateMaskedTensor(y, 2, colMask);
+    szY = [size(y, 1), szX(2:end)];
+    y = reshape(y, szY);
+    
 
 end

@@ -11,7 +11,6 @@ classdef PopulationTrajectorySetBuilder
         dataUnits
         timeUnitName
         timeUnitsPerSecond
-        timeDelta 
         spikeFilter
         minTrialsForTrialAveraging
         minFractionTrialsForTrialAveraging
@@ -76,7 +75,7 @@ classdef PopulationTrajectorySetBuilder
     % Lists of fields within PopulationTrajectorySet to simplify the
     % copying and assert ~isempty checks below.
     properties(Constant)
-        fSettings = {'dataUnits', 'timeUnitName', 'timeUnitsPerSecond', 'timeDelta', 'spikeFilter', 'minTrialsForTrialAveraging', ...
+        fSettings = {'dataUnits', 'timeUnitName', 'timeUnitsPerSecond', 'spikeFilter', 'minTrialsForTrialAveraging', ...
             'minFractionTrialsForTrialAveraging', ...
             'dataIntervalQuantileLow', 'dataIntervalQuantileHigh'};
 
