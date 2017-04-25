@@ -3,7 +3,7 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
     % tx is timestamps associated with x, txReference is a timepoint that
     % will line up with the time sampling in y
     
-    Q = ceil(timeDeltaY / timeDeltaX);
+    Q = ceiltol(timeDeltaY / timeDeltaX, min(timeDeltaY, timeDeltaX) / 1000);
 
     % resample uses a filter length of 20 inside, with some zero edges added in
     P = 24*Q;
@@ -33,6 +33,9 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
     x = x(:, :);
     colMask = ~all(isnan(x), 1);
     x = x(:, colMask);
+     
+    if ~uniformlySampled
+        data = interp1(time, data, timeNew, interpolateMethod);
     
     if uniformlySampled
         [P, Q] = rat(timeDeltaX / timeDeltaY);
@@ -48,4 +51,13 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
     y = reshape(y, szY);
     
 
+    function out = ceiltol(val, tol)
+        % like ceiling, but allows for tolerance
+        fl = floor(val);
+        if val - fl < abs(tol)
+            out = fl;
+        else
+            out = ceil(val);
+        end
+    end
 end
