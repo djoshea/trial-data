@@ -22,7 +22,6 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
             error('Unknown binAlignmentMode');
     end
     
-    
     idxFirst = find(isInt((tpre-txReference+addToTy) ./ timeDeltaY), 1);
     tpre = tpre(idxFirst:end);
     P = numel(tpre);
@@ -35,6 +34,12 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
         clsX = class(x);
         x = double(x);
     end
+
+    % make into 2d matrix
+    szX = size(x);
+    x = x(:, :);
+    colMask = ~all(isnan(x), 1);
+    x = x(:, colMask);
     
     if uniformlySampled
         [P, Q] = rat(timeDeltaX / timeDeltaY);
@@ -46,6 +51,10 @@ function [y, ty] = resamplePadEdges(x, tx, txReference, timeDeltaX, timeDeltaY, 
     ty = ty+addToTy;
     
     if castDouble
-        x = cast(x, clsX);
+        y = cast(y, clsX);
     end
+    y = TensorUtils.inflateMaskedTensor(y, 2, colMask);
+    szY = [size(y, 1), szX(2:end)];
+    y = reshape(y, szY);
+    
 end
