@@ -47,22 +47,26 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     interpolate = p.Results.interpolate;
     %interpolateMethod = p.Results.interpolateMethod;
    
-     % compute the global min / max timestamps or each trial
+    % compute the global min / max timestamps or each trial
     if fixDuplicateTimes
         [timeCell, dataCell] = cellfun(@fixDup, timeCell, dataCell, 'UniformOutput', false);
     end
+    
     [tMinRaw, tMaxRaw, origDelta, indMin, indMax] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
-
+    
     nTimes = cellfun(@numel, timeCell);
-
     if isempty(timeDelta)
         if all(nTimes == 1)
             timeDelta = 1;
         else
             timeDelta = min(origDelta);
         end
-     end
-
+    end
+    
+    % clean up small discrepancies
+    tMinRaw = TrialDataUtilities.Data.removeSmallTimeErrors(tMinRaw, timeDelta, p.Results.timeReference);
+    tMaxRaw = TrialDataUtilities.Data.removeSmallTimeErrors(tMaxRaw, timeDelta, p.Results.timeReference);
+    
     % expand the global min / max timestamps to align with timeReference
     if interpolate
         %ceilfix = @(x)ceil(abs(x)).*sign(x);
@@ -118,7 +122,6 @@ function [t, d] = fixDup(t, d)
     skip = find(diffT(1:end-1) == 2 & diffT(2:end) == 0);
     t(skip+1) = t(skip+1) - 1;
 
-    tMask = [true; diff(t)>0];
-    t = t(tMask);
-    d = d(tMask, :);
+    [t, idx] = unique(t, 'last');
+    d = d(idx, :);
 end

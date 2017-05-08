@@ -33,39 +33,19 @@ classdef BinAlignmentMode < int32
                 % bins (with width origDelta) as having the same
                 % binAlignmentMode as mode.
                 case BinAlignmentMode.Causal
-                    tMinNew = timeReference + ceiltol((tMinOrig - origDelta - timeReference + newDelta) ./ newDelta) .* newDelta;
-                    tMaxNew = timeReference + floortol((tMaxOrig - timeReference) / newDelta) * newDelta;
+                    tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - origDelta - timeReference + newDelta) ./ newDelta, tol) .* newDelta;
+                    tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig - timeReference) / newDelta, tol) * newDelta;
                 case BinAlignmentMode.Acausal
-                    tMinNew = timeReference + ceiltol((tMinOrig - timeReference) / newDelta) .* newDelta;
-                    tMaxNew = timeReference + floortol((tMaxOrig + origDelta - timeReference - newDelta) ./ newDelta) .* newDelta;
+                    tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - timeReference) / newDelta, tol) .* newDelta;
+                    tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig + origDelta - timeReference - newDelta) ./ newDelta, tol) .* newDelta;
                 case BinAlignmentMode.Centered
-                    tMinNew = timeReference + ceiltol((tMinOrig - origDelta/2 - timeReference + newDelta/2) ./ newDelta) .* newDelta;
-                    tMaxNew = timeReference + floortol((tMaxOrig + origDelta/2 - timeReference - newDelta/2) ./ newDelta) .* newDelta;
+                    tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - origDelta/2 - timeReference + newDelta/2) ./ newDelta, tol) .* newDelta;
+                    tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig + origDelta/2 - timeReference - newDelta/2) ./ newDelta, tol) .* newDelta;
             end
                     
             mask = tMinNew > tMaxNew;
             tMinNew(mask) = NaN;
             tMaxNew(mask) = NaN;
-            
-            function out = ceiltol(val)
-                % like ceiling, but allows for tolerance
-                fl = floor(val);
-                if val - fl < abs(tol)
-                    out = fl;
-                else
-                    out = ceil(val);
-                end
-            end
-            
-            function out = floortol(val)
-                % like ceiling, but allows for tolerance
-                cl = ceil(val);
-                if cl - val < abs(tol)
-                    out = cl;
-                else
-                    out = f(val);
-                end
-            end
         end
         
         function [tvecLabelCell, tbinsForHistcCell] = generateMultipleBinnedTimeVectors(mode, starts, stops, binWidth)
@@ -114,10 +94,13 @@ classdef BinAlignmentMode < int32
             tvecLabel = tvecLabelCell{1};
             tbinsForHistc = tbinsForHistcCell{1};
             
+            binStartOffset = mode.getBinStartOffsetForBinWidth(binWidth);
+            
             nTrials = numel(starts);
             tbinsValidMat = false(nTrials, numel(tvecLabel));
             for iTrial = 1:nTrials
-                tbinsValidMat(iTrial, :) = tbinsForHistc(1:end-1) >= starts(iTrial) & tbinsForHistc(2:end) <= stops(iTrial);
+                tbinsValidMat(iTrial, :) = tbinsForHistc(1:end-1) >= starts(iTrial)+binStartOffset & ...
+                    tbinsForHistc(2:end) <= stops(iTrial) + binStartOffset;
             end
         end
     end

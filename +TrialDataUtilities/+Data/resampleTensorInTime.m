@@ -34,6 +34,8 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     if isempty(timeDelta)
         timeDelta = origDelta;
     end
+    
+    time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, timeReference);
 
     tMin = p.Results.tMin;
     tMax = p.Results.tMax;
@@ -60,18 +62,16 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
         case 'filter'
             if ~p.Results.uniformlySampled
                 % sample to uniform grid
-                data = interp1(time, data, timeUniform, interpolateMethod);
+                data = interp1(time, data, timeUniform, interpolateMethod, 'extrap');
                 time = timeUniform;
             end
 
             if deltaIsChanging
                 % use resampling
-                [data, ty] = TrialDataUtilities.Data.resamplePadEdges(data, time, p.Results.timeReference, origDelta, timeDelta, ...
-                    interpolateMethod, p.Results.binAlignmentMode, true);
-                mask = ty >= tMin & ty <= tMax;
-                data = data(mask, :, :, :);
-                assert(size(data, 1) == numel(timeNew));
+                [data] = TrialDataUtilities.Data.resamplePadEdges(data, time, timeNew, p.Results.binAlignmentMode);   
             end
+
+            assert(size(data, 1) == numel(timeNew));
             
         case 'repeat'
             % sample to uniform grid

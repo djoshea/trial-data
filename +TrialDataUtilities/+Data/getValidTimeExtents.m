@@ -28,11 +28,10 @@ if iscell(data)
         if ~isempty(data{i}) && ~isempty(time{i})
             mask = ~all(isnan(data{i}), 2) & time{i} >= tMinExcludingPadding(i) & time{i} <= tMaxExcludingPadding(i);
             if any(mask)
+                timeDelta(i) = nanmedian(diff(time{i}(mask))); % ignore the mask here
+                
                 [tMin(i), indMin(i)] = min(time{i}(mask), [], 'omitnan');
                 [tMax(i), indMax(i)] = max(time{i}(mask), [], 'omitnan');
-            end
-            if nargout > 2
-                timeDelta(i) = nanmedian(diff(time{i}(mask))); % ignore the mask here
             end
         end
     end
@@ -49,6 +48,9 @@ else
     
     time = makecol(time);
     
+    mask = ~all(isnan(data), 1);
+    timeDelta = nanmedian(diff(time(mask)));
+    
     for i = 1:size(data, 1)
         mask = ~isnan(data(i, :))' & time >= tMinExcludingPadding & time <= tMaxExcludingPadding;
         if any(mask)
@@ -57,10 +59,5 @@ else
             indMax(i) = find(mask, 1, 'last');
             tMax(i) = time(indMax(i));
         end
-    end
-    
-    mask = ~all(isnan(data), 1);
-    if nargout > 2
-        timeDelta = nanmedian(diff(time(mask)));
     end
 end

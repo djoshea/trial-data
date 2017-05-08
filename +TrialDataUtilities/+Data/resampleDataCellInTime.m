@@ -21,8 +21,11 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     tMaxExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMaxExcludingPadding, size(dataCell));
    
     timeCell = TensorUtils.singletonExpandToSize(timeCell, size(dataCell));
+    tol = p.Results.timeDelta / 1000;
     
+    %prog = ProgressBar(numel(dataCell), 'Resampling data');
     for iD = 1:numel(dataCell)
+        %prog.update(iD);
         if isempty(dataCell{iD}), continue; end
         [d, t] = TrialDataUtilities.Data.resampleTensorInTime(dataCell{iD}, 1, timeCell{iD}, ...
             'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
@@ -31,9 +34,10 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
             'resampleMethod', p.Results.resampleMethod, ...
             'uniformlySampled', p.Results.uniformlySampled);
         
-        mask = t >= tMinExcludingPadding(iD) & t <= tMaxExcludingPadding(iD);
+        mask = t >= tMinExcludingPadding(iD) - tol & t <= tMaxExcludingPadding(iD) + tol;
         dataCell{iD} = d(mask, :, :, :);
         timeCell{iD} = t(mask);
     end
+    %prog.finish();
 end
 

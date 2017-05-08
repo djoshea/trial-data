@@ -1343,13 +1343,16 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
-        function td = padForTimeBinning(td, timeDelta, binAlignmentMode, expand)
+        function td = padForTimeBinning(td, timeDelta, binAlignmentMode, expand, includeExtraBin)
             % pad the edges of the alignment by the appropriate amount to
             % include data needed for time bin sampling
             td.warnIfNoArgOut(nargout);
             
             if nargin < 4
                 expand = false;
+            end
+            if nargin < 5
+                includeExtraBin = false;
             end
             
             switch binAlignmentMode
@@ -1361,6 +1364,11 @@ classdef TrialDataConditionAlign < TrialData
                     window = [timeDelta/2 timeDelta/2];
                 otherwise
                     error('Unknown binAlignmentMode');
+            end
+            
+            if includeExtraBin
+                window(1) = window(1) + timeDelta;
+                window(2) = window(2) + timeDelta;
             end
             
             td = td.pad(window, expand);
@@ -1639,6 +1647,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
             p.addParameter('includePadding', false, @islogical);
+            p.addParameter('includeEdgeBins', false, @islogical);
             
             % if these are specified, the data for each trial will be resampled
             p.addParameter('ensureUniformSampling', false, @islogical);
@@ -1662,16 +1671,20 @@ classdef TrialDataConditionAlign < TrialData
                 if isempty(timeDelta)
                     timeDelta = td.getAnalogTimeDelta(name);
                 end
-                if p.Results.includePadding
+                if p.Results.includePadding 
                     [tMin, tMax] = td.getTimeStartStopEachTrialWithPadding();
                 else
                     [tMin, tMax] = td.getTimeStartStopEachTrial();
                 end
                 
                 % pad a bit forward or backwards depending on binning
-                td = td.padForTimeBinning(p.Results.timeDelta, p.Results.binAlignmentMode, p.Results.includePadding);
+                td = td.padForTimeBinning(timeDelta, p.Results.binAlignmentMode, p.Results.includePadding, p.Results.includeEdgeBins);
+                
                 [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, true, ...
                     'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                
+                time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, p.Results.timeReference);
+                
                 [data, time] = TrialDataUtilities.Data.resampleDataCellInTime(data, time, 'timeDelta', timeDelta, ...
                     'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
                     'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod, ...
@@ -1755,7 +1768,7 @@ classdef TrialDataConditionAlign < TrialData
             C = numel(nameCell);
             [timeCell, dataCell] = deal(cell(td.nTrials, C));
             for c = 1:C
-                [dataCell(:, c), timeCell(:, c)] = td.getAnalog(nameCell{c}, varargin{:});
+                [dataCell(:, c), timeCell(:, c)] = td.getAnalog(nameCell{c}, 'includeEdgeBins', true, varargin{:});
             end
             
             tvec = TrialDataUtilies.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
@@ -1768,8 +1781,8 @@ classdef TrialDataConditionAlign < TrialData
             [dataUnif, timeUnif] = td.alignInfoActive.getAlignedTimeseries(dataUnif, timeUnif, false);
         end
                 
-        function [dCell, tCell] = getAnalogGrouped(td, name)
-            [dataCell, timeCell] = td.getAnalog(name);
+        function [dCell, tCell] = getAnalogGrouped(td, name, varargin)
+            [dataCell, timeCell] = td.getAnalog(name, varargin{:});
             [dCell, tCell] = td.groupElements(dataCell, timeCell);
         end
         
@@ -1837,35 +1850,6 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
             p.parse(varargin{:});
-
-%             if ~isempty(p.Results.timeDelta)
-%                 % need the data one bin back since this will be labeled as
-%                 % tvec(1)
-%                 td = td.padForTimeBinning(p.Results.timeDelta, p.Results.binAlignmentMode, false);
-%                 includePadding = true;
-%             else
-%                 includePadding = false;
-%             end
-            
-%             % build nTrials cell of data/time vectors
-%             [dataCell, timeCell] = td.getAnalog(name, ...
-%                 'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
-%                 'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
-%                 'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
-%                 'includePadding', includePadding);
-%             
-%             [tMinExcludingPadding, tMaxExcludingPadding] = td.getTimeStartStopEachTrial();
-% 
-%             % interpolate to common time vector
-%             % mat is nTrials x nTime
-%             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-%                 'timeReference', 0, 'tvec', p.Results.tvec, 'timeDelta', p.Results.timeDelta, ...
-%                 'binAlignmentMode', p.Results.binAlignmentMode, ...
-%                 'resampleMethod', p.Results.resampleMethod, ...
-%                 'interpolateMethod', p.Results.interpolateMethod, ...
-%                 'minTrials', p.Results.minTrials, ...
-%                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid, ...
-%                 'tMinExcludingPadding', tMinExcludingPadding, 'tMaxExcludingPadding', tMaxExcludingPadding);
            
             % build nTrials cell of data/time vectors, and have getAnalog
             % do any resampling
@@ -1874,6 +1858,7 @@ classdef TrialDataConditionAlign < TrialData
                 'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                 'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
                 'includePadding', false, ...
+                'includeEdgeBins', true, ...
                 'ensureUniformSampling', true, ...
                 'timeReference', 0, 'timeDelta', p.Results.timeDelta, ...
                 'binAlignmentMode', p.Results.binAlignmentMode, ...
@@ -2489,6 +2474,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
             p.addParameter('includePadding', false, @islogical);
+            p.addParameter('includeEdgeBins', false, @islogical);
             
             % if these are specified, the data for each trial will be resampled
             p.addParameter('ensureUniformSampling', false, @islogical);
@@ -2518,7 +2504,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
                 
                 % pad a bit forward or backwards depending on binning
-                td = td.padForTimeBinning(timeDelta, p.Results.binAlignmentMode, p.Results.includePadding);
+                td = td.padForTimeBinning(timeDelta, p.Results.binAlignmentMode, p.Results.includePadding, p.Results.includeEdgeBins);
                 
                 [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, true, ...
                     'singleTimepointTolerance', p.Results.singleTimepointTolerance);
@@ -2608,7 +2594,7 @@ classdef TrialDataConditionAlign < TrialData
                 % getAnalogChannelGroup will do the resampling
                 dataCell = cellvec(td.nTrials);
                 [matCell, timeCell] = td.getAnalogChannelGroup(groupName, 'timeDelta', p.Results.timeDelta, ...
-                    'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'includeEdgeBins', true, 'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
                     'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
                 
                 % then go and grab the correct columns
@@ -2714,6 +2700,7 @@ classdef TrialDataConditionAlign < TrialData
             [dataCell, timeCell] = td.getAnalogChannelGroup(groupName, ...
                 'ensureUniformSampling', true, ...
                 'timeDelta', p.Results.timeDelta, ...
+                'includeEdgeBins', true, ...
                 'binAlignmentMode', p.Results.binAlignmentMode, ...
                 'resampleMethod', p.Results.resampleMethod, ...
                 'interpolateMethod', p.Results.interpolateMethod, p.Unmatched);
@@ -3493,7 +3480,9 @@ classdef TrialDataConditionAlign < TrialData
             binWidth = p.Results.binWidthMs;
             binAlignmentMode = p.Results.binAlignmentMode;
             
-            spikeCell = td.getSpikeTimes(unitName, 'includePadding', false, 'combine', p.Results.combine);
+            % pad a bit forward or backwards depending on binning
+            td = td.padForTimeBinning(binWidth, binAlignmentMode, false, false);  
+            spikeCell = td.getSpikeTimes(unitName, 'includePadding', true, 'combine', p.Results.combine);
             
             % provide an indication as to which trials have spikes
             hasSpikes = ~cellfun(@isempty, spikeCell);
@@ -3501,12 +3490,14 @@ classdef TrialDataConditionAlign < TrialData
             
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
+            % use padded times to incorporate the padding for the binning
+            % we used
             timeInfo = td.alignInfoActive.timeInfo;
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
             
-            [tvec, tbinsForHistc, tbinsValidMat] = BinAlignmentMode.generateCommonBinnedTimeVector(...
-                tMinByTrial, tMaxByTrial, binWidth, binAlignmentMode);
+            [tvec, tbinsForHistc, tbinsValidMat] = binAlignmentMode.generateCommonBinnedTimeVector(...
+                tMinByTrial, tMaxByTrial, binWidth);
             
             % get spike blanking regions
             blankIntervals = td.getSpikeBlankingRegions(unitName);
@@ -4429,26 +4420,56 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function units = listSpikeChannelsMatchingRegex(td, units)
-            if ischar(units), units = {units}; end
+            if ischar(units)
+                units = {units}; 
+                wasChar = true;
+            else
+                wasChar = false;
+            end
+            
             allUnits = td.listSpikeChannels();
             matches = cellvec(numel(units));
             for iU = 1:numel(units)
-                matchRes = regexp(allUnits, units{iU}, 'match');
-                matches{iU} = cat(1, matchRes{:});
+                if ischar(units{iU})
+                    units{iU} = {units{iU}};
+                end
+                matchInner = cellvec(numel(units{iU}));
+                for iJ = 1:numel(units{iU})
+                    matchInner{iJ} = ~cellfun(@isempty, regexp(allUnits, units{iU}{iJ}, 'match'));
+                end
+                 matches{iU} = allUnits(any(cat(2, matchInner{:}), 2));
             end
-            units = cat(1, matches{:});
+            
+            if wasChar
+                units = cat(1, matches{:});
+            end
         end
         
         function units = listSpikeChannelsMatchingWildcard(td, units)
-            if ischar(units), units = {units}; end
+            if ischar(units)
+                units = {units}; 
+                wasChar = true;
+            else
+                wasChar = false;
+            end
+            
             allUnits = td.listSpikeChannels();
             matches = cellvec(numel(units));
             for iU = 1:numel(units)
-                regex = regexptranslate('wildcard', units{iU});
-                matchRes = regexp(allUnits, regex, 'match');
-                matches{iU} = cat(1, matchRes{:});
+                if ischar(units{iU})
+                    units{iU} = {units{iU}};
+                end
+                matchInner = cellvec(numel(units{iU}));
+                for iJ = 1:numel(units{iU})
+                    regex = regexptranslate('wildcard', units{iU}{iJ});
+                    matchInner{iJ} = ~cellfun(@isempty, regexp(allUnits, regex, 'match'));
+                end
+                 matches{iU} = allUnits(any(cat(2, matchInner{:}), 2));
             end
-            units = cat(1, matches{:});
+
+            if wasChar
+                units = cat(1, matches{:});
+            end
         end
         
         function [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
@@ -4482,10 +4503,13 @@ classdef TrialDataConditionAlign < TrialData
             
             % do regexp matching
             if p.Results.regexp
-                units = td.matchSpikeChannelsByRegex(units);
+                units = td.listSpikeChannelsMatchingRegex(units);
             else
-                units = td.matchSpikeChannelsByWildcard(units);
+                units = td.listSpikeChannelsMatchingRegex(units);
             end
+            
+            % flatten search results
+            units = cat(1, units{:});
             
             waveTvec = td.channelDescriptorsByName.(units{1}).waveformsTime;
             for iU = 2:numel(units)

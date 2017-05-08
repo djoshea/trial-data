@@ -486,7 +486,7 @@ classdef TrialData
                     resort(iT) = ~issorted(timeThis) || numel(timeThis) > numel(unique(timeThis));
                 end
                 if any(resort)
-                    warning('%d trials have duplicate or non-monotonically increasing timestamps for %s', dataField); 
+                    warning('%d trials have duplicate or non-monotonically increasing timestamps for %s', nnz(resort), dataField); 
                     [timeInsert, dataInsert] = cellfun(@resortTimeDedup, {td.data(resort).(timeField)}, {td.data(resort).(dataField)}, 'UniformOutput', false);
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, timeInsert, resort);
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, dataInsert, resort);
@@ -4016,6 +4016,11 @@ classdef TrialData
                 nSpikesWave = cellfun(@(w) size(w, 1), newWaves);
                 assert(all(isequaln(nSpikesProvided, nSpikesWave)), 'Number of spikes in each trial must match number of waveforms');
                 
+%                 % undo scaling
+%                 if p.Results.waveformsAreScaled
+%                     newWaves = cd.unscaleWaveforms(newWaves);
+%                 end
+                
             else
                 % no waveforms provided
                 if cd.hasWaveforms
@@ -4346,12 +4351,28 @@ classdef TrialData
             
             if ischar(unitNames)
                 timesCell = {td.data.(unitNames)}';
-            elseif iscellstr(unitNames)
+            elseif iscell(unitNames)
                 nUnits = numel(unitNames);
                 timesCellByUnit = cell(td.nTrials, nUnits);
                 for iU = 1:nUnits
-                    timesCellByUnit(:, iU) = cellfun(@makecol, {td.data.(unitNames{iU})}', 'UniformOutput', false);
+                    if ischar(unitNames{iU})
+                        timesCellByUnit(:, iU) = cellfun(@makecol, {td.data.(unitNames{iU})}', 'UniformOutput', false);
+                    elseif iscellstr(unitNames{iU})
+                        % combine inner units of nested cellstr
+                        timesSub = cell(td.nTrials, numel(unitNames{iU}));
+                        for iU2 = 1:numel(unitNames{iU})
+                            timesSub(:, iU2) = cellfun(@makecol, {td.data.(unitNames{iU}{iU2})}', 'UniformOutput', false);
+                        end
+                        for iT = 1:td.nTrials
+                            timesCellByUnit{iT, iU} = cat(1, timesSub{iT, :});
+                        end
+                        
+                    else
+                        error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
+                    end
+                                
                 end
+                
                 if p.Results.combine
                     timesCell = cellvec(td.nTrials);
                     for iT = 1:td.nTrials
@@ -4575,25 +4596,47 @@ classdef TrialData
             end
             
             for iU = 1:numel(unitNames)
-                unitName = unitNames{iU};
-                cd = td.channelDescriptorsByName.(unitName);
-                wavefield = cd.waveformsField;
-                assert(~isempty(wavefield), 'Unit %s does not have waveforms', unitName);
-                wavesCell(:, iU) = {td.data.(wavefield)}';
-                % scale to appropriate units
-                wavesCell(:, iU) = cd.scaleWaveforms(wavesCell(:, iU));
-                waveTvec{iU} = makecol(cd.waveformsTime);
+                if ischar(unitNames{iU})
+                    unitName = {unitNames{iU}};
+                else
+                    unitName = unitNames{iU};
+                end
                 
-                % check number of timepoints
-                waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(wavesCell(:, iU));
-                if ~isempty(waveMat)
-                    nSampleWave = size(waveMat, 2);
-                    if nSampleWave < numel(waveTvec{iU})
-                        warning('Waveforms have %d samples but waveformsTime has %d samples. Shortening waveforms to match', nSampleWave, numel(waveTvec));
-                        waveTvec{iU} = waveTvec{iU}(1:nSampleWave);
-                    elseif nSampleWave > numel(waveTvec{iU})
-                        error('Waveforms have %d samples but waveformsTime has %d samples. Provide new waveform time vector', nSampleWave, numel(waveTvec));
+                % combine over inner cell
+                [waveInner, timeInner] = deal(cell(td.nTrials, numel(unitName)));
+                
+                for iV = 1:numel(unitName)
+                    ch = unitName{iV};
+                    cd = td.channelDescriptorsByName.(ch);
+                    wavefield = cd.waveformsField;
+                    assert(~isempty(wavefield), 'Unit %s does not have waveforms', ch);
+                    waveInner(:, iV) = {td.data.(wavefield)}';
+                    % scale to appropriate units
+                    waveInner(:, iV) = cd.scaleWaveforms(waveInner(:, iV));
+                    waveTvecInner = makecol(cd.waveformsTime);
+                    
+                    % check number of timepoints
+                    waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(waveInner(:, iV));
+                    if ~isempty(waveMat)
+                        nSampleWave = size(waveMat, 2);
+                        if nSampleWave < numel(waveTvecInner)
+                            warning('Waveforms have %d samples but waveformsTime has %d samples. Shortening waveforms to match', nSampleWave, numel(waveTvecInner));
+                            waveTvecInner = waveTvecInner(1:nSampleWave);
+                        elseif nSampleWave > numel(waveTvecInner)
+                            error('Waveforms have %d samples but waveformsTime has %d samples. Provide new waveform time vector', nSampleWave, numel(waveTvecInner));
+                        end
                     end
+                    
+                    if iV == 1
+                        waveTvec{iU} = waveTvecInner;
+                    elseif ~isequal( makecol(cd.waveformsTime), waveTvec{iU})
+                        error('Wave timevectors do not match');
+                    end
+                end
+                
+                % combine inner cells
+                for iT = 1:td.nTrials
+                    wavesCell{iT, iU} = TensorUtils.catWhich(1, waveInner{iT, :});
                 end
                 
                 %                 if cd.hasSortQualityEachTrial
@@ -4630,6 +4673,60 @@ classdef TrialData
             wavesCell = td.replaceInvalidMaskWithValue(wavesCell, []);
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
+        
+        function td = equalizeSpikeWaveformTimeVectors(td, unitNames)
+            td.warnIfNoArgOut(nargout);
+            if nargin < 2
+                unitNames = td.listSpikeChannels();
+            end
+            waveTvecCell = cellfun(@(ch) makecol(td.channelDescriptorsByName.(ch).waveformsTime), ...
+                unitNames, 'UniformOutput', false);
+            
+            delta = cellfun(@(x) nanmedian(diff(x)), waveTvecCell);
+            if max(delta) - min(delta) > mean(delta) / 1000
+                warning('Waveforms have different sampling rates, ignoring');
+            end
+            delta = median(delta);
+            
+            indZero = cellfun(@(x) TensorUtils.argMin(abs(x)), waveTvecCell);
+            nSamples = cellfun(@numel, waveTvecCell);
+            
+            nSamplesPre = indZero-1;
+            nSamplesPost = nSamples - indZero;
+            
+            N = max(nSamplesPre) + 1 + max(nSamplesPost);
+            idxStart = max(nSamplesPre) - nSamplesPre + 1;
+            idxStop = max(nSamplesPre) + 1 + nSamplesPost;
+            nPadPre = max(nSamplesPre) - nSamplesPre;
+            nPadPost = max(nSamplesPost) - nSamplesPost;
+            
+            waveTvec = (-max(nSamplesPre):max(nSamplesPost))' * delta;
+            
+            for iU = 1:numel(unitNames)
+                if nPadPre(iU) == 0 && nPadPost(iU) == 0
+                    continue;
+                end
+                cd = td.channelDescriptorsByName.(unitNames{iU});
+                waveField = cd.waveformsField;
+                waveData = {td.data.(waveField)}';
+                
+                newWaveData = cell(size(waveData));
+                for iT = 1:size(newWaveData, 1)
+                    if isfloat(waveData{iT})
+                        newWaveData{iT} = nan(size(waveData{iT}, 1), N, 'like', waveData{iT});
+                        newWaveData{iT}(:, idxStart(iU):idxStop(iU)) = waveData{iT};
+                    else
+                        newWaveData{iT} = padarray(...
+                            padarray(waveData{iT}, [0 nPadPre(iU)], 'replicate', 'pre'), ...
+                            [0 nPadPost(iU)], 'replicate', 'post');
+                    end
+                end
+
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, waveField, newWaveData);
+                cd.waveformsTime = waveTvec;
+                td = td.setChannelDescriptor(unitNames{iU}, cd);
+            end
+        end
     end
     
     methods % spike / continuous neural channel correspondence
@@ -4665,6 +4762,22 @@ classdef TrialData
             unit = cellfun(@(cd) cd.unit, cdCell);
             
             info = table(name, array, electrode, unit);
+        end
+        
+        function [nameCell, array, electrode, unitCell] = listSpikeChannelsGroupedByArrayElectrode(td)
+            tbl = td.listSpikeChannelsAsTable;
+            tae = tbl(:, {'array', 'electrode'});
+            [uniq, ~, which] = unique(tae);
+            
+            nUniq = height(uniq);
+            array = uniq.array;
+            electrode = uniq.electrode;
+            
+            [nameCell, unitCell] = cellvec(nUniq);
+            for iU = 1:nUniq
+                nameCell{iU} = tbl.name(which == iU);
+                unitCell{iU} = tbl.unit(which == iU);
+            end
         end
         
         function [names, units] = listSpikeChannelsOnArray(td, arrayName)

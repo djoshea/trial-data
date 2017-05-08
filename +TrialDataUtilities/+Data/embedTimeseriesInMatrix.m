@@ -157,6 +157,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %         tMax(isnan(tMaxRaw)) = NaN;
     end
     
+    timeCell = TrialDataUtilities.Data.removeSmallTimeErrors(timeCell, origDelta, p.Results.timeReference);
+    
     % tMin and tMax are now vectors of the start and stop times of each
     % trial
     tvec = makecol(tvec);
@@ -172,6 +174,10 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         end
     end
     
+    % clean up small inconsistencies due to floating point
+    tMin = TrialDataUtilities.Data.removeSmallTimeErrors(tMin, timeDelta, p.Results.timeReference);
+    tMax = TrialDataUtilities.Data.removeSmallTimeErrors(tMax, timeDelta, p.Results.timeReference);
+    
     % build the data matrix by inserting the interpolated segment of each timeseries
     % in the appropriate location in each row, keeping the non-spanned timepoints as NaN
     T = numel(tvec);
@@ -180,8 +186,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     mat = nan([N, T, C, G]); % we'll reshape this later
     
-    indPutStart = floor(((tMin - tMinGlobal) / timeDelta) + 1);
-    indPutStop  = floor(((tMax - tMinGlobal) / timeDelta) + 1);
+    indPutStart = TrialDataUtilities.Stats.floortol((tMin - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
+    indPutStop  = TrialDataUtilities.Stats.floortol((tMax - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
     
     % if specified, we can skip the resampling step which makes this quick
     uniformSampling = p.Results.assumeUniformSampling && all(timeDelta == origDelta);
@@ -197,7 +203,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
                 if uniformSampling
                     % just figure out where to insert this into the matrix,
                     % no need for resampling
-                    indTake = timeCell{i, g} >= tMin(i,g) & timeCell{i,g} <= tMax(i,g);
+                    indTake = timeCell{i, g} >= tvec(indPutStart(i, g)) & timeCell{i,g} <= tvec(indPutStop(i, g));
                     mat(i, indPutStart(i,g):indPutStop(i,g), :, g) = dataCell{i,g}(indTake, :);
                     
                 else
@@ -209,14 +215,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
                         'origDelta', origDelta(g), 'timeDelta', timeDelta, 'interpolateMethod', p.Results.interpolateMethod, ...
                         'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, ...
                         'origDelta', origDelta(g), 'tMin', tMin(i,g), 'tMax', tMax(i,g));
-
-    %                 [vals, ty] = TrialDataUtilities.Data.resamplePadEdges(dataCell{i,g}(mask, :), timeCell{i, g}(mask), ...
-    %                     origDelta(g), timeDelta, p.Results.interpolateMethod, p.Results.binAlignmentMode);
-    % 
-    %                 % we only want to include data > tMin-timeDelta. This
-    %                 % ensures that we take the valid resampled data
-    %                 maskResample = ty > tMin(i, g)-timeDelta & ty <= tMax(i, g);
-
+                    
                     mat(i, indPutStart(i,g):indPutStop(i,g), :, g) = vals;
                 end
             end
@@ -238,6 +237,3 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     tvec = tvec(tMask);
 end
 
-function timeDelta = inferTimeDelta(tvec)
-     timeDelta = nanmedian(diff(tvec));
-end
