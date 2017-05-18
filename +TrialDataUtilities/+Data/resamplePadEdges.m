@@ -29,8 +29,19 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode)
     end
 
     tpost = tx(end) + (1:pad)' .* timeDeltaX;
-    tx = [tpre; tx; tpost];
+    
+    % first fill in NaN tails
+    [x, idxFirst, idxLast] = TrialDataUtilities.Data.infillNanEdgesWithLastSample(x);
     x = padarray(x, pad, 'replicate', 'both');
+    
+    timeFirst = nan(size(idxFirst));
+    timeLast = nan(size(idxLast));
+    
+    mask = ~isnan(idxFirst) & ~isnan(idxLast);
+    timeFirst(mask) = tx(idxFirst(mask));
+    timeLast(mask) = tx(idxLast(mask));
+    
+    tx = [tpre; tx; tpost];
     
     castDouble = ~isa(x, 'double');
     if castDouble
@@ -51,6 +62,14 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode)
     
     [~, idxFirst] = min(abs(tyRaw - ty(1)));
     y = y(idxFirst:idxFirst+numel(ty)-1, :);
+    
+    % invalidate nan edges again based on time vectors
+    for c = 1:size(y, 2)
+        if ~isnan(timeFirst(c)) && ~isnan(timeLast(c))
+            y(ty < timeFirst(c), c) = NaN;
+            y(ty > timeLast(c), c) = NaN;
+        end
+    end
     
     if castDouble
         y = cast(y, clsX);

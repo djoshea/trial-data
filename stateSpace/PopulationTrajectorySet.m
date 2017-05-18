@@ -389,6 +389,10 @@ classdef PopulationTrajectorySet
         % considered. Only bases which are valid are considered
         tMinValidAllBasesByAlignCondition
         tMaxValidAllBasesByAlignCondition
+        
+        % nBases x 1 cell of conditions associated with each trial, as in
+        % dataByTrial
+        conditionIdxByTrial
     end
     
     % Properties within *Manual properties store manually-specified values for each of the
@@ -4486,6 +4490,18 @@ classdef PopulationTrajectorySet
                 sz = 0;
             else
                 sz = pset.conditionDescriptor.conditionsSizeNoExpand;
+            end
+        end
+        
+        function clists = get.conditionIdxByTrial(pset)
+            clists = cellvec(pset.nBases);
+            dataSourcesByBasis = pset.dataSources(pset.basisDataSourceIdx);
+            for iB = 1:pset.nBases
+                idxByCondition = pset.trialLists(iB, :);
+                clists{iB} = nanvec(dataSourcesByBasis{iB}.nTrials);
+                for iC = 1:numel(idxByCondition)
+                    clists{iB}(idxByCondition{iC}) = iC;
+                end
             end
         end
         
