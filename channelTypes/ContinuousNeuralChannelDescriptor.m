@@ -67,7 +67,13 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
         function elec = get.electrode(cd)
             [~, ~, elec] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
         end
-       
+        
+        function cdGroup = buildGroupChannelDescriptor(cd)
+            cdGroup = ContinuousNeuralChannelGroupDescriptor.buildAnalogGroup(cd.primaryDataField, cd.timeField, ...
+                cd.unitsByField{1}, cd.unitsByField{2}, ...
+                'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
+                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
+        end
     end
     
     methods(Static)
