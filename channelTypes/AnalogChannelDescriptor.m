@@ -62,6 +62,13 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.scaleFromLims = [];
             cd.scaleToLims = [];
         end
+        
+        function cdGroup = buildGroupChannelDescriptor(cd)
+            cdGroup = AnalogChannelGroupDescriptor.buildAnalogGroup(cd.primaryDataField, cd.timeField, ...
+                cd.unitsByField{1}, cd.unitsByField{2}, ...
+                'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
+                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
+        end
     end
     
     methods(Access=protected)

@@ -2483,9 +2483,11 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
             p.addParameter('interpolateMethod', 'linear', @ischar);   
+            
+            p.addParameter('slice', [], @(x) true);
             p.parse(varargin{:});
            
-            [data, time] = getAnalogChannelGroup@TrialData(td, groupName);
+            [data, time] = getAnalogChannelGroup@TrialData(td, groupName, 'slice', p.Results.slice);
             
             includePadding = p.Results.includePadding;
             
