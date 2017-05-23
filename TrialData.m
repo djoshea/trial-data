@@ -2787,7 +2787,6 @@ classdef TrialData
             p.addParameter('applyScaling', true, @islogical);
             p.addParameter('slice', [], @(x) true);
             p.addParameter('averageOverSlice', false, @islogical); % average within each slice
-            
             p.parse(varargin{:});
             
             td.assertHasAnalogChannelGroup(groupName);

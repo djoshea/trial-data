@@ -414,7 +414,7 @@ classdef TrialDataConditionAlign < TrialData
             cNames(valid) = td.conditionNames(cIdx(valid));
             
             if p.Results.multiline
-                sep = char(10); % newline
+                sep = newline; % newline
             else
                 sep = ' ';
             end
@@ -1637,7 +1637,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function tf = alignIncludesFullTrial(td)
             tf = td.alignInfoActive.isFullTrial;
-        end f
+        end
         
         function offsets = getTimeOffsetsFromZeroEachTrialEachAlign(td)
             offsets = nan(td.nTrials, td.nAlign);
@@ -2503,7 +2503,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
             p.addParameter('interpolateMethod', 'linear', @ischar);   
-            
+
             p.addParameter('slice', [], @(x) true); % subscript args to slice the data from each sample
             p.addParameter('averageOverSlice', false, @islogical); % average within each slice
             p.parse(varargin{:});
@@ -3818,7 +3818,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            if p.Results.combine || ischar(unitName);
+            if p.Results.combine || ischar(unitName)
                 nUnits = 1;
             else
                 nUnits = numel(unitName);
@@ -4487,7 +4487,7 @@ classdef TrialDataConditionAlign < TrialData
             matches = cellvec(numel(units));
             for iU = 1:numel(units)
                 if ischar(units{iU})
-                    units{iU} = {units{iU}};
+                    units{iU} = units(iU);
                 end
                 matchInner = cellvec(numel(units{iU}));
                 for iJ = 1:numel(units{iU})
@@ -4513,7 +4513,7 @@ classdef TrialDataConditionAlign < TrialData
             matches = cellvec(numel(units));
             for iU = 1:numel(units)
                 if ischar(units{iU})
-                    units{iU} = {units{iU}};
+                    units{iU} = units(iU);
                 end
                 matchInner = cellvec(numel(units{iU}));
                 for iJ = 1:numel(units{iU})
@@ -6127,7 +6127,7 @@ classdef TrialDataConditionAlign < TrialData
             alignIdx = p.Results.alignIdx;
             nAlignUsed = numel(alignIdx);
             
-            timesByAlign = cell(nAlignUsed, nUnits);
+            %timesByAlign = cell(nAlignUsed, nUnits);
             if p.Results.drawSpikeWaveforms
                 wavesByAlign = cell(nAlignUsed, nUnits);
             end
@@ -6135,6 +6135,7 @@ classdef TrialDataConditionAlign < TrialData
             % compute x-axis offsets for each align
             timePointsCell = cell(nAlignUsed, 1);
             
+            [start, stop] = nanvec(nAlignUsed);
             for iAlign = 1:nAlignUsed
                 idxAlign = alignIdx(iAlign);
                 % figure out time validity window for this alignment
@@ -6147,9 +6148,9 @@ classdef TrialDataConditionAlign < TrialData
             % get grouped spike times by alignment
             timesByAlign = td.useAlign(idxAlign).getSpikeTimesEachAlign(unitNames);
 
-            if p.Results.drawSpikeWaveforms
-                [waves, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsEachAlign(unitName);
-            end
+%             if p.Results.drawSpikeWaveforms
+%                 [waves, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsEachAlign(unitName);
+%             end
             tOffsetByAlign = zerosvec(nAlignUsed);
 %             tOffsetByAlign = td.getAlignPlottingTimeOffsets(timePointsCell);
 
@@ -6185,7 +6186,7 @@ classdef TrialDataConditionAlign < TrialData
                         'xOffset', tOffsetByAlign(iAlign), ...
                         'color', color, ...
                         'waveCell', wavesThis, 'waveformTimeRelative', wavesTvec, ...
-                        'normalizeWaveforms', false, ... % already normalized to [0 1]
+                        'normalizeWaveforms', false, ... % alrerady normalized to [0 1]
                         'waveScaleHeight', p.Results.spikeWaveformScaleHeight, 'waveScaleTime', p.Results.spikeWaveformScaleTime);
                 else
                     % draw vertical ticks
