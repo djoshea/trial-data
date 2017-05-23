@@ -16,17 +16,19 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode)
     tpre = tx(1) + (-pad:-1)' .* timeDeltaX;
     isInt = @(x) ceil(x) == x;
     
+    % actually i think this is better off as 0 now
     % do some offsetting so that resampling respects the binAlignmentMode
-    switch binAlignmentMode
-        case BinAlignmentMode.Causal
-            addToTy = timeDeltaY/2;
-        case BinAlignmentMode.Acausal
-            addToTy = -timeDeltaY/2;
-        case BinAlignmentMode.Centered
-            addToTy = 0;
-        otherwise
-            error('Unknown binAlignmentMode');
-    end
+%     switch binAlignmentMode
+%         case BinAlignmentMode.Causal
+%             addToTy = timeDeltaY/2;
+%         case BinAlignmentMode.Acausal
+%             addToTy = -timeDeltaY/2;
+%         case BinAlignmentMode.Centered
+%             addToTy = 0;
+%         otherwise
+%             error('Unknown binAlignmentMode');
+%     end
+    addToTy = 0;
 
     tpost = tx(end) + (1:pad)' .* timeDeltaX;
     

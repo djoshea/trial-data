@@ -302,6 +302,9 @@ classdef TrialDataConditionAlign < TrialData
         function td = postDataChange(td, fieldsAffected)
             td.warnIfNoArgOut(nargout);
             
+            if isempty(fieldsAffected)
+                return;
+            end
             needUpdate = false;
             
             % check if any event fields were effected. if so, all align
@@ -529,11 +532,18 @@ classdef TrialDataConditionAlign < TrialData
             % anything related to .valid or the condition structure
         end
         
-        function td = trimAllChannelsToCurrentAlign(td, varargin)
+        function td = trimAllChannelsToCurrentAlign(td)
             td.warnIfNoArgOut(nargout);
             [startTimes, stopTimes] = td.getTimeStartStopEachTrial();
             offsets = td.getTimeOffsetsFromZeroEachTrial();
             td = td.trimAllChannelsRaw(startTimes + offsets, stopTimes + offsets);
+        end
+        
+        function td = trimAllChannelsToMaxDuration(td, duration)
+            td.warnIfNoArgOut(nargout);
+            td = td.unalign().start('TrialStart').stop('TrialStart', duration);
+            td = td.trimAllChannelsToCurrentAlign();
+            td = td.unalign();
         end
     end
 
@@ -1412,9 +1422,19 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateAlignInfo();
         end
         
-        function td = mark(td, varargin)
+        function td = mark(td, eventStr, varargin)
             td.warnIfNoArgOut(nargout);
-            td.alignInfoActive = td.alignInfoActive.mark(varargin{:});
+            
+            eventName = td.alignInfoActive.parseEventOffsetString(eventStr, ...
+                'mark', 'defaultIndex', ':');
+            if td.hasAnalogChannelOrGroup(eventName)
+                % make an event corresponding to this analog channel's
+                % times so we can mark the sample times
+                [td, eventField] = td.addEventFromAnalogTimes(eventName);
+                eventStr = strrep(eventStr, eventName, eventField);
+            end
+            
+            td.alignInfoActive = td.alignInfoActive.mark(eventStr, varargin{:});
             td = td.postUpdateAlignInfo();
         end
         
@@ -1617,7 +1637,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function tf = alignIncludesFullTrial(td)
             tf = td.alignInfoActive.isFullTrial;
-        end 
+        end f
         
         function offsets = getTimeOffsetsFromZeroEachTrialEachAlign(td)
             offsets = nan(td.nTrials, td.nAlign);
@@ -2484,10 +2504,11 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
             p.addParameter('interpolateMethod', 'linear', @ischar);   
             
-            p.addParameter('slice', [], @(x) true);
+            p.addParameter('slice', [], @(x) true); % subscript args to slice the data from each sample
+            p.addParameter('averageOverSlice', false, @islogical); % average within each slice
             p.parse(varargin{:});
            
-            [data, time] = getAnalogChannelGroup@TrialData(td, groupName, 'slice', p.Results.slice);
+            [data, time] = getAnalogChannelGroup@TrialData(td, groupName, 'slice', p.Results.slice, 'averageOverSlice', p.Results.averageOverSlice);
             
             includePadding = p.Results.includePadding;
             
@@ -2713,6 +2734,39 @@ classdef TrialDataConditionAlign < TrialData
                 'minTrials', p.Results.minTrials, ...
                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
         end
+        
+        function [dataCell, tvec] = getAnalogChannelGroupAsTensorGrouped(td, nameCell, varargin)
+            % dataCell will be size(td.conditions)
+            % contents will be nTrials x T x nChannels
+            tdValid = td.selectValidTrials();
+            [data, tvec] = tdValid.getAnalogChannelGroupAsTensor(nameCell, varargin{:});
+            dataCell = tdValid.groupElements(data);
+        end
+        
+        function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogChannelGroupGroupMeans(td, groupName, varargin)
+            % *Mat will be nConditions x T x ... matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            [dCell, tvec] = td.getAnalogChannelGroupAsTensorGrouped(groupName, p.Unmatched);
+            ne = find(~cellfun(@isempty, dCell), 1);
+            sampleSize = size(dCell{ne});
+            sampleSize = sampleSize(3:end);
+            
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.nConditions, numel(tvec), sampleSize]));
+            for iC = 1:td.nConditions
+                if ~isempty(dCell{iC})
+                    [meanMat(iC, :, :, :, :, :, :), semMat(iC, :, :, :, :, :, :), ...
+                        nTrialsMat(iC, :, :, :, :, :, :), stdMat(iC, :, :, :, :, :, :)] = ...
+                        nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
+                end
+            end
+        end  
         
         function [mat, tvec, alignIdx] = getAnalogMultiAsTensorEachAlign(td, names, varargin)
             % similar to getAnalogMultiAsMatrix, except each alignment will be
@@ -4697,6 +4751,7 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('markAlpha', 0.5, @isscalar);
             p.addParameter('markTickWidth', 2, @isscalar);
+            p.addParameter('showRanges', true, @islogical);
             
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
@@ -4767,44 +4822,63 @@ classdef TrialDataConditionAlign < TrialData
             
             % compute x-axis offsets for each align
             timePointsCell = cell(nAlignUsed, 1);
-            [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed, nUnits));
-            
-            for iUnit = 1:nUnits % plot multiple units simultaneously
-                unitName = unitNames{iUnit};
+
+            if nUnits == 0
+                [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed, 1));
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
 
-                    % get grouped spike times by alignment
-                    thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName, 'combine', p.Results.combine);
-                    timesByAlign(iAlign, :, iUnit) = thisC(:);
-
-                    if p.Results.drawSpikeWaveforms
-                        [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitName, 'combine', p.Results.combine);
-                        wavesByAlign(iAlign, :, iUnit) = wavesC(:);
-                    end
-
-                    % figure out time validity window for this alignment
-                    % TODO might want to update this for the selected
-                    % conditions only
                     [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
                     mask = start <= stop;
                     timePointsCell{iAlign} = [start(mask); stop(mask)];
-
+                    
                     % and store start/stop by trial in each align/condition
                     % cell
                     for iCond = 1:nConditionsUsed
                         idxCond = conditionIdx(iCond);
-                        startData{iAlign, iCond, iUnit} = start(td.listByCondition{idxCond});
-                        stopData{iAlign, iCond, iUnit} = stop(td.listByCondition{idxCond});
+                        startData{iAlign, iCond} = start(td.listByCondition{idxCond});
+                        stopData{iAlign, iCond} = stop(td.listByCondition{idxCond});
+                    end
+                end
+            else
+                [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed, nUnits));
+                for iUnit = 1:nUnits % plot multiple units simultaneously
+                    unitName = unitNames{iUnit};
+                    for iAlign = 1:nAlignUsed
+                        idxAlign = alignIdx(iAlign);
+
+                        % get grouped spike times by alignment
+                        thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName, 'combine', p.Results.combine);
+                        timesByAlign(iAlign, :, iUnit) = thisC(:);
+
+                        if p.Results.drawSpikeWaveforms
+                            [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitName, 'combine', p.Results.combine);
+                            wavesByAlign(iAlign, :, iUnit) = wavesC(:);
+                        end
+
+                        % figure out time validity window for this alignment
+                        % TODO might want to update this for the selected
+                        % conditions only
+                        [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
+                        mask = start <= stop;
+                        timePointsCell{iAlign} = [start(mask); stop(mask)];
+
+                        % and store start/stop by trial in each align/condition
+                        % cell
+                        for iCond = 1:nConditionsUsed
+                            idxCond = conditionIdx(iCond);
+                            startData{iAlign, iCond, iUnit} = start(td.listByCondition{idxCond});
+                            stopData{iAlign, iCond, iUnit} = stop(td.listByCondition{idxCond});
+                        end
                     end
                 end
             end
-            tOffsetByAlign = td.getAlignPlottingTimeOffsets(timePointsCell);
+            [tOffsetByAlign, tLimitsByAlign] = td.getAlignPlottingTimeOffsets(timePointsCell);
             
             % optionally filter out trials that have zero spikes
             listByCondition = td.listByCondition(conditionIdx);
             
-            if p.Results.removeZeroSpikeTrials
+            if p.Results.removeZeroSpikeTrials && nUnits > 0
                 % A x C x U
                 hasSpikesData = cellfun(@(thisC) ~cellfun(@isempty, thisC), timesByAlign, 'UniformOutput', false);
                 % C x 1 x 1
@@ -4954,10 +5028,17 @@ classdef TrialDataConditionAlign < TrialData
                                 'intervalMinWidth', p.Results.intervalMinWidth, ...
                                 'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
                                 'shadeStartStopInterval', p.Results.shadeValidIntervals, ...
+                                'shadeOutsideStartStopInterval', p.Results.shadeInvalidIntervals, ...
+                                'fullTimeLimits', tLimitsByAlign(iAlign, :), ...
                                 'markAlpha', p.Results.markAlpha, 'markTickWidth', p.Results.markTickWidth);
                         end
                     end
                 end
+            end
+            
+            yLims = [min(yLimsByCondition(:)), max(yLimsByCondition(:))];
+            if p.Results.annotateAboveEachCondition
+                yLims(2) = yLims(2) + p.Results.annotationHeight + 1;
             end
             
             % setup y axis condition labels
@@ -4996,18 +5077,27 @@ classdef TrialDataConditionAlign < TrialData
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
                     td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', ...
-                        'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign));
+                        'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign), 'showRanges', p.Results.showRanges);
                 end
             end
             
-            if iscell(unitName)
-                unitNameStr = TrialDataUtilities.String.strjoin(unitName, ',');
-            else
-                unitNameStr = unitName;
+            if nUnits > 0
+                if iscell(unitName)
+                    unitNameStr = TrialDataUtilities.String.strjoin(unitName, ',');
+                else
+                    unitNameStr = unitName;
+                end
+                TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitNameStr);
             end
-            TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitNameStr);
+
+            tLims = [min(tLimitsByAlign(:)), max(tLimitsByAlign(:))];
+            if tLims(2) > tLims(1)
+                set(axh, 'XLim', tLims);
+            end
+            if yLims(2) > yLims(1)
+                set(axh, 'YLim', yLims);
+            end
             
-            axis(axh, 'tight');
             if ~p.Results.quick
                 au = AutoAxis(axh);
                 au.axisMarginLeft = p.Results.axisMarginLeft; % make room for left hand side labels

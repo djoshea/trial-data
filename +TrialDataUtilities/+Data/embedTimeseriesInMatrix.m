@@ -8,10 +8,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 % shared across the C channels. The G channels in the former case need not
 % share a time vector.
 %
-%   dataCell is N x G cell of T_n x C matrices
+%   dataCell is N x G cell of T_n x C matrices (where C can be vector if
+%      contents are tensors
 %   timeCell is N x G cell of T_n x 1 vectors
 %
-% mat will be N x T x (C*G), where T is the length of the time vector tvec to
+% mat will be N x T x C(:) x G, where T is the length of the time vector tvec to
 % which all data have been resampled to the same sampling frequency.
 % 
 % Combines a cell of N timeseries into a matrix with size N x T with a
@@ -108,8 +109,8 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     timeCell(empty, :) = {[]};
     assert(all(TensorUtils.flatten(bsxfun(@eq, szData, szTime))), 'Sizes of dataCell and timeCell contents must match');
     
-    % check column counts match
-    cData = cellfun(@(x) size(x, 2), dataCell);
+    % check column counts match (after converting to 2d matrix)
+    cData = cellfun(@(x) size(x(:, :), 2), dataCell);
     uniqueColCounts = unique(cData(~empty));
     assert(numel(uniqueColCounts) == 1, 'All entries must have ');
     C = uniqueColCounts(1);
@@ -119,6 +120,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         tvec = zeros(0, 1);
         return;
     end
+    
+    % figure out the shape of dataCell contents so we can reshape later
+    first = find(~empty, 1, 'first');
+    Cvec = size(dataCell{first});
+    Cvec = Cvec(2:end);
     
     N = size(dataCell, 1);
     trialValid = p.Results.trialValid;
@@ -233,7 +239,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         tMask = truevec(T);
     end
     
-    mat = reshape(mat(:, tMask, :, :), [N nnz(tMask) C*G]);
+    mat = reshape(mat(:, tMask, :, :), [N nnz(tMask) Cvec G]);
     tvec = tvec(tMask);
 end
 

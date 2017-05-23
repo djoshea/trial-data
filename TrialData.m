@@ -404,7 +404,7 @@ classdef TrialData
             
             i0 = numel(analogChNotInGroup);
             for iA = (1:numel(groupNames))
-                chList = td.listAnalogChannelsInGroup(groupNames{iA});
+                % chList = td.listAnalogChannelsInGroup(groupNames{iA});
                 cd = td.channelDescriptorsByName.(groupNames{iA});
                 dataFields{i0+iA} = groupNames{iA};
                 timeFields{i0+iA} = cd.timeField;
@@ -996,12 +996,12 @@ classdef TrialData
             td = td.markTrialsTemporarilyInvalid(~mask);
         end
         
-        function td = setTrialsTemporarilyInvalid(td, mask)
-            td.warnIfNoArgOut(nargout);
-            
-            td.temporaryValid = TensorUtils.vectorIndicesToMask(mask, td.nTrials);
-            td = td.invalideValid();
-        end
+%         function td = setTrialsTemporarilyInvalid(td, mask)
+%             td.warnIfNoArgOut(nargout);
+%             
+%             td.temporaryValid = TensorUtils.vectorIndicesToMask(mask, td.nTrials);
+%             td = td.invalideValid();
+%         end
         
         function td = clearTrialsTemporarilyInvalid(td)
             td.warnIfNoArgOut(nargout);
@@ -2019,7 +2019,7 @@ classdef TrialData
             
             delta = nanvec(numel(name));
             for i = 1:numel(name)
-                [~, time] = td.getAnalog(name{i});
+                time = td.getAnalogTime(name{i});
                 % median of medians is faster and close enough
                 emptyMask = cellfun(@(t) numel(t) < 2, time);
                 delta(i) = nanmedian(cellfun(@(x) nanmedian(diff(x)), time(~emptyMask)));
@@ -2036,13 +2036,18 @@ classdef TrialData
         end
         
         function timeField = getAnalogTimeField(td, name)
-            td.assertHasAnalogChannel(name);
-            cd = td.channelDescriptorsByName.(name);
-            timeField = cd.timeField;
+            if td.hasAnalogChannel(name) || td.hasAnalogChannelGroup(name)
+                cd = td.channelDescriptorsByName.(name);
+                timeField = cd.timeField;
+            else
+                error('%s is not an analog channel or analog channel group', name);
+            end
         end
         
         function time = getAnalogTimeRaw(td, name)
             if td.hasAnalogChannel(name)
+                timeField = td.getAnalogTimeField(name);
+            elseif td.hasAnalogChannelGroup(name)
                 timeField = td.getAnalogTimeField(name);
             elseif isfield(td.data, name)
                 timeField = name;
@@ -2742,8 +2747,17 @@ classdef TrialData
             tf = ismember(groupName, td.listAnalogChannelGroups());
         end
         
+        function tf = hasAnalogChannelOrGroup(td, groupName)
+            tf = td.hasAnalogChannel(groupName) | td.hasAnalogChannelGroup(groupName);
+        end
+        
         function assertHasAnalogChannelGroup(td, groupName)
             assert(all(td.hasAnalogChannelGroup(groupName)), 'No analog channel group %s found', TrialDataUtilities.String.strjoin(groupName));
+        end
+        
+        function assertHasAnalogChannelOrGroup(td, groupName)
+            assert(all(td.hasAnalogChannel(groupName) | td.hasAnalogChannelGroup(groupName)), ...
+                'Analog channel or channel group %s found', TrialDataUtilities.String.strjoin(groupName));
         end
         
         function timeField = getAnalogChannelGroupTimeField(td, groupName)
@@ -2772,6 +2786,8 @@ classdef TrialData
             p = inputParser();
             p.addParameter('applyScaling', true, @islogical);
             p.addParameter('slice', [], @(x) true);
+            p.addParameter('averageOverSlice', false, @islogical); % average within each slice
+            
             p.parse(varargin{:});
             
             td.assertHasAnalogChannelGroup(groupName);
@@ -2798,7 +2814,7 @@ classdef TrialData
             if ~isempty(p.Results.slice)
                 % take a slice through the data
                 args = p.Results.slice;
-                if isvector(args)
+                if ~iscell(args)
                     args = {args};
                 end
                 for i = 1:numel(data)
@@ -2806,7 +2822,15 @@ classdef TrialData
                         data{i} = data{i}(:, args{:});
                     end
                 end
-            end      
+            end
+            if p.Results.averageOverSlice
+                % average the whole slice down to a single timeseries
+                for i = 1:numel(data)
+                    if ~isempty(data{i})
+                        data{i} = nanmean(data{i}(:, :), 2);
+                    end
+                end
+            end
         end
         
         function [dataMat, tvec] = getAnalogChannelGroupSingleTrial(td, groupName, trialInd, varargin)
@@ -3278,18 +3302,23 @@ classdef TrialData
             p.addRequired('name', @ischar);
             p.addRequired('times', @(x) isempty(x) || isvector(x));
             p.addParameter('isAligned', true, @islogical);
+            p.addParameter('useExistingDataField', false, @islogical);
             %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.parse(name, times, varargin{:});
             %cd = p.Results.channelDescriptor;
             
-            if isempty(times)
-                times = cellvec(td.nTrials);
+            if ~p.Results.useExistingDataField
+                if isempty(times)
+                    times = cellvec(td.nTrials);
+                end
+                if isscalar(times)
+                    times = repmat(times, td.nTrials, 1);
+                end
+
+                assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
+            else
+                times = {td.data.(name)}';
             end
-            if isscalar(times)
-                times = repmat(times, td.nTrials, 1);
-            end
-            
-            assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
             times = makecol(times);
             
             if iscell(times)
@@ -3306,22 +3335,40 @@ classdef TrialData
                 error('Times must be numeric vector or cell vector of numeric vectors');
             end
             
-            % for TDCA, assume events come in aligned to the current 'zero' time
-            % we add the zero offset to the times so that they are stored
-            % as absolute time points
-            if p.Results.isAligned
-                offsets = td.getTimeOffsetsFromZeroEachTrial();
-                if iscell(times)
-                    times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
-                else
-                    times = times + offsets;
+            if p.Results.useExistingDataField
+                td = td.addChannel(cd, {}, 'ignoreDataFields', true, 'ignoreExisting', true);
+            else
+                % for TDCA, assume events come in aligned to the current 'zero' time
+                % we add the zero offset to the times so that they are stored
+                % as absolute time points
+                if p.Results.isAligned
+                    offsets = td.getTimeOffsetsFromZeroEachTrial();
+                    if iscell(times)
+                        times = cellfun(@plus, times, num2cell(offsets), 'UniformOutput', false);
+                    else
+                        times = times + offsets;
+                    end
                 end
-            end
+
+                if ~iscell(times)
+                    times = arrayfun(@(x) x(~isnan(x)), times, 'UniformOutput', false);
+                end
             
-            if ~iscell(times)
-                times = arrayfun(@(x) x(~isnan(x)), times, 'UniformOutput', false);
+                td = td.addChannel(cd, {times});
             end
-            td = td.addChannel(cd, {times});
+        end
+        
+        function td = addOrUpdateEvent(td, name, times, varargin)
+            % set values of channel name if it exists where mask is true.
+            % By default mask is non-nan values of mask
+            % otherwise create channel
+           
+            td.warnIfNoArgOut(nargout);
+            if td.hasEventChannel(name)
+                td = td.setEvent(name, times);
+            else
+                td = td.addEvent(name, times);
+            end
         end
         
         function td = addEventOccurrence(td, name, times, varargin)
@@ -3350,6 +3397,19 @@ classdef TrialData
             end
             
             td = td.setEvent(name, fullTimes, 'isAligned', false);
+        end
+        
+        function [td, eventName] = addEventFromAnalogTimes(td, name)
+            td.warnIfNoArgOut(nargout);
+            td.assertHasAnalogChannelOrGroup(name);
+            
+            timeField = td.getAnalogTimeField(name);
+            if ~td.hasEventChannel(timeField)
+                % add an event channel in situ with the same name as the
+                % time field
+                td = td.addEvent(timeField, {}, 'useExistingDataField', true);
+            end
+            eventName = timeField;
         end
         
         function tf = hasEventChannel(td, name)
@@ -3398,14 +3458,23 @@ classdef TrialData
         end
         
         function timesCell = getEventRaw(td, name)
-            timesCell = {td.data.(name)}';
+            if td.hasEventChannel(name) || td.hasSpikeChannel(name)
+                field = name;
+                dataFieldIdx = 1;
+            elseif td.hasAnalogChannelOrGroup(name)
+                field = td.getAnalogTimeField(name);
+                dataFieldIdx = 2;
+            else
+                error('Unknown event %s', name);
+            end
+            timesCell = {td.data.(field)}';
             
             % remove nans from the event list
             timesCell = cellfun(@(x) x(~isnan(x)), timesCell, 'UniformOutput', false);
             
             % convert to access class
             cd = td.channelDescriptorsByName.(name);
-            timesCell = cd.convertDataCellOnAccess(1, timesCell);
+            timesCell = cd.convertDataCellOnAccess(dataFieldIdx, timesCell);
         end
         
         function times = getEventRawFirst(td, name)
@@ -4481,18 +4550,21 @@ classdef TrialData
             p.parse(varargin{:});
             
             if ischar(unitNames)
-                timesCell = {td.data.(unitNames)}';
+                field = getField(unitNames);
+                timesCell = {td.data.(field)}';
             elseif iscell(unitNames)
                 nUnits = numel(unitNames);
                 timesCellByUnit = cell(td.nTrials, nUnits);
                 for iU = 1:nUnits
                     if ischar(unitNames{iU})
-                        timesCellByUnit(:, iU) = cellfun(@makecol, {td.data.(unitNames{iU})}', 'UniformOutput', false);
+                        fld = getField(unitNames{iU});
+                        timesCellByUnit(:, iU) = cellfun(@makecol, {td.data.(fld)}', 'UniformOutput', false);
                     elseif iscellstr(unitNames{iU})
                         % combine inner units of nested cellstr
                         timesSub = cell(td.nTrials, numel(unitNames{iU}));
                         for iU2 = 1:numel(unitNames{iU})
-                            timesSub(:, iU2) = cellfun(@makecol, {td.data.(unitNames{iU}{iU2})}', 'UniformOutput', false);
+                            fld = getField(unitNames{iU}{iU2});
+                            timesSub(:, iU2) = cellfun(@makecol, {td.data.(fld)}', 'UniformOutput', false);
                         end
                         for iT = 1:td.nTrials
                             timesCellByUnit{iT, iU} = cat(1, timesSub{iT, :});
@@ -4501,7 +4573,6 @@ classdef TrialData
                     else
                         error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
                     end
-                                
                 end
                 
                 if p.Results.combine
@@ -4516,6 +4587,16 @@ classdef TrialData
                 error('Unsupported unit name argument');
             end
             timesCell = cellfun(@makecol, timesCell, 'UniformOutput', false);
+            
+            function field = getField(unitName)
+                if td.hasSpikeChannel(unitName) || td.hasEventChannel(unitName)
+                    field = unitName;
+                elseif td.hasAnalogChannelOrGroup(unitName)
+                    field = td.getAnalogTimeField(unitName);
+                else
+                    error('Unit name %s is not a valid spike or event field', unitName);
+                end
+            end
             
         end
         
@@ -4734,7 +4815,7 @@ classdef TrialData
                 end
                 
                 % combine over inner cell
-                [waveInner, timeInner] = deal(cell(td.nTrials, numel(unitName)));
+                waveInner = cell(td.nTrials, numel(unitName));
                 
                 for iV = 1:numel(unitName)
                     ch = unitName{iV};
