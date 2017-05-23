@@ -5151,6 +5151,10 @@ classdef TrialDataConditionAlign < TrialData
             offsets(1) = 0;
             currentOffset = 0;
             
+            if ~iscell(tvecCell)
+                tvecCell = {tvecCell};
+            end
+            
             % compute start/stop of each alignment
             [mins, maxs] = deal(nanvec(nAlign));
             for iAlign = 1:nAlign
@@ -6367,14 +6371,18 @@ classdef TrialDataConditionAlign < TrialData
                     'Arguments must be nAlign x 1 cell or C x T x D matrices');
                 nAlignUsed = numel(time);
             else
-                assert(~iscell(time) && ~iscell(data) && (isEmpty(dataError) || ~iscell(dataError)) && (isEmpty(quantileData) || ~iscell(quantileData)), ...
+                assert(~iscell(time) && ~iscell(data) && (isempty(dataError) || ~iscell(dataError)) && (isempty(quantileData) || ~iscell(quantileData)), ...
                     'Arguments must be nAlign x 1 cell or C x T x D matrices');
                 nAlignUsed = 1;
                 
                 time = {time};
                 data = {data};
-                dataError = {dataError};
-                quantileData = {quantileData};
+                if ~isempty(dataError)
+                    dataError = {dataError};
+                end
+                if ~isempty(quantileData)
+                    quantileData = {quantileData};
+                end
             end
               
             % check size of time/data cell contents and mask conditions if
