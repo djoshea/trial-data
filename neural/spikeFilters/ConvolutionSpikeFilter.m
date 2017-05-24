@@ -3,13 +3,13 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
 
-    properties
+    properties(SetAccess=protected)
         % bin width that spikes will be binned into before filtering.
         % this is different from the sampling rate of the filtered firing
-        % rate, which is determined by the time delta parameter passed
-        % into .filterSpikeTrains by the caller
+        % rate, which is determined by timeDelta.
+        % This setting also determines the width of the bins specified by
+        % the convolution filter
         binWidthMs = 1;
-        binAlignmentMode = SpikeBinAlignmentMode.Acausal;
     end
 
     properties(Dependent)
@@ -35,21 +35,11 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     end
     
     methods
-        function sf = ConvolutionSpikeFilter(varargin)
-            p = inputParser;
-            p.addParamValue('binWidthMs', 1, @isscalar);
-            p.addParamValue('binAlignmentMode', SpikeBinAlignmentMode.Acausal, @(x) isa(x, 'SpikeBinAlignmentMode'));
-            p.parse(varargin{:});
-
-            sf.binWidthMs = p.Results.binWidthMs;
-            sf.binAlignmentMode = p.Results.binAlignmentMode;
-        end
-        
         function plotFilter(sf)
             cla;
             [filt, indZero] = sf.getFilter(); %#ok<PROP>
             filt = filt ./ sum(filt);
-            tvec = (1:numel(filt))' - indZero; %#ok<PROP>
+            tvec = ((1:numel(filt))' - indZero) * sf.binWidthMs; %#ok<PROP>
             plot(tvec, filt, '.-', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
             xlabel('Time (ms)');
             ylabel('Impulse Response');
@@ -71,10 +61,10 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     end
 
     methods(Access=protected)     
-        function checkTimeDeltaOkay(sf, timeDelta)
+        function checkSettingsOkay(sf)
             % doesn't make sense to sample more finely than the
             % spikeBinWidth used
-            assert(timeDelta >= sf.binWidthMs, 'TimeDelta is shorter than spike filter binWidthMs. Filter output should not be sampled more finely than the spike bin resolution');
+            assert(sf.timeDelta >= sf.binWidthMs, 'timeDelta is shorter than spike filter binWidthMs. Filter output should not be sampled more finely than the spike bin resolution');
         end
         
         % return the time window of preceding spike data in ms required to estimate
@@ -84,7 +74,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % this gives us the right number of ms for the spike bins to
             % the left of zero, as well as the extra ms needed for the t=0
             % bin
-            t = (filtSize - sf.indZero)*sf.binWidthMs - sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs);
+            t = (filtSize - sf.indZero)*sf.binWidthMs - sf.binAlignmentMode.getBinStartOffsetForBinWidth(max(sf.binWidthMs, sf.timeDelta));
         end
 
         % return the time window of preceding spike data in ms required to estimate
@@ -93,18 +83,19 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % this gives us the right number of ms for the spike bins to
             % the right of zero, as well as the extra ms needed for the t=0
             % bin
-            t = (sf.indZero - 1)*sf.binWidthMs + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs); 
+            t = (sf.indZero - 1)*sf.binWidthMs + sf.binAlignmentMode.getBinStopOffsetForBinWidth(max(sf.binWidthMs, sf.timeDelta)); 
         end
         
         function tf = getIsCausal(sf) % allows subclasses to override
-            tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == SpikeBinAlignmentMode.Causal;
+            tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
         end
 
         % spikeCell is nTrains x 1 cell array of time points which will include 
-        %   times in the preceding and postceding window
-        function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec)
-            % build filter
-            
+        % times in the preceding and postceding padding window.
+        % padding here includes padding due to the spike filter (additional
+        % time bins pre and post), as well as additional times included to
+        % facilitate the binning itself with timeDelta. 
+        function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec, varargin)
             if isempty(spikeCell)
                 rateCell = cell(size(spikeCell));
                 timeCell = cell(size(spikeCell, 1), 0);
@@ -123,28 +114,41 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             
             % get time vector for bins including pre and post padding to accomodate filter
             % this depends on both the bin width and the bin alignment mode
-            [~, tbinsForHistcByTrial] = SpikeBinAlignmentMode.generateMultipleBinnedTimeVectors(...
-                    tMinByTrial-tPadPre, tMaxByTrial+tPadPost, sf.binWidthMs, sf.binAlignmentMode);
+            [~, tbinsForHistcByTrial] = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
+                    tMinByTrial-tPadPre, tMaxByTrial+tPadPost, sf.binWidthMs);
                 
             % timeCell contains time vector without padding bins
-            binOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs);
-            binOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs);
-            timeCell = SpikeBinAlignmentMode.generateMultipleBinnedTimeVectors(...
-                tMinByTrial+binOffsetStart, tMaxByTrial+binOffsetStop, sf.binWidthMs, sf.binAlignmentMode);
+%             binOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs);
+%             binOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs);
             
-            % filter via valid convolution, which automatically removes the padding
-            rateCell = cell(size(spikeCell));
+            timeDeltaOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.timeDelta);
+            timeDeltaOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.timeDelta);
+%             timeCell = BinAlignmentMode.generateMultipleBinnedTimeVectors(...
+%                 tMinByTrial+binOffsetStart, tMaxByTrial+binOffsetStop, sf.binWidthMs, sf.binAlignmentMode);
+            timeCell = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
+                tMinByTrial+timeDeltaOffsetStart, tMaxByTrial+timeDeltaOffsetStop, sf.binWidthMs);
+            
+            % filter via valid-region convolution, which automatically removes the padding
+            rateCell = cellvec(size(spikeCell, 1));
             nTrials = size(rateCell, 1);
-            nUnits = size(rateCell(:, :), 2);
+            nUnits = size(spikeCell(:, :), 2);
             for i = 1:nTrials
+                nTimeThis = numel(timeCell{i});
+                rateCell{i} = zeros(nTimeThis, nUnits); 
                 for j = 1:nUnits
                     if ~isempty(spikeCell{i, j})
                         countsPad = histc(spikeCell{i, j}, tbinsForHistcByTrial{i});
-                        rateCell{i, j} = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
-                    else
-                        rateCell{i, j} = zeros(size(timeCell{i}));
+                        rateCell{i}(:, j) = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
                     end
                 end
+            end
+            
+            % do the resampling to timeDelta bins
+            if sf.timeDelta ~= sf.binWidthMs
+                [rateCell, timeCell] = TrialDataUtilities.Data.resampleDataCellInTime(rateCell, timeCell, 'timeDelta', sf.timeDelta, ...
+                    'timeReference', 0, 'binAlignmentMode', sf.binAlignmentMode, ...
+                    'resampleMethod', sf.resampleMethod, 'uniformlySampled', true, ...
+                    'tMinExcludingPadding', tMinByTrial, 'tMaxExcludingPadding', tMaxByTrial);
             end
         end
     end

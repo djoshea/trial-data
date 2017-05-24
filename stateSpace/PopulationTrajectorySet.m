@@ -54,13 +54,6 @@ classdef PopulationTrajectorySet
     % computed values
     % see .initialize() for default values
     properties
-        % The following parameters affect data extraction:
-        
-        % numeric scalar indicating spacing between successive time points
-        % all channels timeseries will be interpolated to a time vector
-        % with this spacing
-        timeDelta
-        
         % The following parameters affect trial-averaging:
         
         % The minimum number of trials over which to compute a trial
@@ -191,7 +184,12 @@ classdef PopulationTrajectorySet
     
     % Properties whose values are computed dynamically and persist within odc
     % or are specified manually and persist within manualData
-    properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)
+    properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)     
+        % numeric scalar indicating spacing between successive time points
+        % all channels timeseries will be interpolated to a time vector
+        % with this spacing
+        timeDelta
+        
         % Alignment summary statistics by basis by align
         
         % nAlignSummaryData (originally nDataSources) x nAlign cell containing AlignSummary instances for each
@@ -391,6 +389,10 @@ classdef PopulationTrajectorySet
         % considered. Only bases which are valid are considered
         tMinValidAllBasesByAlignCondition
         tMaxValidAllBasesByAlignCondition
+        
+        % nBases x 1 cell of conditions associated with each trial, as in
+        % dataByTrial
+        conditionIdxByTrial
     end
     
     % Properties within *Manual properties store manually-specified values for each of the
@@ -668,9 +670,9 @@ classdef PopulationTrajectorySet
 %                     StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
 %             end
             
-            if isempty(pset.timeDelta)
-                pset.timeDelta = 1;
-            end 
+%             if isempty(pset.timeDelta)
+%                 pset.timeDelta = 1;
+%             end 
             
             if isempty(pset.spikeFilter)
                 pset.spikeFilter = SpikeFilter.getDefaultFilter();
@@ -916,12 +918,25 @@ classdef PopulationTrajectorySet
             pset = pset.setAlignDescriptorSet(pset.alignDescriptorSet);
         end
         
+        function sf = get.spikeFilter(pset)
+            sf = pset.spikeFilter;
+            if isempty(sf)
+                sf = SpikeFilter.getDefaultFilter();
+            end
+        end
+        
+        function d = get.timeDelta(pset)
+            d = pset.spikeFilter.timeDelta;
+        end
+              
         function pset = set.timeDelta(pset, v)
             % changing timeDelta invalidates everything
-            old = pset.timeDelta;
-            pset.timeDelta = v;
-            if ~isempty(old) % no need to invalidate on initialization
-                pset = pset.invalidateCache();
+            old = pset.spikeFilter.timeDelta;
+            if old ~= v
+                pset.spikeFilter.timeDelta = v;
+                if ~isempty(old) % no need to invalidate on initialization
+                    pset = pset.invalidateCache();
+                end
             end
         end
         
@@ -2834,12 +2849,12 @@ classdef PopulationTrajectorySet
             basisDataSourceChannelNames = pset.basisDataSourceChannelNames; %#ok<*PROP>
             nAlign = pset.nAlign;
             nBases = pset.nBases;
-            timeDelta = pset.timeDelta;
             spikeFilter = pset.spikeFilter;
+            timeDelta = spikeFilter.timeDelta;
             
             isSpikeChannel = false(pset.nBases, 1);
             
-            [dataCell, timeCell, timeInfoCell, unitsPerSecondCell] = deal(cell(pset.nBases, pset.nAlign));
+            dataByTrial = cell(pset.nBases, pset.nAlign);
             
             prog = ProgressBar(pset.nBases, 'Extracting aligned data by basis');
             for iBasis = 1:nBases    
@@ -2862,60 +2877,18 @@ classdef PopulationTrajectorySet
                     % currently will request either analog trials or
                     % filtered spike rates channel
                     if src.hasAnalogChannel(chName)
-                        [dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}] = src.getAnalog(chName);
+                        % use the specs from the spikeFilter
+                        [dataByTrial{iBasis, iAlign}, tvec] = src.getAnalogAsMatrix(chName, ...
+                            'timeDelta', spikeFilter.timeDelta, 'resampleMethod', spikeFilter.resampleMethod, ...
+                            'binAlignmentMode', spikeFilter.binAlignmentMode);
                         isSpikeChannel(iBasis) = false;
                         
                     elseif src.hasSpikeChannel(chName)
-                        %src = src.padForSpikeFilter(spikeFilter); % should have been done in applyAlignInfoSet already
-                        dataCell{iBasis, iAlign} = src.getSpikeTimes(chName, 'includePadding', true); % include padding
-                        timeInfoCell{iBasis, iAlign} = src.alignInfoActive.timeInfo;
-                        unitsPerSecondCell{iBasis, iAlign} = src.timeUnitsPerSecond;
+                        [dataByTrial{iBasis, iAlign}, tvec] = src.getSpikeRateFilteredAsMatrix(chName, ...
+                            'spikeFilter', spikeFilter);
                         isSpikeChannel(iBasis) = true;
                     else
                         error('Unknown channel type');
-                    end
-                    
-                    % essential that we use computedValid here since .valid
-                    % will also reflect trials which are invalid based on
-                    % the current conditionInfo, which we don't want to
-                    % consider here.
-                    alignValidByTrial{iBasis, iAlign} = src.alignInfoActive.computedValid;
-                    
-                    % also store the precise time starts and stops for EACH
-                    % trial that comprises that matrix. Essential that all
-                    % padding be done to src before this call to ensure
-                    % that the tvec returned above matches these numbers
-                    [tMinByTrial{iBasis, iAlign}, ...
-                     tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
-                end
-            end
-            prog.finish();
-               
-            prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
-            
-            showProgressInner = false;
-            for iBasis = 1:nBases
-                prog.update(iBasis);
-                for iAlign = 1:nAlign
-                    if ~isSpikeChannel(iBasis)
-                        % from TDCA.getAnalogAsMatrix
-                        [dataByTrial{iBasis, iAlign}, tvec] = ...
-                            TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
-                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
-                            'showProgress', showProgressInner);
-                    else
-                        % from TDCA.getSpikeRateFilteredAsMatrix
-                        
-                        % convert to .zero relative times since that's what spikeCell
-                        % will be in (when called in this class)
-                        timeInfo = timeInfoCell{iBasis, iAlign};
-                        
-                        [dataByTrial{iBasis, iAlign}, tvec] = ...
-                            spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
-                            timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
-                            unitsPerSecondCell{iBasis, iAlign}, ...
-                            'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
-                             'showProgress', showProgressInner);
                     end
                     
                     % store the time limits used in the time vector for 
@@ -2931,13 +2904,76 @@ classdef PopulationTrajectorySet
                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
-                 
-%                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
-%                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
-%                         'Time vector returned by TrialData has invalid limits');
+                    
+                    % essential that we use computedValid here since .valid
+                    % will also reflect trials which are invalid based on
+                    % the current conditionInfo, which we don't want to
+                    % consider here.
+                    alignValidByTrial{iBasis, iAlign} = src.alignInfoActive.computedValid;
+                    
+                    % also store the precise time starts and stops for EACH
+                    % trial that comprises that matrix. Essential that all
+                    % padding be done to src before this call to ensure
+                    % that the tvec returned above matches these numbers
+                    
+                    % switching this to deal with analog channel resampling
+%                     [tMinByTrial{iBasis, iAlign}, ...
+%                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
+
+                    [tMinByTrial{iBasis, iAlign}, ...
+                     tMaxByTrial{iBasis, iAlign}] = ...
+                     TrialDataUtilities.Data.getValidTimeExtents(tvec, dataByTrial{iBasis, iAlign});
                 end
             end
-            prog.finish();            
+            prog.finish();
+               
+%             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
+%             
+%             showProgressInner = false;
+%             for iBasis = 1:nBases
+%                 prog.update(iBasis);
+%                 for iAlign = 1:nAlign
+%                     if ~isSpikeChannel(iBasis)
+%                         % from TDCA.getAnalogAsMatrix
+%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+%                             TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
+%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
+%                             'showProgress', showProgressInner);
+%                     else
+%                         % from TDCA.getSpikeRateFilteredAsMatrix
+%                         
+%                         % convert to .zero relative times since that's what spikeCell
+%                         % will be in (when called in this class)
+%                         timeInfo = timeInfoCell{iBasis, iAlign};
+%                         
+%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+%                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
+%                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
+%                             unitsPerSecondCell{iBasis, iAlign}, ...
+%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
+%                              'showProgress', showProgressInner);
+%                     end
+%                     
+%                     % store the time limits used in the time vector for 
+%                     % the dataByTrial{..} matrix
+%                     if ~isempty(tvec)
+%                         tMinForDataByTrial(iBasis, iAlign) = min(tvec);
+%                         tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
+%                     end
+%                  
+%                     % bring trial start stop in within the limits of tvec,
+%                     % to deal with any rounding issues
+%                     tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
+%                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
+%                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
+%                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
+%                  
+% %                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
+% %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
+% %                         'Time vector returned by TrialData has invalid limits');
+%                 end
+%             end
+%             prog.finish();            
             
             % apply translation / normalization to data
             if ~isempty(pset.translationNormalization)
@@ -4457,6 +4493,18 @@ classdef PopulationTrajectorySet
             end
         end
         
+        function clists = get.conditionIdxByTrial(pset)
+            clists = cellvec(pset.nBases);
+            dataSourcesByBasis = pset.dataSources(pset.basisDataSourceIdx);
+            for iB = 1:pset.nBases
+                idxByCondition = pset.trialLists(iB, :);
+                clists{iB} = nanvec(dataSourcesByBasis{iB}.nTrials);
+                for iC = 1:numel(idxByCondition)
+                    clists{iB}(idxByCondition{iC}) = iC;
+                end
+            end
+        end
+        
         function n = get.nAxes(pset)
             if isempty(pset.conditionDescriptor)
                 n = 0;
@@ -5676,7 +5724,7 @@ classdef PopulationTrajectorySet
             else
                 [NbyCbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
                 avec = makecol(alignIdx(avecRaw));
-                tvec = cat(1, tvecCell);
+                tvec = cat(1, tvecCell{:});
                 % nan out invalid bases
                 NbyCbyTA(~basisValidMask, :, :) = NaN;
             

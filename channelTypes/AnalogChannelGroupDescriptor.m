@@ -1,59 +1,17 @@
-classdef AnalogChannelDescriptor < ChannelDescriptor
+classdef AnalogChannelGroupDescriptor < ChannelDescriptor
     properties
         scaleFromLims
         scaleToLims
-        
-        isColumnOfSharedMatrix = false; % this field shares a data field with other channels
-        primaryDataFieldColumnIndex = 1; % which column am I?    
     end
     
     properties(Dependent)
-        % set this to make the data field be different from .name (the default).
-        % this is only allowed for shared matrix analog signals
-        primaryDataField
-        
         timeField
-        
         hasScaling
     end
-    
-    properties(Hidden)
-        primaryDataFieldManual 
-    end
-    
+
     methods
-        function f = get.primaryDataField(cd)
-            if ~cd.isColumnOfSharedMatrix || isempty(cd.primaryDataFieldManual)
-                f = cd.name;
-            else
-                f = cd.primaryDataFieldManual;
-            end
-        end
-        
-        function cd = set.primaryDataField(cd, f)
-            assert(cd.isColumnOfSharedMatrix, 'Primary data field cannot be set unless isColumnOfSharedMatrix is set to true.');
-            assert(ischar(f) && isvector(f), 'Field name must be string');
-            cd.primaryDataFieldManual = f;
-            cd = cd.initialize();
-        end
-        
         function tf = get.hasScaling(cd)
             tf = ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims) && ~isequal(cd.scaleFromLims, cd.scaleToLims);
-        end
-        
-        function cd = separateFromColumnOfSharedMatrix(cd, newTimeField)
-            % transform this cd so that it's not a column of a shared
-            % matrix anymore
-            cd.warnIfNoArgOut(nargout);
-            cd.isColumnOfSharedMatrix = false;
-            cd.elementTypeByField(1) = cd.VECTOR; 
-            cd.primaryDataFieldColumnIndex = 1;
-            cd.primaryDataFieldManual = '';
-            
-            if nargin > 1
-                cd.dataFields{2} = newTimeField;
-            end
-            cd = cd.initialize();
         end
         
         function cd = withNoScaling(cd)
@@ -62,17 +20,10 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.scaleFromLims = [];
             cd.scaleToLims = [];
         end
-        
-        function cdGroup = buildGroupChannelDescriptor(cd)
-            cdGroup = AnalogChannelGroupDescriptor.buildAnalogGroup(cd.primaryDataField, cd.timeField, ...
-                cd.unitsByField{1}, cd.unitsByField{2}, ...
-                'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
-                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
-        end
     end
     
     methods(Access=protected)
-        function cd = AnalogChannelDescriptor(name, timeField)
+        function cd = AnalogChannelGroupDescriptor(name, timeField)
             cd = cd@ChannelDescriptor(name);
             if nargin < 2
                 timeField = sprintf('%s_time', cd.name);
@@ -80,14 +31,14 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             
             cd.dataFields = {name, timeField};
             cd.originalDataClassByField = {'double', 'double'};
-            cd.elementTypeByField = [cd.VECTOR, cd.VECTOR];
+            cd.elementTypeByField = [cd.NUMERIC, cd.VECTOR];
         end
     end
         
     methods
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
-            cd.dataFields = {cd.primaryDataField, cd.timeField};
+            cd.dataFields = {cd.name, cd.timeField};
         end
         
         % used by trial data when it needs to change field names
@@ -110,11 +61,11 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         end
         
         function type = getType(~)
-            type = 'analog';
+            type = 'analogGroup';
         end
 
         function fields = getDataFields(cd)
-            fields = {cd.primaryDataField, cd.timeField};
+            fields = {cd.name, cd.timeField};
         end
 
         function str = describe(cd)
@@ -137,16 +88,23 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function [cd, dataFieldRenameStruct] = rename(cd, newName)
+        function [cd, dataFieldRenameStruct] = rename(cd, newName, renameTime)
+            if nargin < 3
+                renameTime = true;
+            end
             cd.warnIfNoArgOut(nargout);
+            
             % also rename _time field if it matches
             oldName = cd.name;
             [cd, dataFieldRenameStruct] = rename@ChannelDescriptor(cd, newName);
-            oldTimeField = sprintf('%s_time', oldName);
-            if strcmp(cd.dataFields{2}, oldTimeField)
-                newTimeField = sprintf('%s_time', newName);
-                dataFieldRenameStruct.(cd.dataFields{2}) = newTimeField;
-                cd.dataFields{2} = newTimeField;
+            
+            if renameTime
+                oldTimeField = sprintf('%s_time', oldName);
+                if strcmp(cd.dataFields{2}, oldTimeField)
+                    newTimeField = sprintf('%s_time', newName);
+                    dataFieldRenameStruct.(cd.dataFields{2}) = newTimeField;
+                    cd.dataFields{2} = newTimeField;
+                end
             end
         end 
         
@@ -195,12 +153,18 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
             data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
         end
+        
+        function cdIndividual = buildIndividualSubChannel(cd, name, index)
+            cdIndividual = AnalogChannelDescriptor.buildSharedMatrixColumnAnalog(name, cd.name, index, cd.timeField, cd.unitsByField{1}, cd.unitsByField{2}, ...
+                'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
+                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
+        end
     end
     
      methods(Static)
-        function cd = buildVectorAnalog(name, timeField, units, timeUnits, varargin)
+        function cd = buildAnalogGroup(name, timeField, units, timeUnits, varargin)
             p = inputParser();
-            p.addParameter('channelDescriptor', [], @(x) isa(x, 'AnalogChannelDescriptor')); % used by subclasses
+            p.addParameter('channelDescriptor', [], @(x) isa(x, 'AnalogChannelGroupDescriptor')); % used by subclasses
             p.addParameter('scaleFromLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataClass', 'double', @ischar);
@@ -208,7 +172,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             p.parse(varargin{:});
             
             if isempty(p.Results.channelDescriptor)
-                cd = AnalogChannelDescriptor(name, timeField);
+                cd = AnalogChannelGroupDescriptor(name, timeField);
             else
                 cd = p.Results.channelDescriptor;
             end
@@ -223,26 +187,13 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;
             
+
             % set the data and time class appropriately
             cd.originalDataClassByField = {p.Results.dataClass, p.Results.timeClass};
             cd = cd.initialize();
         end
         
-        % dataClass and timeClass are the in-memory representation of the
-        % data values and time values (e.g. 'double', 'int32', etc)
-        function cd = buildSharedMatrixColumnAnalog(name, dataFieldName, dataFieldColumnIndex, ...
-                timeField, units, timeUnits, varargin)
-            assert(ischar(dataFieldName));
-            assert(isscalar(dataFieldColumnIndex));
-            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits, varargin{:});
-            cd.isColumnOfSharedMatrix = true;
-            cd.elementTypeByField(1) = cd.NUMERIC; % otherwise we'll throw errors when validating the shared matrix data as a whole
-            cd.primaryDataField = dataFieldName;
-            cd.primaryDataFieldColumnIndex = dataFieldColumnIndex;
-            cd = cd.initialize();
-        end
-        
-        function cd = buildVectorAnalogFromValues(name, timeField, units, timeUnits, dataCell, timeCell, varargin)
+        function cd = buildAnalogGroupFromValues(name, timeField, units, timeUnits, dataCell, timeCell, varargin)
             p = inputParser();
             p.addParameter('scaleFromLims', [], @isvector);
             p.addParameter('scaleToLims', [], @isvector);
@@ -250,7 +201,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             p.parse(varargin{:});
             
             if isempty(p.Results.channelDescriptor)
-                cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits);
+                cd = AnalogChannelGroupDescriptor.buildAnalogGroup(name, timeField, units, timeUnits);
             else
                 cd = p.Results.channelDescriptor;
             end
@@ -264,24 +215,8 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;
+            
             cd = cd.initialize();
-        end
-        
-        function tf = testChannelsShareTimeField(cdCell)
-            assert(iscell(cdCell));
-            
-            timeField = cellfun(@(cd) cd.timeField, cdCell, 'UniformOutput', false);
-            tf = numel(unique(timeField)) == 1;
-        end
-        
-        function [cdCell, data] = sharedMatrixCheckConvertDataAndUpdateClass(cd, data)
-            % equivalent of
-            % checkConvertDataAndUpdateMemoryClassToMakeCompatible(cd,
-            % fieldIdx, data) but operates more effectively on groups of
-            % shared data
-            
-           
-            
         end
     end
 

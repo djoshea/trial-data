@@ -731,7 +731,7 @@ classdef AlignDescriptor
             p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.addParameter('as', AlignDescriptor.AUTO, @ischar);
             p.addParameter('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
-            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
             p.parse(varargin{:});
@@ -761,6 +761,10 @@ classdef AlignDescriptor
             ad.markOffsets = makecol(ad.markOffsets);
             
             appear = p.Results.appear;
+            if isempty(appear)
+                appear = AppearanceSpec();
+                appear.Color = ad.getNextMarkColor();
+            end
             if ~isempty(p.Results.color)
                 appear.Color = p.Results.color;
             end
@@ -773,6 +777,12 @@ classdef AlignDescriptor
             ad.markLabelsStored{iMark,1} = p.Results.as;
 
             ad = ad.postUpdateMark();
+        end
+        
+        function color = getNextMarkColor(ad)
+            nMarks = ad.nMarks;
+            map = TrialDataUtilities.Color.cbrewer('qual', 'Set1');
+            color = map(mod(nMarks + 1, size(map, 1)), :);
         end
         
         function ad = removeMarksByIdx(ad, mask)

@@ -1,4 +1,4 @@
-classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
+classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
     properties(Dependent) 
         % these are encoded in the channel name
         array
@@ -6,38 +6,24 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
         type
     end
     
-%     properties(SetAccess=protected)
-%         arrayManual = '';
-%         electrodeManual = [];
-%         typeManual = '';
-%     end
-    
     methods
-        function cd = ContinuousNeuralChannelDescriptor(name, timeField)
-            cd = cd@AnalogChannelDescriptor(name, timeField);
+        function cd = ContinuousNeuralChannelGroupDescriptor(name, timeField)
+            cd = cd@AnalogChannelGroupDescriptor(name, timeField);
         end
     end
     
     % these methods simply wrap the AnalogChannelDescriptor ones to get the
     % class name right
     methods(Static)
-        function cd = buildVectorAnalog(name, timeField, units, timeUnits, varargin)
-            cd = ContinuousNeuralChannelDescriptor(name, timeField);
-            cd = AnalogChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits, ...
+        function cd = buildAnalogGroup(name, timeField, units, timeUnits, varargin)
+            cd = ContinuousNeuralChannelGroupDescriptor(name, timeField);
+            cd = AnalogChannelGroupDescriptor.buildAnalogGroup(name, timeField, units, timeUnits, ...
                 'channelDescriptor', cd, varargin{:});
         end
         
-        function cd = buildSharedMatrixColumnAnalog(name, dataFieldName, dataFieldColumnIndex, ...
-                timeField, units, timeUnits, varargin)
+        function cd = buildAnalogGroupFromValues(name, timeField, units, timeUnits, dataCell, timeCell, varargin)
             cd = ContinuousNeuralChannelDescriptor(name, timeField);
-            cd = AnalogChannelDescriptor.buildSharedMatrixColumnAnalog(name, dataFieldName, dataFieldColumnIndex, ...
-                timeField, units, timeUnits, ...
-                'channelDescriptor', cd, varargin{:});
-        end
-        
-        function cd = buildVectorAnalogFromValues(name, timeField, units, timeUnits, dataCell, timeCell, varargin)
-            cd = ContinuousNeuralChannelDescriptor(name, timeField);
-            cd = AnalogChannelDescriptor.buildVectorAnalogFromValues(name, timeField, ...
+            cd = AnalogChannelGroupDescriptor.buildAnalogGroupFromValues(name, timeField, ...
                 units, timeUnits, dataCell, timeCell, ...
                 'channelDescriptor', cd, varargin{:});
         end
@@ -67,10 +53,9 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
         function elec = get.electrode(cd)
             [~, ~, elec] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
         end
-        
-        function cdGroup = buildGroupChannelDescriptor(cd)
-            cdGroup = ContinuousNeuralChannelGroupDescriptor.buildAnalogGroup(cd.primaryDataField, cd.timeField, ...
-                cd.unitsByField{1}, cd.unitsByField{2}, ...
+       
+        function cdIndividual = buildIndividualSubChannel(cd, name, index)
+            cdIndividual = ContinuousNeuralChannelDescriptor.buildSharedMatrixColumnAnalog(name, cd.name, index, cd.timeField, cd.unitsByField{1}, cd.unitsByField{2}, ...
                 'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
                 'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
         end

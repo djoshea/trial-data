@@ -27,6 +27,7 @@ p.addParameter('normalize', false, @islogical); % the vertical height of each tr
 p.addParameter('intercalate', false, @islogical); % the traces should be squished together as close as possible without touching
 p.addParameter('spacingFraction', 1.2, @isscalar); % the gap between each trace / the height of those traces
 p.addParameter('colormap', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for superimposed traces 
+p.addParameter('colormapStacked', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for stacked traces, only used if colormap is empty
 p.addParameter('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
 p.addParameter('labels', {}, @(x) isempty(x) || isvector(x)); % labels over nTraces for the y axis
 p.addParameter('labelRotation', 0, @isvector);
@@ -40,6 +41,7 @@ p.addParameter('verticalScaleBarHideLabel', false, @islogical);
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('dataRangeFormat', '%.4g', @ischar);
+p.addParameter('quick', false, @islogical);
 % p.addParameter('lineStyle', '-', @ischar);
 p.KeepUnmatched = true;
 p.CaseSensitive = false;
@@ -148,9 +150,9 @@ if ~iscell(data)
     matShift = bsxfun(@plus, matShift, traceOffsets);
 
     % expand colormap to be exactly nSuperimposed long
-    map = getColormap(p.Results.colormap, nSuperimposed);
+    [map, colorByStack] = getColormap(p.Results.colormapStacked, nTraces, p.Results.colormap, nSuperimposed);
 
-    if nSuperimposed == 1
+    if nSuperimposed == 1 && ~colorByStack
         % plot simultaneously
         hLines = plot(tvec, matShift, '-', 'Color', map(1, :), 'MarkerFaceColor', map(1, :), 'MarkerEdgeColor', map(1, :), p.Unmatched);
     else
@@ -164,8 +166,14 @@ if ~iscell(data)
         hLines = plot(tvec, matShiftCat, '-', p.Unmatched);
         hLines = reshape(hLines, [nSuperimposed nTraces])';
         
-        for iS = 1:nSuperimposed
-            set(hLines(:, iS), 'Color', map(iS, :), 'MarkerFaceColor', map(iS, :), 'MarkerEdgeColor', map(iS, :));
+        if colorByStack
+            for iT = 1:nTraces
+                set(hLines(iT, :), 'Color', map(iT, :), 'MarkerFaceColor', map(iT, :), 'MarkerEdgeColor', map(iT, :));
+            end
+        else
+            for iS = 1:nSuperimposed
+                set(hLines(:, iS), 'Color', map(iS, :), 'MarkerFaceColor', map(iS, :), 'MarkerEdgeColor', map(iS, :));
+            end
         end
     end
 
@@ -175,8 +183,7 @@ else
         tvec = repmat({tvec}, nTraces, nSuperimposed);
     end
     
-    % expand colormap to be exactly nSuperimposed long
-    map = getColormap(p.Results.colormap, nSuperimposed);
+    [map, colorByStack] = getColormap(p.Results.colormapStacked, nTraces, p.Results.colormap, nSuperimposed);
         
     % invert the order of the traces so the first is plotted at the top
 %     data = flipud(data);
@@ -232,8 +239,13 @@ else
                 tvecThis = tvec{iT, iS};
             end
 
-            hLines{iT, iS} = plot(tvecThis, matShift, '-', 'Color', map(iS, :), ...
-                'MarkerFaceColor', map(iS, :), 'MarkerEdgeColor', map(iS, :), p.Unmatched);
+            if colorByStack
+                color = map(iT, :);
+            else
+                color = map(iS, :);
+            end
+            hLines{iT, iS} = plot(tvecThis, matShift, '-', 'Color', color, ...
+                'MarkerFaceColor', color, 'MarkerEdgeColor', color, p.Unmatched);
             hold on;
         end
     end
@@ -258,156 +270,160 @@ else
     xlab = sprintf('Time (%s)', p.Results.timeUnits);
 end
 
-au = AutoAxis(gca);
+if ~p.Results.quick
+    au = AutoAxis(gca);
 
-au.xUnits = p.Results.timeUnits;
-if p.Results.timeScaleBar
-    au.addAutoScaleBarX();
-else
-    au.addAutoAxisX();
-    au.xlabel(xlab);
-end
-
-if showLabels
-    spans = [makerow(traceLows); makerow(traceHighs)];
-    au.addLabeledSpan('y', 'span', spans, 'label', labels, 'rotation', p.Results.labelRotation);
-end
-
-hold off;
-
-if p.Results.clickable
-    % build line handle descriptions
-%     lineDescriptions = cell(nTraces, nSuperimposed);
-    if iscell(hLines)
-        for iT = 1:nTraces
-            for iS = 1:nSuperimposed
-                set(hLines{iT, iS}, 'Description', sprintf('Trace %s, Line %s', labels{iT}, labelsLinesWithinEachTrace{iS}));
-            end
-        end
-        hvec = cat(1, hLines{:});
+    au.xUnits = p.Results.timeUnits;
+    if p.Results.timeScaleBar
+        au.addAutoScaleBarX();
     else
-        for iT = 1:nTraces
-            for iS = 1:nSuperimposed
-                set(hLines(iT, iS), 'Description', sprintf('Trace %s, Line %s', labels{iT}, labelsLinesWithinEachTrace{iS}));
-            end
-        end
-        hvec = hLines(:);
+        au.addAutoAxisX();
+        au.xlabel(xlab);
     end
 
-    TrialDataUtilities.Plotting.makeClickableShowDescription(hvec);
-end
+    if showLabels
+        spans = [makerow(traceLows); makerow(traceHighs)];
+        au.addLabeledSpan('y', 'span', spans, 'label', labels, 'rotation', p.Results.labelRotation);
+    end
 
-if strcmp(p.Results.showVerticalScaleBars, 'auto')
-    showScaleBars = nTraces < 25 && p.Results.maintainScaleSuperimposed;
-else
-    showScaleBars = p.Results.showVerticalScaleBars;
-end
+    hold off;
 
-% add scale bars to right side of axis?
-if showScaleBars
-    if ~p.Results.maintainScaleSuperimposed
-        warning('Cannot show vertical scale bars when maintainScaleSuperimposed is false');
-    else
-        au = AutoAxis(gca);
-        
-        dataUnits = p.Results.dataUnits;
-        if iscell(dataUnits)
-            u = unique(dataUnits);
-            commonDataUnits = numel(u) == 1;
-            if commonDataUnits
-                dataUnits = u{1};
-            end
-        elseif isempty(dataUnits) || ischar(dataUnits)
-            commonDataUnits = true;
-        else
-            commonDataUnits = false;
-            dataUnits = '';
-        end
-    
-        if ~p.Results.normalize && commonDataUnits
-            % common scaling, all same units, show single auto scale bar
-            
-            au.yUnits = dataUnits;
-            au.addAutoScaleBarY();
-            
-        elseif p.Results.normalize && commonDataUnits
-            % need one scale bar for each of nTraces but all in the same
-            % units
-            % but we can label only one scale bar at the bottom and have the others be the same length
-            % the actual data size of each will
-            % be set by the largest amplitude signal, which has the
-            % largest norm
-
-            actualValue = TrialDataUtilities.Plotting.closestNiceNumber(min(rangesOrig), 'down');
+    if p.Results.clickable
+        % build line handle descriptions
+    %     lineDescriptions = cell(nTraces, nSuperimposed);
+        if iscell(hLines)
             for iT = 1:nTraces
-                plottedValue = actualValue / norms(iT);
-                if iT == nTraces
-                    % label the bottom trace
-                    label = sprintf('%g %s', actualValue, dataUnits);
-                else
-                    label = '';
+                for iS = 1:nSuperimposed
+                    set(hLines{iT, iS}, 'Description', sprintf('Trace %s, Line %s', labels{iT}, labelsLinesWithinEachTrace{iS}));
                 end
-                au.addScaleBar('y', 'length', plottedValue, 'manualLabel', label, ...
-                    'manualPositionAlongAxis', traceLows(iT), 'hideLabel', p.Results.verticalScaleBarHideLabel);
             end
-            
+            hvec = cat(1, hLines{:});
         else
-            % channels all have different units, show each with its own
-            % labeled scale bar
             for iT = 1:nTraces
-                actualValue = TrialDataUtilities.Plotting.closestNiceNumber(rangesOrig(iT), 'down');
-                plottedValue = actualValue / norms(iT);
+                for iS = 1:nSuperimposed
+                    set(hLines(iT, iS), 'Description', sprintf('Trace %s, Line %s', labels{iT}, labelsLinesWithinEachTrace{iS}));
+                end
+            end
+            hvec = hLines(:);
+        end
+
+        TrialDataUtilities.Plotting.makeClickableShowDescription(hvec);
+    end
+
+    if strcmp(p.Results.showVerticalScaleBars, 'auto')
+        showScaleBars = nTraces < 25 && p.Results.maintainScaleSuperimposed;
+    else
+        showScaleBars = p.Results.showVerticalScaleBars;
+    end
+
+    % add scale bars to right side of axis?
+    if showScaleBars
+        if ~p.Results.maintainScaleSuperimposed
+            warning('Cannot show vertical scale bars when maintainScaleSuperimposed is false');
+        else
+            au = AutoAxis(gca);
+
+            dataUnits = p.Results.dataUnits;
+            if iscell(dataUnits)
+                u = unique(dataUnits);
+                commonDataUnits = numel(u) == 1;
+                if commonDataUnits
+                    dataUnits = u{1};
+                end
+            elseif isempty(dataUnits) || ischar(dataUnits)
+                commonDataUnits = true;
+            else
+                commonDataUnits = false;
+                dataUnits = '';
+            end
+
+            if ~p.Results.normalize && commonDataUnits
+                % common scaling, all same units, show single auto scale bar
+
+                au.yUnits = dataUnits;
+                au.addAutoScaleBarY();
+
+            elseif p.Results.normalize && commonDataUnits
+                % need one scale bar for each of nTraces but all in the same
+                % units
+                % but we can label only one scale bar at the bottom and have the others be the same length
+                % the actual data size of each will
+                % be set by the largest amplitude signal, which has the
+                % largest norm
+
+                actualValue = TrialDataUtilities.Plotting.closestNiceNumber(min(rangesOrig), 'down');
+                for iT = 1:nTraces
+                    plottedValue = actualValue / norms(iT);
+                    if iT == nTraces
+                        % label the bottom trace
+                        label = sprintf('%g %s', actualValue, dataUnits);
+                    else
+                        label = '';
+                    end
+                    au.addScaleBar('y', 'length', plottedValue, 'manualLabel', label, ...
+                        'manualPositionAlongAxis', traceLows(iT), 'hideLabel', p.Results.verticalScaleBarHideLabel);
+                end
+
+            else
+                % channels all have different units, show each with its own
+                % labeled scale bar
+                for iT = 1:nTraces
+                    actualValue = TrialDataUtilities.Plotting.closestNiceNumber(rangesOrig(iT), 'down');
+                    plottedValue = actualValue / norms(iT);
+                    if iscell(dataUnits)
+                        units = dataUnits{iT};
+                    else
+                        units = dataUnits;
+                    end
+                    label = sprintf('%g %s', actualValue, units);
+                    au.addScaleBar('y', 'length', plottedValue, 'manualLabel', label, ...
+                        'manualPositionAlongAxis', traceLows(iT), 'hideLabel', p.Results.verticalScaleBarHideLabel);
+                end
+            end
+
+        end
+    end
+
+    if strcmp(p.Results.showDataRanges, 'auto')
+        showYRanges = nTraces < 25 && p.Results.maintainScaleSuperimposed;
+    else
+        showYRanges = p.Results.showDataRanges;
+    end
+
+    axis tight
+
+    % show y extents as tick bridges on the right hand side
+    if showYRanges && ~showScaleBars
+        if ~p.Results.maintainScaleSuperimposed
+            warning('Cannot show data ranges when maintainScaleSuperimposed is false');
+        else
+            au = AutoAxis(gca);
+
+            dataUnits = p.Results.dataUnits;
+
+            for iT = 1:nTraces
                 if iscell(dataUnits)
                     units = dataUnits{iT};
                 else
                     units = dataUnits;
                 end
-                label = sprintf('%g %s', actualValue, units);
-                au.addScaleBar('y', 'length', plottedValue, 'manualLabel', label, ...
-                    'manualPositionAlongAxis', traceLows(iT), 'hideLabel', p.Results.verticalScaleBarHideLabel);
-            end
-        end
-            
-    end
-end
+                labelHigh = sprintf([p.Results.dataRangeFormat, ' %s'], dataHighOrig(iT), units);
+                labelLow  = sprintf([p.Results.dataRangeFormat, ' %s'], dataLowOrig(iT), units);
 
-if strcmp(p.Results.showDataRanges, 'auto')
-    showYRanges = nTraces < 25 && p.Results.maintainScaleSuperimposed;
-else
-    showYRanges = p.Results.showDataRanges;
+                au.addTickBridge('y', 'tick', [traceLows(iT) traceHighs(iT)], ...
+                    'tickLabel', {labelLow; labelHigh}, 'tickAlignment', {'bottom', 'top'}, ...
+                    'otherSide', true);
+            end
+
+            au.axisMarginRight = 2;
+        end
+    end
+
+    hold off;
+    au.update();
 end
 
 axis tight
-
-% show y extents as tick bridges on the right hand side
-if showYRanges && ~showScaleBars
-    if ~p.Results.maintainScaleSuperimposed
-        warning('Cannot show data ranges when maintainScaleSuperimposed is false');
-    else
-        au = AutoAxis(gca);
-        
-        dataUnits = p.Results.dataUnits;
-        
-        for iT = 1:nTraces
-            if iscell(dataUnits)
-                units = dataUnits{iT};
-            else
-                units = dataUnits;
-            end
-            labelHigh = sprintf([p.Results.dataRangeFormat, ' %s'], dataHighOrig(iT), units);
-            labelLow  = sprintf([p.Results.dataRangeFormat, ' %s'], dataLowOrig(iT), units);
-            
-            au.addTickBridge('y', 'tick', [traceLows(iT) traceHighs(iT)], ...
-                'tickLabel', {labelLow; labelHigh}, 'tickAlignment', {'bottom', 'top'}, ...
-                'otherSide', true);
-        end
-        
-        au.axisMarginRight = 2;
-    end
-end
-
-hold off;
-au.update();
 
 end
 
@@ -419,15 +435,24 @@ function r = nanmaxNanEmpty(v1, varargin)
     end
 end
 
-function map = getColormap(cmapFn, nSuperimposed)
+function [map, colorByStack] = getColormap(cmapStacked, nStacked, cmapSuperimposed, nSuperimposed)
+    if isempty(cmapStacked)
+        cmapFn = cmapSuperimposed;
+        colorByStack = false;
+        N = nSuperimposed;
+    else
+        cmapFn = cmapStacked;
+        colorByStack = true;
+        N = nStacked;
+    end
     % expand colormap to be exactly nSuperimposed long
     if isempty(cmapFn)
-        if nSuperimposed == 1
+        if N == 1
             map = [0 0 0]; % use black with one trace
         else
-            map = TrialDataUtilities.Plotting.expandWrapColormap(@TrialDataUtilities.Color.hslmap, nSuperimposed);
+            map = TrialDataUtilities.Plotting.expandWrapColormap(@TrialDataUtilities.Color.hslmap, N);
         end
     else
-        map = TrialDataUtilities.Plotting.expandWrapColormap(cmapFn, nSuperimposed);
+        map = TrialDataUtilities.Plotting.expandWrapColormap(cmapFn, N);
     end
 end

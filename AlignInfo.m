@@ -1418,6 +1418,8 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('showInLegend', true, @islogical);
 
             p.addParameter('shadeStartStopInterval', false, @islogical);
+            p.addParameter('shadeOutsideStartStopInterval', false, @islogical);
+            p.addParameter('fullTimeLimits', [], @isnumeric);
             p.parse(varargin{:});
 
             axh = p.Results.axh;
@@ -1439,7 +1441,7 @@ classdef AlignInfo < AlignDescriptor
                 % must be row vectors because expects nOccurrences x
                 % nTrials
                 h = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, startByTrial', stopByTrial', ...
-                    AppearanceSpec('Color', [0.5 0.5 0.5]), p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    AppearanceSpec('Color', [0.7 0.7 0.7]), p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
                     'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', 0);
                 if p.Results.showInLegend
                     TrialDataUtilities.Plotting.showFirstInLegend(h, 'Valid time region');
@@ -1447,6 +1449,28 @@ classdef AlignInfo < AlignDescriptor
                     TrialDataUtilities.Plotting.hideInLegend(h);
                 end
             end
+            
+            if p.Results.shadeOutsideStartStopInterval
+                fullTimeLimits = p.Results.fullTimeLimits;
+                if isempty(fullTimeLimits)
+                    error('Must specify fullTimeLimits when shadeOutsideStartStopInterval is true');
+                end
+                % must be row vectors because expects nOccurrences x
+                % nTrials
+                h = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, repmat(fullTimeLimits(1), 1, N), startByTrial', ...
+                    AppearanceSpec('Color', [0.7 0.7 0.7]), p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', 0);
+                h2 = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, stopByTrial', repmat(fullTimeLimits(2), 1, N), ...
+                    AppearanceSpec('Color', [0.7 0.7 0.7]), p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                    'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', 0);
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, 'Invalid time region');
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+                TrialDataUtilities.Plotting.hideInLegend(h2);
+            end
+
 
             % plot intervals
             hIntervals = cell(ad.nIntervals, 1);

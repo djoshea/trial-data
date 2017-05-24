@@ -10,7 +10,7 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
     
     methods
         function sf = NonOverlappingSpikeBinFilter(varargin)
-            % args: 'binWidthMs', #, binAlignmentMode, SpikeBinAlignmentMode.Acausal
+            % args: 'binWidthMs', #, binAlignmentMode, BinAlignmentMode.Acausal
             sf = sf@ConvolutionSpikeFilter(varargin{:});
         end
         
@@ -20,11 +20,15 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
             filt = 1;
             indZero = 1;
         end
+        
+        function sf = postSetTimeDelta(sf)
+            sf.binWidthMs = sf.timeDelta;
+        end
     end
     
     methods(Access=protected) % superclass overrides
-        function checkTimeDeltaOkay(sf, timeDelta)
-            assert(timeDelta == sf.binWidthMs, 'timeDelta must match binWidthMs in order to get non-overlapping bins');
+        function checkOkay(sf)
+            assert(sf.timeDelta == sf.binWidthMs, 'timeDelta must match binWidthMs in order to get non-overlapping bins');
         end
     end
 
