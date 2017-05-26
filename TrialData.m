@@ -1344,6 +1344,7 @@ classdef TrialData
             for iG = 1:numel(groupName)
                 chList = td.listAnalogChannelsInGroup(groupName{iG});
                 td = td.dropChannels(chList);
+                td = td.dropChannels(groupName{iG});
             end
         end
         
@@ -1952,7 +1953,7 @@ classdef TrialData
                         [tf, idx(iC)] = ismember(myGroup, groupNames);
                         if ~tf
                             if ~printedWarning
-                                warning('Orphaned channels from analog channel group found. Use td.fixOrphanedAnalogChannelGroups to fix this.');
+                                warning('Orphaned channels from analog channel group %s found. Use td.fixOrphanedAnalogChannelGroups to fix this.', myGroup);
                             end
                             mask(iC) = false;
                             printedWarning = true;
@@ -2216,7 +2217,7 @@ classdef TrialData
             isAligned = p.Results.isAligned;
             
             % create AnalogChannelDescriptors for each column?
-            nameIndividualChannels = isempty(chNames);
+            nameIndividualChannels = ~isempty(chNames);
             
             td.warnIfNoArgOut(nargout);
             
@@ -2422,7 +2423,7 @@ classdef TrialData
                         [tf, idx(iC)] = ismember(myGroup, groupNames);
                         if ~tf
                             if ~printedWarning
-                                warning('Orphaned channels from analog channel group found. Use td.fixOrphanedAnalogChannelGroups() to fix this.');
+                                warning('Orphaned channels from analog channel group %s found. Use td.fixOrphanedAnalogChannelGroups() to fix this.', myGroup);
                             end
                             printedWarning = true;
                             mask(iC) = false;
@@ -2699,7 +2700,7 @@ classdef TrialData
             % add a group descriptor for the created group
             cdGroup = td.getChannelDescriptor(groupName);
             newCdGroup = cdGroup.rename(newGroupName, false); % leave time field alone
-            td = td.addChannel(newCdGroup, 'ignoreDataFields', true);
+            td = td.addChannel(newCdGroup, 'ignoreDataFields', true, 'ignoreExisting', true);
             
             % update the channel descriptors to point to the new group
             for c = 1:numel(names)
@@ -5344,7 +5345,7 @@ classdef TrialData
                     end
                     
                     fullList = td.getChannelsReferencingFields(dataFields{iF});
-                    otherChannels = setdiff(fullList, names);
+                    otherChannels = setdiff(fullList, [names; groupNames]);
                     if isempty(otherChannels), continue; end
                     
                     % being used by other channels outside of names, rename and copy
@@ -5531,7 +5532,7 @@ classdef TrialData
             
             td.channelDescriptorsByName.(cd.name) = cd;
             
-            if p.Results.deferPostDataChange
+            if ~p.Results.deferPostDataChange
                 td = td.postDataChange(dataFields(fieldMask));
             end
             

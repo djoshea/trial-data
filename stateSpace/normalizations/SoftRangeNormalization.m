@@ -1,5 +1,5 @@
 classdef SoftRangeNormalization < StateSpaceTranslationNormalization
-    % multiply each basis by 1/(range + K)
+    % multiply each basis by 1/(range + alpha)
     
     methods(Access=protected) % don't call constructor, use factory methods
         function obj = SoftRangeNormalization()
@@ -8,12 +8,12 @@ classdef SoftRangeNormalization < StateSpaceTranslationNormalization
     end
     
     methods(Static)
-        function obj = buildFromPopulationTrajectorySet(pset, K)
+        function obj = buildFromPopulationTrajectorySet(pset, alpha)
             % measure the range of each neuron
             rangeByBasis = pset.computeRangeByBasis();
             minByBasis = pset.computeMinByBasis();
             
-            normalization = (rangeByBasis + K) .^ (-1);
+            normalization = (rangeByBasis + alpha) .^ (-1);
             
 %             % don't touch bases whose range is less than M
 %             rangeByBasis(maskLow) = 1;

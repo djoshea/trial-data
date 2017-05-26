@@ -2,6 +2,7 @@ function expandAxesToNextTick(axh, varargin)
 
 p = inputParser;
 p.addOptional('axes', 'xy', @ischar);
+p.addParameter('manualTicks', true, @islogical);
 p.parse(varargin{:});
         
 if nargin < 1
@@ -46,7 +47,11 @@ for iAxis = 1:numel(axes)
     end
     
     if changed
-        set(axh, [axup 'Tick'], ticks, [axup 'Lim'], [min(ticks) max(ticks)]);
+        if p.Results.manualTicks
+            set(axh, [axup 'Tick'], ticks, [axup 'Lim'], [min(ticks) max(ticks)]);
+        else
+            set(axh, [axup 'Lim'], [min(ticks) max(ticks)]);
+        end
     end
 end
 
