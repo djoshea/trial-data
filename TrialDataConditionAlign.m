@@ -2541,6 +2541,14 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
+        function [dataCell, timeCell] = getAnalogChannelGroupGrouped(td, groupName, varargin)
+            % dataCell will be size(td.conditions)
+            % contents will be nTrials x T x nChannels
+            tdValid = td.selectValidTrials();
+            [data, time] = tdValid.getAnalogChannelGroup(groupName, varargin{:});
+            [dataCell, timeCell] = tdValid.groupElements(data, time);
+        end
+        
         function time = getAnalogChannelGroupTime(td, groupName)
             time = getAnalogChannelGroupTime@TrialData(td, groupName);
             time = td.alignInfoActive.getAlignedTimesCell(time, false, 'singleTimepointTolerance', Inf); % no padding

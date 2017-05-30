@@ -1449,7 +1449,7 @@ classdef TrialData
             stopTimes(~td.valid) = NaN;
             
             debug('Trimming event channels\n');
-            ev = td.listEventChannels();
+            ev = setdiff(td.listEventChannels(), {'TrialStart', 'TrialEnd'});
             td = td.trimEventRaw(ev, startTimes, stopTimes);
             
             debug('Trimming spike channels\n');
@@ -2445,8 +2445,11 @@ classdef TrialData
                 if ~isempty(td.data(iT).(groupName))
                     sz = size(td.data(iT).(groupName));
                     sz = sz(2:end);
+                    return
                 end
             end
+            
+            sz = 0;
         end
         
         function td = convertAnalogChannelGroupToNoScaling(td, groupName, varargin)
@@ -3653,7 +3656,7 @@ classdef TrialData
                 times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), timesMask(notEmpty), 'UniformOutput', false);
                 
                 [td, fieldsUpdated{i}] = td.setEvent(name, times, ...
-                    'isAligned', false, 'deferPostDataChange', false);
+                    'isAligned', false, 'deferPostDataChange', true);
                 %                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, name, times);
             end
             % defer post data change to the end so that align info need
