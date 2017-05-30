@@ -307,7 +307,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             needUpdate = false;
             
-            % check if any event fields were effected. if so, all align
+            % check if any event fields were affected. if so, all align
             % info's need to be reapplied since they cache all events, not
             % just the ones they need
             eventFields = td.listEventChannels();
@@ -2845,7 +2845,7 @@ classdef TrialDataConditionAlign < TrialData
                 tensor = values;             
                 values = cellvec(sizeDim1Expected);
                 for r = 1:sizeDim1Expected
-                    values{r} = TensorUtils.squeezeDims(tensor(r, :, :), 1);
+                    values{r} = TensorUtils.squeezeDims(tensor(r, :, :), 1); % TODO
                 end
                 clear tensor;
                 
@@ -2940,7 +2940,7 @@ classdef TrialDataConditionAlign < TrialData
             else
                 % take new data back into scaled values to match the
                 % existing
-                assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must have uniform scaling');
+%                 assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must have uniform scaling');
                 cd = td.channelDescriptorsByName.(chList{1});
                 values = cd.convertAccessDataCellToMemory(1, values);
             end
@@ -3012,6 +3012,8 @@ classdef TrialDataConditionAlign < TrialData
                     fullTimesThis = cat(1, preTimes, times{iT}, postTimes);
                     td.data(iT).(timeField) = fullTimesThis;
                 end
+                
+                assert(size(fullDataThis, 1) == numel(td.data(iT).(timeField)), 'Mismatch introduced between data and time vectors');
             end
             prog.finish();
             
@@ -3032,7 +3034,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td.assertHasAnalogChannelGroup(groupName);
             
-            assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must be uniformly scaled');
+            %assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must be uniformly scaled');
 
             cd = td.getAnalogChannelGroupSingleChannelDescriptor(groupName);
             timeField = cd.timeField;
@@ -5584,7 +5586,7 @@ classdef TrialDataConditionAlign < TrialData
                     end
                     
                     % update name for inclusion in legend
-                    TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, td.conditionNames{iCond});
+                    TrialDataUtilities.Plotting.showFirstInLegend(hData{iCond, iAlign}, td.conditionNamesShort{iCond});
                 end
             end
             
@@ -5717,6 +5719,13 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('ensureUniformSampling', false, @islogical);
+            p.addParameter('timeDelta', []);
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+            p.addParameter('interpolateMethod', 'linear', @ischar);   
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             

@@ -2567,6 +2567,13 @@ classdef PopulationTrajectorySet
                 'translationDescription', 'mean-subtracted', ...
                 'normalizationDescription', 'std-normalized');
         end
+        
+        function pset = normalizeBasesSoftRange(pset, alpha, varargin)
+            pset.warnIfNoArgOut(nargout);
+           
+            tr = SoftRangeNormalization.buildFromPopulationTrajectorySet(pset, alpha, varargin{:});
+            pset = pset.applyTranslationNormalization(tr);
+        end
     end
     
     % build methods for the odc properties, each must store results 
