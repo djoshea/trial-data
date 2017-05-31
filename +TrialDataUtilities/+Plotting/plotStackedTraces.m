@@ -40,6 +40,7 @@ p.addParameter('dataUnits', [], @(x) ischar(x) || (isvector(x) && iscellstr(x)))
 p.addParameter('verticalScaleBarHideLabel', false, @islogical);
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
+p.addParameter('showSpanLines', true, @islogical);
 p.addParameter('dataRangeFormat', '%.4g', @ischar);
 p.addParameter('quick', false, @islogical);
 % p.addParameter('lineStyle', '-', @ischar);
@@ -283,7 +284,7 @@ if ~p.Results.quick
 
     if showLabels
         spans = [makerow(traceLows); makerow(traceHighs)];
-        au.addLabeledSpan('y', 'span', spans, 'label', labels, 'rotation', p.Results.labelRotation);
+        au.addLabeledSpan('y', 'span', spans, 'label', labels, 'rotation', p.Results.labelRotation, 'showSpanLines', p.Results.showSpanLines);
     end
 
     hold off;

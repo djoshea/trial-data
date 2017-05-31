@@ -1400,7 +1400,7 @@ classdef TrialData
             % clean the analog channel groups
             for iG = 1:numel(groupsAffected)
                 if isfield(td.data, groupsAffected{iG}) % could be that the whole group was dropped
-                    td = td.removeUnusedColumnsAnalogChannelGroup(groupsAffected{iG});
+                    td = td.removeUnnamedColumnsAnalogChannelGroup(groupsAffected{iG});
                 end
             end
             
@@ -3165,9 +3165,18 @@ classdef TrialData
             cdCell = td.getChannelDescriptorMulti(chList);
             
             % separate groups from non groups
-            inGroup = cellfun(@(cd) cd.isColumnOfSharedMatrix, cdCell);
-            groupList = unique(cellfun(@(cd) cd.primaryDataField, cdCell(inGroup), 'UniformOutput', false));
-            chList = chList(~inGroup);
+            maskAnalog = cellfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), cdCell);
+            cdAnalog = cdCell(maskAnalog);
+            inGroup = cellfun(@(cd) cd.isColumnOfSharedMatrix, cdAnalog);
+            groupList = unique(cellfun(@(cd) cd.primaryDataField, cdAnalog(inGroup), 'UniformOutput', false));
+            chList = cdAnalog(~inGroup);
+            
+            maskGroup = cellfun(@(cd) isa(cd, 'AnalogChannelGroupDescriptor'), cdCell);
+            cdOther = cdCell(~maskAnalog & ~maskGroup);
+            if ~isempty(cdOther)
+                warning('Trimming analog time field %s referenced by other channels %s', ...
+                    timeField, TrialDataUtilities.String.strjoin({cdOther.name}));
+            end
             
             prog = ProgressBar(numel(chList) + numel(groupList), 'Stripping analog channels sharing time field %s', timeField);
             

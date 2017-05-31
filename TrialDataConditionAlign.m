@@ -6047,6 +6047,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('quick', false, @islogical);
             p.addParameter('commonTime', false, @islogical);
+            p.addParameter('channelLabels', {}, @iscellstr);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -6063,6 +6064,11 @@ classdef TrialDataConditionAlign < TrialData
             
             chList = p.Results.channels;
             cdCell = td.getChannelDescriptorMulti(chList);
+            if ~isempty(p.Results.channelLabels)
+                channelLabels = p.Results.channelLabels;
+            else
+                channelLabels = chList;
+            end
             dataUnits = cellfun(@(cd) cd.unitsPrimary, cdCell, 'UniformOutput', false);
             
             td = td.selectTrials(idx);
@@ -6076,7 +6082,7 @@ classdef TrialDataConditionAlign < TrialData
                 data = data';
             end
             
-            TrialDataUtilities.Plotting.plotStackedTraces(time, data, 'labels', chList, ...
+            TrialDataUtilities.Plotting.plotStackedTraces(time, data, 'labels', channelLabels, ...
                 'showLabels', true, 'dataUnits', dataUnits, 'normalize', p.Results.normalize, 'quick', p.Results.quick, ...
                 p.Unmatched);
             xlabel('');

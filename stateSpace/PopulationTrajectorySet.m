@@ -2506,33 +2506,33 @@ classdef PopulationTrajectorySet
             pset.translationNormalization = [];
         end
         
-        function pset = translateNormalize(pset, offsetByBasis, normalizationByBasis, varargin)
+        function [pset, tn] = translateNormalize(pset, offsetByBasis, normalizationByBasis, varargin)
             pset.warnIfNoArgOut(nargout);
            
             if any(normalizationByBasis == 0)
                 warning('Replacing normalization by 0 with 1');
                 normalizationByBasis(normalizationByBasis == 0) = 1;
             end
-            tr = StateSpaceTranslationNormalization.buildManual(offsetByBasis, normalizationByBasis, varargin{:});
-            pset = pset.applyTranslationNormalization(tr);
+            tn = StateSpaceTranslationNormalization.buildManual(offsetByBasis, normalizationByBasis, varargin{:});
+            pset = pset.applyTranslationNormalization(tn);
         end
         
-        function pset = translate(pset, offsetByBasis, varargin)
+        function [pset, tn] = translate(pset, offsetByBasis, varargin)
             pset.warnIfNoArgOut(nargout);
-            pset = pset.translateNormalize(offsetByBasis, onesvec(pset.nBases), varargin{:});
+            [pset, tn] = pset.translateNormalize(offsetByBasis, onesvec(pset.nBases), varargin{:});
         end
         
-        function pset = normalize(pset, normalizationByBasis, varargin)
+        function [pset, tn] = normalize(pset, normalizationByBasis, varargin)
             pset.warnIfNoArgOut(nargout);
-            pset = pset.translateNormalize(zerosvec(pset.nBases), normalizationByBasis, varargin{:});
+            [pset, tn] = pset.translateNormalize(zerosvec(pset.nBases), normalizationByBasis, varargin{:});
         end
         
-        function pset = meanSubtractBases(pset, varargin)
+        function [pset, tn] = meanSubtractBases(pset, varargin)
             pset.warnIfNoArgOut(nargout);
-            pset = pset.translate(-pset.computeMeanByBasis(varargin{:}), 'translationDescription', 'mean-subtracted');
+            [pset, tn] = pset.translate(-pset.computeMeanByBasis(varargin{:}), 'translationDescription', 'mean-subtracted');
         end
         
-        function pset = normalizeBasesByStd(pset, varargin)
+        function [pset, tn] = normalizeBasesByStd(pset, varargin)
             p = inputParser();
             p.addParameter('denominatorOffset', 0, @isscalar); % x = x / (std(x) + offset)
             p.KeepUnmatched = true;
@@ -2543,10 +2543,10 @@ classdef PopulationTrajectorySet
             else
                 desc = 'std-normalized';
             end
-            pset = pset.normalize(1 ./ (pset.computeStdByBasis(p.Unmatched) + p.Results.denominatorOffset), 'normalizationDescription', desc);
+            [pset, tn] = pset.normalize(1 ./ (pset.computeStdByBasis(p.Unmatched) + p.Results.denominatorOffset), 'normalizationDescription', desc);
         end
         
-        function pset = normalizeBasesByRange(pset, varargin)
+        function [pset, tn] = normalizeBasesByRange(pset, varargin)
             p = inputParser();
             p.addParameter('denominatorOffset', 0, @isscalar); % x = x / (std(x) + offset)
             p.KeepUnmatched = true;
@@ -2558,12 +2558,12 @@ classdef PopulationTrajectorySet
                 desc = 'range-normalized';
             end
                 
-            pset = pset.normalize(1 ./ (pset.computeRangeByBasis(p.Unmatched) + p.Results.denominatorOffset), 'normalizationDescription', desc);
+            [pset, tn] = pset.normalize(1 ./ (pset.computeRangeByBasis(p.Unmatched) + p.Results.denominatorOffset), 'normalizationDescription', desc);
         end
         
-        function pset = zscoreByBasis(pset, varargin)
+        function [pset, tn] = zscoreByBasis(pset, varargin)
             pset.warnIfNoArgOut(nargout);
-            pset = pset.translateNormalize(-pset.computeMeanByBasis(varargin{:}), pset.computeStdByBasis(varargin{:}), ...
+            [pset, tn] = pset.translateNormalize(-pset.computeMeanByBasis(varargin{:}), pset.computeStdByBasis(varargin{:}), ...
                 'translationDescription', 'mean-subtracted', ...
                 'normalizationDescription', 'std-normalized');
         end
