@@ -1288,7 +1288,7 @@ classdef TrialData
         % data duplication. This function returns the list of channels
         % which reference a particular data field. fields is a cellstr
         % and nameCell is a cell of cellstr
-        function namesByField = getChannelsReferencingFields(td, fields)
+        function [namesByField, fieldIdxEach] = getChannelsReferencingFields(td, fields)
             if ischar(fields)
                 wasCell = false;
                 fields = {fields};
@@ -1299,17 +1299,19 @@ classdef TrialData
             fieldsByChannel = structfun(@(cd) cd.dataFields, ...
                 td.channelDescriptorsByName, 'UniformOutput', false);
             
-            namesByField = cellvec(numel(fields));
+            [namesByField, fieldIdxEach] = cellvec(numel(fields));
             for iF = 1:numel(fields)
                 % don't need the assert since this might be called before
                 % the field is written
                 if ~isfield(td.data, fields{iF}), continue; end
                 %                 assert(isfield(td.data, fields{iF}), 'TrialData does not have data field %s', fields{iF});
-                mask = structfun(@(chFields) ismember(fields{iF}, chFields), fieldsByChannel);
+                [mask, whichField] = structfun(@(chFields) ismember(fields{iF}, chFields), fieldsByChannel);
                 namesByField{iF} = channels(mask);
+                fieldIdxEach{iF} = whichField(mask);
             end
             if ~wasCell
                 namesByField = namesByField{1};
+                fieldIdxEach = fieldIdxEach{1};
             end
         end
         
@@ -5313,68 +5315,140 @@ classdef TrialData
             % with channels not in that set of channels.
             td.warnIfNoArgOut(nargout);
             
+            if nargin < 3
+                fieldMask = [];
+            end
+            
             if ischar(names)
                 names = {names};
             end
-            cdCell = td.getChannelDescriptorMulti(names);
-            
-            % check for analog channel groups: if one channels is included, all
-            % must be included
-            inGroup = falsevec(numel(names));
-            groupNames = cellvec(numel(names));
-            for iC = 1:numel(names)
-                [inGroup(iC), groupNames{iC}] = td.isAnalogChannelInGroup(names{iC});
-            end
-            if any(inGroup)
-                groupNames = unique(groupNames(inGroup));
-                for iG = 1:numel(groupNames)
-                    other = td.listAnalogChannelsInGroup(groupNames{iG});
-                    if ~all(ismember(other, names))
-                        error('If renaming channel fields referenced by channels in analog channel group (%s) all channels in that group must be referenced', groupNames{iG});
-                    end
-                end
-            end
             
             fieldsRenamed = struct();
-            for iC = 1:numel(names)
-                cd = cdCell{iC};
+
+            [groupNames, singleNames] = sortOutGroups(names);
+            for iC = 1:numel(groupNames)
+                fixConflictsWithChannel(groupNames{iC}, union(groupNames, names));    
+            end
+            for iC = 1:numel(singleNames)
+                fixConflictsWithChannel(singleNames{iC}, union(groupNames, names));    
+            end
+            
+            function [groupNames, singleNames] = sortOutGroups(names)
+                % check for analog channel groups: if one channels is included, all
+                % must be included
+                inGroup = falsevec(numel(names));
+                groupNames = cellvec(numel(names));
+                for iN = 1:numel(names)
+                    if td.hasAnalogChannelGroup(names{iN})
+                        groupNames{iN} = names{iN};
+                        inGroup(iN) = true;
+                    elseif td.hasAnalogChannel(names{iN})
+                        [inGroup(iN), groupNames{iN}] = td.isAnalogChannelInGroup(names{iN});
+                    end
+                end
+
+                if any(inGroup)
+                    groupNames = unique(groupNames(inGroup));
+                    for iG = 1:numel(groupNames)
+                        other = td.listAnalogChannelsInGroup(groupNames{iG});
+                        if ~all(ismember(other, names))
+                            error('If renaming channel fields referenced by channels in analog channel group (%s) all channels in that group must be referenced', groupNames{iG});
+                        end
+                    end
+                else
+                    groupNames = {};
+                end
                 
-                if nargin < 3 || isempty(fieldMask)
+                singleNames = names(~inGroup);
+            end
+            
+            function fixConflictsWithChannel(chName, exclude)
+                % resolve conflicts shared between channel chName and any
+                % channels not in exclude. Either by renaming fields in
+                % chName, or by renaming other channels to avoid it.
+                
+                cd = td.getChannelDescriptor(chName);
+                    
+                if isempty(fieldMask)
                     fieldMaskThis = true(cd.nFields, 1);
                 else
                     fieldMaskThis = TensorUtils.vectorIndicesToMask(fieldMask, cd.nFields);
                 end
                 
-                isShareable = cd.isShareableByField;
-                dataFields = cd.dataFields;
                 for iF = 1:cd.nFields
-                    if ~isShareable(iF) || ~fieldMaskThis(iF), continue; end
-                    if ismember(dataFields{iF}, fieldnames(fieldsRenamed))
+                    if ~cd.isShareableByField(iF) || ~fieldMaskThis(iF), continue; end
+                    if ismember(cd.dataFields{iF}, fieldnames(fieldsRenamed))
                         % already renamed earlier, change cd to reflect that
-                        newName = fieldsRenamed.(dataFields{iF});
-                        cd = cd.renameDataField(iF, newName);
-                        continue;
+                        doFieldRename(chName, iF);
                     end
                     
-                    fullList = td.getChannelsReferencingFields(dataFields{iF});
-                    otherChannels = setdiff(fullList, [names; groupNames]);
+                    [fullList, whichField] = td.getChannelsReferencingFields(cd.dataFields{iF});
+                    [otherChannels, mask] = setdiff(fullList, exclude);
                     if isempty(otherChannels), continue; end
+                    whichField = whichField(mask);
                     
-                    % being used by other channels outside of names, rename and copy
-                    % use suggestion from ChannelDescriptor first, then
-                    % uniquify
+                    % check whether the field matches my suggested name for
+                    % it, which suggests it was mine and the other channels
+                    % are sharing it.
                     template = cd.suggestFieldName(iF);
+                    myFieldName = strcmp(template, cd.dataFields{iF});
+                    
+                    if myFieldName
+                        % have all the other channels rename their fields
+                        % to something else. This will handle group sub
+                        % channels intelligently
+                        for iO = 1:numel(otherChannels)
+                            doFieldRename(otherChannels{iO}, whichField(iO));    
+                        end
+                    else
+                        newName = doFieldRename(chName, iF);
+                        cd = td.getChannelDescriptor(chName);
+                        
+                        % rename all sub channels if any
+                        if isa(cd,'AnalogChannelGroupDescriptor')
+                            groupSubChList = td.listAnalogChannelsInGroup(groupSubChList);
+                            for iSub = 1:numel(groupSubChList)
+                                td.channelDescriptorsByName.(groupSubChList{iSub}) = ...
+                                    td.channelDescriptorsByName.(groupSubChList{iSub}).renameDataField(iF, newName);
+                            end
+                        end
+                    end
+                end
+            end
+               
+            function newName = doFieldRename(chName, iF)
+                % rename field iF of channel chName to a new field name
+                
+                cd = td.getChannelDescriptor(chName);
+                if ~cd.isShareableByField(iF)
+                    return
+                end
+                if ismember(cd.dataFields{iF}, fieldnames(fieldsRenamed))
+                    % already renamed earlier, change cd to reflect that
+                    newName = fieldsRenamed.(cd.dataFields{iF});
+                else
+                    % let the group suggest the name if in group
+                    cdSuggest = cd;
+                    if isa(cd, 'AnalogChannelGroup')
+                        % in group
+                        [tf, group] = td.isAnalogChannelInGroup(cd);
+                        if tf
+                            cdSuggest = td.getChannelDescriptor(group);
+                        end
+                    end
+                        
+                    % not yet renamed, come up with new field name and copy
+                    % data over
+                    template = cdSuggest.suggestFieldName(iF);
                     template = template(1:min(numel(template), namelengthmax()-10));
                     newName = matlab.lang.makeUniqueStrings(template, fieldnames(td.data));
-                    td.data = copyStructField(td.data, td.data, dataFields{iF}, newName);
-                    
-                    fieldsRenamed.(dataFields{iF}) = newName;
-                    cd = cd.renameDataField(iF, newName);
+                    td.data = copyStructField(td.data, td.data, cd.dataFields{iF}, newName);
+                    fieldsRenamed.(cd.dataFields{iF}) = newName;
                 end
                 
+                cd = cd.renameDataField(iF, newName);
                 td.channelDescriptorsByName.(cd.name) = cd;
             end
-            
         end
         
         function td = clearChannelData(td, name, varargin)

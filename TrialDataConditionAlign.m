@@ -2928,7 +2928,7 @@ classdef TrialDataConditionAlign < TrialData
                 td = td.copyRenameSharedChannelFields(chList, 2);
             end
             
-            timeField = td.channelDescriptorsByName.(chList{1}).timeField;
+            timeField = td.channelDescriptorsByName.(groupName).timeField;
                         
             if ~p.Results.keepScaling
                 % data being passed in is now in original units
@@ -2936,12 +2936,12 @@ classdef TrialDataConditionAlign < TrialData
                 td = td.convertAnalogChannelGroupToNoScaling(groupName);
                 % and convert back to memory anyway in case the data class
                 % has changed, although this shouldn't do any scaling
-                values = td.channelDescriptorsByName.(chList{1}).convertAccessDataCellToMemory(1, values);
+                values = td.channelDescriptorsByName.(groupName).convertAccessDataCellToMemory(1, values);
             else
                 % take new data back into scaled values to match the
                 % existing
 %                 assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must have uniform scaling');
-                cd = td.channelDescriptorsByName.(chList{1});
+                cd = td.channelDescriptorsByName.(groupName);
                 values = cd.convertAccessDataCellToMemory(1, values);
             end
             
