@@ -3171,10 +3171,11 @@ classdef TrialData
             
             % separate groups from non groups
             maskAnalog = cellfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), cdCell);
+            chListAnalog = chList(maskAnalog);
             cdAnalog = cdCell(maskAnalog);
             inGroup = cellfun(@(cd) cd.isColumnOfSharedMatrix, cdAnalog);
             groupList = unique(cellfun(@(cd) cd.primaryDataField, cdAnalog(inGroup), 'UniformOutput', false));
-            chList = cdAnalog(~inGroup);
+            chList = chListAnalog(~inGroup);
             
             maskGroup = cellfun(@(cd) isa(cd, 'AnalogChannelGroupDescriptor'), cdCell);
             cdOther = cdCell(~maskAnalog & ~maskGroup);
