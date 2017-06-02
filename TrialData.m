@@ -1262,7 +1262,7 @@ classdef TrialData
             % individual intervals
             totalFn = @(mat) sum(mat(:, 2) - mat(:, 1), 1);
             nUnits = size(blankIntervals, 2);
-            blankDurations = zerosvec(td.nTrials, nUnits);
+            blankDurations = zeros(td.nTrials, nUnits);
             for iT = 1:td.nTrials
                 for iU = 1:nUnits
                     if ~isempty(blankIntervals{iT, iU})
@@ -4634,7 +4634,7 @@ classdef TrialData
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
         
-        function counts = getSpikeCounts(td, unitName, varargin)
+        function [counts, hasSpikes] = getSpikeCounts(td, unitName, varargin)
             counts = cellfun(@numel, td.getSpikeTimes(unitName, varargin{:}));
             counts = td.replaceInvalidMaskWithValue(counts, NaN);
         end

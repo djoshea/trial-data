@@ -4092,7 +4092,7 @@ classdef TrialDataConditionAlign < TrialData
             counts = td.getSpikeCounts(unitName);
             countsCell = td.groupElementsRandomized(counts);
         end
-        
+     
         function [rates, durations, containsBlanked] = getSpikeMeanRateAllAlign(td, unitName, varargin)
             p = inputParser();
             p.addParameter('invalidIfBlanked', false, @islogical); % if true, any trial that is partially blanked will be NaN, if false, the blanked region will be ignored and will not contribute to the time window used as the denominator for the rate calculation
@@ -4133,10 +4133,10 @@ classdef TrialDataConditionAlign < TrialData
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName, varargin) 
             rateCell = td.getSpikeMeanRateGrouped(unitName, varargin{:});
             
-            meanByGroup = cellfun(@nanmean, rateCell);
-            semByGroup = cellfun(@nansem, rateCell);
-            stdByGroup = cellfun(@nanstd, rateCell);
-            nByGroup = cellfun(@(x) nnz(~isnan(x)), rateCell);
+            meanByGroup = cell2mat(cellfun(@(x) nanmean(x, 1), rateCell, 'UniformOutput', false));
+            semByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
+            stdByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
+            nByGroup = cell2mat(cellfun(@(x) sum(~isnan(x), 1), rateCell, 'UniformOutput', false));
         end
         
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeansAllAlign(td, unitName, varargin) 
