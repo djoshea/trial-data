@@ -3,13 +3,14 @@ classdef TiledAxisTool < handle
     % multiple tiled plots on a shared axis. Tiles are arranged top to
     % bottom and left to right in tiles. The offsets of each tile are
     % computed automatically. You must specify the scaling of each tile --
-    % in both axes, tiles can be scaled in 2 possible ways:
-    %   -- fixed: in the same scale as the axes. 1:1 scaling.
-    %   -- normalized: scaled relative to the axes to achieve a relative
-    %   size with respect to the other tiles
+    % in both x and y axes, tiles can be scaled in 2 possible ways:
+    %   - fixed: in the same scale as the data scale of the axes. 1:1
+    %       scaling implies veridical scaling of data.
+    %   - normalized: scaled relative to the axes to achieve a relative
+    %       size with respect to the other tiles
     %
-    % Normalized scaling allows the sizes of a set of tiles to be equalized
-    % (or in relative scale) with respect to each other. Fixed scaling
+    % Normalized scaling allows the data of a set of tiles to be equalized
+    % (or in relative scale) with respect to each other's data. Fixed scaling
     % ensures that the data in the axes will be in the same scale relative
     % to each other. These can be set independently for the x and y axes
     

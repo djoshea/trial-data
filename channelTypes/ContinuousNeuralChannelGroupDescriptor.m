@@ -7,8 +7,8 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
     end
     
     methods
-        function cd = ContinuousNeuralChannelGroupDescriptor(name, timeField)
-            cd = cd@AnalogChannelGroupDescriptor(name, timeField);
+        function cd = ContinuousNeuralChannelGroupDescriptor(name, timeField, varargin)
+            cd = cd@AnalogChannelGroupDescriptor(name, timeField, varargin{:});
         end
     end
     
@@ -22,7 +22,7 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
         end
         
         function cd = buildAnalogGroupFromValues(name, timeField, units, timeUnits, dataCell, timeCell, varargin)
-            cd = ContinuousNeuralChannelDescriptor(name, timeField);
+            cd = ContinuousNeuralChannelGroupDescriptor(name, timeField);
             cd = AnalogChannelGroupDescriptor.buildAnalogGroupFromValues(name, timeField, ...
                 units, timeUnits, dataCell, timeCell, ...
                 'channelDescriptor', cd, varargin{:});
@@ -31,27 +31,27 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
     
     methods
         function name = getNameWithUpdatedArray(cd, array)
-            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(cd.type, array, cd.electrode);
+            name = ContinuousNeuralChannelGroupDescriptor.generateNameFromTypeArrayElectrode(cd.type, array, cd.electrode);
         end
         
         function name = getNameWithUpdatedElectrode(cd, electrode)
-            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(cd.type, cd.array, electrode);
+            name = ContinuousNeuralChannelGroupDescriptor.generateNameFromTypeArrayElectrode(cd.type, cd.array, electrode);
         end
         
         function name = getNameWithUpdatedType(cd, type)
-            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, cd.array, cd.electrode);
+            name = ContinuousNeuralChannelGroupDescriptor.generateNameFromTypeArrayElectrode(type, cd.array, cd.electrode);
         end
       
         function type = get.type(cd)
-            type = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
+            type = ContinuousNeuralChannelGroupDescriptor.parseTypeArrayElectrode(cd.name);
         end
         
         function array = get.array(cd)
-           [~, array] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
+           [~, array] = ContinuousNeuralChannelGroupDescriptor.parseTypeArrayElectrode(cd.name);
         end
         
         function elec = get.electrode(cd)
-            [~, ~, elec] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(cd.name);
+            [~, ~, elec] = ContinuousNeuralChannelGroupDescriptor.parseTypeArrayElectrode(cd.name);
         end
        
         function cdIndividual = buildIndividualSubChannel(cd, name, index)
@@ -62,39 +62,38 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
     end
     
     methods(Static)
-        function cd = buildFromTypeArrayElectrode(type, array, electrode, timeField)
-            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode);
-            cd = ContinuousNeuralChannelDescriptor(name, timeField);
+        function cd = buildFromTypeArray(type, array, varargin)
+            name = ContinuousNeuralChannelGroupDescriptor.generateNameFromTypeArray(type, array);
+            timeField = sprintf('%s_time', name);
+            cd = ContinuousNeuralChannelGroupDescriptor.buildAnalogGroup(name, timeField, varargin{:});
         end
         
-        function cd = buildFromArrayElectrode(arrayElectrodeStr, timeField)
-            name = ContinuousNeuralChannelDescriptor.convertArrayElectrodeToChannelName(arrayElectrodeStr);
-            cd = ContinuousNeuralChannelDescriptor(name, timeField);
+        function cd = buildFromArray(array, varargin)
+            name = ContinuousNeuralChannelGroupDescriptor.generateNameFromTypeArray('', array);
+            timeField = sprintf('%s_time', name);
+            cd = ContinuousNeuralChannelGroupDescriptor.buildAnalogGroup(name, timeField, varargin{:});
         end
         
-        function [chName] = convertArrayElectrodeToChannelName(arrayElectrodeStr)
-            [type, array, electrode] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(arrayElectrodeStr);
-            assert(~isnan(electrode), 'Could not parse array/electrode string %s', arrayElectrodeStr);
-            chName = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode);
+        function [chName] = convertTypeArrayToChannelName(array)
+            [type, array] = ContinuousNeuralChannelGroupDescriptor.parseTypeArray(array);
+             chName = ContinuousNeuralChannelGroupDescriptor.generateNameFromTypeArray(type, array);
         end
         
-        function str = generateNameFromTypeArrayElectrode(type, array, electrode)
+        function str = generateNameFromTypeArray(type, array)
             if isempty(type)
-                str = sprintf('%s%03d', array, electrode);
+                str = sprintf('%s', array);
             else
-                str = sprintf('%s_%s%03d', type, array, electrode);
+                str = sprintf('%s_%s', type, array);
             end
         end
 
-        function [type, array, electrode] = parseTypeArrayElectrode(str)
-            tokens = regexp(str, '(?<type>\w+_)?(?<array>[A-Za-z_]*)(?<electrode>\d+)', 'names', 'once');
+        function [type, array] = parseTypeArray(str)
+            tokens = regexp(str, '(?<type>\w+_)?(?<array>[A-Za-z_]*)', 'names', 'once');
             if isempty(tokens)
                 array = '';
-                electrode = NaN;
                 type = '';
             else
                 array = tokens.array;
-                electrode =str2double(tokens.electrode);
                 type = tokens.type(1:end-1); % strip trailing _
             end
         end

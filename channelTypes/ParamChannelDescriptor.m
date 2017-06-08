@@ -131,6 +131,18 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.VECTOR;
         end 
         
+        function cd = buildNumericParam(name, units)
+            cd = ParamChannelDescriptor(name);
+            if nargin > 1
+                assert(ischar(units), 'Units must be string');
+                cd.unitsByField = {units};
+            else
+                cd.unitsByField = {''};
+            end
+            cd.originalDataClassByField = {'double'};
+            cd.elementTypeByField = cd.NUMERIC;
+        end 
+        
         function cd = buildDatenumParam(name)
             cd = ParamChannelDescriptor(name);
             cd.originalDataClassByField = {'double'};

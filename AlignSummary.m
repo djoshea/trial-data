@@ -927,6 +927,8 @@ classdef AlignSummary
             end
             
             switch style
+                case 'none'
+                    
                 case 'quick'
                     xlabel(sprintf('Time from %s (%s)', as.alignDescriptor.zeroLabel, as.timeUnitName));
                     

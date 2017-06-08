@@ -11,7 +11,7 @@ function makeClickableShowDescription(hvec, varargin)
 %   when a new handle is selected
 
     p = inputParser();
-    p.addOptional('descCell', {}, @(x) isempty(x) || iscellstr(x));
+    p.addOptional('descCell', {}, @(x) isempty(x) || ischar(x) || iscellstr(x));
     p.addParameter('activateFn', @select, @(x) isa(x, 'function_handle'));
     p.parse(varargin{:});
     descCell = p.Results.descCell;
@@ -24,6 +24,9 @@ function makeClickableShowDescription(hvec, varargin)
     hvec = hvec(maskValid);
     
     if nargin > 1 && ~isempty(descCell)
+        if ischar(descCell)
+            descCell = {descCell};
+        end
         descCell = descCell(maskValid);
         for i = 1:numel(hvec)
             set(hvec(i), 'Description', descCell{i});

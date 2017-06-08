@@ -266,6 +266,11 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             fld = ['unit', strrep(unitStr, '.', '_')];
         end
         
+        function cd = buildFromArrayElectrodeUnit(array, electrode, unit)
+            name = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(array, electrode, unit);
+            cd = SpikeChannelDescriptor.buildFromUnitName(name);
+        end
+        
         function [array, electrode, unit] = parseArrayElectrodeUnit(unitName)
             tokens = regexp(unitName, '(?<array>[A-Za-z_]*)(?<electrode>\d+)[_+](?<unit>\d+)', 'names', 'once');
             if isempty(tokens)

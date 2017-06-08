@@ -162,6 +162,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     end
                 end
             end
+            
+            function throwError(varargin)
+                error(['Error in channel %s, field %d: ' varargin{1}], cd.name, iF, varargin{2:end});
+            end
         end
         
         function [cd, data] = checkConvertDataAndUpdateMemoryClassToMakeCompatible(cd, fieldIdx, data)

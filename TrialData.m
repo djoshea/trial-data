@@ -487,6 +487,15 @@ classdef TrialData
                 end
                 if any(resort)
                     warning('%d trials have duplicate or non-monotonically increasing timestamps for %s', nnz(resort), dataField); 
+                    
+                    if isGroup(iA)
+                        td = td.copyRenameSharedChannelFields(channelsByGroup{groupIdx(iA)}, [false true]);
+                        timeField = td.channelDescriptorsByName.(channelsByGroup{groupIdx(iA)}{1}).timeField; % update post rename
+                    else
+                        td = td.copyRenameSharedChannelFields(dataFields{iA}, [false true]);
+                        timeField = td.channelDescriptorsByName.(dataFields{iA}).timeField; % update post rename
+                    end
+                    
                     [timeInsert, dataInsert] = cellfun(@resortTimeDedup, {td.data(resort).(timeField)}, {td.data(resort).(dataField)}, 'UniformOutput', false);
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, timeInsert, resort);
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, dataInsert, resort);
@@ -2432,6 +2441,7 @@ classdef TrialData
                         end
                     end
                 end
+                chList = chList(mask);
                 idx = idx(mask);
 
                 channelsByGroup = cellvec(numel(groupNames));

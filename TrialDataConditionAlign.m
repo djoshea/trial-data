@@ -6048,7 +6048,7 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function plotSingleTrialAnalogChannels(td, varargin)
             p = inputParser();
-            p.addOptional('channels', td.listAnalogChannels(), @iscellstr);
+            p.addOptional('channels', td.listAnalogChannels(), @(x) ischar(x) || iscellstr(x));
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
             p.addParameter('trialIdx', [], @isvector); % selection into all trials
             p.addParameter('normalize', true, @islogical);
@@ -6056,6 +6056,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('quick', false, @islogical);
             p.addParameter('commonTime', false, @islogical);
             p.addParameter('channelLabels', {}, @iscellstr);
+            p.addParameter('timeAxisStyle', 'marker', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -6070,7 +6071,8 @@ classdef TrialDataConditionAlign < TrialData
                 idx = mi2ui(p.Results.validTrialIdx, td.valid);
             end
             
-            chList = p.Results.channels;
+            chList = TrialDataUtilities.Data.wrapCell(p.Results.channels);
+            
             cdCell = td.getChannelDescriptorMulti(chList);
             if ~isempty(p.Results.channelLabels)
                 channelLabels = p.Results.channelLabels;
@@ -6095,7 +6097,7 @@ classdef TrialDataConditionAlign < TrialData
                 p.Unmatched);
             xlabel('');
             if ~p.Results.quick
-                td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', 'labelFirstMarkOnly', true);
+                td.alignSummaryActive.setupTimeAutoAxis('style', p.Results.timeAxisStyle, 'labelFirstMarkOnly', true);
 
                 ax = AutoAxis();
                 ax.axisMarginLeft = 5;
