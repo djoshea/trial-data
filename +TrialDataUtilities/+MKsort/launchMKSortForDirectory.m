@@ -1,4 +1,4 @@
-function launchMKSortForDirectory(d)
+function h = launchMKSortForDirectory(d)
 
     h = mksort;
     h.HandleVisibility = 'on';
