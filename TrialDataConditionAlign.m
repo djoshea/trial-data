@@ -4371,7 +4371,9 @@ classdef TrialDataConditionAlign < TrialData
 %             elseif nUnits == 1
 %                 colormap = [0 0 0];
             else
-                colormap = distinguishable_colors(nUnits, {'w', 'k'});
+%                 colormap = distinguishable_colors(nUnits, {'w', 'k'});
+                % cbrewer set 1 with gray removed
+                colormap = [0.894 0.102 0.11;0.216 0.494 0.722;0.302 0.686 0.29;0.596 0.306 0.639;1 0.498 0;1 1 0.2;0.651 0.337 0.157;0.969 0.506 0.749];
             end
            
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
