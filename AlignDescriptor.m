@@ -1379,7 +1379,7 @@ classdef AlignDescriptor
             if offset == 0
                 str = [abbrev indexStr];
             else
-                str = sprintf('%s%s%+.0f', abbrev, indexStr, offset);
+                str = sprintf('%s%s%+g', abbrev, indexStr, offset);
             end
         end
 
@@ -1404,7 +1404,7 @@ classdef AlignDescriptor
             if offset == 0
                 str = [name indexStr];
             else
-                str = sprintf('%s%s%+.0f', name, indexStr, offset);
+                str = sprintf('%s%s%+g', name, indexStr, offset);
             end
         end
 
