@@ -190,7 +190,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     G = size(dataCell, 2);
     
-    mat = nan([N, T, C, G]); % we'll reshape this later
+    mat = nan([N, T, C, G]); % we'll reshape this later, C is channels per matrix of dataCell, G is over columns of dataCell
     
     indPutStart = TrialDataUtilities.Stats.floortol((tMin - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
     indPutStop  = TrialDataUtilities.Stats.floortol((tMax - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
@@ -239,7 +239,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
         tMask = truevec(T);
     end
     
-    mat = reshape(mat(:, tMask, :, :), [N nnz(tMask) Cvec G]);
+    if C == 1
+        mat = TensorUtils.squeezeDims(mat(:, tMask, :, :), 3);
+    else
+        mat = reshape(mat(:, tMask, :, :), [N nnz(tMask) Cvec G]);
+    end
     tvec = tvec(tMask);
 end
 
