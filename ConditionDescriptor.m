@@ -555,7 +555,7 @@ classdef ConditionDescriptor
                 attr = p.Results.attributes;
             end
             ci.assertHasAttribute(attr);
-            
+            attr = unique(attr);
             ci = ci.removeAttributesFromAxes(attr);
             
             valueList = p.Results.valueList;
@@ -581,8 +581,15 @@ classdef ConditionDescriptor
             ci.axisRandomizeWithReplacement(idx) = false;
             ci.axisRandomizeResampleFromList{idx} = [];
             
-            ci.axisValueListsOccupiedOnly(idx) = true;
-
+            valueListMode = ci.getAttributeValueListMode(attr);
+            if all(ismember(valueListMode, [ci.AttributeValueListAuto, ci.AttributeValueBinsAutoUniform,  ci.AttributeValueBinsAutoQuantiles]))
+                % all attributes are auto, make the axis auto too
+                ci.axisValueListsOccupiedOnly(idx) = true;
+            else
+                % some attributes have been manually specified, so make the
+                % axis default to auto all
+                ci.axisValueListsOccupiedOnly(idx) = false;
+            end
             ci = ci.notifyConditionsChanged();
         end
         
