@@ -4545,10 +4545,25 @@ classdef TrialData
             
             intervalCell = cell(td.nTrials, numel(unitName));
             for iU = 1:numel(unitName)
-                cd = td.channelDescriptorsByName.(unitName{iU});
-                fld = cd.blankingRegionsField;
-                if ~isempty(fld)
-                    intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(makecol({td.data.(fld)}));
+                if ischar(unitName{iU})
+                    cd = td.channelDescriptorsByName.(unitName{iU});
+                    fld = cd.blankingRegionsField;
+                    if ~isempty(fld)
+                        intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(makecol({td.data.(fld)}));
+                    end
+                elseif iscellstr(unitName{iU})
+                    % combine inner units of nested cellstr
+                    arg2 = cellvec(numel(unitName{iU}));
+                    for iU2 = 1:numel(unitName{iU})
+                        cd = td.channelDescriptorsByName.(unitName{iU}{iU2});
+                        fld = cd.blankingRegionsField;
+                        if ~isempty(fld)
+                            arg2{iU2} = makecol({td.data.(fld)});
+                        end
+                    end
+                    intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(arg2{:});
+                else
+                    error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
                 end
             end
             
