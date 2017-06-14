@@ -4554,14 +4554,19 @@ classdef TrialData
                 elseif iscellstr(unitName{iU})
                     % combine inner units of nested cellstr
                     arg2 = cellvec(numel(unitName{iU}));
+                    mask2 = falsevec(numel(unitName{iU}));
                     for iU2 = 1:numel(unitName{iU})
                         cd = td.channelDescriptorsByName.(unitName{iU}{iU2});
                         fld = cd.blankingRegionsField;
                         if ~isempty(fld)
                             arg2{iU2} = makecol({td.data.(fld)});
+                            mask2(iU2) = true;
                         end
+                        
                     end
-                    intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(arg2{:});
+                    if any(mask2)
+                        intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(arg2{mask2});
+                    end
                 else
                     error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
                 end
