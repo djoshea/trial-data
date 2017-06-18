@@ -48,6 +48,21 @@ classdef SaveArrayIndividualized < handle
             fclose(countFid);
         end
         
+        function tf = isValidLocation(locationName)
+            locationName = GetFullPath(locationName);
+            if ~exist(locationName, 'dir')
+                tf = false; return;
+            end
+            if ~exist(fullfile(locationName, 'count.txt'), 'file')
+                tf = false; return;
+            end
+            fname = sprintf('el%06d.mat', 1);
+            if ~exist(fullfile(locationName, fname), 'file')
+                tf = false; return;
+            end
+            tf = true;
+        end
+        
         function S = loadArray(locationName, varargin)
             p = inputParser();
             p.addParameter('message', '', @ischar);
@@ -58,18 +73,7 @@ classdef SaveArrayIndividualized < handle
             
             locationName = GetFullPath(locationName);
             
-            % get element count from count.txt file
-            countFname = fullfile(locationName, 'count.txt');
-            countFid = fopen(countFname, 'r');
-            if countFid == -1
-                error('Could not find count file %s', countFname);
-            end
-            tokens = textscan(countFid, '%d', 1);
-            fclose(countFid);
-            N = double(tokens{1});
-            if isempty(N)
-                error('Could not read count file %s', countFname);
-            end
+            N = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationName);
             
             if ~isempty(p.Results.message)
                 str = p.Results.message;
@@ -89,6 +93,23 @@ classdef SaveArrayIndividualized < handle
                 prog.update(N-i+1);
             end
             prog.finish();
+        end
+        
+        function N = getArrayCount(locationName)
+            locationName = GetFullPath(locationName);
+            
+            % get element count from count.txt file
+            countFname = fullfile(locationName, 'count.txt');
+            countFid = fopen(countFname, 'r');
+            if countFid == -1
+                error('Could not find count file %s', countFname);
+            end
+            tokens = textscan(countFid, '%d', 1);
+            fclose(countFid);
+            N = double(tokens{1});
+            if isempty(N)
+                error('Could not read count file %s', countFname);
+            end
         end
     end
 end
