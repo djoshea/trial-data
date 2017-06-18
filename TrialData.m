@@ -527,7 +527,11 @@ classdef TrialData
                 end
             end
         end
-            
+        
+        function tf = hasMetaKey(td, key)
+            tf = isstruct(td.datasetMeta) && isfield(td.datasetMeta, key);
+        end
+        
         function v = getMetaKey(td, key)
             if isstruct(td.datasetMeta) && isfield(td.datasetMeta, key)
                 v = td.datasetMeta.(key);
@@ -594,6 +598,29 @@ classdef TrialData
             td = td.rebuildOnDemandCache();
         end
         
+        function td = loadFastMetaOnly(location)
+            % returns TrialData without the .data field, which will provide
+            % access to metadata and channel info but not the data
+            
+            if ~exist(location, 'dir')
+                error('Directory %s not found. Did you save with saveFast?', location);
+            end
+            loaded = load(fullfile(location, 'td.mat'));
+            td = loaded.td;
+        end
+        
+        function nTrials = loadFastTrialCount(location)
+            nTrials = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(location);
+        end
+        
+        function tf = loadFastIsValidLocation(location)
+            tf = exist(location, 'dir') && ...
+                 exist(fullfile(location, 'td.mat'), 'file') && ...
+                 TrialDataUtilities.Data.SaveArrayIndividualized.isValidLocation(location);
+        end
+    end
+       
+    methods(Static)
         % general utility to send plots to the correct axis
         function [axh, unmatched] = getRequestedPlotAxis(varargin)
             if isa(varargin{1}, 'TrialData') % used to be non-static method
