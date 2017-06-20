@@ -3610,7 +3610,7 @@ classdef TrialDataConditionAlign < TrialData
             binAlignmentMode = p.Results.binAlignmentMode;
             
             % pad a bit forward or backwards depending on binning
-            td = td.padForTimeBinning(binWidth, binAlignmentMode, false, false);  
+            td = td.padForTimeBinning(binWidth, binAlignmentMode, false, true);  
             spikeCell = td.getSpikeTimes(unitName, 'includePadding', true, 'combine', p.Results.combine);
             
             % provide an indication as to which trials have spikes

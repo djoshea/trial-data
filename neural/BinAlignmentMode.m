@@ -75,7 +75,7 @@ classdef BinAlignmentMode < int32
                     continue;
                 end
                 
-                % remove the offset from the time labels
+                % don't include the offset from the time labels
                 tvecLabelCell{i} = tvecLabel;
                 
                 % add the end of the last bin onto the histc bins
@@ -100,7 +100,7 @@ classdef BinAlignmentMode < int32
             tbinsValidMat = false(nTrials, numel(tvecLabel));
             for iTrial = 1:nTrials
                 tbinsValidMat(iTrial, :) = tbinsForHistc(1:end-1) >= starts(iTrial)+binStartOffset & ...
-                    tbinsForHistc(2:end) <= stops(iTrial) + binStartOffset;
+                    tbinsForHistc(2:end) <= stops(iTrial) + binWidth + binStartOffset; % ensure that we take the last bin labeled at exactly stop(iTrial)
             end
         end
     end
