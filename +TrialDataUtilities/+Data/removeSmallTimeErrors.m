@@ -21,6 +21,9 @@ function time = removeSmallTimeErrors(time, timeDelta, timeReference, tol)
     end
     
     function time = innerFn(time, timeDelta)
+        if isnan(timeDelta) || timeDelta == 0
+            return;
+        end
         scaled = (time - timeReference) ./ timeDelta;
 
         fl = floor(scaled);

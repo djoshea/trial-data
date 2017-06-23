@@ -2905,13 +2905,6 @@ classdef PopulationTrajectorySet
                         tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
                     end
                  
-                    % bring trial start stop in within the limits of tvec,
-                    % to deal with any rounding issues
-                    tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
-                        tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
-                    tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
-                        tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
-                    
                     % essential that we use computedValid here since .valid
                     % will also reflect trials which are invalid based on
                     % the current conditionInfo, which we don't want to

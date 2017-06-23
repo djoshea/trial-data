@@ -1385,9 +1385,10 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function td = padForSpikeFilter(td, sf)
-            % Pad trial data alignment for spike filter
+            % Pad trial data alignment for spike filter, including pre and
+            % post windo of the filter, as well as the bin width used
             td.warnIfNoArgOut(nargout);
-            td = td.pad([sf.preWindow sf.postWindow]);
+            td = td.pad(sf.padWindow);
         end
         
         function td = round(td, varargin)
@@ -4685,10 +4686,12 @@ classdef TrialDataConditionAlign < TrialData
                     'spikeFilter', p.Results.spikeFilter, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
             
-                [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
-                    TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}', meanMat{iAlign}, ...
-                    semMat{iAlign}, stdMat{iAlign});
-                tvecCell{iAlign} = tvecTemp';
+                if numel(tvecCell{iAlign}) > 1
+                    [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
+                        TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}', meanMat{iAlign}, ...
+                        semMat{iAlign}, stdMat{iAlign});
+                    tvecCell{iAlign} = tvecTemp';
+                end
             end
             
             if isempty(p.Results.errorType)
@@ -6503,24 +6506,30 @@ classdef TrialDataConditionAlign < TrialData
                         end
                         
                         if strcmp(p.Results.style, 'line')
-                            if plotErrorY
-                                hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
-                                    errmat, app(iCond).Color, 'axh', axh, ...
-                                    'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false); % we'll plot the mean line ourselves
-                                TrialDataUtilities.Plotting.hideInLegend(hShade);
-                            end
-    %                         if p.Results.alpha < 1
-    %                             hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(tvec + tOffset + xOffset, dmat' + yOffset, ...
-    %                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-    %                                'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
-    %                         else
+                            if numel(tvec) > 1
+                                if plotErrorY
+                                    hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
+                                        errmat, app(iCond).Color, 'axh', axh, ...
+                                        'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false); % we'll plot the mean line ourselves
+                                    TrialDataUtilities.Plotting.hideInLegend(hShade);
+                                end
                                 hData(iCond, iAlign) = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
                                     'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
                                     plotArgs{:}, p.Results.plotOptions{:});
-                                if p.Results.alpha < 1
-                                    TrialDataUtilities.Plotting.setLineOpacity(hData(iCond, iAlign), p.Results.alpha);
+                            else
+                                if plotErrorY
+                                    [hData(iCond, iAlign), hShade] = TrialDataUtilities.Plotting.errorline(tvec + tOffset + xOffset, dmat + yOffset, errmat, ...
+                                        'Color', app(iCond).Color, 'axh', axh, 'LineWidth', p.Results.lineWidth, 'MarkerSize', 8);
+                                    TrialDataUtilities.Plotting.hideInLegend(hShade);
+                                else
+                                    hData(iCond, iAlign) = plot(tvec + tOffset + xOffset, dmat + yOffset, 'o', 'Parent', axh, ...
+                                        'MarkerFaceColor', app(iCond).Color, 'MarkerEdgeColor', 'none', 'MarkerSize', 8);
                                 end
-    %                         end
+                                TrialDataUtilities.Plotting.hideInLegend(hShade);
+                            end
+                            if p.Results.alpha < 1
+                                TrialDataUtilities.Plotting.setLineOpacity(hData(iCond, iAlign), p.Results.alpha);
+                            end
     
                         elseif strcmp(p.Results.style, 'stairs')
                             if plotErrorY

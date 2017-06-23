@@ -45,8 +45,13 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     
     timeNew = (tMin:timeDelta:tMax)';
     nDimsOrig = ndims(data);
+    
+    if origDelta == 0 && tMin == tMax
+        % single sample special case
+        return;
+    end
+    
     data = TensorUtils.shiftdimToFirstDim(data, timeDim);
-
     deltaIsChanging = ~TrialDataUtilities.Stats.isequaltol(timeDelta, origDelta, origDelta / 1000);
     
     % do this to avoid off by one errors when generating time vectors

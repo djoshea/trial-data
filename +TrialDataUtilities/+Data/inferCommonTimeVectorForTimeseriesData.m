@@ -105,7 +105,11 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     % build the global time vector
     tMinGlobal = nanmin(tMin(:));
     tMaxGlobal = nanmax(tMax(:));
-    tvec = makecol(tMinGlobal:timeDelta:tMaxGlobal);
+    if timeDelta == 0 && tMinGlobal == tMaxGlobal
+        tvec = tMinGlobal;
+    else
+        tvec = makecol(tMinGlobal:timeDelta:tMaxGlobal);
+    end
     tMinCell = tMin;
     tMaxCell = tMax;
 end

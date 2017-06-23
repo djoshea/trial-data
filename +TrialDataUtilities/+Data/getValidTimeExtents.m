@@ -28,7 +28,11 @@ if iscell(data)
         if ~isempty(data{i}) && ~isempty(time{i})
             mask = ~all(isnan(data{i}), 2) & time{i} >= tMinExcludingPadding(i) & time{i} <= tMaxExcludingPadding(i);
             if any(mask)
-                timeDelta(i) = nanmedian(diff(time{i}(mask))); % ignore the mask here
+                if numel(time{i}(mask)) == 1
+                    timeDelta(i) = 0; % 0 means single sample
+                else
+                    timeDelta(i) = nanmedian(diff(time{i}(mask))); % ignore the mask here
+                end
                 
                 [tMin(i), indMin(i)] = min(time{i}(mask), [], 'omitnan');
                 [tMax(i), indMax(i)] = max(time{i}(mask), [], 'omitnan');

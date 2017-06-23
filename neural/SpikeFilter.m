@@ -13,6 +13,8 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
     properties(Dependent)
         preWindow
         postWindow
+        
+        padWindow % includes pre / post window plus binWidth time for the edge bins
         isCausal
     end
 
@@ -50,17 +52,17 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             str = '';
         end
         
-        function checkOkay(sf)
-            % throw an error if the settings are wrong
-            return;
-        end
-        
         function tf = getIsCausal(sf) % allows subclasses to override
             tf = sf.getPreWindow() >= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
         end
     end
 
     methods % Dependent properties
+        function checkOkay(sf)
+            % throw an error if the settings are wrong
+            return;
+        end
+        
         function t = get.preWindow(sf)
             t = sf.getPreWindow();
         end
@@ -68,7 +70,12 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         function t = get.postWindow(sf)
             t = sf.getPostWindow();
         end
-
+        
+        function w = get.padWindow(sf)
+            w = [sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs), ...
+                sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs)];
+        end
+                
         function tf = get.isCausal(sf)
             tf = sf.getIsCausal();
         end
@@ -123,9 +130,22 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
     end
 
     methods
+        function sf = SpikeFilter(varargin)
+            p = inputParser();
+            p.addParameter('timeDelta', 1, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @isscalar);
+            p.parse(varargin{:});
+            
+            sf.timeDelta = p.Results.timeDelta; % sampling interval for the filtered output
+            sf.binAlignmentMode = p.Results.binAlignmentMode;
+            sf.resampleMethod = p.Results.resampleMethod;
+        end
+       
         function [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
             % filters each trial individually, using a cell array to return
             % filtered rates and timeCell 
+            sf.checkOkay();
             tWindowMat = [makecol(tMinByTrial), makecol(tMaxByTrial)];
             [rateCell, timeCell] = sf.subclassFilterSpikeTrains(spikeCell, tWindowMat, multiplierToSpikesPerSec, varargin{:});
         end
@@ -136,7 +156,6 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             % before and after each trial. tvec is the time vector that
             % indicates time along the columns.=
             p = inputParser;
-            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x))
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('interpolateMethod', 'linear', @ischar);
             p.addParameter('showProgress', true, @islogical);    
@@ -144,12 +163,8 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             p.addParameter('tMaxByTrialExcludingPadding', [], @isvector);
             p.parse(varargin{:});
             
-            if ~isempty(p.Results.timeDelta)
-                sf.checkTimeDeltaOkay(p.Results.timeDelta);
-            end
-            
-            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, ...
-                'timeDelta', p.Results.timeDelta);
+            % calls checkOkay
+            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
             
             % convert to matrix
             [rates, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(rateCell, timeCell, ...

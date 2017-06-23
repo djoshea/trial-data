@@ -28,19 +28,27 @@ classdef BinAlignmentMode < int32
             
             tol = min(origDelta, newDelta) / 1000;
             
-            switch mode
-                % the assumption here is that we treat the existing time
-                % bins (with width origDelta) as having the same
-                % binAlignmentMode as mode.
-                case BinAlignmentMode.Causal
-                    tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - origDelta - timeReference + newDelta) ./ newDelta, tol) .* newDelta;
-                    tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig - timeReference) / newDelta, tol) * newDelta;
-                case BinAlignmentMode.Acausal
-                    tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - timeReference) / newDelta, tol) .* newDelta;
-                    tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig + origDelta - timeReference - newDelta) ./ newDelta, tol) .* newDelta;
-                case BinAlignmentMode.Centered
-                    tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - origDelta/2 - timeReference + newDelta/2) ./ newDelta, tol) .* newDelta;
-                    tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig + origDelta/2 - timeReference - newDelta/2) ./ newDelta, tol) .* newDelta;
+            if origDelta == 0
+                assert(isequaln(tMinOrig, tMaxOrig));
+                % single time sample
+                tMinNew = tMinOrig;
+                tMaxNew = tMaxOrig;
+            else
+            
+                switch mode
+                    % the assumption here is that we treat the existing time
+                    % bins (with width origDelta) as having the same
+                    % binAlignmentMode as mode.
+                    case BinAlignmentMode.Causal
+                        tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - origDelta - timeReference + newDelta) ./ newDelta, tol) .* newDelta;
+                        tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig - timeReference) / newDelta, tol) * newDelta;
+                    case BinAlignmentMode.Acausal
+                        tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - timeReference) / newDelta, tol) .* newDelta;
+                        tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig + origDelta - timeReference - newDelta) ./ newDelta, tol) .* newDelta;
+                    case BinAlignmentMode.Centered
+                        tMinNew = timeReference + TrialDataUtilities.Stats.ceiltol((tMinOrig - origDelta/2 - timeReference + newDelta/2) ./ newDelta, tol) .* newDelta;
+                        tMaxNew = timeReference + TrialDataUtilities.Stats.floortol((tMaxOrig + origDelta/2 - timeReference - newDelta/2) ./ newDelta, tol) .* newDelta;
+                end
             end
                     
             mask = tMinNew > tMaxNew;
@@ -48,22 +56,33 @@ classdef BinAlignmentMode < int32
             tMaxNew(mask) = NaN;
         end
         
-        function [tvecLabelCell, tbinsForHistcCell] = generateMultipleBinnedTimeVectors(mode, starts, stops, binWidth)
+        function [tvecLabelCell, tbinsForHistcCell] = generateMultipleBinnedTimeVectors(mode, starts, stops, binWidth, finalDelta, timeReference)
             % tvecLabel will be the time that each time bin is labeled
             % with, tbinsForHistc is the argument to histc that will select
             % times in the bin so that the output of histc matches
             % tvecLabel. The last bin output by histc should be thrown
-            % away.
+            % away. The time limits are chosen that the first bin is
+            % located entirely within starts:stops, but the last bin is
+            % extended to ensure that stops is included within the last
+            % bin. This is to ensure consistent behavior when starts ==
+            % stops, when we would then want a single bin extending from
+            % starts : (starts + binWidth).
             %
-            % actual spike zero/stop/zero will be at 0/start/stop + binAlignmentMode.getBinStartOffsetForBinWidth
+            % actual spike zero/start/stop will be at 0/start/stop + binAlignmentMode.getBinStartOffsetForBinWidth
                 
             assert(numel(starts) == numel(stops));
+            if nargin < 5
+                finalDelta = binWidth;
+            end
+            if nargin < 6
+                timeReference = 0;
+            end
             
             [tvecLabelCell, tbinsForHistcCell] = cellvec(numel(starts));
             
             binOffset = mode.getBinStartOffsetForBinWidth(binWidth);
             
-            [tMin, tMax] = mode.getTimeLimitsForRebinning(starts, stops, binWidth, binWidth, 0);
+            [tMin, tMax] = mode.getTimeLimitsForRebinning(starts, stops, binWidth, finalDelta, timeReference);
             
             for i = 1:numel(starts)
                 if isnan(tMin(i)) || isnan(tMax(i))
