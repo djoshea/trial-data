@@ -9,7 +9,9 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
     properties(Transient)
         conditionIdx
         conditionSubsRaw
-        conditionSubs 
+        conditionSubs
+        conditionMembership
+        conditionMembershipRaw
         listByConditionRaw
         listByCondition
         invalidCause
@@ -24,6 +26,8 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
             c.listByConditionRaw = [];
             c.listByCondition = [];
             c.invalidCause = {};
+            c.conditionMembership = [];
+            c.conditionMembershipRaw = [];
         end
     end
 end

@@ -663,6 +663,34 @@ classdef TensorUtils
             maskByDim = TensorUtils.maskByDimCellSelectAlongDimension(sz, dims, select);
             t(maskByDim{:}) = assignThis;
         end
+        
+        function selected = selectMaskAlongMultipleDimensions(t, dims, mask)
+            % mask logical mask or vector of linear inds into dimensions in
+            % dims. selected will be size along other dims x nnz(mask)
+            sz = size(t);
+            otherDims = TensorUtils.otherDims(sz, dims);
+            t_reshape = TensorUtils.reshapeByConcatenatingDims(t, {otherDims, dims});
+            selected = t_reshape(:, mask);
+            
+            selected = reshape(selected, [sz(otherDims) size(selected, 2)]); 
+        end
+        
+        function t = assignIntoTensorAlongMultipleDimensionsByMask(t, assignThis, dims, mask)
+            % mask logical mask or vector of linear inds into dimensions in
+            % dims. assignThis should scalar or be size(t)
+            sz = size(t);
+            otherDims = TensorUtils.otherDims(sz, dims);
+            t_reshape = TensorUtils.reshapeByConcatenatingDims(t, {otherDims, dims});
+            
+            if isscalar(assignThis)
+                t_reshape(:, mask) = assignThis;
+            else
+                assignThis = TensorUtils.reshapeByConcatenatingDims(assignThis, {otherDims, dims});
+                t_reshape(:, mask) = assignThis;
+            end
+            
+            t = TensorUtils.undoReshapeByConcatenatingDims(t_reshape, {otherDims, dims}, sz);
+        end
                 
         function sel = selectAlongDimensionWithNaNs(t, dim, select, varargin)
             assert(numel(dim) == 1, 'Must be single dimension');
