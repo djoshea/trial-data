@@ -4362,13 +4362,14 @@ classdef PopulationTrajectorySet
             for i = 1:N
                 pset = varargin{i};
                 mask = mask & pset.basisValid;
-                cause(~pset.basisValid) = pset.basisInvalidCause(~pset.basisValid);
+                cause(~pset.basisValid) = cellfun(@(c) sprintf('Invalid in other pset: %s', c),  ...
+                    pset.basisInvalidCause(~pset.basisValid), 'UniformOutput', false);
             end
             
             varargout = cellvec(N);
             for i = 1:N
                 pset = varargin{i};
-                varargout{i} = pset.setBasesInvalid(~mask, cause(~mask));
+                varargout{i} = pset.markBasesPermanentlyInvalid(~mask, cause(~mask));
             end
         end 
         

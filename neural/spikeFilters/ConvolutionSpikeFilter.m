@@ -3,8 +3,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
 
-    properties(SetAccess=protected)
-        % bin width that spikes will be binned into before filtering.
+    properties
+        % bin width that spikes may be binned into before filtering.
         % this is different from the sampling rate of the filtered firing
         % rate, which is determined by timeDelta.
         % This setting also determines the width of the bins specified by
@@ -69,7 +69,12 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         end
     end
 
-    methods(Access=protected)     
+    methods(Access=protected)      
+        function w = getPadWindow(sf)
+            w = [sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs), ...
+                sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs)];
+        end
+        
         function checkSettingsOkay(sf)
             % doesn't make sense to sample more finely than the
             % spikeBinWidth used
@@ -138,7 +143,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 %             timeCell = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
 %                 tMinByTrial+timeDeltaOffsetStart, tMaxByTrial+timeDeltaOffsetStop, sf.binWidthMs);
             timeCell = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
-                tMinByTrial, tMaxByTrial, sf.binWidthMs, sf.timeDelta);
+                tMinByTrial, tMaxByTrial, sf.binWidthMs, sf.binWidthMs);
             
             % filter via valid-region convolution, which automatically removes the padding
             rateCell = cellvec(size(spikeCell, 1));

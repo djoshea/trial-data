@@ -28,6 +28,12 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         % the rate at any particular time, including both the spike filtering and
         % the timeDelta binning
         t = getPostWindow(sf)
+        
+        % return a [pre post] window of padding that should be applied to
+        % the trial-data object before filtering in order to provide
+        % spiking data sufficient to fill the aligned time window
+        % post-filtering
+        w = getPadWindow(sf)
 
         % spikeCell is nTrains x 1 cell array of time points
         %
@@ -72,10 +78,9 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         end
         
         function w = get.padWindow(sf)
-            w = [sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs), ...
-                sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs)];
+            w = sf.getPadWindow();
         end
-                
+                         
         function tf = get.isCausal(sf)
             tf = sf.getIsCausal();
         end
@@ -99,6 +104,9 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         end
         
         function sf = set.resampleMethod(sf, v)
+            validList = {'filter', 'repeat', 'average', 'interp'};
+            assert(ismember(v, validList), 'Resample method must be one of filter, repeat, average, interp');
+    
             sf.resampleMethod = v;
             sf = sf.postSetResampleMethod();
         end
@@ -134,7 +142,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             p = inputParser();
             p.addParameter('timeDelta', 1, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @isscalar);
+            p.addParameter('resampleMethod', 'filter', @ischar);
             p.parse(varargin{:});
             
             sf.timeDelta = p.Results.timeDelta; % sampling interval for the filtered output

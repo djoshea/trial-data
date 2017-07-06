@@ -31,8 +31,10 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
             p.addParameter('delayPeak', 0, @isscalar);
             p.addParameter('truncateFuture', Inf, @isscalar);
             p.addParameter('truncatePast', Inf, @isscalar);
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
-
+            
+            sf = sf@ConvolutionSpikeFilter(p.Unmatched);
             sf.sigma = p.Results.sigma;
             sf.halfWidthSigmas = p.Results.halfWidthSigmas;
             sf.delayPeak = p.Results.delayPeak;

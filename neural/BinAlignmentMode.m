@@ -17,6 +17,18 @@ classdef BinAlignmentMode < int32
             end
         end
         
+        function offset = getOffsetToBinCenter(mode, binWidth)
+            % add this to a timestamp to get the bin center
+            switch mode
+                case BinAlignmentMode.Centered
+                    offset = 0;
+                case BinAlignmentMode.Causal
+                    offset = -binWidth/2;
+                case BinAlignmentMode.Acausal
+                    offset = binWidth/2;
+            end
+        end
+        
         function offsetStop = getBinStopOffsetForBinWidth(mode, binWidth)
             offsetStop = mode.getBinStartOffsetForBinWidth(binWidth) + binWidth;
         end

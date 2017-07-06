@@ -26,6 +26,7 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     timeDelta = double(p.Results.timeDelta);
     timeReference = p.Results.timeReference;
     interpolateMethod = p.Results.interpolateMethod;
+    binAlignmentMode = p.Results.binAlignmentMode;
    
     origDelta = p.Results.origDelta;
     if isempty(origDelta)
@@ -73,12 +74,14 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
 
             if deltaIsChanging
                 % use resampling
-                [data] = TrialDataUtilities.Data.resamplePadEdges(data, time, timeNew, p.Results.binAlignmentMode);   
+                [data] = TrialDataUtilities.Data.resamplePadEdges(data, time, timeNew, p.Results.binAlignmentMode, interpolateMethod);   
             end
 
             assert(size(data, 1) == numel(timeNew));
             
         case 'repeat'
+            % TODO NEED TO TAKE BINALIGNMENTMODE INTO ACCOUNT
+            
             % sample to uniform grid
             data = interp1(time, data, timeUniform, interpolateMethod);
             
@@ -98,6 +101,8 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
             end
             
         case 'average'
+            % TODO NEED TO TAKE BINALIGNMENTMODE INTO ACCOUNT
+            
             % sample to uniform grid
             data = interp1(time, data, timeUniform, interpolateMethod);
             
@@ -117,8 +122,17 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
             end
                 
         case 'interp'
-            data = interp1(time, data, timeNew, interpolateMethod);
+            % first shift the original timestamps to their centers
+            % if causal bins, e.g. 20 ms, want to interp data to centers at
+            % +10, +30 and then label as 20, 40. offset is -10
             
+            interpInputTimes =  time + binAlignmentMode.getOffsetToBinCenter(origDelta);
+            interpOutputTimes = timeNew + binAlignmentMode.getOffsetToBinCenter(timeDelta);
+            data = interp1(interpInputTimes, data, interpOutputTimes,  'linear', 'extrap');
+            
+%             interpToTime = timeNew + p.Results.binAlignmentMode.getOffsetToBinCenter(timeDelta);
+%             data = interp1(time, data, interpToTime, interpolateMethod);
+%             
         otherwise
             error('Unknown resampleMethod %s', p.Results.resampleMethod)
     end
