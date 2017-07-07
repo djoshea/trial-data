@@ -71,7 +71,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 
     methods(Access=protected)      
         function w = getPadWindow(sf)
-            w = [sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs), ...
+            w = [sf.preWindow - sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs), ...
                 sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs)];
         end
         

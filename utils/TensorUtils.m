@@ -1607,6 +1607,22 @@ classdef TensorUtils
             val = cell2mat(val);
             idxAlongDim = cell2mat(idxAlongDim);
         end
+        
+        function [coeff, score, latent, tsquared, explained] = pcaMultiDim(t, basisDims, varargin)
+            % performs PCA on a matrix where basisDims defines the dimensions over which linear
+            % combinations are constructed, and each other dimension
+            % represents observations. 
+            % coeff will be constructed with basisDims reshaped to fill the
+            % last dimension, and otherDims as subsequent dimensions
+            
+            szOrig = size(t);
+            otherDims = TensorUtils.otherDims(szOrig, basisDims);
+            t = TensorUtils.reshapeByConcatenatingDims(t, {otherDims, basisDims});
+            [coeff, score, latent, tsquared, explained] = pca(t, varargin{:});
+            K = size(coeff, 2);
+            score = reshape(score, [szOrig(otherDims), K]);
+            tsquared = reshape(tsquared, szOrig(otherDims));
+        end
     end
     
     methods(Static) % Data manipulation
