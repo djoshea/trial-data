@@ -69,10 +69,28 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         end
     end
 
+    % Time binning here is subtle. There are a few things to consider -
+    % first, we want to provide a time vector that begins at start and
+    % ends at stop, factoring in timeDelta (the ultimate rate
+    % we are sampling at). So if time delta is 20, and start is -300,
+    % we're going to be including a sample that effectively spans
+    % -310:-290 (or -320:300 if Causal binning). Then we have to factor
+    % in the spike filter itself, which will need extra bins to the
+    % left and right in order to provide a sample at its center (e.g. a
+    % 60 ms wide filter needs 30 ms pre and post). Lastly, we need to
+    % factor in the time window required by spikeBinMs for each bin
+    % that goes into the convolution step. 
+    %
+    % The spike data padding will be taken care of by the caller, and
+    % will rely on getPadWindow().
+    
     methods(Access=protected)      
         function w = getPadWindow(sf)
-            w = [sf.preWindow - sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs), ...
-                sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs)];
+            % pre and post window are already in ms to accommodate the filter
+            % then we accommodate both 
+            bin = max(sf.binWidthMs, sf.timeDelta);
+            w = [sf.preWindow - sf.binAlignmentMode.getBinStartOffsetForBinWidth(bin), ...
+                sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(bin)];
         end
         
         function checkSettingsOkay(sf)
@@ -87,7 +105,6 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % this gives us the right number of ms for the spike bins to
             % the left of zero, as well as the extra ms needed for the t=0
             % bin
-            %t = (sf.indZero - 1)*sf.binWidthMs + sf.binAlignmentMode.getBinStopOffsetForBinWidth(max(sf.binWidthMs, sf.timeDelta)); 
             t = (sf.indZero - 1)*sf.binWidthMs;
         end
 
@@ -97,7 +114,6 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % this gives us the right number of ms for the spike bins to
             % the right of zero. We no longer need to include the extra ms needed for the t=0
             % bin
-%             t = (sf.indZero - 1)*sf.binWidthMs + sf.binAlignmentMode.getBinStopOffsetForBinWidth(max(sf.binWidthMs, sf.timeDelta)); 
             t = (sf.indZero - 1)*sf.binWidthMs; 
         end
         
@@ -107,9 +123,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 
         % spikeCell is nTrains x 1 cell array of time points which will include 
         % times in the preceding and postceding padding window.
-        % padding here includes padding due to the spike filter (additional
-        % time bins pre and post), as well as additional times included to
-        % facilitate the binning itself with timeDelta. 
+        
         function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec, varargin)
             if isempty(spikeCell)
                 rateCell = cell(size(spikeCell));
@@ -121,29 +135,52 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % normalization is critical
             filt = filt ./ sum(filt);
             
-            tPadPre = sf.preWindow;
-            tPadPost = sf.postWindow;
-
+             % get time vector for bins including pre and post padding to accomodate filter
+            % this depends on both the bin width, time delta, and the bin
+            % alignment mode and is computed in getPadWindow
+            
+            % Example: causal binning, binWidthMs = 1, timeDelta=20. To get a sample
+            % at 0 we need binning to start at -19 (tMin = -20)
+            % If binWidthMs = 20 and timeDelta = 1, to get a sample at 0 we
+            % need binning to start at 0, which already spans -20:0.
+            
+            if sf.timeDelta > sf.binWidthMs
+            	window = [-sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.timeDelta), ...
+                         sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.timeDelta)];
+            else
+                window = [-sf.preWindow sf.postWindow];
+            end
+            
             tMinByTrial = floor(tWindowByTrial(:, 1));
             tMaxByTrial = floor(tWindowByTrial(:, 2));
             
-            % get time vector for bins including pre and post padding to accomodate filter
-            % this depends on both the bin width and the bin alignment mode
-            [timeLabels, tbinsForHistcByTrial] = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
-                    tMinByTrial-tPadPre, tMaxByTrial+tPadPost, sf.binWidthMs); %#ok<ASGLU> % timeLabels is useful for debugging
+           [timeLabels, tbinsForHistcByTrial] = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
+                    tMinByTrial+window(1), tMaxByTrial+window(2), sf.binWidthMs); %#ok<ASGLU> % timeLabels is useful for debugging
                 
-            % timeCell contains time vector without padding bins
-%             binOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.binWidthMs);
-%             binOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.binWidthMs);
+            % then construct timeCell, which contains time vector without the extra samples
+            % needed for the convolution, but WTIH the potential extra
+            % samples needed for the input to resampling from binWidthMs to
+            % timeDelta.
             
-%             timeDeltaOffsetStart = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.timeDelta);
-%             timeDeltaOffsetStop = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.timeDelta);
-%             timeCell = BinAlignmentMode.generateMultipleBinnedTimeVectors(...
-%                 tMinByTrial+binOffsetStart, tMaxByTrial+binOffsetStop, sf.binWidthMs, sf.binAlignmentMode);
-%             timeCell = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
-%                 tMinByTrial+timeDeltaOffsetStart, tMaxByTrial+timeDeltaOffsetStop, sf.binWidthMs);
+            
+            if sf.timeDelta > sf.binWidthMs
+                % we need to set the bin limits wider to facilitate
+                % resampling, as per the first example above.
+                tPre = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.timeDelta);
+                tPost = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.timeDelta);
+            else
+                tPre = 0;
+                tPost = 0;
+            end            
+            
+            % note that we don't use sf.timeDelta as the fourth argument
+            % here because we're not binning to timeDelta below. We don't
+            % convert to timeDelta until the resampling step at the end,
+            % which will take care of the adjusted time limits then. The
+            % tPre and tPost ensure that when the time limits are adjusted
+            % they end up ultimately at tMinByTrial and tMaxByTrial.
             timeCell = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
-                tMinByTrial, tMaxByTrial, sf.binWidthMs, sf.binWidthMs);
+                tMinByTrial + tPre, tMaxByTrial + tPost, sf.binWidthMs, sf.binWidthMs);
             
             % filter via valid-region convolution, which automatically removes the padding
             rateCell = cellvec(size(spikeCell, 1));

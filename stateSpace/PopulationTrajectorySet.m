@@ -1313,9 +1313,10 @@ classdef PopulationTrajectorySet
         
         function pset = set.basisValid(pset, v)
             if ~pset.dataSourceManual
-                error('Can only be set for dataSourceManual');
-%                 pset.odc = pset.odc.copy();
-%                 pset.odc.basisValid = v;
+%                error('Can only be set for dataSourceManual'); % but used
+%                by filterBases
+                 pset.odc = pset.odc.copy();
+                 pset.odc.basisValid = v;
             else
                 pset.basisValidManual = v;
             end
@@ -1339,9 +1340,9 @@ classdef PopulationTrajectorySet
         
         function pset = set.basisInvalidCause(pset, v)
             if ~pset.dataSourceManual
-                error('Can only be set for dataSourceManual');
-%                 pset.odc = pset.odc.copy();
-%                 pset.odc.basisInvalidCause = v;
+                %error('Can only be set for dataSourceManual');
+                pset.odc = pset.odc.copy();
+                pset.odc.basisInvalidCause = v;
             else
                 pset.basisInvalidCauseManual = v;
             end
