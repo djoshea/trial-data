@@ -50,6 +50,7 @@ classdef TrialDataConditionAlign < TrialData
         nTrialsByCondition
         conditionIdx
         conditionSubs
+        conditionMembership
         conditions
         conditionsAxisAttributesOnly
         conditionsAsStrings
@@ -1203,6 +1204,10 @@ classdef TrialDataConditionAlign < TrialData
 
         function v = get.conditionSubs(td)
             v = td.conditionInfo.conditionSubs;
+        end
+        
+        function v = get.conditionMembership(td)
+            v = td.conditionInfo.conditionMembership;
         end
         
         function minTimeDelta = get.minTimeDelta(td)
