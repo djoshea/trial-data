@@ -1381,8 +1381,19 @@ classdef TrialData
             
             for iG = 1:numel(groupName)
                 chList = td.listAnalogChannelsInGroup(groupName{iG});
-                td = td.dropChannels(chList);
-                td = td.dropChannels(groupName{iG});
+                
+                % first process entire groups to be removed
+                cd = td.channelDescriptorsByName.(groupName{iG});
+                td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, union(chList, groupName{iG}));
+                
+                % for the removed data channels' fields, figure out which ones
+                % aren't referenced by any other channels
+                fieldsRemove = cd.dataFields;
+                otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
+                maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
+                fieldsRemove = fieldsRemove(maskRemove);
+
+                td.data = rmfield(td.data, fieldsRemove);
             end
         end
         
@@ -1408,17 +1419,35 @@ classdef TrialData
             
             % first hold onto the to-be-removed channel descriptors
             cds = cellvec(numel(names));
-            groupNames = cellvec(numel(names));
-            inGroup = falsevec(numel(names));
+            partialGroupNames = cellvec(numel(names));
+            inGroup = falsevec(numel(names)); % analog channel in a group
+            isGroup = falsevec(numel(names));
             for i = 1:numel(names)
                 cds{i} = td.channelDescriptorsByName.(names{i});
                 if isa(cds{i}, 'AnalogChannelDescriptor') && cds{i}.isColumnOfSharedMatrix
-                    groupNames{i} = cds{i}.primaryDataField;
-                    inGroup(i) = true;
+                    groupName = cds{i}.primaryDataField;
+                    if ismember(groupName, names)
+                        % already included as a whole group, skip it
+                        continue;
+                    else
+                        inGroup(i) = true;
+                        partialGroupNames{i} = groupName;
+                    end
+                elseif isa(cds{i}, 'AnalogChannelGroupDescriptor')
+                    isGroup(i) = true;
                 end
             end
             
-            groupsAffected = unique(groupNames(inGroup));
+
+            % remove whole groups first 
+            if any(isGroup)
+                td = td.dropAnalogChannelGroup(names(isGroup));
+                cds = cds(~isGroup);
+                inGroup = inGroup(~isGroup);
+                partialGroupNames = partialGroupNames(~isGroup);
+            end
+            
+            groupsAffected = unique(partialGroupNames(inGroup));
             
             % remove the channel descriptors
             td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, names);
@@ -1435,12 +1464,14 @@ classdef TrialData
             
             td.data = rmfield(td.data, fieldsRemove);
             
+            % don't do this anymore - not all unnamed columns should be
+            % removed
             % clean the analog channel groups
-            for iG = 1:numel(groupsAffected)
-                if isfield(td.data, groupsAffected{iG}) % could be that the whole group was dropped
-                    td = td.removeUnnamedColumnsAnalogChannelGroup(groupsAffected{iG});
-                end
-            end
+%             for iG = 1:numel(groupsAffected)
+%                 if isfield(td.data, groupsAffected{iG}) % could be that the whole group was dropped
+%                     td = td.removeUnnamedColumnsAnalogChannelGroup(groupsAffected{iG});
+%                 end
+%             end
             
             td = td.postDataChange(fieldsRemove);
         end
@@ -5464,7 +5495,7 @@ classdef TrialData
                         
                         % rename all sub channels if any
                         if isa(cd,'AnalogChannelGroupDescriptor')
-                            groupSubChList = td.listAnalogChannelsInGroup(groupSubChList);
+                            groupSubChList = td.listAnalogChannelsInGroup(chName);
                             for iSub = 1:numel(groupSubChList)
                                 td.channelDescriptorsByName.(groupSubChList{iSub}) = ...
                                     td.channelDescriptorsByName.(groupSubChList{iSub}).renameDataField(iF, newName);
