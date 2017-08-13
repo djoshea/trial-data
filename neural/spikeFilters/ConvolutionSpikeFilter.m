@@ -114,7 +114,10 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % this gives us the right number of ms for the spike bins to
             % the right of zero. We no longer need to include the extra ms needed for the t=0
             % bin
-            t = (sf.indZero - 1)*sf.binWidthMs; 
+%             t = (sf.indZero - 1)*sf.binWidthMs; 
+            
+            filtSize = length(sf.filter);
+            t = filtSize - sf.indZero;
         end
         
         function tf = getIsCausal(sf) % allows subclasses to override

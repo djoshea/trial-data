@@ -26,7 +26,7 @@ classdef RectangularCausalSpikeFilter < ConvolutionSpikeFilter
         % have acausal elements if indZero > 1
         function [filt, indZero] = getFilter(sf)
             filt = onesvec(floor(sf.widthMs / sf.binWidthMs));
-            indZero = 1; % this makes it causal
+            indZero = numel(filt); % this makes it causal
         end
     end
 
