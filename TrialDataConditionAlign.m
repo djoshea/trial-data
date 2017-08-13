@@ -2717,9 +2717,13 @@ classdef TrialDataConditionAlign < TrialData
                     
                 for iT = 1:td.nTrials
                     if ~td.valid(iT), continue; end
+                    % dataCell{iT} will be 1 x T x nChannels and needs to
+                    % be squeezed along dim 1
                     [dataCell{iT}, timeCell{iT}]  = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
-                        dataCellRaw(iT, :)', timeCellRaw(iT, :)', ...
-                        'assumeUniformSampling', true);  % since getAnalog already ensured uniform sampling          
+                        dataCellRaw(iT, :), timeCellRaw(iT, :), ...
+                        'assumeUniformSampling', true);  % since getAnalog already ensured uniform sampling  
+                    assert(size(dataCell{iT}, 1) == 1);
+                    dataCell{iT} = permute(dataCell{iT}, [2 3 4 1]);
                 end
             end
         end
@@ -5618,6 +5622,7 @@ classdef TrialDataConditionAlign < TrialData
                                 end
 
                             elseif D==2
+                                assert(size(dataC{iTrial}, 2) == 2, 'Expecting data matrix per trial with two columns corresponding to dim 1 and 2');
                                 dxvec = dataC{iTrial}(:, 1);
                                 dyvec = dataC{iTrial}(:, 2);
 
