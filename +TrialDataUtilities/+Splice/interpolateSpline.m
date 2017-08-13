@@ -8,8 +8,6 @@ function dataSpliced = interpolateSpline(dataCat, joinIdx, ...
     sz = size(dataCat);
     dataSpliced = nan(sz);
     nTraj = prod(sz(3:end));
-    
-    
 
     for c = 1:nTraj
         dataPre = dataCat(:, 1:joinIdx(c)-1, c);

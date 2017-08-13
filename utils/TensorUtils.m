@@ -1239,6 +1239,16 @@ classdef TensorUtils
     end
     
     methods(Static) % Size expansion / truncation
+        function out = scalarExpandToSize(in, szOut)
+            if isscalar(in)
+                out = repmat(in, szOut);
+            else
+                szIn = size(in);
+                szOut = TensorUtils.expandScalarSize(szOut);
+                assert(isequal(szOut, szIn));
+            end
+        end
+        
         function out = singletonExpandToSize(in, szOut)
             % expand singleton dimensions to match szOut using repmat
             szIn = size(in);
@@ -1618,10 +1628,46 @@ classdef TensorUtils
             szOrig = size(t);
             otherDims = TensorUtils.otherDims(szOrig, basisDims);
             t = TensorUtils.reshapeByConcatenatingDims(t, {otherDims, basisDims});
-            [coeff, score, latent, tsquared, explained] = pca(t, varargin{:});
-            K = size(coeff, 2);
-            score = reshape(score, [szOrig(otherDims), K]);
+            
+            % deal gracefully with all nan bases
+            validCols = any(~isnan(t), 1);
+            [coeff, score, latent, tsquared, explained] = pca(t(:, validCols), varargin{:});
+            if ~all(validCols)
+                coeff = TensorUtils.inflateMaskedTensor(coeff, 1, validCols);
+            end
+            nC = size(coeff, 2);
+            score = reshape(score, [szOrig(otherDims), nC]);
             tsquared = reshape(tsquared, szOrig(otherDims));
+        end
+        
+        function [coeff, score, latent, tsquared, explained, mu] = pcaAlongDim(t, basisDim, varargin)
+            % performs PCA on a matrix where basisDim defines the single dimension over which linear
+            % combinations are constructed, and each other dimension
+            % represents observations. 
+            % coeff will be constructed with basisDims reshaped to fill the
+            % last dimension, and otherDims as subsequent dimensions
+            
+            assert(isscalar(basisDim));
+            szOrig = size(t);
+            otherDims = TensorUtils.otherDims(szOrig, basisDim);
+            t = TensorUtils.reshapeByConcatenatingDims(t, {otherDims, basisDim});
+            
+            % deal gracefully with all nan bases
+            validCols = any(~isnan(t), 1);
+            [coeff, score, latent, tsquared, explained, mu] = pca(t(:, validCols), varargin{:});
+            
+            if ~all(validCols)
+                coeff = TensorUtils.inflateMaskedTensor(coeff, 1, validCols, 0);
+                mu = TensorUtils.inflateMaskedTensor(mu', 1, validCols, 0);
+            end
+            
+            szNew = szOrig;
+            nC = size(coeff, 2);
+            szNew(basisDim) = nC;
+            score = TensorUtils.undoReshapeByConcatenatingDims(score, {otherDims, basisDim}, szNew); 
+            tsquared = reshape(tsquared, szOrig(otherDims));
+            
+            mu = TensorUtils.orientSliceAlongDims(mu, basisDim);
         end
     end
     

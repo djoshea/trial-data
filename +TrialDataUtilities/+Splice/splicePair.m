@@ -16,10 +16,10 @@ function [dataSpliced, info] = splicePair(dataPre, dataPost, varargin)
 % Lastly, optionally, we chop off some data to either side and replace it
 % with a spline interpolation.
 
-    nPre = size(dataPre, 2);
+    nPre = size(dataPre, 2); %#ok<NASGU>
     nPost = size(dataPost, 2);
     nBases = size(dataPre, 1);
-    nTraj = prod(TensorUtils.sizeOtherDims(dataPre, [1 2]));
+    nTraj = prod(TensorUtils.sizeOtherDims(dataPre, [1 2])); %#ok<NASGU>
     
     p = inputParser();
     
@@ -43,19 +43,39 @@ function [dataSpliced, info] = splicePair(dataPre, dataPost, varargin)
     p.addParameter('interpFitWindow', 30, @isscalar); % include these last points as waypoints for the splines, should be bigger than splineIgnore
     
     p.addParameter('showPlot', false, @islogical);
+    
+    p.addParameter('usePCA', false, @islogical); % if true, use PCA and splice based on capturing 80% of the variance 
+    p.addParameter('nPCs', 6, @(x) isempty(x) || isscalar(x));
     p.parse(varargin{:});
+    
+    if p.Results.usePCA
+        dataPCA = cat(2, dataPre, dataPost);
+        [coeff, ~, ~, ~, ~, mu] = TensorUtils.pcaAlongDim(dataPCA, 1, 'NumComponents', p.Results.nPCs);
+        
+        dataPreProj = TensorUtils.linearCombinationAlongDimension(dataPre - mu, 1, coeff', 'replaceNaNWithZero', true);
+        dataPostProj= TensorUtils.linearCombinationAlongDimension(dataPost - mu, 1, coeff', 'replaceNaNWithZero', true);
+    else
+        coeff = eye(size(dataPre, 1));
+        mu = zerosvec(size(dataPre, 1));
+        dataPreProj = dataPre;
+        dataPostProj = dataPost;
+    end
     
     % first, we compute the best amount of temporal overlap of the edges of
     % the trajectories
-    nTimepointsOverlap = TrialDataUtilities.Splice.computeBestOverlap(dataPre, dataPost, ...
+    nTimepointsOverlap = TrialDataUtilities.Splice.computeBestOverlap(dataPreProj, dataPostProj, ...
         p.Results.minOverlap, p.Results.maxOverlap, 'commonAcrossTrajectories', p.Results.commonOverlapAcrossTrajectories, 'showPlot', false);
     info.nTimepointsOverlap = nTimepointsOverlap;
     
     % then we assume that overlap and use the best splice point on a per
     % trajectory basis (i.e. for each traj along dims 3)
-    [info.joinIdxInPre, info.nextIdxInPost, dataCat] = TrialDataUtilities.Splice.computeBestJoinPoint(dataPre, dataPost, nTimepointsOverlap, ...
+    [info.joinIdxInPre, info.nextIdxInPost] = TrialDataUtilities.Splice.computeBestJoinPoint(dataPreProj, dataPostProj, nTimepointsOverlap, ...
         'joinAfterIndexPre', p.Results.joinAfterIndexPre, 'joinBeforeIndexPost', p.Results.joinBeforeIndexPost, ...
         'commonJoinAcrossTrajectories', p.Results.commonJoinAcrossTrajectories && p.Results.commonOverlapAcrossTrajectories);
+    
+    % do the concatenation here (since the best join point may be done on
+    % the PCs)
+    dataCat = TrialDataUtilities.Splice.simpleCatJoin(dataPre, dataPost, info.joinIdxInPre, info.nextIdxInPost);
     
     % build info matrices describing where each point of the concatenated
     % timeseries pulls its data from for pre and post
@@ -77,8 +97,34 @@ function [dataSpliced, info] = splicePair(dataPre, dataPost, varargin)
         % do linear interpolation
         dataSpliced = TrialDataUtilities.Splice.interpolateLinear(dataCat, info.joinIdxInPre+1, ...
             p.Results.interpolateMethod, p.Results.interpFitWindow, p.Results.interpIgnoreWindow);
-    else
+    elseif isempty(p.Results.interpolateMethod)
         
         dataSpliced = dataCat;
+    else
+        error('Unknown interpolateMethod %s', p.Results.interpolateMethod);
     end
+    
+    info.spliceStart = info.joinIdxInPre+1 - p.Results.interpFitWindow - p.Results.interpIgnoreWindow;
+    info.spliceStop = info.joinIdxInPre+1 + p.Results.interpFitWindow + p.Results.interpIgnoreWindow;
+    
+    if p.Results.showPlot
+        % plot traces and traces ends in red
+        plot3(dataPreProj(1, :), dataPreProj(2, :), dataPreProj(3, :), 'k.');
+        hold on;
+        plot3(dataPreProj(1, end), dataPreProj(2, end), dataPreProj(3, end), 'ro', 'MarkerFaceColor', 'r');
+
+        plot3(dataPostProj(1, :), dataPostProj(2, :), dataPostProj(3, :), 'k.');
+        plot3(dataPostProj(1, 1), dataPostProj(2, 1), dataPostProj(3, 1), 'ro', 'MarkerFaceColor', 'r');
+
+        % plot last timepoints retained for splicing in green
+        plot3(dataPreProj(1, end), dataPreProj(2, end), dataPreProj(3, end), 'go', 'MarkerFaceColor', 'g');
+        plot3(dataPostProj(1, 1), dataPostProj(2, 1), dataPostProj(3, 1), 'go', 'MarkerFaceColor', 'g');
+
+        % plot splice results
+        dataSplicedProj = TensorUtils.linearCombinationAlongDimension(dataSpliced - mu, 1, coeff', 'replaceNaNWithZero', true);
+        plot3(dataSplicedProj(1, :), dataSplicedProj(2, :), dataSplicedProj(3, :), 'r');
+
+        set(findall(gca, 'Type', 'line'), 'Clipping', 'off');
+    end
+
 end
