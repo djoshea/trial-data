@@ -2862,8 +2862,6 @@ classdef PopulationTrajectorySet
             
             isSpikeChannel = false(pset.nBases, 1);
             
-            dataByTrial = cell(pset.nBases, pset.nAlign);
-            
             prog = ProgressBar(pset.nBases, 'Extracting aligned data by basis');
             for iBasis = 1:nBases    
                 prog.update(iBasis);
