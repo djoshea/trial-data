@@ -197,6 +197,35 @@ classdef StateSpaceProjection
 %             end
         end
             
+        function proj = markBasesInvalid(proj, mask, cause)
+            proj.warnIfNoArgOut(nargout);
+  
+            mask = makecol(TensorUtils.vectorIndicesToMask(mask, proj.nBasesSource));
+            maskOrig = mask; % cache for later
+            
+            mask = mask & proj.basisValid;
+            proj.basisValid(mask) = false;
+            
+            if ~any(mask)
+                return;
+            end
+            
+            if nargin < 3
+                cause = 'markBasesInvalid cause unspecified';
+            end
+            assert(iscellstr(cause) || ischar(cause), 'Cause must be a cellstr or a string');
+            if ischar(cause)
+                cause = repmat({cause}, nnz(mask), 1);
+            end
+            cause = makecol(cause);
+          
+            if numel(cause) == nnz(maskOrig)
+                cause = TensorUtils.inflateMaskedTensor(cause, 1, maskOrig, {''});
+            end
+            assert(numel(cause) == numel(mask), 'Length of cellstr cause must match nnz(mask) or numel(mask)');
+           
+            proj.basisInvalidCause(mask) = cause(mask);
+        end
     end
     
     % Simple dependent property getters
@@ -303,6 +332,24 @@ classdef StateSpaceProjection
     end
 
     methods
+        function [marginalizationNames, combinedParams, axisIncludeList, marginalizationList] = getMarginalizationNames(proj, pset, varargin)
+            % other args include
+            % 'combineAxesWithTime'
+            % 'axesCombineAllMarginalizations', proj.axesCombineAllMarginalizations, ...
+            % 'axesCombineSpecificMarginalizations', proj.axesCombineSpecificMarginalizations);
+            
+            nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
+            dimMask = nConditionsAlongAxis > 1; % filter for non-singular axes
+            
+            [combinedParams, marginalizationNames, axisIncludeList, marginalizationList] = StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization( ...
+                pset.conditionDescriptor.axisAttributes, ...
+                'axisIncludeMask', dimMask, ...
+                'axisNames', pset.conditionDescriptor.axisNames, ...
+                'combineAxesWithTime', proj.combineAxesWithTime, ...
+                'axesCombineAllMarginalizations', proj.axesCombineAllMarginalizations, ...
+                'axesCombineSpecificMarginalizations', proj.axesCombineSpecificMarginalizations);
+        end
+        
         function [proj, stats, psetPrepared] = buildFromPopulationTrajectorySet(proj, pset, varargin)
             % build this projection matrix based on an existing PopulationTrajectorySet
             % defers to calculateProjectionMatrix for the actual basis computation
@@ -786,6 +833,31 @@ classdef StateSpaceProjection
     
     
     methods(Static)
+        function [marginalizationNames, combinedParams, axisIncludeList, marginalizationList] = determineMarginalizationNames(pset, varargin)
+            % other args include
+            % 'combineAxesWithTime'
+            % 'axesCombineAllMarginalizations', proj.axesCombineAllMarginalizations, ...
+            % 'axesCombineSpecificMarginalizations', proj.axesCombineSpecificMarginalizations);
+            
+            p = inputParser();
+            p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
+            p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
+            p.addParameter('combineAxesWithTime', true, @(x) islogical(x) || iscell(x));
+            p.parse(varargin{:});
+            args = p.Results;
+            
+            nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
+            dimMask = nConditionsAlongAxis > 1; % filter for non-singular axes
+            
+            [combinedParams, marginalizationNames, axisIncludeList, marginalizationList] = StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization( ...
+                pset.conditionDescriptor.axisAttributes, ...
+                'axisIncludeMask', dimMask, ...
+                'axisNames', pset.conditionDescriptor.axisNames, ...
+                'combineAxesWithTime', args.combineAxesWithTime, ...
+                'axesCombineAllMarginalizations', args.axesCombineAllMarginalizations, ...
+                'axesCombineSpecificMarginalizations', args.axesCombineSpecificMarginalizations);
+        end
+        
         function proj = concatenate(varargin)
             projCell = varargin;
             

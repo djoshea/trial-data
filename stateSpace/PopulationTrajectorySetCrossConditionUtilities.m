@@ -194,7 +194,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             end
             assert(numel(newNamesAlongAxis) == cNewAlongAxis, 'newNamesAlongAxis must have numel == number of new conditions (%d)', cNewAlongAxis);
             
-            pset.warnIfAnyBasesMissingTrialAverageForNonEmptyConditionAligns();
+            % pset.warnIfAnyBasesMissingTrialAverageForNonEmptyConditionAligns();
             b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
             
             % setup new condition descriptor, optionally drop the axis
@@ -377,14 +377,25 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 dataNTrialsTensor, aIdx+2, wNbyO ~= 0, 'replaceNaNWithZero', p.Results.replaceNaNWithZero), cdims);
 
             % shrink the time windows over all considered conditions
+            if p.Results.replaceNaNWithZero
+                % don't worry about nans in the time windows since we're
+                % taking data from any condition along the axis
+                nanMode = 'omitnan';
+            else
+                % we must use includenan here otherwise we'll end up having
+                % tMinValid where no data is present
+                nanMode = 'includenan';
+            end
+            
             [tMinValidOld, cdims] = TensorUtils.reshapeDimsInPlace(pset.tMinValidByAlignBasisCondition, 3, pset.conditionsSize);
-            tMinValidCellByNew = arrayfun(@(iNew) max(TensorUtils.selectAlongDimension(tMinValidOld, aIdx+2, wNbyO(iNew, :) ~= 0), [], aIdx+2), ...
+            
+            tMinValidCellByNew = arrayfun(@(iNew) max(TensorUtils.selectAlongDimension(tMinValidOld, aIdx+2, wNbyO(iNew, :) ~= 0), [], aIdx+2, nanMode), ...
                 1:cNewAlongAxis, 'UniformOutput', false);
             tMinValidNew = cat(aIdx+2, tMinValidCellByNew{:});
             b.tMinValidByAlignBasisCondition = TensorUtils.flattenDimsInPlace(tMinValidNew, cdims);
             
             [tMaxValidOld, cdims] = TensorUtils.reshapeDimsInPlace(pset.tMaxValidByAlignBasisCondition, 3, pset.conditionsSize);
-            tMaxValidCellByNew = arrayfun(@(iNew) min(TensorUtils.selectAlongDimension(tMaxValidOld, aIdx+2, wNbyO(iNew, :) ~= 0), [], aIdx+2), ...
+            tMaxValidCellByNew = arrayfun(@(iNew) min(TensorUtils.selectAlongDimension(tMaxValidOld, aIdx+2, wNbyO(iNew, :) ~= 0), [], aIdx+2, nanMode), ...
                 1:cNewAlongAxis, 'UniformOutput', false);
             tMaxValidNew = cat(aIdx+2, tMaxValidCellByNew{:});
             b.tMaxValidByAlignBasisCondition = TensorUtils.flattenDimsInPlace(tMaxValidNew, cdims);
@@ -523,7 +534,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 prog.update(iSource);
                 for iAlign = 1:pset.nAlign
                     emptyMask = cellfun(@(pset) isempty(pset.alignSummaryData{iSource, iAlign}), psetCell);
-                    if all(emptyMask)
+                    if all(emptyMask) || ~pset.basisValid(iSource)
                         % missing entirely, that's okay
                         b.alignSummaryData{iSource, iAlign} = [];
                         

@@ -1,38 +1,38 @@
 classdef PopulationTrajectorySet
-% class for storing a set of population trajectories, one for each of multiple conditions
-% or possibly one for each of many trials
-%
-% The bases may be units (e.g. trial-averaged firing rates by condition by unit), or 
-% components of a low-dimensional projection (e.g. PCA), or analog channels
-% (i.e. the results of some other computation)
-%
-% The set of conditions is specified by a ConditionDescriptor
-% Common time alignment is specified by an AlignDescriptor or a set of
-% AlignDescriptors for multiple alignments
-%
-% This class uses a design pattern which utilizes the "on demand cache".
-% The outer class (PTS) is a value class, but the odc is a handle class.
-% This inner class exists to allow PTS to compute properties dynamically on
-% the fly (like any dependent property), but to cache the results
-% persistently within the odc, so that they need not be recomputed each
-% time they are accessed. Manual overrides are also permitted for some
-% properties, such that a stored property value is accessed rather than
-% computing a dynamic property value on access.
-%
-% This pattern requires a coordinated set of .get, .set and .build methods 
-% for each property. The set method (protected) will store the result
-% inside the odc, which must be copied (cloned) before each write, so that
-% different PTS instances share no common resources and thus act like value
-% classes ought to behave. The get method checks whether the odc's stored 
-% value is empty. If it is not empty, it returns that value. If it is empty
-% it delegates to the .build method to compute the value of that property.
-% Note that .build methods may be overriden in subclassses, even though
-% .get accessors may not be. To flush or invalidate the value of a property
-% simply set its value to []. In some cases, a property will have a manual
-% override setting, which takes precedence over the computed value. The
-% .get accessor will check the corresponding manual property, named
-% .manualProperty, and return that value if not empty.
-
+    % class for storing a set of population trajectories, one for each of multiple conditions
+    % or possibly one for each of many trials
+    %
+    % The bases may be units (e.g. trial-averaged firing rates by condition by unit), or
+    % components of a low-dimensional projection (e.g. PCA), or analog channels
+    % (i.e. the results of some other computation)
+    %
+    % The set of conditions is specified by a ConditionDescriptor
+    % Common time alignment is specified by an AlignDescriptor or a set of
+    % AlignDescriptors for multiple alignments
+    %
+    % This class uses a design pattern which utilizes the "on demand cache".
+    % The outer class (PTS) is a value class, but the odc is a handle class.
+    % This inner class exists to allow PTS to compute properties dynamically on
+    % the fly (like any dependent property), but to cache the results
+    % persistently within the odc, so that they need not be recomputed each
+    % time they are accessed. Manual overrides are also permitted for some
+    % properties, such that a stored property value is accessed rather than
+    % computing a dynamic property value on access.
+    %
+    % This pattern requires a coordinated set of .get, .set and .build methods
+    % for each property. The set method (protected) will store the result
+    % inside the odc, which must be copied (cloned) before each write, so that
+    % different PTS instances share no common resources and thus act like value
+    % classes ought to behave. The get method checks whether the odc's stored
+    % value is empty. If it is not empty, it returns that value. If it is empty
+    % it delegates to the .build method to compute the value of that property.
+    % Note that .build methods may be overriden in subclassses, even though
+    % .get accessors may not be. To flush or invalidate the value of a property
+    % simply set its value to []. In some cases, a property will have a manual
+    % override setting, which takes precedence over the computed value. The
+    % .get accessor will check the corresponding manual property, named
+    % .manualProperty, and return that value if not empty.
+    
     properties
         datasetName
         
@@ -43,10 +43,10 @@ classdef PopulationTrajectorySet
         % Setting it to false will save space on disk
         keepComputedOnSaveFast = false;
     end
-
+    
     properties(SetAccess=protected, Hidden)
         % odc is an instance of PopulationTrajectorySetOnDemandCache
-        % which is a handle class. Properties which derive from 
+        % which is a handle class. Properties which derive from
         odc
     end
     
@@ -73,11 +73,11 @@ classdef PopulationTrajectorySet
         % compute a trial average, relative to the the total number of trials
         % in that condition. This parameter determines the valid time
         % windows for trial-averaged data (e.g. dataMean)
-        minFractionTrialsForTrialAveraging 
+        minFractionTrialsForTrialAveraging
         
-        % quantile of trial data to use for dataIntervalLowedit 
+        % quantile of trial data to use for dataIntervalLowedit
         dataIntervalQuantileLow
-
+        
         % quantile of trial data to use for dataIntervalHigh
         dataIntervalQuantileHigh
     end
@@ -92,8 +92,8 @@ classdef PopulationTrajectorySet
         % nAlign-1 x 1 vector of time gaps between successive alignments
         % initially empty, indicating that no gap has been specified
         interAlignGaps
-
-        % ConditionDescriptor instance describing condition information 
+        
+        % ConditionDescriptor instance describing condition information
         conditionDescriptor
         
         % StateSpaceTranslationNormalization instance describing the
@@ -111,7 +111,7 @@ classdef PopulationTrajectorySet
     
     % randomized data we don't want to clear with the ODC because it's so
     % costly to compute
-    properties(SetAccess=?PopulationTrajectorySetBuilder)  
+    properties(SetAccess=?PopulationTrajectorySetBuilder)
         % ConditionDescriptor for dataMeanRandomized describing the
         % randomization method used
         conditionDescriptorRandomized
@@ -127,10 +127,10 @@ classdef PopulationTrajectorySet
         % centered distribution of the estimation noise on the dataMean
         % traces. These are used by StateSpaceProjectionStatistics in
         % estimating a noise floor (buildDifferenceOfTrials)
-        % same as dataDifferenceOfTrialsScaledNoiseEstimate except for 
+        % same as dataDifferenceOfTrialsScaledNoiseEstimate except for
         dataDifferenceOfTrialsScaledNoiseEstimateRandomized
     end
-
+    
     % These properties store raw data sources (TrialDataConditionAlign instances)
     % from which data is extracted, as well as track from where each basis
     % originates. Along with other misc settings
@@ -163,13 +163,13 @@ classdef PopulationTrajectorySet
         randomSeed
         
         % N x TA x C x nTrials
-        % for a pset with single trial data, this is of the same form that 
+        % for a pset with single trial data, this is of the same form that
         % is returned by buildNbyTAbyConditionAttributesbyTrials. The
         % rationale for being able to cache it here is that when projecting
-        % we can compute pseudo-single trials through the projection so that  
+        % we can compute pseudo-single trials through the projection so that
         % buildNbyTAbyConditionAttributesbyTrials can sample this tensor if
         % no actual single trial data is available
-        dataCachedSampledTrialsTensor    
+        dataCachedSampledTrialsTensor
         
         % N x C number of trials in dataCachedSampledTrialsTensor that
         % contain usable trials
@@ -184,7 +184,7 @@ classdef PopulationTrajectorySet
     
     % Properties whose values are computed dynamically and persist within odc
     % or are specified manually and persist within manualData
-    properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)     
+    properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)
         % numeric scalar indicating spacing between successive time points
         % all channels timeseries will be interpolated to a time vector
         % with this spacing
@@ -204,12 +204,12 @@ classdef PopulationTrajectorySet
         % the AlignSummary instance which corresponds to each basis
         basisAlignSummaryLookup
         
-        % Basis info 
+        % Basis info
         
-        % nBases x 1 cellstr: names for each basis 
+        % nBases x 1 cellstr: names for each basis
         basisNames
         
-        % nBases x 1 cellstr: units for each basis 
+        % nBases x 1 cellstr: units for each basis
         basisUnits
         
         % nBases x 1 logical: which bases are considered included in the
@@ -230,7 +230,7 @@ classdef PopulationTrajectorySet
         % nBases x nAlign cell containing ordered data by trial
         % each cell contains nTrials x nTime analog data for that basis,
         % for that alignment, in order by trial number. The time vector
-        % along the columns is given by 
+        % along the columns is given by
         % nanmin(tMinByTrial{..}) : nanmax(tMaxByTrial{..})
         dataByTrial
         dataByTrialValidOnly
@@ -270,30 +270,30 @@ classdef PopulationTrajectorySet
         tMaxForDataMean
         
         % trial-averaged data within each condition
-        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign) 
+        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
         % numeric array of single trial-averaged traces
         % (buildDataMean)
         dataMean
-
-        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign) 
+        
+        % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
         % numeric array of single trial-averaged trace standard error
         % (buildDataMean)
-        dataSem 
+        dataSem
         
         % nAlign x nBases x nCondition scalar array indicating how many
         % trials contributed to data in each cell  (buildDataNTrials)
         dataNTrials
-          
+        
         % nBases x nConditions cell of trial (into dataByTrial) for each
         % condition (buildDataNTrials)
         trialLists
         
-        % nAlign x nBases x nCondition logical array indicating whether there is  
+        % nAlign x nBases x nCondition logical array indicating whether there is
         % valid data in the corresponding cell, which is required when the conditions
         % matrix isn't complete (all conditions valid) or only some alignments are valid
         % for a given condition, etc. (buildDataNTrials)
         dataValid
-
+        
         % nAlign x 1 cell with nBases x nConditions x nTimeDataMean(iAlign)
         % numeric array containing the lower confidence interval value for
         % dataMean (buildDataRandomizedIntervals)
@@ -311,7 +311,7 @@ classdef PopulationTrajectorySet
         % traces. These are used by StateSpaceProjectionStatistics in
         % estimating a noise floor (buildDifferenceOfTrials)
         dataDifferenceOfTrialsScaledNoiseEstimate % built by buildDifferenceOfTrials
-       
+        
     end
     
     % generated on the fly on get.property. Best to retrieve this value
@@ -339,7 +339,7 @@ classdef PopulationTrajectorySet
         
         % nAlign x nBases cell of time vectors for each .dataByTrial matrix
         tvecDataByTrial
-           
+        
         % nAlign x nBases x nConditions numeric of number of non-nan
         % timepoints in each data mean
         nTimeValidByAlignBasisCondition
@@ -383,7 +383,7 @@ classdef PopulationTrajectorySet
         conditionIncludeMask
         
         % nAlign x nConditions matrix containing the start and stop times
-        % for which sufficient trials exist to compute a trial-average for 
+        % for which sufficient trials exist to compute a trial-average for
         % ALL valid bases, on each align and condition. only Conditions for
         % which conditionHasValidTrialAverageAllAlignsBases is true are
         % considered. Only bases which are valid are considered
@@ -398,7 +398,7 @@ classdef PopulationTrajectorySet
     % Properties within *Manual properties store manually-specified values for each of the
     % above properties. These are used to store persistent copies of
     % the data when .dataSourceManual is true
-    properties(Hidden, Access=protected) 
+    properties(Hidden, Access=protected)
         basisNamesManual
         basisUnitsManual
         
@@ -408,7 +408,7 @@ classdef PopulationTrajectorySet
         basisValidTemporary % temporary invalid data
         basisInvalidCauseTemporary
         
-%         conditionIncludeMaskManual
+        %         conditionIncludeMaskManual
         alignSummaryDataManual
         alignSummaryAggregatedManual
         basisAlignSummaryLookupManual
@@ -451,7 +451,7 @@ classdef PopulationTrajectorySet
         nBases % number of bases (e.g. units, analog channels)
         
         nBasesValid % number of bases currently marked valid
-
+        
         nBasesValidPermanent
         nBasesPermanentlyInvalid
         
@@ -470,20 +470,20 @@ classdef PopulationTrajectorySet
         conditionsSizeNoExpand
         
         alignNames % names pulled from the alignDescriptors
-
+        
         conditionNames % condition names pulled from conditionDescriptor
         
         dataIntervalQuantilesAsString % dataIntervalQuantileLow/High summarized as a string
         
         nAlignSummaryData % number of unique alignSummaryData instances (for each align)
-
+        
         % nAlign x nCondition logical indicating which condition/alignments
         % have any trials for any bases
-        alignConditionsWithTrials 
+        alignConditionsWithTrials
         
         % nAlign x nBases x nConditions logical indicating which bases have valid
         % trial averages on each condition
-%         alignBasisConditionsWithValidTrialAverage
+        %         alignBasisConditionsWithValidTrialAverage
         
         % nAlign x nConditions logical indicating which align/conditions
         % have trial averages on at least one basis
@@ -506,7 +506,7 @@ classdef PopulationTrajectorySet
         % in all nonEmptyBases
         conditionsWithValidTrialAverageOnNonEmptyBases
     end
-   
+    
     % Constructor
     methods
         function pset = PopulationTrajectorySet()
@@ -528,7 +528,7 @@ classdef PopulationTrajectorySet
     % saveobj custom saving
     methods
         function pset = saveobj(pset)
-
+            
         end
     end
     
@@ -558,14 +558,14 @@ classdef PopulationTrajectorySet
                 % comment this out to not clear this to save the alignment we've done
                 pset.odc = [];
             end
-
+            
             if ~exist('location', 'var') || isempty(location)
                 location = pwd;
             end
             
             mkdirRecursive(location);
             savefast(fullfile(location, 'pset.mat'), 'pset');
-
+            
             % save elements of sources
             if ~pset.dataSourceManual
                 msg = sprintf('Saving PopulationTrajectorySet to %s', location);
@@ -590,7 +590,7 @@ classdef PopulationTrajectorySet
             p.addParameter('recursive', false, @islogical); % calls saveFast on each source too
             p.parse(varargin{:});
             
-            if ~exist('location', 'var') || isempty(location) 
+            if ~exist('location', 'var') || isempty(location)
                 location = pwd;
             end
             if ~exist(location, 'dir')
@@ -665,14 +665,14 @@ classdef PopulationTrajectorySet
                 pset = pset.applyConditionDescriptor();
             end
             
-%             if isempty(pset.translationNormalization) || pset.translationNormalization.nBases ~= pset.nBases
-%                 pset.translationNormalization = ...
-%                     StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
-%             end
+            %             if isempty(pset.translationNormalization) || pset.translationNormalization.nBases ~= pset.nBases
+            %                 pset.translationNormalization = ...
+            %                     StateSpaceTranslationNormalization.buildIdentityForPopulationTrajectorySet(pset);
+            %             end
             
-%             if isempty(pset.timeDelta)
-%                 pset.timeDelta = 1;
-%             end 
+            %             if isempty(pset.timeDelta)
+            %                 pset.timeDelta = 1;
+            %             end
             
             if isempty(pset.spikeFilter)
                 pset.spikeFilter = SpikeFilter.getDefaultFilter();
@@ -706,13 +706,13 @@ classdef PopulationTrajectorySet
                 pset.basisDataSourceChannelNames = {};
             end
             
-            % don't want to call update valid since it will 
+            % don't want to call update valid since it will
             % pset = pset.updateValid();
             
             % don't want to clear computed entities on load
             % pset = pset.invalidateCache('clearDataRandom', false);
         end
-            
+        
         % flush the contents of odc as they are invalid
         % call this at the end of any methods which would want to
         % regenerate these values
@@ -741,7 +741,7 @@ classdef PopulationTrajectorySet
             end
             pset = pset.invalidateRandomizedTrialAveragedData();
         end
-
+        
         function pset = invalidateRandomizedTrialAveragedData(pset)
             pset.warnIfNoArgOut(nargout);
             if ~isempty(pset.odc)
@@ -764,15 +764,25 @@ classdef PopulationTrajectorySet
     end
     
     % Display / description
-    methods 
-       function printDescription(pset)
-           if pset.dataSourceManual
-               dataSourceStr = 'manual stored data';
-           else
-               dataSourceStr = sprintf('%d data sources', pset.nDataSources);
-           end
-            tcprintf('inline', '{yellow}%s: {bright white}%d bases {red}(%d valid){none}, %d permanently invalid, {bright white}%d conditions, %d alignments, %s\n', ...
-                class(pset), pset.nBases, pset.nBasesValid, pset.nBasesPermanentlyInvalid, pset.nConditions, pset.nAlign, dataSourceStr);
+    methods
+        function printDescription(pset)
+            if pset.dataSourceManual
+                dataSourceStr = 'manual stored data';
+            else
+                dataSourceStr = sprintf('%d data sources', pset.nDataSources);
+            end
+            
+            % get.basisValid requires data to be extracted which is time
+            % consuming, here we collect the data
+            valid = pset.odc.basisValid;
+            if isempty(valid)
+                tcprintf('inline', '{yellow}%s: {bright white}%d bases {red}(??? valid){none}, %d permanently invalid, {bright white}%d conditions, %d alignments, %s\n', ...
+                    class(pset), pset.nBases, pset.nBasesPermanentlyInvalid, pset.nConditions, pset.nAlign, dataSourceStr);
+                tcprintf('inline', '  {darkGray}Note: basis validity will be determined after .dataMean is computed.\n');
+            else
+                tcprintf('inline', '{yellow}%s: {bright white}%d bases ({red}%d valid:{none} %d perm, %d temp invalid), {bright white}%d conditions, %d alignments, %s\n', ...
+                    class(pset), pset.nBases, pset.nBasesValid, pset.nBasesPermanentlyInvalid, pset.nBasesTemporarilyInvalid, pset.nConditions, pset.nAlign, dataSourceStr);
+            end
             tcprintf('inline', '{yellow}Dataset: {none}%s\n', pset.datasetName);
             
             if pset.simultaneous
@@ -798,7 +808,7 @@ classdef PopulationTrajectorySet
             fprintf('\n');
             pset.conditionDescriptor.printDescription();
             for i = 1:pset.nAlign
-               pset.alignDescriptorSet{i}.printDescription();
+                pset.alignDescriptorSet{i}.printDescription();
             end
             if ~isempty(pset.translationNormalization)
                 pset.translationNormalization.printOneLineDescription();
@@ -809,7 +819,7 @@ classdef PopulationTrajectorySet
             pset.printDescription();
             fprintf('\n');
             %builtin('disp', pset);
-        end 
+        end
         
         function explain(pset, varargin)
             p = inputParser();
@@ -841,7 +851,7 @@ classdef PopulationTrajectorySet
                     iAlign, nnz(~pset.alignConditionsWithTrialAverage(iAlign, :)));
             end
             hcprintf('    {999}[.alignConditionsWithTrialAverage, .hasValidTrialAverageByAlignBasisCondition]\n');
-
+            
             hcprintf('\nValid time windows for dataMean: hypotheticals for ''dropFraction'' = %g%% \n  {999}[.tMinForDataMean, .tMaxForDataMean]\n', ...
                 p.Results.dropFraction * 100);
             listByAlign = pset.listBasesConstrainingTimeWindowValidByAlign('dropFraction', p.Results.dropFraction);
@@ -866,9 +876,9 @@ classdef PopulationTrajectorySet
                         iA, pset.tMinForDataMean(iA), pset.tMaxForDataMean(iA), pset.timeUnitName);
                 end
                 hcprintf('    {999}[.listBasesConstrainingTimeWindowValidByAlign, .computeNewTimeWindowValidAfterInvalidatingBases]\n');
-
+                
                 for iC = 1:pset.nConditions
-                    if ~isempty(listByAlignConditionMin{iA, iC}) ||  ~isempty(listByAlignConditionMax{iA, iC}) 
+                    if ~isempty(listByAlignConditionMin{iA, iC}) ||  ~isempty(listByAlignConditionMax{iA, iC})
                         listCombined = unique(cat(1, listByAlignConditionMin{iA, iC}, listByAlignConditionMax{iA, iC}));
                         [newMinAC, newMaxAC] = pset.computeNewTimeWindowValidAfterInvalidatingBases(listCombined);
                         hcprintf('    Condition %d : [%g - %g %s], would be [%g - %g %s] without %d bases\n', ...
@@ -897,11 +907,11 @@ classdef PopulationTrajectorySet
                         hcprintf('    Condition %d : [%g - %g %s] not constrained by any bases\n', ...
                             iC, tMinValidAC(iA, iC), tMaxValidAC(iA, iC), pset.timeUnitName);
                     end
-                end   
+                end
                 hcprintf('    {999}[.tMinValidByAlignBasisCondition, .tMinValidAllBasesByAlignCondition]\n    {999}[.listBasesConstrainingTimeWindowValidByAlignCondition, .computeNewTimeWindowValidAfterInvalidatingBases]\n');
             end
             
-
+            
         end
     end
     
@@ -928,7 +938,7 @@ classdef PopulationTrajectorySet
         function d = get.timeDelta(pset)
             d = pset.spikeFilter.timeDelta;
         end
-              
+        
         function pset = set.timeDelta(pset, v)
             % changing timeDelta invalidates everything
             old = pset.spikeFilter.timeDelta;
@@ -985,7 +995,7 @@ classdef PopulationTrajectorySet
                 pset = pset.invalidateRandomizedTrialAveragedData();
             end
         end
-
+        
         function pset = set.dataIntervalQuantileHigh(pset, v)
             old = pset.dataIntervalQuantileHigh;
             pset.dataIntervalQuantileHigh = v;
@@ -995,26 +1005,26 @@ classdef PopulationTrajectorySet
         end
         
         % revised by using pass thru to ConditionDescriptor
-%         function pset = set.conditionIncludeMask(pset, v)
-%             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
-%                 'conditionIncludeMask must be logical vector with length nConditions');
-%             
-%             old = pset.conditionIncludeMaskManual;
-%             pset.conditionIncludeMaskManual = v;
-%             if ~isempty(old) % no need to invalidate on initialization
-%                 pset = pset.invalidateTrialAveragedData();
-%             end
-%         end
-%         
-%         function v = get.conditionIncludeMask(pset)
-%             if isempty(pset.conditionIncludeMaskManual)
-%                 v = truevec(pset.nConditions);
-%             else
-%                 v = pset.conditionIncludeMaskManual;
-%             end
-%         end
+        %         function pset = set.conditionIncludeMask(pset, v)
+        %             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
+        %                 'conditionIncludeMask must be logical vector with length nConditions');
+        %
+        %             old = pset.conditionIncludeMaskManual;
+        %             pset.conditionIncludeMaskManual = v;
+        %             if ~isempty(old) % no need to invalidate on initialization
+        %                 pset = pset.invalidateTrialAveragedData();
+        %             end
+        %         end
+        %
+        %         function v = get.conditionIncludeMask(pset)
+        %             if isempty(pset.conditionIncludeMaskManual)
+        %                 v = truevec(pset.nConditions);
+        %             else
+        %                 v = pset.conditionIncludeMaskManual;
+        %             end
+        %         end
         
-         function pset = set.conditionIncludeMask(pset, v)
+        function pset = set.conditionIncludeMask(pset, v)
             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
                 'conditionIncludeMask must be logical vector with length nConditions');
             
@@ -1032,7 +1042,7 @@ classdef PopulationTrajectorySet
     % General utility methods
     methods(Access=protected)
         function warnIfNoArgOut(obj, nargOut)
-        % call using obj.warnIfNoArgOut(nargout);
+            % call using obj.warnIfNoArgOut(nargout);
             if nargOut == 0 && ~isa(obj, 'handle')
                 warning('%s is not a handle class. If the instance returned by this method is not stored, this call has no effect.', ...
                     class(obj));
@@ -1080,7 +1090,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.basisAlignSummaryLookupManual;
             end
-        end 
+        end
         
         function pset = set.basisAlignSummaryLookup(pset, v)
             if ~pset.dataSourceManual
@@ -1093,23 +1103,23 @@ classdef PopulationTrajectorySet
         
         function v = get.alignSummaryAggregated(pset)
             %if ~pset.dataSourceManual
+            v = pset.odc.alignSummaryAggregated;
+            if isempty(v)
+                pset.buildAlignSummaryAggregated();
                 v = pset.odc.alignSummaryAggregated;
-                if isempty(v)
-                    pset.buildAlignSummaryAggregated();
-                    v = pset.odc.alignSummaryAggregated;
-                end
-%             else
-%                 v = pset.alignSummaryAggregatedManual;
-%             end
-        end 
+            end
+            %             else
+            %                 v = pset.alignSummaryAggregatedManual;
+            %             end
+        end
         
         function pset = set.alignSummaryAggregated(pset, v)
-%             if ~pset.dataSourceManual
-                pset.odc = pset.odc.copy();
-                pset.odc.alignSummaryAggregated = v;
-%             else
-%                pset.alignSummaryAggregatedManual = v;
-%            end
+            %             if ~pset.dataSourceManual
+            pset.odc = pset.odc.copy();
+            pset.odc.alignSummaryAggregated = v;
+            %             else
+            %                pset.alignSummaryAggregatedManual = v;
+            %            end
         end
         
         function v = get.dataByTrial(pset)
@@ -1152,7 +1162,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.tMinForDataByTrialManual;
             end
-        end 
+        end
         
         function pset = set.tMinForDataByTrial(pset, v)
             if ~pset.dataSourceManual
@@ -1173,7 +1183,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.tMaxForDataByTrialManual;
             end
-        end 
+        end
         
         function pset = set.tMaxForDataByTrial(pset, v)
             if ~pset.dataSourceManual
@@ -1187,12 +1197,15 @@ classdef PopulationTrajectorySet
         function v = get.tvecDataByTrial(pset)
             % generate on the fly, no caching
             v = cell(pset.nBases,pset.nAlign);
+            tMins = pset.tMinForDataByTrial;
+            tMaxs = pset.tMaxForDataByTrial;
+            delta = pset.timeDelta;
             for iAlign = 1:pset.nAlign
                 for iBasis = 1:pset.nBases
-                    v{iBasis, iAlign} = makecol(pset.tMinForDataByTrial(iBasis,iAlign):pset.timeDelta:pset.tMaxForDataByTrial(iBasis,iAlign));
+                    v{iBasis, iAlign} = makecol(tMins(iBasis,iAlign):delta:tMaxs(iBasis,iAlign));
                 end
             end
-        end 
+        end
         
         function v = get.alignValidByTrial(pset)
             if ~pset.dataSourceManual
@@ -1204,7 +1217,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.alignValidByTrialManual;
             end
-        end 
+        end
         
         function pset = set.alignValidByTrial(pset, v)
             if ~pset.dataSourceManual
@@ -1225,7 +1238,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.tMinByTrialManual;
             end
-        end 
+        end
         
         function pset = set.tMinByTrial(pset, v)
             if ~pset.dataSourceManual
@@ -1246,7 +1259,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.tMaxByTrialManual;
             end
-        end 
+        end
         
         function pset = set.tMaxByTrial(pset, v)
             if ~pset.dataSourceManual
@@ -1267,7 +1280,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.basisNamesManual;
             end
-        end 
+        end
         
         function pset = set.basisNames(pset, v)
             if ~pset.dataSourceManual
@@ -1288,7 +1301,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.basisUnitsManual;
             end
-        end 
+        end
         
         function pset = set.basisUnits(pset, v)
             if ~pset.dataSourceManual
@@ -1300,23 +1313,23 @@ classdef PopulationTrajectorySet
         end
         
         function v = get.basisValid(pset)
-%             if ~pset.dataSourceManual
-                v = pset.odc.basisValid;            
-                if isempty(v)
-                    pset.buildBasisValid();
-                    v = pset.odc.basisValid;
-                end
-%             else
-%                 v = buildBasisValid();
-%             end
+            %             if ~pset.dataSourceManual
+            v = pset.odc.basisValid;
+            if isempty(v)
+                pset.buildBasisValid();
+                v = pset.odc.basisValid;
+            end
+            %             else
+            %                 v = buildBasisValid();
+            %             end
         end
         
         function pset = set.basisValid(pset, v)
             if ~pset.dataSourceManual
-%                error('Can only be set for dataSourceManual'); % but used
-%                by filterBases
-                 pset.odc = pset.odc.copy();
-                 pset.odc.basisValid = v;
+                %                error('Can only be set for dataSourceManual'); % but used
+                %                by filterBases
+                pset.odc = pset.odc.copy();
+                pset.odc.basisValid = v;
             else
                 pset.basisValidManual = v;
             end
@@ -1327,15 +1340,15 @@ classdef PopulationTrajectorySet
         end
         
         function v = get.basisInvalidCause(pset)
-%             if ~pset.dataSourceManual
-                v = pset.odc.basisInvalidCause;            
-                if isempty(v)
-                    pset.buildBasisValid();
-                    v = pset.odc.basisInvalidCause;
-                end
-%             else
-%                 v = pset.basisInvalidCauseManual;
-%             end
+            %             if ~pset.dataSourceManual
+            v = pset.odc.basisInvalidCause;
+            if isempty(v)
+                pset.buildBasisValid();
+                v = pset.odc.basisInvalidCause;
+            end
+            %             else
+            %                 v = pset.basisInvalidCauseManual;
+            %             end
         end
         
         function pset = set.basisInvalidCause(pset, v)
@@ -1409,7 +1422,7 @@ classdef PopulationTrajectorySet
             % @djoshea changing this 20160728 since not all bases need to
             % be present. the window can be the tightest for all bases with
             % any valid window, ignoring the ones that don't have any data
-%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            %             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
             cMask = pset.conditionIncludeMask(:);
             
             if ~any(cMask)
@@ -1417,17 +1430,17 @@ classdef PopulationTrajectorySet
             else
                 hasAvg = pset.hasValidTrialAverageByAlignBasisCondition;
                 tMinABC = pset.tMinValidByAlignBasisCondition;
-
+                
                 % for each align condition, take the max of all bases
-                % having that 
+                % having that
                 tMinABC(~hasAvg) = NaN;
                 tMinABC(:, :, ~cMask) = NaN;
                 
                 v = TensorUtils.squeezeDims(nanmax(tMinABC, [], 2),  2);
-%                 v = nanmax(pset.tMinValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
-%                 % but then reexpand this to have the full complement of
-%                 % conditions, using NaNs for non-contributing conditions
-%                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
+                %                 v = nanmax(pset.tMinValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
+                %                 % but then reexpand this to have the full complement of
+                %                 % conditions, using NaNs for non-contributing conditions
+                %                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
             end
         end
         
@@ -1435,7 +1448,7 @@ classdef PopulationTrajectorySet
             % generate on the fly, no caching
             
             % see above comment 20160728
-%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            %             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
             cMask = pset.conditionIncludeMask(:);
             
             if ~any(cMask)
@@ -1443,18 +1456,18 @@ classdef PopulationTrajectorySet
             else
                 hasAvg = pset.hasValidTrialAverageByAlignBasisCondition;
                 tMaxABC = pset.tMaxValidByAlignBasisCondition;
-
+                
                 % for each align condition, take the max of all bases
-                % having that 
+                % having that
                 tMaxABC(~hasAvg) = NaN;
                 tMaxABC(:, :, ~cMask) = NaN;
                 
                 v = TensorUtils.squeezeDims(nanmin(tMaxABC, [], 2),  2);
-%                 v = nanmin(pset.tMaxValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
-%                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
+                %                 v = nanmin(pset.tMaxValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
+                %                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
             end
         end
-
+        
         function c = listBasesConstrainingTimeWindowValidByAlignCondition(pset, varargin)
             % if tMinByAlign and tMaxByAlign are not specified, they will
             % be picked according to the widest window available for any
@@ -1469,12 +1482,12 @@ classdef PopulationTrajectorySet
             % max?
             p.addParameter('mode', 'both', @(x) ismember(x, {'both', 'min', 'max'}));
             
-            % or use this to allow only a certain percent of the 
+            % or use this to allow only a certain percent of the
             p.addParameter('dropFraction', 0.05, @isscalar);
             p.parse(varargin{:});
             
             % changing 20160728
-%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            %             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
             cMask = pset.conditionIncludeMask;
             c = cell(pset.nAlign, pset.nConditions);
             
@@ -1492,20 +1505,20 @@ classdef PopulationTrajectorySet
             
             for iA = 1:pset.nAlign
                 for iC = 1:pset.nConditions
-                    if cMask(iC)                
+                    if cMask(iC)
                         % if no time window specified, allow only a certain
                         % fraction of bases to be listed as constrained
                         
                         tMin = p.Results.tMinByAlignCondition(iA,iC);
                         tMax = p.Results.tMaxByAlignCondition(iA,iC);
-
+                        
                         if isnan(tMin)
                             tMin = quantile(tMinValidABC(iA, pset.basisValid, iC), 1-dropFraction, 2);
                         end
                         if isnan(tMax)
                             tMax = quantile(tMaxValidABC(iA, pset.basisValid, iC), dropFraction, 2);
                         end
-                 
+                        
                         % find bases which can't provide the full tMin:tMax window
                         mask = falsevec(pset.nBases);
                         if widenMin
@@ -1527,8 +1540,8 @@ classdef PopulationTrajectorySet
         
         function [tMinValidAllBasesByAlignCondition, tMaxValidAllBasesByAlignCondition] = ...
                 computeNewTimeWindowValidAfterInvalidatingBases(pset, basesMarkInvalid)
-            % changed 20160728 
-%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
+            % changed 20160728
+            %             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
             cMask = pset.conditionIncludeMask;
             
             if ~any(cMask)
@@ -1550,7 +1563,7 @@ classdef PopulationTrajectorySet
         function list = listBasesConstrainingTimeWindowValid(pset, varargin)
             c = pset.listBasesConstrainingTimeWindowValidByAlign(varargin{:});
             list = unique(cat(1, c{:}));
-        end 
+        end
         
         function listByAlign = listBasesConstrainingTimeWindowValidByAlign(pset, varargin)
             p = inputParser();
@@ -1561,7 +1574,7 @@ classdef PopulationTrajectorySet
             
             % or specify tMinByAlignCondition and tMaxBYALignCondition
             
-            % or use this to allow only a certain percent of the 
+            % or use this to allow only a certain percent of the
             p.addParameter('dropFractionPerCondition', 0.05, @isscalar);
             
             p.parse(varargin{:});
@@ -1571,12 +1584,12 @@ classdef PopulationTrajectorySet
                 'tMaxByAlignCondition', repmat(p.Results.tMaxByAlign(:), 1, pset.nConditions), ...
                 'dropFraction', p.Results.dropFractionPerCondition, ...
                 p.Unmatched);
-
+            
             listByAlign = cellvec(pset.nAlign);
             for iA = 1:pset.nAlign
                 listByAlign{iA} = unique(cat(1, c{iA, :}));
             end
-        end 
+        end
         
         function v = get.tvecDataMean(pset)
             % generate on the fly, no caching
@@ -1584,7 +1597,7 @@ classdef PopulationTrajectorySet
             for iAlign = 1:pset.nAlign
                 v{iAlign} = makecol(pset.tMinForDataMean(iAlign):pset.timeDelta:pset.tMaxForDataMean(iAlign));
             end
-        end 
+        end
         
         function v = get.tvecDataMeanForPlotting(pset)
             % generate on the fly, no caching
@@ -1593,7 +1606,7 @@ classdef PopulationTrajectorySet
             for iAlign = 1:pset.nAlign
                 v{iAlign} = makecol(pset.tvecDataMean{iAlign} + offsets(iAlign));
             end
-        end 
+        end
         
         function off = get.offsetsTimeDataMeanForPlotting(pset)
             off = pset.getAlignPlottingTimeOffsets(pset.tvecDataMean);
@@ -1609,7 +1622,7 @@ classdef PopulationTrajectorySet
         
         function v = get.nTimeDataMean(pset)
             v = makecol(cellfun(@numel, pset.tvecDataMean));
-        end 
+        end
         
         function pset = set.nTimeDataMean(pset, v)
             pset.odc = pset.odc.copy();
@@ -1626,7 +1639,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.tMinForDataMeanManual;
             end
-        end 
+        end
         
         function pset = set.tMinForDataMean(pset, v)
             if ~pset.dataSourceManual
@@ -1647,7 +1660,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.tMaxForDataMeanManual;
             end
-        end 
+        end
         
         function pset = set.tMaxForDataMean(pset, v)
             if ~pset.dataSourceManual
@@ -1668,7 +1681,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.dataValidManual;
             end
-        end 
+        end
         
         function pset = set.dataValid(pset, v)
             if ~pset.dataSourceManual
@@ -1720,7 +1733,7 @@ classdef PopulationTrajectorySet
                 pset.dataSemManual = v;
             end
         end
-
+        
         function v = get.dataNTrials(pset)
             if ~pset.dataSourceManual
                 v = pset.odc.dataNTrials;
@@ -1731,7 +1744,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.dataNTrialsManual;
             end
-        end 
+        end
         
         function pset = set.dataNTrials(pset, v)
             if ~pset.dataSourceManual
@@ -1753,7 +1766,7 @@ classdef PopulationTrajectorySet
             else
                 v = pset.trialListsManual;
             end
-        end 
+        end
         
         function pset = set.trialLists(pset, v)
             if ~pset.dataSourceManual
@@ -1768,8 +1781,8 @@ classdef PopulationTrajectorySet
             if ~pset.dataSourceManual
                 v = pset.odc.dataIntervalLow;
                 if isempty(v) && pset.hasDataRandomized
-                     pset.buildDataRandomizedIntervals();
-                     v = pset.odc.dataIntervalLow;
+                    pset.buildDataRandomizedIntervals();
+                    v = pset.odc.dataIntervalLow;
                 end
             else
                 v = pset.dataIntervalLowManual;
@@ -1784,7 +1797,7 @@ classdef PopulationTrajectorySet
                 pset.dataIntervalLowManual = v;
             end
         end
-
+        
         function v = get.dataIntervalHigh(pset)
             if ~pset.dataSourceManual
                 v = pset.odc.dataIntervalHigh;
@@ -1855,9 +1868,9 @@ classdef PopulationTrajectorySet
             c = squeeze(all(all(pset.dataNTrials(:, pset.basisValid, :), 1), 2));
         end
     end
-  
+    
     % methods which set and apply the conditionDescriptor
-    methods 
+    methods
         function pset = setConditionDescriptor(pset, cd)
             % update the conditionDescriptor for all bases within
             % and clear any generated condition average data
@@ -1906,7 +1919,7 @@ classdef PopulationTrajectorySet
         function pset = setAlignDescriptorSet(pset, adSet)
             pset.warnIfNoArgOut(nargout);
             
-            assert(~pset.dataSourceManual, 'PopulationTrajectorySets with manual data source cannot be realigned'); 
+            assert(~pset.dataSourceManual, 'PopulationTrajectorySets with manual data source cannot be realigned');
             
             if ~iscell(adSet)
                 adSet = {adSet};
@@ -2033,7 +2046,7 @@ classdef PopulationTrajectorySet
                 psetManual = PopulationTrajectorySetBuilder.convertToManualWithSingleTrialData(pset);
             end
         end
-
+        
         function psetManual = getAsManualTrialAveraged(pset, varargin)
             p = inputParser();
             p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
@@ -2054,67 +2067,67 @@ classdef PopulationTrajectorySet
             % TODO adjust alignSummary data to reflect the slicing?
             assert(numel(tMinByAlign) == pset.nAlign, 'tMinByAlign must be vector with length nAlign');
             assert(numel(tMaxByAlign) == pset.nAlign, 'tMaxByAlign must be vector with length nAlign');
-
+            
             pb = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset);
-
+            
             % manually alter the align descriptors to truncate around zero
             for iAlign = 1:pset.nAlign
-              pb.alignDescriptorSet{iAlign} = pb.alignDescriptorSet{iAlign}.windowAroundZero(...
-                tMinByAlign(iAlign), tMaxByAlign(iAlign));
+                pb.alignDescriptorSet{iAlign} = pb.alignDescriptorSet{iAlign}.windowAroundZero(...
+                    tMinByAlign(iAlign), tMaxByAlign(iAlign));
             end
             
             if pset.hasDataByTrial
-              prog = ProgressBar(pset.nBases, 'Slicing dataByTrial');
-              tvecCell = pset.tvecDataByTrial;
-              for iBasis = 1:pset.nBases
-                prog.update(iBasis);
-                for iAlign = 1:pset.nAlign
-
-                  % slice data by trial
-                  tvecCurrent = tvecCell{iBasis, iAlign};
-                  tvecNew = tMinByAlign(iAlign):pset.timeDelta:tMaxByAlign(iAlign);
-                  pb.dataByTrial{iBasis, iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataByTrial{iBasis, iAlign}, tvecNew, 2);
-                  
-                  pb.tMinForDataByTrial(iBasis, iAlign) = tMinByAlign(iAlign);
-                  pb.tMaxForDataByTrial(iBasis, iAlign) = tMaxByAlign(iAlign);
-
-                  % also adjust the tMinByTrial and tMaxByTrial of valid
-                  % time points each trial
-                  pb.tMinByTrial{iBasis, iAlign} = max(tMinByAlign(iAlign), ...
-                    pb.tMinByTrial{iBasis, iAlign});
-                  pb.tMaxByTrial{iBasis, iAlign} = min(tMaxByAlign(iAlign), ...
-                    pb.tMaxByTrial{iBasis, iAlign});
+                prog = ProgressBar(pset.nBases, 'Slicing dataByTrial');
+                tvecCell = pset.tvecDataByTrial;
+                for iBasis = 1:pset.nBases
+                    prog.update(iBasis);
+                    for iAlign = 1:pset.nAlign
+                        
+                        % slice data by trial
+                        tvecCurrent = tvecCell{iBasis, iAlign};
+                        tvecNew = tMinByAlign(iAlign):pset.timeDelta:tMaxByAlign(iAlign);
+                        pb.dataByTrial{iBasis, iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataByTrial{iBasis, iAlign}, tvecNew, 2);
+                        
+                        pb.tMinForDataByTrial(iBasis, iAlign) = tMinByAlign(iAlign);
+                        pb.tMaxForDataByTrial(iBasis, iAlign) = tMaxByAlign(iAlign);
+                        
+                        % also adjust the tMinByTrial and tMaxByTrial of valid
+                        % time points each trial
+                        pb.tMinByTrial{iBasis, iAlign} = max(tMinByAlign(iAlign), ...
+                            pb.tMinByTrial{iBasis, iAlign});
+                        pb.tMaxByTrial{iBasis, iAlign} = min(tMaxByAlign(iAlign), ...
+                            pb.tMaxByTrial{iBasis, iAlign});
+                    end
                 end
-              end
-              prog.finish();
+                prog.finish();
             end
-
+            
             % adjust time stats for data mean
             for iAlign = 1:pset.nAlign
-              pb.tMinValidByAlignBasisCondition(iAlign, :, :) = max(tMinByAlign(iAlign), ...
-              pb.tMinValidByAlignBasisCondition(iAlign, :, :));
-              pb.tMaxValidByAlignBasisCondition(iAlign, :, :) = min(tMaxByAlign(iAlign), ...
-              pb.tMaxValidByAlignBasisCondition(iAlign, :, :));
-
-              pb.tMinForDataMean(iAlign) = tMinByAlign(iAlign);
-              pb.tMaxForDataMean(iAlign) = tMaxByAlign(iAlign);
+                pb.tMinValidByAlignBasisCondition(iAlign, :, :) = max(tMinByAlign(iAlign), ...
+                    pb.tMinValidByAlignBasisCondition(iAlign, :, :));
+                pb.tMaxValidByAlignBasisCondition(iAlign, :, :) = min(tMaxByAlign(iAlign), ...
+                    pb.tMaxValidByAlignBasisCondition(iAlign, :, :));
+                
+                pb.tMinForDataMean(iAlign) = tMinByAlign(iAlign);
+                pb.tMaxForDataMean(iAlign) = tMaxByAlign(iAlign);
             end
-
+            
             % slice dataByMean
-%             tmaskByAlign = cellvec(pset.nAlign);
+            %             tmaskByAlign = cellvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
-              % build masks used below to slice dataMean
-              tvecCurrent = pset.tvecDataMean{iAlign};
-              tvecNew = tMinByAlign(iAlign):pset.timeDelta:tMaxByAlign(iAlign);
-              pb.dataMean{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataMean{iAlign}, tvecNew, 3);
-              pb.dataSem{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataSem{iAlign}, tvecNew, 3);
-
-              if pset.hasDataRandomized
-                pb.dataMeanRandomized{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataMeanRandomized{iAlign}, tvecNew, 3);
-                pb.dataSemRandomized{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataSemRandomized{iAlign}, tvecNew, 3);
-              end
+                % build masks used below to slice dataMean
+                tvecCurrent = pset.tvecDataMean{iAlign};
+                tvecNew = tMinByAlign(iAlign):pset.timeDelta:tMaxByAlign(iAlign);
+                pb.dataMean{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataMean{iAlign}, tvecNew, 3);
+                pb.dataSem{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataSem{iAlign}, tvecNew, 3);
+                
+                if pset.hasDataRandomized
+                    pb.dataMeanRandomized{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataMeanRandomized{iAlign}, tvecNew, 3);
+                    pb.dataSemRandomized{iAlign} = TensorUtils.sliceOrExpandToAlignTimeVector(tvecCurrent, pb.dataSemRandomized{iAlign}, tvecNew, 3);
+                end
             end
-
+            
             nPerAlign = cellfun(@numel, pset.tvecDataMean);
             
             % slice dataDifferenceOfTrialsScaledNoiseEstimate
@@ -2138,7 +2151,7 @@ classdef PopulationTrajectorySet
                     pb.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = cat(2, diffTensorRandomized{:});
                 end
             end
-                
+            
             % slice dataCachedSampledTrialsTensor
             if ~isempty(pset.dataCachedSampledTrialsTensor)
                 split_dataCachedSampledTrialsTensor = TensorUtils.splitAlongDimension(pb.dataCachedSampledTrialsTensor, 2, nPerAlign);
@@ -2155,17 +2168,21 @@ classdef PopulationTrajectorySet
                 pb.dataCachedSampledTrialsTensor = cat(2, split_dataCachedSampledTrialsTensor{:});
                 pb.dataCachedMeanExcludingSampledTrialsTensor = cat(2, split_dataCachedMeanExcludingSampledTrialsTensor{:});
                 
-%                 tmaskCombined = cat(1, tmaskByAlign{:});
-%                 pb.dataCachedSampledTrialsTensor = pb.dataCachedSampledTrialsTensor(:, tmaskCombined, :, :);
-%                 pb.dataCachedMeanExcludingSampledTrialsTensor = pb.dataCachedMeanExcludingSampledTrialsTensor(:, tmaskCombined, :, :);
+                %                 tmaskCombined = cat(1, tmaskByAlign{:});
+                %                 pb.dataCachedSampledTrialsTensor = pb.dataCachedSampledTrialsTensor(:, tmaskCombined, :, :);
+                %                 pb.dataCachedMeanExcludingSampledTrialsTensor = pb.dataCachedMeanExcludingSampledTrialsTensor(:, tmaskCombined, :, :);
             end
-            psetSliced = pb.buildManualWithSingleTrialData();
+            if pset.hasDataByTrial
+                psetSliced = pb.buildManualWithSingleTrialData();
+            else
+                psetSliced = pb.buildManualWithTrialAveragedData();
+            end
         end
     end
     
     methods % Update ConditionDescriptor and AlignDescriptor appearances without invalidating everything
         function pset = setConditionAppearanceFn(pset, fn)
-            % update the conditionDescriptor appearanceFn 
+            % update the conditionDescriptor appearanceFn
             % we apply this to all bases within because it is fast, but
             % this is mostly for convenience for the user who grabs a trial
             % data from within the pset. we don't use the appearances from
@@ -2180,7 +2197,7 @@ classdef PopulationTrajectorySet
             for iSrc = 1:pset.nDataSources
                 pset.dataSources{iSrc} = pset.dataSources{iSrc}.setConditionAppearanceFn(fn);
                 prog.update(iSrc);
-            end  
+            end
             prog.finish();
         end
         
@@ -2205,9 +2222,9 @@ classdef PopulationTrajectorySet
             for iSrc = 1:pset.nDataSources
                 pset.dataSources{iSrc} = pset.dataSources{iSrc}.setInterAlignGap(gaps);
                 prog.update(iSrc);
-            end  
+            end
             prog.finish();
-        end 
+        end
         
         function pset = setStartAppearanceForAlign(pset, alignInd, varargin)
             % update this AppearanceSpec in alignDescriptorSet{ind}
@@ -2425,14 +2442,14 @@ classdef PopulationTrajectorySet
         end
         
         function pset = clearTranslationNormalization(pset)
-             pset.warnIfNoArgOut(nargout);
+            pset.warnIfNoArgOut(nargout);
             
             if isempty(pset.translationNormalization)
                 % No translation / normalization applied
                 return;
             end
             
-            trNorm = pset.translationNormalization; 
+            trNorm = pset.translationNormalization;
             
             if pset.dataSourceManual
                 % for manual data, we reverse this now to all data stored
@@ -2509,7 +2526,7 @@ classdef PopulationTrajectorySet
         
         function [pset, tn] = translateNormalize(pset, offsetByBasis, normalizationByBasis, varargin)
             pset.warnIfNoArgOut(nargout);
-           
+            
             if any(normalizationByBasis == 0)
                 warning('Replacing normalization by 0 with 1');
                 normalizationByBasis(normalizationByBasis == 0) = 1;
@@ -2558,7 +2575,7 @@ classdef PopulationTrajectorySet
             else
                 desc = 'range-normalized';
             end
-                
+            
             [pset, tn] = pset.normalize(1 ./ (pset.computeRangeByBasis(p.Unmatched) + p.Results.denominatorOffset), 'normalizationDescription', desc);
         end
         
@@ -2571,16 +2588,16 @@ classdef PopulationTrajectorySet
         
         function pset = normalizeBasesSoftRange(pset, alpha, varargin)
             pset.warnIfNoArgOut(nargout);
-           
+            
             tr = SoftRangeNormalization.buildFromPopulationTrajectorySet(pset, alpha, varargin{:});
             pset = pset.applyTranslationNormalization(tr);
         end
     end
     
-    % build methods for the odc properties, each must store results 
+    % build methods for the odc properties, each must store results
     % directly into the odc (without copying first, which allows the
     % results to persist)
-    methods 
+    methods
         function [src, chName] = getDataSourceForBasis(pset, iBasis)
             % return the data source which provided that data for basis
             % iBasis
@@ -2621,8 +2638,8 @@ classdef PopulationTrajectorySet
             end
             
             % we're modifying the odc handle class here
-            c = pset.odc; 
-            c.basisNames = basisNames; 
+            c = pset.odc;
+            c.basisNames = basisNames;
             c.basisUnits = basisUnits;
         end
         
@@ -2648,7 +2665,7 @@ classdef PopulationTrajectorySet
             end
             permValid = pset.getPermanentValid();
             tempValid(~permValid) = true; % don't count permanently invalid as temp invalid
-           
+            
             tempCause = pset.basisInvalidCauseTemporary;
             if isempty(tempCause)
                 tempCause = cellstrvec(pset.nBases);
@@ -2685,154 +2702,154 @@ classdef PopulationTrajectorySet
         end
         
         % old version that duplicates things already in trial data
-%         function buildDataByTrial(pset)
-%             % stores dataByTrial, alignValidByTrial, tMinByTrial, and tMaxByTrial in odc
-%             % This method fetches the aligned data for EVERY trial in 
-%             % each data source, for each alignment. It does NOT consider
-%             % the condition grouping, allowing this to be handled later.
-%             % It stores this data as a matrix, whose time vector is given
-%             % by the widest time vector along any trial. Missing samples in
-%             % this matrix are NaNs.
-%             
-%             if pset.dataSourceManual
-%                 return;
-%             end
-%             
-%             [dataByTrial, tMinByTrial, tMaxByTrial, alignValidByTrial] = ...
-%                 deal(cell(pset.nBases, pset.nAlign));
-%             
-%             [tMinForDataByTrial, tMaxForDataByTrial] = deal(nan(pset.nBases, pset.nAlign));
-%            
-%             % alignSummary instances are built by dataSource, so the
-%             % basis to alignSummary lookup is the same as the basis to dataSource lookup
-% %             basisAlignSummaryLookup = pset.basisDataSourceIdx;
-% %             alignSummaryData = cell(pset.nDataSources, pset.nAlign);
-%             
-%             dataSourcesByBasis = pset.dataSources(pset.basisDataSourceIdx);
-%             basisDataSourceChannelNames = pset.basisDataSourceChannelNames; %#ok<*PROP>
-%             nAlign = pset.nAlign;
-%             nBases = pset.nBases;
-%             timeDelta = pset.timeDelta;
-%             spikeFilter = pset.spikeFilter;
-%             
-%             isSpikeChannel = false(pset.nBases, 1);
-%             
-%             [dataCell, timeCell, timeInfoCell, unitsPerSecondCell] = deal(cell(pset.nBases, pset.nAlign));
-%             
-%             prog = ProgressBar(pset.nBases, 'Extracting aligned data by basis');
-%             for iBasis = 1:nBases    
-%                 prog.update(iBasis);
-%                 % request the specified aligned analog channel from the
-%                 % specified data source.spikeFilter
-%                 src = dataSourcesByBasis{iBasis};
-%                 chName = basisDataSourceChannelNames{iBasis};
-%                 
-%                 % unapply the condition descriptor so that we can grab
-%                 % all trials in this call, even the ones that would be
-%                 % marked invalid by this condition info. Manually
-%                 % invalid trials will still not be considered.
-%                 src = src.resetConditionInfo();
-%                 
-%                 for iAlign = 1:nAlign
-%                     % mark this align as active
-%                     src = src.useAlign(iAlign);
-% 
-%                     % currently will request either analog trials or
-%                     % filtered spike rates channel
-%                     if src.hasAnalogChannel(chName)
-%                         [dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}] = src.getAnalog(chName);
-%                         isSpikeChannel(iBasis) = false;
-%                         
-%                     elseif src.hasSpikeChannel(chName)
-%                         %src = src.padForSpikeFilter(spikeFilter); % should have been done in applyAlignInfoSet already
-%                         dataCell{iBasis, iAlign} = src.getSpikeTimes(chName, true); % include padding
-%                         timeInfoCell{iBasis, iAlign} = src.alignInfoActive.timeInfo;
-%                         unitsPerSecondCell{iBasis, iAlign} = src.timeUnitsPerSecond;
-%                         isSpikeChannel(iBasis) = true;
-%                     else
-%                         error('Unknown channel type');
-%                     end
-%                     
-%                     % essential that we use computedValid here since .valid
-%                     % will also reflect trials which are invalid based on
-%                     % the current conditionInfo, which we don't want to
-%                     % consider here.
-%                     alignValidByTrial{iBasis, iAlign} = src.alignInfoActive.computedValid;
-%                     
-%                     % also store the precise time starts and stops for EACH
-%                     % trial that comprises that matrix. Essential that all
-%                     % padding be done to src before this call to ensure
-%                     % that the tvec returned above matches these numbers
-%                     [tMinByTrial{iBasis, iAlign}, ...
-%                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
-%                 end
-%             end
-%             prog.finish();
-%                
-%             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
-%             
-%             for iBasis = 1:nBases
-%                 prog.update(iBasis);
-%                 for iAlign = 1:nAlign
-%                     if ~isSpikeChannel(iBasis)
-%                         % from TDCA.getAnalogAsMatrix
-%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
-%                             TrialDataUtilies.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
-%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
-%                     
-%                     else
-%                         % from TDCA.getSpikeRateFilteredAsMatrix
-%                         
-%                         % convert to .zero relative times since that's what spikeCell
-%                         % will be in (when called in this class)
-%                         timeInfo = timeInfoCell{iBasis, iAlign};
-%                         
-%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
-%                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
-%                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
-%                             unitsPerSecondCell{iBasis, iAlign}, ...
-%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
-%                     end
-%                     
-%                     % store the time limits used in the time vector for 
-%                     % the dataByTrial{..} matrix
-%                     tMinForDataByTrial(iBasis, iAlign) = min(tvec);
-%                     tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
-%                  
-%                     % bring trial start stop in within the limits of tvec,
-%                     % to deal with any rounding issues
-%                     tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
-%                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
-%                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
-%                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
-%                  
-% %                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
-% %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
-% %                         'Time vector returned by TrialData has invalid limits');
-%                 end
-%             end
-%             prog.finish();            
-%             
-%             % apply translation / normalization to data
-%             if ~isempty(pset.translationNormalization)
-%                 dataByTrial = pset.translationNormalization.applyTranslationNormalizationToData(dataByTrial);
-%             end
-%             
-%             % store the results in the odc without copying
-%             c = pset.odc;
-% %             c.alignSummaryData = alignSummaryData;
-% %             c.basisAlignSummaryLookup = basisAlignSummaryLookup;
-%             c.dataByTrial = dataByTrial;
-%             c.tMinForDataByTrial = tMinForDataByTrial;
-%             c.tMaxForDataByTrial = tMaxForDataByTrial;
-%             c.alignValidByTrial = alignValidByTrial;
-%             c.tMinByTrial = tMinByTrial;
-%             c.tMaxByTrial = tMaxByTrial;
-%         end
+        %         function buildDataByTrial(pset)
+        %             % stores dataByTrial, alignValidByTrial, tMinByTrial, and tMaxByTrial in odc
+        %             % This method fetches the aligned data for EVERY trial in
+        %             % each data source, for each alignment. It does NOT consider
+        %             % the condition grouping, allowing this to be handled later.
+        %             % It stores this data as a matrix, whose time vector is given
+        %             % by the widest time vector along any trial. Missing samples in
+        %             % this matrix are NaNs.
+        %
+        %             if pset.dataSourceManual
+        %                 return;
+        %             end
+        %
+        %             [dataByTrial, tMinByTrial, tMaxByTrial, alignValidByTrial] = ...
+        %                 deal(cell(pset.nBases, pset.nAlign));
+        %
+        %             [tMinForDataByTrial, tMaxForDataByTrial] = deal(nan(pset.nBases, pset.nAlign));
+        %
+        %             % alignSummary instances are built by dataSource, so the
+        %             % basis to alignSummary lookup is the same as the basis to dataSource lookup
+        % %             basisAlignSummaryLookup = pset.basisDataSourceIdx;
+        % %             alignSummaryData = cell(pset.nDataSources, pset.nAlign);
+        %
+        %             dataSourcesByBasis = pset.dataSources(pset.basisDataSourceIdx);
+        %             basisDataSourceChannelNames = pset.basisDataSourceChannelNames; %#ok<*PROP>
+        %             nAlign = pset.nAlign;
+        %             nBases = pset.nBases;
+        %             timeDelta = pset.timeDelta;
+        %             spikeFilter = pset.spikeFilter;
+        %
+        %             isSpikeChannel = false(pset.nBases, 1);
+        %
+        %             [dataCell, timeCell, timeInfoCell, unitsPerSecondCell] = deal(cell(pset.nBases, pset.nAlign));
+        %
+        %             prog = ProgressBar(pset.nBases, 'Extracting aligned data by basis');
+        %             for iBasis = 1:nBases
+        %                 prog.update(iBasis);
+        %                 % request the specified aligned analog channel from the
+        %                 % specified data source.spikeFilter
+        %                 src = dataSourcesByBasis{iBasis};
+        %                 chName = basisDataSourceChannelNames{iBasis};
+        %
+        %                 % unapply the condition descriptor so that we can grab
+        %                 % all trials in this call, even the ones that would be
+        %                 % marked invalid by this condition info. Manually
+        %                 % invalid trials will still not be considered.
+        %                 src = src.resetConditionInfo();
+        %
+        %                 for iAlign = 1:nAlign
+        %                     % mark this align as active
+        %                     src = src.useAlign(iAlign);
+        %
+        %                     % currently will request either analog trials or
+        %                     % filtered spike rates channel
+        %                     if src.hasAnalogChannel(chName)
+        %                         [dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}] = src.getAnalog(chName);
+        %                         isSpikeChannel(iBasis) = false;
+        %
+        %                     elseif src.hasSpikeChannel(chName)
+        %                         %src = src.padForSpikeFilter(spikeFilter); % should have been done in applyAlignInfoSet already
+        %                         dataCell{iBasis, iAlign} = src.getSpikeTimes(chName, true); % include padding
+        %                         timeInfoCell{iBasis, iAlign} = src.alignInfoActive.timeInfo;
+        %                         unitsPerSecondCell{iBasis, iAlign} = src.timeUnitsPerSecond;
+        %                         isSpikeChannel(iBasis) = true;
+        %                     else
+        %                         error('Unknown channel type');
+        %                     end
+        %
+        %                     % essential that we use computedValid here since .valid
+        %                     % will also reflect trials which are invalid based on
+        %                     % the current conditionInfo, which we don't want to
+        %                     % consider here.
+        %                     alignValidByTrial{iBasis, iAlign} = src.alignInfoActive.computedValid;
+        %
+        %                     % also store the precise time starts and stops for EACH
+        %                     % trial that comprises that matrix. Essential that all
+        %                     % padding be done to src before this call to ensure
+        %                     % that the tvec returned above matches these numbers
+        %                     [tMinByTrial{iBasis, iAlign}, ...
+        %                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
+        %                 end
+        %             end
+        %             prog.finish();
+        %
+        %             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
+        %
+        %             for iBasis = 1:nBases
+        %                 prog.update(iBasis);
+        %                 for iAlign = 1:nAlign
+        %                     if ~isSpikeChannel(iBasis)
+        %                         % from TDCA.getAnalogAsMatrix
+        %                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+        %                             TrialDataUtilies.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
+        %                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
+        %
+        %                     else
+        %                         % from TDCA.getSpikeRateFilteredAsMatrix
+        %
+        %                         % convert to .zero relative times since that's what spikeCell
+        %                         % will be in (when called in this class)
+        %                         timeInfo = timeInfoCell{iBasis, iAlign};
+        %
+        %                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+        %                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
+        %                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
+        %                             unitsPerSecondCell{iBasis, iAlign}, ...
+        %                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear');
+        %                     end
+        %
+        %                     % store the time limits used in the time vector for
+        %                     % the dataByTrial{..} matrix
+        %                     tMinForDataByTrial(iBasis, iAlign) = min(tvec);
+        %                     tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
+        %
+        %                     % bring trial start stop in within the limits of tvec,
+        %                     % to deal with any rounding issues
+        %                     tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
+        %                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
+        %                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
+        %                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
+        %
+        % %                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
+        % %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
+        % %                         'Time vector returned by TrialData has invalid limits');
+        %                 end
+        %             end
+        %             prog.finish();
+        %
+        %             % apply translation / normalization to data
+        %             if ~isempty(pset.translationNormalization)
+        %                 dataByTrial = pset.translationNormalization.applyTranslationNormalizationToData(dataByTrial);
+        %             end
+        %
+        %             % store the results in the odc without copying
+        %             c = pset.odc;
+        % %             c.alignSummaryData = alignSummaryData;
+        % %             c.basisAlignSummaryLookup = basisAlignSummaryLookup;
+        %             c.dataByTrial = dataByTrial;
+        %             c.tMinForDataByTrial = tMinForDataByTrial;
+        %             c.tMaxForDataByTrial = tMaxForDataByTrial;
+        %             c.alignValidByTrial = alignValidByTrial;
+        %             c.tMinByTrial = tMinByTrial;
+        %             c.tMaxByTrial = tMaxByTrial;
+        %         end
         
         function buildDataByTrial(pset)
             % stores dataByTrial, alignValidByTrial, tMinByTrial, and tMaxByTrial in odc
-            % This method fetches the aligned data for EVERY trial in 
+            % This method fetches the aligned data for EVERY trial in
             % each data source, for each alignment. It does NOT consider
             % the condition grouping, allowing this to be handled later.
             % It stores this data as a matrix, whose time vector is given
@@ -2847,11 +2864,11 @@ classdef PopulationTrajectorySet
                 deal(cell(pset.nBases, pset.nAlign));
             
             [tMinForDataByTrial, tMaxForDataByTrial] = deal(nan(pset.nBases, pset.nAlign));
-           
+            
             % alignSummary instances are built by dataSource, so the
             % basis to alignSummary lookup is the same as the basis to dataSource lookup
-%             basisAlignSummaryLookup = pset.basisDataSourceIdx;
-%             alignSummaryData = cell(pset.nDataSources, pset.nAlign);
+            %             basisAlignSummaryLookup = pset.basisDataSourceIdx;
+            %             alignSummaryData = cell(pset.nDataSources, pset.nAlign);
             
             dataSourcesByBasis = pset.dataSources(pset.basisDataSourceIdx);
             basisDataSourceChannelNames = pset.basisDataSourceChannelNames; %#ok<*PROP>
@@ -2863,7 +2880,7 @@ classdef PopulationTrajectorySet
             isSpikeChannel = false(pset.nBases, 1);
             
             prog = ProgressBar(pset.nBases, 'Extracting aligned data by basis');
-            for iBasis = 1:nBases    
+            for iBasis = 1:nBases
                 prog.update(iBasis);
                 % request the specified aligned analog channel from the
                 % specified data source.spikeFilter
@@ -2879,7 +2896,7 @@ classdef PopulationTrajectorySet
                 for iAlign = 1:nAlign
                     % mark this align as active
                     src = src.useAlign(iAlign);
-
+                    
                     % currently will request either analog trials or
                     % filtered spike rates channel
                     if src.hasAnalogChannel(chName)
@@ -2897,13 +2914,13 @@ classdef PopulationTrajectorySet
                         error('Unknown channel type');
                     end
                     
-                    % store the time limits used in the time vector for 
+                    % store the time limits used in the time vector for
                     % the dataByTrial{..} matrix
                     if ~isempty(tvec)
                         tMinForDataByTrial(iBasis, iAlign) = min(tvec);
                         tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
                     end
-                 
+                    
                     % essential that we use computedValid here since .valid
                     % will also reflect trials which are invalid based on
                     % the current conditionInfo, which we don't want to
@@ -2916,63 +2933,63 @@ classdef PopulationTrajectorySet
                     % that the tvec returned above matches these numbers
                     
                     % switching this to deal with analog channel resampling
-%                     [tMinByTrial{iBasis, iAlign}, ...
-%                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
-
+                    %                     [tMinByTrial{iBasis, iAlign}, ...
+                    %                      tMaxByTrial{iBasis, iAlign}] = src.getTimeStartStopEachTrial();
+                    
                     [tMinByTrial{iBasis, iAlign}, ...
-                     tMaxByTrial{iBasis, iAlign}] = ...
-                     TrialDataUtilities.Data.getValidTimeExtents(tvec, dataByTrial{iBasis, iAlign});
+                        tMaxByTrial{iBasis, iAlign}] = ...
+                        TrialDataUtilities.Data.getValidTimeExtents(tvec, dataByTrial{iBasis, iAlign});
                 end
             end
             prog.finish();
-               
-%             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
-%             
-%             showProgressInner = false;
-%             for iBasis = 1:nBases
-%                 prog.update(iBasis);
-%                 for iAlign = 1:nAlign
-%                     if ~isSpikeChannel(iBasis)
-%                         % from TDCA.getAnalogAsMatrix
-%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
-%                             TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
-%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
-%                             'showProgress', showProgressInner);
-%                     else
-%                         % from TDCA.getSpikeRateFilteredAsMatrix
-%                         
-%                         % convert to .zero relative times since that's what spikeCell
-%                         % will be in (when called in this class)
-%                         timeInfo = timeInfoCell{iBasis, iAlign};
-%                         
-%                         [dataByTrial{iBasis, iAlign}, tvec] = ...
-%                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
-%                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
-%                             unitsPerSecondCell{iBasis, iAlign}, ...
-%                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
-%                              'showProgress', showProgressInner);
-%                     end
-%                     
-%                     % store the time limits used in the time vector for 
-%                     % the dataByTrial{..} matrix
-%                     if ~isempty(tvec)
-%                         tMinForDataByTrial(iBasis, iAlign) = min(tvec);
-%                         tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
-%                     end
-%                  
-%                     % bring trial start stop in within the limits of tvec,
-%                     % to deal with any rounding issues
-%                     tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
-%                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
-%                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
-%                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
-%                  
-% %                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
-% %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
-% %                         'Time vector returned by TrialData has invalid limits');
-%                 end
-%             end
-%             prog.finish();            
+            
+            %             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
+            %
+            %             showProgressInner = false;
+            %             for iBasis = 1:nBases
+            %                 prog.update(iBasis);
+            %                 for iAlign = 1:nAlign
+            %                     if ~isSpikeChannel(iBasis)
+            %                         % from TDCA.getAnalogAsMatrix
+            %                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+            %                             TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
+            %                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
+            %                             'showProgress', showProgressInner);
+            %                     else
+            %                         % from TDCA.getSpikeRateFilteredAsMatrix
+            %
+            %                         % convert to .zero relative times since that's what spikeCell
+            %                         % will be in (when called in this class)
+            %                         timeInfo = timeInfoCell{iBasis, iAlign};
+            %
+            %                         [dataByTrial{iBasis, iAlign}, tvec] = ...
+            %                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
+            %                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
+            %                             unitsPerSecondCell{iBasis, iAlign}, ...
+            %                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
+            %                              'showProgress', showProgressInner);
+            %                     end
+            %
+            %                     % store the time limits used in the time vector for
+            %                     % the dataByTrial{..} matrix
+            %                     if ~isempty(tvec)
+            %                         tMinForDataByTrial(iBasis, iAlign) = min(tvec);
+            %                         tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
+            %                     end
+            %
+            %                     % bring trial start stop in within the limits of tvec,
+            %                     % to deal with any rounding issues
+            %                     tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
+            %                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
+            %                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
+            %                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
+            %
+            % %                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
+            % %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
+            % %                         'Time vector returned by TrialData has invalid limits');
+            %                 end
+            %             end
+            %             prog.finish();
             
             % apply translation / normalization to data
             if ~isempty(pset.translationNormalization)
@@ -2981,8 +2998,8 @@ classdef PopulationTrajectorySet
             
             % store the results in the odc without copying
             c = pset.odc;
-%             c.alignSummaryData = alignSummaryData;
-%             c.basisAlignSummaryLookup = basisAlignSummaryLookup;
+            %             c.alignSummaryData = alignSummaryData;
+            %             c.basisAlignSummaryLookup = basisAlignSummaryLookup;
             c.dataByTrial = dataByTrial;
             c.tMinForDataByTrial = tMinForDataByTrial;
             c.tMaxForDataByTrial = tMaxForDataByTrial;
@@ -2996,9 +3013,9 @@ classdef PopulationTrajectorySet
                 masks = {};
             else
                 masks = cellvec(pset.nBases);
-%                 prog = ProgressBar(pset.nBases, 'Computing has spikes by trial for each basis');
+                %                 prog = ProgressBar(pset.nBases, 'Computing has spikes by trial for each basis');
                 for iBasis = 1:pset.nBases
-
+                    
                     isNonNanZero = @(x) ~isnan(x) & x~=0;
                     masksByAlign = cellfun(@(x) isNonNanZero(nanmax(x, [], 2)), pset.dataByTrial(iBasis, :), 'UniformOutput', false);
                     masksCat = cat(2, masksByAlign{:});
@@ -3021,7 +3038,7 @@ classdef PopulationTrajectorySet
             hasSpikesByBasis = pset.trialHasSpikesMaskByBasis;
             prog = ProgressBar(pset.nBases, 'Computing trial-counts by condition');
             for iBasis = 1:pset.nBases
-                prog.update(iBasis); 
+                prog.update(iBasis);
                 if ~basisValid(iBasis), continue, end
                 % note, this src will not be aligned to this iAlign,
                 % but this isn't necessary since we've already
@@ -3076,8 +3093,8 @@ classdef PopulationTrajectorySet
             % for each alignment, using only condition and align valid trials
             [tMinValidByAlignBasisCondition, tMaxValidByAlignBasisCondition] = ...
                 deal(nan(pset.nAlign, pset.nBases, pset.nConditions));
-
-            % do this first to force computation of data by trial at the beginning, 
+            
+            % do this first to force computation of data by trial at the beginning,
             % rather than having it happen on the first loop iteration
             temp = pset.tMinByTrial; %#ok<NASGU>
             temp = pset.dataNTrials; %#ok<NASGU>
@@ -3102,8 +3119,8 @@ classdef PopulationTrajectorySet
                     % group the condition windows by conditionLists
                     [tMinByTrialGrouped, tMaxByTrialGrouped] = src.conditionInfo.groupElements(tMinByTrial, tMaxByTrial);
                     
-                    % for each basis, align, take the widest window we can that 
-                    % is valid for a sufficient number of trials on this basis 
+                    % for each basis, align, take the widest window we can that
+                    % is valid for a sufficient number of trials on this basis
                     for iCondition = 1:pset.nConditions
                         nTrialsThis = pset.dataNTrials(iAlign, iBasis, iCondition);
                         if nTrialsThis == 0, continue, end
@@ -3119,7 +3136,7 @@ classdef PopulationTrajectorySet
                 end
             end
             prog.finish();
-
+            
             c = pset.odc;
             c.tMinValidByAlignBasisCondition = tMinValidByAlignBasisCondition;
             c.tMaxValidByAlignBasisCondition = tMaxValidByAlignBasisCondition;
@@ -3136,17 +3153,20 @@ classdef PopulationTrajectorySet
             % which other bases have trials. This is because the existence
             % of these bases will invalidate ALL data on those conditions
             % since there is no time window with valid trial averaged data
-            % across ALL bases
-            pset.warnIfAnyBasesMissingTrialAverageForNonEmptyConditionAligns();       
+            % across ALL bases.
+            % 
+            % update: we do not warn anymore since the concept of temporary invalid 
+            %   already covers these bases. 
+            % pset.warnIfAnyBasesMissingTrialAverageForNonEmptyConditionAligns();
             
             % first, we need to figure out the time windows we'll compute
             % the trial average within. For each alignment, this window will be chosen to be
-            % the smallest window valid across (i.e. completely spanned by) 
+            % the smallest window valid across (i.e. completely spanned by)
             % all bases. The time window for each basis is the largest window across
             % all valid trials in all conditions, which implies that we must consider only
             % trials considered valid by the conditionInfo and alignInfo.
-            % We consider all VALID trials for a given conditionDescriptor and 
-            % alignDescriptor so as to not generate excessively large traces when 
+            % We consider all VALID trials for a given conditionDescriptor and
+            % alignDescriptor so as to not generate excessively large traces when
             % some long trials have been filtered out. However, we do not consider
             % the particular trials which have been placed in each
             % condition, which ensures that these time windows will not
@@ -3162,15 +3182,15 @@ classdef PopulationTrajectorySet
             % nanmin/nanmax here, since a NaN for a valid basis here means
             % that the basis has no trials for this condition, so the
             % condition should not be included in the trial average
-%             basisMask = pset.basisValid;
-%             
-%             conditionsWithTrialsAllBasesAligns = squeeze(all(all(pset.dataNTrials(:, basisMask, :), 1), 2));
-%             if ~any(conditionsWithTrialsAllBasesAligns)
-%                 error('No conditions have trial averages for all bases on all aligns. Try lowering minTrialsForTrialAveraging or minFractionTrialsForTrialAveraging?');
-%             end
-%             
-%             tMinValidByAlignCondition = TensorUtils.squeezeDims(max(pset.tMinValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
-%             tMaxValidByAlignCondition = TensorUtils.squeezeDims(min(pset.tMaxValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
+            %             basisMask = pset.basisValid;
+            %
+            %             conditionsWithTrialsAllBasesAligns = squeeze(all(all(pset.dataNTrials(:, basisMask, :), 1), 2));
+            %             if ~any(conditionsWithTrialsAllBasesAligns)
+            %                 error('No conditions have trial averages for all bases on all aligns. Try lowering minTrialsForTrialAveraging or minFractionTrialsForTrialAveraging?');
+            %             end
+            %
+            %             tMinValidByAlignCondition = TensorUtils.squeezeDims(max(pset.tMinValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
+            %             tMaxValidByAlignCondition = TensorUtils.squeezeDims(min(pset.tMaxValidByAlignBasisCondition(:, basisMask, conditionsWithTrialsAllBasesAligns), [], 2), 2);
             
             % for each align, compute the widest window valid for ANY
             % considered condition for ALL valid bases. A condition is
@@ -3185,10 +3205,10 @@ classdef PopulationTrajectorySet
             
             alignInvalid = isnan(tMinForDataMean) | isnan(tMaxForDataMean);
             if any(alignInvalid)
-                 warning('No valid time window is valid across all bases across all conditions for alignment %s. Use .explain to advise', ...
-                     TrialDataUtilities.String.strjoin(find(alignInvalid), ',')); %#ok<FNDSB>
+                warning('No valid time window is valid across all bases across all conditions for alignment %s. Use .explain to advise', ...
+                    TrialDataUtilities.String.strjoin(find(alignInvalid), ',')); %#ok<FNDSB>
             end
- 
+            
             nTimeByAlign = zerosvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
                 if alignInvalid(iAlign)
@@ -3198,7 +3218,7 @@ classdef PopulationTrajectorySet
                 tempVec = TrialDataUtilities.Data.linspaceIntercept(tMinForDataMean(iAlign), pset.timeDelta, tMaxForDataMean(iAlign), 0);
                 tMinForDataMean(iAlign) = min(tempVec);
                 tMaxForDataMean(iAlign) = max(tempVec);
-            
+                
                 % number of time points for each alignment
                 nTimeByAlign(iAlign) = numel(tempVec);
             end
@@ -3210,7 +3230,7 @@ classdef PopulationTrajectorySet
                 [dataMean{iAlign}, dataSem{iAlign}] = ...
                     deal(nan(pset.nBases, pset.nConditions, nTimeByAlign(iAlign)));
             end
-                                    
+            
             if pset.nBasesValid == 0
                 warning('No valid bases found to compute trial-averaged data. Check .basisValid and .basisInvalidCause');
             end
@@ -3219,12 +3239,12 @@ classdef PopulationTrajectorySet
                 warning('No alignments have any valid time points across all bases');
                 return;
             end
-%             if isempty(tMinForDataMean) || isempty(tMaxForDataMean) || ~all(tMinForDataMean <= tMaxForDataMean)
-%                 warning('No time window is valid across all bases for some al. Try using .setBasesInvalidMissingTrialsOnNonEmptyConditions() or use .explain to advise');
-%             end
-           
+            %             if isempty(tMinForDataMean) || isempty(tMaxForDataMean) || ~all(tMinForDataMean <= tMaxForDataMean)
+            %                 warning('No time window is valid across all bases for some al. Try using .setBasesInvalidMissingTrialsOnNonEmptyConditions() or use .explain to advise');
+            %             end
+            
             % copy temp values for for slicing
-%             conditionHasValidTrialAverageAllAlignsBases = pset.conditionHasValidTrialAverageAllAlignsBases;
+            %             conditionHasValidTrialAverageAllAlignsBases = pset.conditionHasValidTrialAverageAllAlignsBases;
             dataByTrial = pset.dataByTrial;
             tMinForDataByTrial = pset.tMinForDataByTrial;
             tMaxForDataByTrial = pset.tMaxForDataByTrial;
@@ -3265,7 +3285,7 @@ classdef PopulationTrajectorySet
                     
                     % lookup the new time limits which we'll compute the
                     % trial average within
-                    tMinValid = tMinForDataMean(iAlign); 
+                    tMinValid = tMinForDataMean(iAlign);
                     tMaxValid = tMaxForDataMean(iAlign);
                     
                     % IGNORE THIS FOR NOW, CHANGED THIS ABOVE
@@ -3285,13 +3305,13 @@ classdef PopulationTrajectorySet
                     
                     % IMPORTANT no need to remove zero spike trials since they are
                     % omitted in trialLists already
-                      
+                    
                     byCondition = cellfun(@(idx) byTrialValid(idx,:), trialLists(iBasis, :)', ...
                         'UniformOutput', false);
                     
                     for iCondition = 1:pset.nConditions
-%                         if ~conditionHasValidTrialAverageAllAlignsBases(iCondition), continue, end
-                        if ~cMask(iCondition), continue; end 
+                        %                         if ~conditionHasValidTrialAverageAllAlignsBases(iCondition), continue, end
+                        if ~cMask(iCondition), continue; end
                         mat = byCondition{iCondition};
                         nTrials = size(mat, 1);
                         if nTrials == 0, continue, end
@@ -3299,7 +3319,7 @@ classdef PopulationTrajectorySet
                         % minimum trial count at each time point needed to
                         % compute an average, otherwise NaN
                         minTrials = max(minTrialsForTrialAveraging, ...
-                            ceil(nTrials * minFractionTrialsForTrialAveraging)); 
+                            ceil(nTrials * minFractionTrialsForTrialAveraging));
                         
                         nTrialsByTime = sum(~isnan(mat), 1);
                         
@@ -3313,32 +3333,32 @@ classdef PopulationTrajectorySet
                         dataSem{iAlign}(iBasis, iCondition, :) = se;
                     end
                 end
-
+                
                 prog.finish();
             end
             
-%             if ~any(pset.conditionHasValidTrialAverageAllAlignsBases)
-%                 warning('No conditions have valid trial averages for all alignments and bases, so no dataMean will be computed. Use .findBasesMissingTrialAverageForNonEmptyConditionAligns to identify the bases lacking trial averages on each condition');
-%             end
+            %             if ~any(pset.conditionHasValidTrialAverageAllAlignsBases)
+            %                 warning('No conditions have valid trial averages for all alignments and bases, so no dataMean will be computed. Use .findBasesMissingTrialAverageForNonEmptyConditionAligns to identify the bases lacking trial averages on each condition');
+            %             end
             
             if any(basisHasNoValidTimepoints)
                 warning('Valid trial averages were not computed (left NaN) for %d bases. Check .explain()', nnz(basisHasNoValidTimepoints));
             end
             
             % old way of accomplishing the same thing
-%            for iAlign = 1:pset.nAlign
-%                 % for this align, which conditions have at least one basis
-%                 % with valid trials. nConditions x 1
-%                 conditionMaskWithTrials = squeeze(any(pset.dataNTrials(iAlign, :, :), 2));
-%                 
-%                 % dataNtrials is nAlign x nBases x nConditions.  nBases x 1
-%                 basesMissingTrials = any(pset.dataNTrials(iAlign, pset.basisValid, conditionMaskWithTrials) == 0, 3)';
-%                 
-%                 if any(basesMissingTrials)
-%                     warning('%d bases have no valid trials for at least one condition on alignment %d for which other bases have valid trials. Use .setBasesInvalidMissingTrialAverageForNonEmptyConditionAligns() to mark these as invalid', ...
-%                         nnz(basesMissingTrials), iAlign);
-%                 end
-%             end
+            %            for iAlign = 1:pset.nAlign
+            %                 % for this align, which conditions have at least one basis
+            %                 % with valid trials. nConditions x 1
+            %                 conditionMaskWithTrials = squeeze(any(pset.dataNTrials(iAlign, :, :), 2));
+            %
+            %                 % dataNtrials is nAlign x nBases x nConditions.  nBases x 1
+            %                 basesMissingTrials = any(pset.dataNTrials(iAlign, pset.basisValid, conditionMaskWithTrials) == 0, 3)';
+            %
+            %                 if any(basesMissingTrials)
+            %                     warning('%d bases have no valid trials for at least one condition on alignment %d for which other bases have valid trials. Use .setBasesInvalidMissingTrialAverageForNonEmptyConditionAligns() to mark these as invalid', ...
+            %                         nnz(basesMissingTrials), iAlign);
+            %                 end
+            %             end
             
             % no need to apply translation / normalization here since it is
             % already applied to dataByTrial!
@@ -3350,7 +3370,7 @@ classdef PopulationTrajectorySet
             c.tMinForDataMean = tMinForDataMean;
             c.tMaxForDataMean = tMaxForDataMean;
         end
-
+        
         function pset = storeDataMeanResampleTrialsWithinConditions(pset, varargin)
             % see computeDataMeanResampleTrialsWithinConditions for args,
             % this version stores the results in pset.dataMeanRandomized
@@ -3360,7 +3380,7 @@ classdef PopulationTrajectorySet
             [pset.dataMeanRandomized, pset.dataSemRandomized, ...
                 pset.conditionDescriptorRandomized, pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
                 pset.computeDataMeanResampleTrialsWithinConditions(varargin{:});
-        end    
+        end
         
         function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
                 computeDataMeanResampleTrialsWithinConditions(pset, varargin)
@@ -3399,12 +3419,12 @@ classdef PopulationTrajectorySet
                 'useValidTimepointsFromOriginal', p.Results.useValidTimepointsFromOriginal);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
-                
+        
         function pset = storeDataMeanAxisResampleFromSpecifiedValueListIndices(pset, varargin)
             % see computeDataMeanAxisResampleFromSpecifiedValueListIndices
             % for arguments
             % this version stores the results in pset.dataMeanRandomized
-            % calls into: axisResampleFromSpecifiedValueListIndices(ci, axisIdxOrAttr, resampleFromList, replace) 
+            % calls into: axisResampleFromSpecifiedValueListIndices(ci, axisIdxOrAttr, resampleFromList, replace)
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
@@ -3415,7 +3435,7 @@ classdef PopulationTrajectorySet
         
         function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
                 computeDataMeanAxisResampleFromSpecifiedValueListIndices(pset, ...
-                axisIdxOrAttr, resampleFromList, replace, varargin)            
+                axisIdxOrAttr, resampleFromList, replace, varargin)
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
@@ -3452,7 +3472,7 @@ classdef PopulationTrajectorySet
             % see computeDataMeanAxisResampleFromSpecifiedValuesfal
             % for arguments
             % this version stores the results in pset.dataMeanRandomized
-            % calls into: axisResampleFromSpecifiedValueListIndices(ci, axisIdxOrAttr, resampleFromList, replace) 
+            % calls into: axisResampleFromSpecifiedValueListIndices(ci, axisIdxOrAttr, resampleFromList, replace)
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
@@ -3462,7 +3482,7 @@ classdef PopulationTrajectorySet
         end
         
         function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = computeDataMeanAxisResampleFromSpecifiedValues(pset, ...
-                axisIdxOrAttr, resampleFromList, replace, varargin)            
+                axisIdxOrAttr, resampleFromList, replace, varargin)
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
@@ -3494,12 +3514,12 @@ classdef PopulationTrajectorySet
                 p.Unmatched);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
-
+        
         function pset = storeDataMeanAxisShuffle(pset, varargin)
             % see computeDataMeanAxisShuffled
             % for arguments
             % this version stores the results in pset.dataMeanRandomized
-            % calls into: axisResampleFromSpecifiedValueListIndices(ci, axisIdxOrAttr, resampleFromList, replace) 
+            % calls into: axisResampleFromSpecifiedValueListIndices(ci, axisIdxOrAttr, resampleFromList, replace)
             pset.warnIfNoArgOut(nargout);
             pset.odc = pset.odc.copy();
             
@@ -3510,7 +3530,7 @@ classdef PopulationTrajectorySet
         
         function [dataMeanRandomized, dataSemRandomized, cd, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ....
                 computeDataMeanAxisShuffle(pset, ...
-                axisIdxOrAttr, varargin)        
+                axisIdxOrAttr, varargin)
             p = inputParser();
             p.addParameter('nRandomSamples', 100, @isscalar);
             p.addParameter('randomSeed', pset.conditionDescriptor.randomSeed, @isscalar);
@@ -3543,7 +3563,7 @@ classdef PopulationTrajectorySet
                 p.Unmatched);
             cd = ConditionDescriptor.fromConditionDescriptor(ci);
         end
-
+        
         function [dataMeanRandomized, dataSemRandomized, dataDifferenceOfTrialsScaledNoiseEstimateRandomized] = ...
                 computeDataMeanUsingMultipleListByCondition(pset, listByConditionCell, listByConditionOriginal, varargin)
             % a utility function for recomputing dataMean using a different
@@ -3559,11 +3579,11 @@ classdef PopulationTrajectorySet
             p.addParameter('translateToMaintainTotalVariance', false, @islogical);
             p.parse(varargin{:});
             
-%             tMinForDataByTrial = pset.tMinForDataByTrial;
-%             tMaxForDataByTrial = pset.tMaxForDataByTrial;
-%             tMinForDataMean = pset.tMinForDataMean;
-%             tMaxForDataMean = pset.tMaxForDataMean;
-%             timeDelta = pset.timeDelta;
+            %             tMinForDataByTrial = pset.tMinForDataByTrial;
+            %             tMaxForDataByTrial = pset.tMaxForDataByTrial;
+            %             tMinForDataMean = pset.tMinForDataMean;
+            %             tMaxForDataMean = pset.tMaxForDataMean;
+            %             timeDelta = pset.timeDelta;
             nAlign = pset.nAlign;
             nBases = pset.nBases;
             nConditions = pset.nConditions;
@@ -3571,8 +3591,8 @@ classdef PopulationTrajectorySet
             nRandomSamples = size(listByConditionCell, 3);
             minTrialsForTrialAveraging = pset.minTrialsForTrialAveraging;
             minFractionTrialsForTrialAveraging = pset.minFractionTrialsForTrialAveraging;
-%             T = sum(pset.nTimeDataMean);
-%             dataByTrial = pset.dataByTrial;
+            %             T = sum(pset.nTimeDataMean);
+            %             dataByTrial = pset.dataByTrial;
             
             % new matrix will contain all data, concatenated by alignment
             [dataMeanRandomized, dataSemRandomized] = deal(cell(nAlign, 1));
@@ -3586,74 +3606,74 @@ classdef PopulationTrajectorySet
                     continue;
                 end
                 
-                for iBasis = 1:nBases    
-
+                for iBasis = 1:nBases
+                    
                     % don't process invalid bases, leave these as NaNs
                     if ~pset.basisValid(iBasis)
                         continue;
                     end
-
-    %                 % compute a align-concatenated time mask for indexing into
-    %                 % data by trial
-    %                 tMaskValidByAlign = cell(nAlign, 1);
-    %                 for iAlign = 1:nAlign
-    %                     % lookup the time limits which describe the byTrial
-    %                     % matrix
-    %                     tMinAll = tMinForDataByTrial(iBasis, iAlign);
-    %                     tMaxAll = tMaxForDataByTrial(iBasis, iAlign);
-    %                     tvecAll = (tMinAll:timeDelta:tMaxAll)';
-    % 
-    %                     % lookup the new time limits which we'll compute the
-    %                     % trial average within
-    %                     tMinValid = tMinForDataMean(iAlign);
-    %                     tMaxValid = tMaxForDataMean(iAlign);
-    %                     tMaskValidByAlign{iAlign} = tvecAll >= tMinValid & tvecAll <= tMaxValid;
-    %                 end
-    %                 tMaskValidCat = cat(1, tMaskValidByAlign{:});
-
-    %                 % grab the valid time portion of the nTrials x
-    %                 % nTime data matrix
-    %                 % pull the by-trial data from .dataByTrial
-    %                 byTrialCat = cat(2, dataByTrial{iBasis, :});
-    %                 byTrialCatValid = byTrialCat(:, tMaskValidCat);
-
+                    
+                    %                 % compute a align-concatenated time mask for indexing into
+                    %                 % data by trial
+                    %                 tMaskValidByAlign = cell(nAlign, 1);
+                    %                 for iAlign = 1:nAlign
+                    %                     % lookup the time limits which describe the byTrial
+                    %                     % matrix
+                    %                     tMinAll = tMinForDataByTrial(iBasis, iAlign);
+                    %                     tMaxAll = tMaxForDataByTrial(iBasis, iAlign);
+                    %                     tvecAll = (tMinAll:timeDelta:tMaxAll)';
+                    %
+                    %                     % lookup the new time limits which we'll compute the
+                    %                     % trial average within
+                    %                     tMinValid = tMinForDataMean(iAlign);
+                    %                     tMaxValid = tMaxForDataMean(iAlign);
+                    %                     tMaskValidByAlign{iAlign} = tvecAll >= tMinValid & tvecAll <= tMaxValid;
+                    %                 end
+                    %                 tMaskValidCat = cat(1, tMaskValidByAlign{:});
+                    
+                    %                 % grab the valid time portion of the nTrials x
+                    %                 % nTime data matrix
+                    %                 % pull the by-trial data from .dataByTrial
+                    %                 byTrialCat = cat(2, dataByTrial{iBasis, :});
+                    %                 byTrialCatValid = byTrialCat(:, tMaskValidCat);
+                    
                     % nConditions x nSamples
                     listByConditionSamples = squeeze(listByConditionCell(iBasis, :, :));
-
+                    
                     % figure out how many trials for averagin we need by condition, based on
                     % the number of trials each condition (assuming all lists
                     % maintain the same number of trials by condition)
                     nTrialsByCondition = cellfun(@numel, listByConditionSamples(:, 1));
                     minTrialsByCondition = max(minTrialsForTrialAveraging, ...
                         ceil(nTrialsByCondition * minFractionTrialsForTrialAveraging));
-
+                    
                     thisDataByTrial = pset.dataByTrial{iBasis, iAlign};
                     [dataMeanRandomizedThisBasis, dataSemRandomizedThisBasis] = deal(nan(nConditions, nTimeDataMean(iAlign), nRandomSamples));
                     byConditionOriginal = cellfun(@(idx) thisDataByTrial(idx, :), ...
                         listByConditionOriginal(iBasis, :)', 'UniformOutput', false);
-
+                    
                     for iSample = 1:nRandomSamples
                         byCondition = cellfun(@(idx) thisDataByTrial(idx,:), ...
                             listByConditionSamples(:, iSample), 'UniformOutput', false);
-
+                        
                         for iCondition = 1:numel(byCondition)
                             % n by t
                             mat = byCondition{iCondition};
-    %                         nanMask = isnan(mat);
-
+                            %                         nanMask = isnan(mat);
+                            
                             matOrig = byConditionOriginal{iCondition};
                             if p.Results.useValidTimepointsFromOriginal
-                                 % use the nTrials by time of the original data so
+                                % use the nTrials by time of the original data so
                                 % placement of nans doesn't change
                                 nTrialsByTime = sum(~isnan(matOrig), 1);
                             else
                                 nTrialsByTime = sum(~isnan(mat), 1);
                             end
-
+                            
                             % clear invalid timesteps
                             mat(:, nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
                             matOrig(:, nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
-
+                            
                             m = nanmean(mat, 1);
                             
                             if p.Results.translateToMaintainTotalVariance && numel(m) > 1
@@ -3665,7 +3685,7 @@ classdef PopulationTrajectorySet
                                 mu = nanmean(m);
                                 m = m - mu + meanOrig;
                             end
-
+                            
                             if p.Results.normalizeToMaintainTotalVariance && numel(m) > 1
                                 % maintain at the same level of variance of the
                                 % original mean.
@@ -3682,41 +3702,41 @@ classdef PopulationTrajectorySet
                             else
                                 multiplier = 1;
                             end
-
+                            
                             dataMeanRandomizedThisBasis(iCondition, :, iSample) = m;
-
+                            
                             se = nansem(mat, 1)' * multiplier;
                             se(nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
                             dataSemRandomizedThisBasis(iCondition, :, iSample) = se;
                         end
                     end
-
+                    
                     dataMeanRandomized{iAlign}(iBasis, :, :, :) = dataMeanRandomizedThisBasis;
                     dataSemRandomized{iAlign}(iBasis, :, :, :) = dataSemRandomizedThisBasis;
                     prog.update(iBasis);
                 end
                 prog.finish();
             end
-
-%             % segregate into different alignments again
-%             if nRandomSamples == 1
-%                 % avoid warning about trailing singleton dimensions
-%                 dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
-%                     pset.nTimeDataMean));
-%                 dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
-%                     pset.nTimeDataMean));
-%             else
-%                 dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
-%                     pset.nTimeDataMean, nRandomSamples));
-%                 dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
-%                     pset.nTimeDataMean, nRandomSamples));
-%             end
+            
+            %             % segregate into different alignments again
+            %             if nRandomSamples == 1
+            %                 % avoid warning about trailing singleton dimensions
+            %                 dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
+            %                     pset.nTimeDataMean));
+            %                 dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
+            %                     pset.nTimeDataMean));
+            %             else
+            %                 dataMeanRandomized = squeeze(mat2cell(dataMeanRandomizedCat, nBases, nConditions, ...
+            %                     pset.nTimeDataMean, nRandomSamples));
+            %                 dataSemRandomized = squeeze(mat2cell(dataSemRandomizedCat, nBases, nConditions, ...
+            %                     pset.nTimeDataMean, nRandomSamples));
+            %             end
             
             % apply translation normalization if present
             if ~isempty(pset.translationNormalization)
                 cellApplyToDataFn = @(data) cellfun(@pset.translationNormalization.applyTranslationNormalizationToData, ...
                     data, 'UniformOutput', false);
-            
+                
                 cellApplyNormOnlyToDataFn = @(data) cellfun(@pset.translationNormalization.applyNormalizationToData, ...
                     data, 'UniformOutput', false);
                 dataMeanRandomized = cellApplyToDataFn(dataMeanRandomized);
@@ -3731,7 +3751,7 @@ classdef PopulationTrajectorySet
                 nTrials_NbyC = pset.buildTrialCountsNbyC();
                 % scale appropriately each timeseries (running along dim 2) taking into account trial counts
                 nTrials_Nby1byC = permute(nTrials_NbyC, [1 3 2]);
-
+                
                 % grab random pair of trials for each basis, each condition,
                 % concatenate aligns in time. This function does every
                 % random sample at once for speed
@@ -3741,10 +3761,10 @@ classdef PopulationTrajectorySet
                     'ignoreTrialsWithTooFewSamples', true, ...
                     'message', 'Building difference of trials noise estimate for randomized data', ...
                     'trialListsByBasisCondition', listByConditionCell);
-
+                
                 % diff be N x TA x C x nRandomSamples
                 dif_NbyTAbyCbyRS = diff(NbyTAbyCby2byRS, 1, 4);
-
+                
                 % N x TA x C x nRandomSamples (after squeezing out the diff
                 % dimension)
                 dataDifferenceOfTrialsScaledNoiseEstimateRandomized = ...
@@ -3753,7 +3773,7 @@ classdef PopulationTrajectorySet
                 % apply translation normalization if present
                 if ~isempty(pset.translationNormalization)
                     dataDifferenceOfTrialsScaledNoiseEstimateRandomized = ...
-                            pset.translationNormalization.applyNormalizationToData(dataDifferenceOfTrialsScaledNoiseEstimateRandomized);
+                        pset.translationNormalization.applyNormalizationToData(dataDifferenceOfTrialsScaledNoiseEstimateRandomized);
                 end
             end
         end
@@ -3774,16 +3794,16 @@ classdef PopulationTrajectorySet
                 dataIntervalHigh = cellfun(@trNorm.applyTranslationNormalizationToData, dataIntervalHigh, 'UniformOutput', false);
                 dataIntervalLow = cellfun(@trNorm.applyTranslationNormalizationToData, dataIntervalLow, 'UniformOutput', false);
             end
-
+            
             c = pset.odc;
             c.dataIntervalHigh = dataIntervalHigh;
-            c.dataIntervalLow = dataIntervalLow;  
+            c.dataIntervalLow = dataIntervalLow;
         end
         
         function psetNew = withDataRandomSampleAsData(pset, dataRandomIndex, varargin)
             % take random sample idx from dataMeanRandomized as the new
             % dataMean, so that the randomization can be studied as a
-            % normal pset            
+            % normal pset
             pset.warnIfNoArgOut(nargout);
             assert(pset.hasDataRandomized == 1);
             cdr = pset.conditionDescriptorRandomized;
@@ -3797,7 +3817,7 @@ classdef PopulationTrajectorySet
                 b.dataSem{iAlign} = pset.dataSemRandomized{iAlign}(:, :, :, dataRandomIndex);
             end
             b.dataDifferenceOfTrialsScaledNoiseEstimate = pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(:, :, :, dataRandomIndex);
-         	b.dataMeanRandomized = [];
+            b.dataMeanRandomized = [];
             b.dataSemRandomized = [];
             b.conditionDescriptorRandomized = [];
             b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = [];
@@ -3826,7 +3846,7 @@ classdef PopulationTrajectorySet
             prog = ProgressBar(pset.nDataSources, 'Computing alignment summary statistics by data source');
             dataSources = pset.dataSources;
             for iSrc = 1:pset.nDataSources
-                prog.update(iSrc); 
+                prog.update(iSrc);
                 alignSummaryData(iSrc, :) = dataSources{iSrc}.alignSummarySet;
             end
             prog.finish();
@@ -3835,7 +3855,7 @@ classdef PopulationTrajectorySet
             c.basisAlignSummaryLookup = basisAlignSummaryLookup;
             c.alignSummaryData = alignSummaryData;
         end
-
+        
         function buildAlignSummaryAggregated(pset)
             % build the aggregated data across all bases too, for each alignment
             alignSummaryAggregated = cell(pset.nAlign, 1);
@@ -3845,7 +3865,7 @@ classdef PopulationTrajectorySet
             for iAlign = 1:pset.nAlign
                 prog.update(iAlign);
                 alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(dsMask, iAlign));
-            end 
+            end
             prog.finish();
             
             c = pset.odc;
@@ -3871,19 +3891,19 @@ classdef PopulationTrajectorySet
             % concatenate aligns in time
             NbyTAbyCby2 = pset.buildNbyTAbyCbyTrials('maxTrials', 2, 'ignoreTrialsWithTooFewSamples', true, ...
                 'chooseRandom', true, 'message', 'Building difference of trials noise estimate');
-                
+            
             % grab trial counts
             nTrials_NbyC = pset.buildTrialCountsNbyC();
             
             % diff be N x TA x C
             dif_NbyTAbyC = diff(NbyTAbyCby2, 1, 4);
-
+            
             % scale appropriately each timeseries (running along dim 2) taking into account trial counts
             nTrials_Nby1byC = permute(nTrials_NbyC, [1 3 2]);
             
             % N x TA x C
             dif_NbyTAbyC = bsxfun(@rdivide, dif_NbyTAbyC, sqrt(2*nTrials_Nby1byC));
-
+            
             if ~isempty(pset.translationNormalization)
                 dif_NbyTAbyC = pset.translationNormalization.applyNormalizationToData(dif_NbyTAbyC);
             end
@@ -3914,7 +3934,7 @@ classdef PopulationTrajectorySet
             
             % A x N x C --> TA x N x C --> N x TA x C
             dataNTrials = permute(repmat(max(pset.dataNTrials, [], 1), [sum(pset.nTimeDataMean) 1 1]), [2 1 3]);
-         
+            
             dataSumTensor = dataMeanTensor .* dataNTrials;
             
             % compute new mean by taking Sum - Sampled Trial / (Ntrials - 1)
@@ -3949,7 +3969,7 @@ classdef PopulationTrajectorySet
             
             assert(isvector(mask));
             assert(islogical(mask) || all(mask >= 1 & mask <= pset.nBases));
-
+            
             pset.warnIfNoArgOut(nargout);
             
             maskDim1_odcOrManual = {'basisNames', 'basisUnits', 'basisValid', 'basisInvalidCause', 'trialLists', ...
@@ -3960,23 +3980,23 @@ classdef PopulationTrajectorySet
             maskDim2_odcOrManual = {'dataValid', 'dataNTrials', 'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition'};
             
             maskCellDim1_odcOrManual = {'dataMean', 'dataSem', ...
-                'dataIntervalHigh', 'dataIntervalLow'}; 
+                'dataIntervalHigh', 'dataIntervalLow'};
             maskCellDim1 = {'dataMeanRandomized', 'dataSemRandomized'};
-
+            
             for i = 1:numel(maskDim1)
                 fld = maskDim1{i};
-                if ~isempty(pset.(fld)) 
+                if ~isempty(pset.(fld))
                     % some have up to 4 dimensions, add a couple of extra
                     % colons just in case
                     pset.(fld) = pset.(fld)(mask, :, :, :, :, :);
                 end
             end
             
-            % if dataSourceManual, mask the field Manual value. 
+            % if dataSourceManual, mask the field Manual value.
             % else, mask the odc property if it's already been computed
             for i = 1:numel(maskDim1_odcOrManual)
                 fld = maskDim1_odcOrManual{i};
-                if pset.dataSourceManual || ~isempty(pset.odc.(fld)) 
+                if pset.dataSourceManual || ~isempty(pset.odc.(fld))
                     % check whether it's already been computed
                     % then write to the property itself, which will
                     % copy the ODC on write. never write to the odc
@@ -3992,10 +4012,10 @@ classdef PopulationTrajectorySet
                     pset.(fldManual) = pset.(fldManual)(mask, :, :, :, :, :);
                 end
             end
-
+            
             for i = 1:numel(maskDim2_odcOrManual)
                 fld = maskDim2_odcOrManual{i};
-                if pset.dataSourceManual || ~isempty(pset.odc.(fld)) 
+                if pset.dataSourceManual || ~isempty(pset.odc.(fld))
                     % check whether it's already been computed
                     % then write to the property itself, which will
                     % copy the ODC on write. never write to the odc
@@ -4014,7 +4034,7 @@ classdef PopulationTrajectorySet
             % we need to recompute the trial-averaged data again from
             % scratch, since the time windows will be shifted to reflect
             % the bases
-%             c.flushTrialAveragedData();
+            %             c.flushTrialAveragedData();
             for i = 1:numel(maskCellDim1_odcOrManual)
                 fld = maskCellDim1_odcOrManual{i};
                 if pset.dataSourceManual || ~isempty(pset.odc.(fld))
@@ -4023,7 +4043,7 @@ classdef PopulationTrajectorySet
                         if ~isempty(pset.(fld){j})
                             pset.(fld){j} = pset.(fld){j}(mask, :, :, :);
                         end
-                    end 
+                    end
                 end
                 % in the ODC case still may need to mask the manual field
                 fldManual = [fld 'Manual'];
@@ -4048,13 +4068,13 @@ classdef PopulationTrajectorySet
                     end
                 end
             end
-
+            
             % filter alignSummaryData
             if pset.dataSourceManual || ~isempty(pset.odc.alignSummaryData)
                 cachedMaskedBasisAlignSummaryLookup = pset.basisAlignSummaryLookup(mask);
                 alignSummaryKeep = false(size(pset.alignSummaryData{1}, 1), 1);
                 alignSummaryKeep(cachedMaskedBasisAlignSummaryLookup) = true;
-
+                
                 % updating the lookup table is tricky, since the lookup
                 % indices change
                 newIdxForOldSummary = cumsum(alignSummaryKeep) .* alignSummaryKeep;
@@ -4064,7 +4084,7 @@ classdef PopulationTrajectorySet
                 pset.alignSummaryData = pset.alignSummaryData(alignSummaryKeep, :);
                 pset.alignSummaryAggregated = [];
             end
-
+            
             % filter dataSources
             if ~isempty(pset.dataSources)
                 dataSourcesKeep = false(numel(pset.dataSources), 1);
@@ -4091,13 +4111,13 @@ classdef PopulationTrajectorySet
                 if pset.hasDataRandomized
                     pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(mask, :, :, :);
                 end
-            end   
-                
+            end
+            
             % force time windows to become updated
             pset = pset.updateValid();
         end
         
-        function [pset, mask] = filterBasesMissingTrialAverageForNonEmptyConditionAligns(pset)  
+        function [pset, mask] = filterBasesMissingTrialAverageForNonEmptyConditionAligns(pset)
             pset.warnIfNoArgOut(nargout);
             mask = ~pset.basesMissingTrialAverageForNonEmptyConditionAligns;
             pset = pset.filterBases(mask);
@@ -4113,12 +4133,31 @@ classdef PopulationTrajectorySet
             pset = pset.setConditionDescriptor(cd);
         end
         
-        function [pset, maskC] = selectConditionsAlongAxis(pset, varargin)
+        function [pset, maskC] = selectConditionsAlongAxis(pset, axisAttr, mask)
             % select specific conditions by linear index or mask
             pset.warnIfNoArgOut(nargout);
             
-            [cd, maskC] = pset.conditionDescriptor.selectConditionsAlongAxis(varargin{:});
-            pset = pset.setConditionDescriptor(cd);
+            [cd, maskC] = pset.conditionDescriptor.selectConditionsAlongAxis(axisAttr, mask);
+            
+            if ~pset.dataSourceManual
+                % just update the condition descriptor and the data will be
+                % re-trialaveraged accordingly
+                pset = pset.setConditionDescriptor(cd);
+            else
+                % manually orchestrate a selection of the conditions
+                aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisAttr);
+                nOld = pset.conditionDescriptor.conditionsSize(aIdx);
+                inds = TensorUtils.vectorMaskToIndices(mask);
+                nNew = numel(inds);
+                wNewByOld = zeros(nNew, nOld);
+                for iN = 1:nNew
+                    wNewByOld(iN, inds(iN)) = 1;
+                end
+                
+                pset = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, aIdx, wNewByOld);
+                pset = pset.setConditionDescriptor(cd);
+            end
+            
         end
         
         function [pset, maskC] = matchSelectConditionsAlongAxis(pset, varargin)
@@ -4139,7 +4178,7 @@ classdef PopulationTrajectorySet
         end
     end
     
-     methods % Marking bases as invalid
+    methods % Marking bases as invalid
         function pset = updateValid(pset)
             pset.warnIfNoArgOut(nargout);
             if ~isempty(pset.odc)
@@ -4152,15 +4191,15 @@ classdef PopulationTrajectorySet
                 clearFn = @(in, dim) TensorUtils.assignValueMaskedSelectionAlongDimension(in, dim, mask, NaN);
                 
                 % mask out data from every invalid basis
-                 maskDim1 = {'basisNames', 'basisUnits', ...
-                'dataByTrial', 'tMinForDataByTrial', ...
-                'tMaxForDataByTrial', 'tMinByTrial', 'tMaxByTrial', 'alignValidByTrial', ...
-                'dataCachedSampledTrialsTensor', 'dataCachedSampledTrialCounts', 'dataCachedMeanExcludingSampledTrialsTensor', ...
-                'dataDifferenceOfTrialsScaledNoiseEstimate', 'dataDifferenceOfTrialsScaledNoiseEstimateRandomized'};
+                maskDim1 = {'basisNames', 'basisUnits', ...
+                    'dataByTrial', 'tMinForDataByTrial', ...
+                    'tMaxForDataByTrial', 'tMinByTrial', 'tMaxByTrial', 'alignValidByTrial', ...
+                    'dataCachedSampledTrialsTensor', 'dataCachedSampledTrialCounts', 'dataCachedMeanExcludingSampledTrialsTensor', ...
+                    'dataDifferenceOfTrialsScaledNoiseEstimate', 'dataDifferenceOfTrialsScaledNoiseEstimateRandomized'};
                 maskDim2 = {'dataNTrials', 'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition'};
                 maskCellDim1 = {'dataMean', 'dataSem', 'dataMeanRandomized', 'dataSemRandomized', ...
-                    'dataIntervalHigh', 'dataIntervalLow'}; 
-
+                    'dataIntervalHigh', 'dataIntervalLow'};
+                
                 for i = 1:numel(maskDim1)
                     fld = maskDim1{i};
                     if ~isempty(pset.(fld))
@@ -4169,14 +4208,14 @@ classdef PopulationTrajectorySet
                         pset.(fld) = clearFn(pset.(fld), 1);
                     end
                 end
-
+                
                 for i = 1:numel(maskDim2)
                     fld = maskDim2{i};
                     if ~isempty(pset.(fld))
                         pset.(fld) = clearFn(pset.(fld), 2);
                     end
                 end
-
+                
                 for i = 1:numel(maskCellDim1)
                     fld = maskCellDim1{i};
                     if ~isempty(pset.(fld))
@@ -4185,14 +4224,14 @@ classdef PopulationTrajectorySet
                         end
                     end
                 end
-
+                
                 % filter alignSummaryData
                 if ~isempty(pset.alignSummaryData)
                     dsMaskKeep = TensorUtils.vectorIndicesToMask(pset.basisAlignSummaryLookup(pset.basisValid), pset.nAlignSummaryData);
                     pset.alignSummaryData(~dsMaskKeep, :) = {[]};
                 end
                 pset.alignSummaryAggregated = [];
-               
+                
                 % filter translationNormalization
                 if ~isempty(pset.translationNormalization)
                     pset.translationNormalization = pset.translationNormalization.setBasesInvalid(mask);
@@ -4206,6 +4245,8 @@ classdef PopulationTrajectorySet
             [permValid, permCause] = pset.getPermanentValid();
             
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
+            maskOrig = mask; % cache for later
+            
             mask = mask & permValid;
             permValid(mask) = false;
             
@@ -4222,13 +4263,13 @@ classdef PopulationTrajectorySet
                 return;
             end
             
-            if numel(cause) == nnz(mask)
-                cause = TensorUtils.inflateMaskedTensor(cause, 1, mask, {''});
+            if numel(cause) == nnz(maskOrig)
+                cause = TensorUtils.inflateMaskedTensor(cause, 1, maskOrig, {''});
             end
             assert(numel(cause) == numel(mask), 'Length of cellstr cause must match nnz(mask) or numel(mask)');
-           
+            
             permCause(mask) = cause(mask);
-           
+            
             pset.basisValidManual = permValid;
             pset.basisInvalidCauseManual = permCause;
             pset = pset.updateValid();
@@ -4255,9 +4296,9 @@ classdef PopulationTrajectorySet
                 cause = TensorUtils.inflateMaskedTensor(cause, 1, mask, {''});
             end
             assert(numel(cause) == numel(mask), 'Length of cellstr cause must match nnz(mask) or numel(mask)');
-           
+            
             tempCause(mask) = cause(mask);
-           
+            
             pset.basisValidTemporary = tempValid;
             pset.basisInvalidCauseTemporary = tempCause;
             pset = pset.updateValid();
@@ -4273,42 +4314,42 @@ classdef PopulationTrajectorySet
             pset = pset.updateValid();
         end
         
-%         function pset = setBasesInvalid(pset, mask, cause)
-%             pset.warnIfNoArgOut(nargout);
-%             if nargin < 3
-%                 cause = 'unspecified';
-%             end
-%             assert(iscellstr(cause) || ischar(cause), 'Cause must be a cellstr or a string');
-%             
-%             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
-%             
-%             if ischar(cause)
-%                 cause = repmat({cause}, nnz(mask), 1);
-%             end
-%             cause = makecol(cause);
-%             assert(numel(cause) == nnz(mask), 'Length of cellstr cause must match nnz(mask)');
-%             
-%             v = pset.basisValidManual;
-%             if isempty(v)
-%                 v = truevec(pset.nBases);
-%             end
-%             v = v & ~mask;
-%             pset.basisValidManual = v;
-%             
-%             if isempty(pset.basisInvalidCauseManual)
-%                 pset.basisInvalidCauseManual = cellstrvec(pset.nBases);
-%             end
-%             pset.basisInvalidCauseManual(mask) = cause;
-%             pset = pset.updateValid();
-%         end
+        %         function pset = setBasesInvalid(pset, mask, cause)
+        %             pset.warnIfNoArgOut(nargout);
+        %             if nargin < 3
+        %                 cause = 'unspecified';
+        %             end
+        %             assert(iscellstr(cause) || ischar(cause), 'Cause must be a cellstr or a string');
+        %
+        %             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
+        %
+        %             if ischar(cause)
+        %                 cause = repmat({cause}, nnz(mask), 1);
+        %             end
+        %             cause = makecol(cause);
+        %             assert(numel(cause) == nnz(mask), 'Length of cellstr cause must match nnz(mask)');
+        %
+        %             v = pset.basisValidManual;
+        %             if isempty(v)
+        %                 v = truevec(pset.nBases);
+        %             end
+        %             v = v & ~mask;
+        %             pset.basisValidManual = v;
+        %
+        %             if isempty(pset.basisInvalidCauseManual)
+        %                 pset.basisInvalidCauseManual = cellstrvec(pset.nBases);
+        %             end
+        %             pset.basisInvalidCauseManual(mask) = cause;
+        %             pset = pset.updateValid();
+        %         end
         
-        function [pset, mask] = markBasesTemporarilyInvalidMissingTrialAverages(pset)  
+        function [pset, mask] = markBasesTemporarilyInvalidMissingTrialAverages(pset)
             pset.warnIfNoArgOut(nargout);
             mask = pset.basesMissingTrialAverageForNonEmptyConditionAligns;
             pset = pset.markBasesTemporarilyInvalid(mask, 'missing trial average for non empty condition aligns');
-        end        
-
-        function [pset, mask] = markBasesPermanentlyInvalidMissingTrialAverages(pset)  
+        end
+        
+        function [pset, mask] = markBasesPermanentlyInvalidMissingTrialAverages(pset)
             pset.warnIfNoArgOut(nargout);
             mask = pset.basesMissingTrialAverageForNonEmptyConditionAligns;
             pset = pset.markBasesPermanentlyInvalid(mask, 'missing trial average for non empty condition aligns');
@@ -4341,8 +4382,10 @@ classdef PopulationTrajectorySet
         end
     end
     
-    methods(Static) % Static methods which take multiple psets as args 
+    methods(Static) % Static methods which take multiple psets as args
         function [varargout] = equalizeBasesInvalid(varargin)
+            % works for arguments of PopulationTrajectorySet and
+            % StateSpaceProjection
             assert(nargin == nargout, 'Number of input and output arguments must match');
             N = nargin;
             
@@ -4351,7 +4394,16 @@ classdef PopulationTrajectorySet
                 return;
             end
             
-            nBasesVec = cellfun(@(pset) pset.nBases, varargin);
+            nBasesVec = nan(numel(varargin), 1);
+            for i = 1:numel(varargin)
+                if isa(varargin{i}, 'PopulationTrajectorySet')
+                    nBasesVec(i) = varargin{i}.nBases;
+                elseif isa(varargin{i}, 'StateSpaceProjection')
+                    nBasesVec(i) = varargin{i}.nBasesSource;
+                else
+                    error('Not defined for class %s', class(varargin{i}));
+                end
+            end
             assert(numel(unique(nBasesVec)) == 1, 'All inputs must have the same nBases');
             nBases = nBasesVec(1);
             
@@ -4359,18 +4411,22 @@ classdef PopulationTrajectorySet
             cause = cellstrvec(nBases);
             
             for i = 1:N
-                pset = varargin{i};
-                mask = mask & pset.basisValid;
-                cause(~pset.basisValid) = cellfun(@(c) sprintf('Invalid in other pset: %s', c),  ...
-                    pset.basisInvalidCause(~pset.basisValid), 'UniformOutput', false);
+                obj = varargin{i};
+                mask = mask & obj.basisValid;
+                cause(~obj.basisValid) = cellfun(@(c) sprintf('equalizeBasisInvalid: %s', c),  ...
+                    obj.basisInvalidCause(~obj.basisValid), 'UniformOutput', false);
             end
             
             varargout = cellvec(N);
             for i = 1:N
-                pset = varargin{i};
-                varargout{i} = pset.markBasesPermanentlyInvalid(~mask, cause(~mask));
+                obj = varargin{i};
+                if isa(obj, 'PopulationTrajectorySet')
+                    varargout{i} = obj.markBasesPermanentlyInvalid(~mask, cause);
+                elseif isa(obj, 'StateSpaceProjection')
+                    varargout{i} = obj.markBasesInvalid(~mask, cause);
+                end
             end
-        end 
+        end
         
         function tf = checkSameBasesValid(varargin)
             nBasesVec = cellfun(@(pset) pset.nBases, varargin);
@@ -4415,7 +4471,7 @@ classdef PopulationTrajectorySet
             assert(tf, reason);
         end
     end
-
+    
     methods % Compute on-the-fly Dependent properties
         function tf = get.simultaneous(pset)
             tf = pset.nDataSources == 1;
@@ -4476,7 +4532,7 @@ classdef PopulationTrajectorySet
         function n = get.nAlign(pset)
             n = length(pset.alignDescriptorSet);
         end
-  
+        
         function sz = get.conditionsSize(pset)
             if isempty(pset.conditionDescriptor)
                 sz = [0 0];
@@ -4511,7 +4567,7 @@ classdef PopulationTrajectorySet
             else
                 n = pset.conditionDescriptor.nAxes;
             end
-        end     
+        end
         
         function as = lookupAlignSummaryDataForBasis(pset, basisIdx)
             asIdx = pset.basisAlignSummaryLookup(basisIdx);
@@ -4533,8 +4589,8 @@ classdef PopulationTrajectorySet
             else
                 conditions = pset.conditionDescriptor.conditions;
             end
-        end 
-   
+        end
+        
         function names = get.conditionNames(pset)
             if isempty(pset.conditionDescriptor)
                 names = {};
@@ -4542,7 +4598,7 @@ classdef PopulationTrajectorySet
                 names = pset.conditionDescriptor.names;
             end
         end
-
+        
         function names = get.alignNames(pset)
             names = cellfun(@(ad) ad.name, pset.alignDescriptorSet, 'Uniform', false);
         end
@@ -4563,17 +4619,17 @@ classdef PopulationTrajectorySet
             c = TensorUtils.squeezeDims(any(pset.hasValidTrialAverageByAlignBasisCondition(:, pset.basisValid, :), 2), 2);
         end
         
-%         function c = get.alignBasisConditionsWithValidTrialAverage(pset)
-%             % c is nAlign x nBases x nConditions
-%             c = ~isnan(pset.tMinValidByAlignBasisCondition) & ...
-%                 ~isnan(pset.tMaxValidByAlignBasisCondition);
-%         end
+        %         function c = get.alignBasisConditionsWithValidTrialAverage(pset)
+        %             % c is nAlign x nBases x nConditions
+        %             c = ~isnan(pset.tMinValidByAlignBasisCondition) & ...
+        %                 ~isnan(pset.tMaxValidByAlignBasisCondition);
+        %         end
         
         function c = get.basisConditionsWithValidTrialAverage(pset)
             % c is nBases x nConditions
             c = TensorUtils.squeezeDims(all(pset.hasValidTrialAverageByAlignBasisCondition, 1), 1);
         end
-%         
+        %
         function basesMissingTrialAverages = get.basesMissingTrialAverageForNonEmptyConditionAligns(pset)
             % determine which bases missing trials in at least one condition for
             % which other bases have trials in that alignment. basesMask is
@@ -4605,11 +4661,10 @@ classdef PopulationTrajectorySet
             % any alignment, all bases
             cMask = squeeze(all(any(pset.hasValidTrialAverageByAlignBasisCondition(:,bMask,:), 1), 2));
         end
-           
     end
-
+    
     methods % Simple statistics, should be NaN for invalid bases
-        % some of the coding here is designed to accept the arguments 
+        % some of the coding here is designed to accept the arguments
         % 'type', 'meanRandom', which will mean the results will operate on
         % dataMeanRandomized, and thus have size nRandomSamples along the
         % last dimension, just like the buildCTAbyN-like methods
@@ -4658,11 +4713,11 @@ classdef PopulationTrajectorySet
         
         function ssq = computeTotalSS(pset, varargin)
             tensor = pset.buildCTAbyN(varargin{:});
-            ssq = squeeze(TensorUtils.nansumMultiDim(tensor.^2, [1 2])); 
+            ssq = squeeze(TensorUtils.nansumMultiDim(tensor.^2, [1 2]));
         end
         
         function ssq = computeTotalSSPerCTA(pset, varargin)
-            tensor = pset.buildCTAbyN(varargin{:});            
+            tensor = pset.buildCTAbyN(varargin{:});
             ssq = squeeze(nansum(nanmean(tensor.^2, 1), 2));
         end
         
@@ -4688,265 +4743,265 @@ classdef PopulationTrajectorySet
             rangeByBasis = TensorUtils.squeezeDims(nanmax(CTAbyN, [], 1) - nanmin(CTAbyN, [], 1), 1);
             rangeByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(rangeByBasis, 1, ~pset.basisValid, NaN);
         end
-  
-%         function [maxValues maxTimes] = getMaximumByBasisEachConditionEachAlign(pset, varargin)
-%             % maxValues: nAlign x nBases x nConditions matrices with the maximum value
-%             % time of occurrence
-% 
-%             maxValues = nan(pset.nAlign, pset.nBases, pset.nConditions);
-%             for iAlign = 1:pset.nAlign 
-%                 [maxValues(iAlign, :, :), maxTimes(iAlign, :, :)] = ...
-%                     max();
-%             end
-% 
-%             function [valMax timeMax] = findMaxFn(time,data)
-%                 [valMax i] = max(data);
-%                 timeMax = time(i);
-%             end
-%         end
-% 
-%         function [minValues minTimes] = findMinimum(pset, varargin)
-%             % return nBases x nConditions x nAlign matrices with the minimum value and
-%             % time of minimum value for each basis x condition x align
-% 
-%             [minValues minTimes] = pset.alignBasisConditionDataFun(@findMinFn, 'asMatrix', [true true]);
-% 
-%             function [valMin timeMin] = findMinFn(time,data)
-%                 [valMin i] = min(data);
-%                 timeMin = time(i);
-%             end
-%         end
-% 
-%         function maxByBasis = findMaximumAcrossConditions(pset)
-%             % return a nBases x nAlign vector of maximum values across conditions
-%             
-%             maxValues = pset.findMaximum();
-%             maxByBasis = max(maxValues, [], 2);
-%         end
-% 
-%         function minByBasis = findMinimumAcrossConditions(pset)
-%             % return a nBases x nAlign vector of minimum values across conditions
-%             
-%             minValues = pset.findMinimum();
-%             minByBasis = min(minValues, [], 2);
-%         end
-%         
-%         function varData = computeVarianceOverTime(pset)
-%             % varData is nBases x nConditions x nAlign
-%             
-%             varData = pset.alignBasisConditionDataFun(@var, 'asMatrix', true);
-%         end
-% 
-%         function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionVariance(pset)
-%             % compute variance across conditions per condition over time for each basis x align
-%             % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
-%             % tVecByAlign has the same size and carries the time vector associated with each ccv vector
-% 
-%             [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
-% 
-%             ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
-%                 'contentsFn', @getCCV, 'asCell', true);
-% 
-%             function ccv = getCCV(iBasis, iAlign)
-%                 % time by conditions matrix for this basis x align
-%                 tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
-% 
-%                 % t by 1 vector of variance across conditions
-%                 ccv = makecol(var(tByC, [], 2));
-%             end
-%         end
-%         
-%         function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionStd(pset)
-%             % compute variance across conditions per condition over time for each basis x align
-%             % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
-%             % tVecByAlign has the same size and carries the time vector associated with each ccv vector
-% 
-%             [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
-% 
-%             ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
-%                 'contentsFn', @getCCS, 'asCell', true);
-% 
-%             function ccv = getCCS(iBasis, iAlign)
-%                 % time by conditions matrix for this basis x align
-%                 tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
-% 
-%                 % t by 1 vector of variance across conditions
-%                 ccv = makecol(std(tByC, [], 2));
-%             end
-%         end
+        
+        %         function [maxValues maxTimes] = getMaximumByBasisEachConditionEachAlign(pset, varargin)
+        %             % maxValues: nAlign x nBases x nConditions matrices with the maximum value
+        %             % time of occurrence
+        %
+        %             maxValues = nan(pset.nAlign, pset.nBases, pset.nConditions);
+        %             for iAlign = 1:pset.nAlign
+        %                 [maxValues(iAlign, :, :), maxTimes(iAlign, :, :)] = ...
+        %                     max();
+        %             end
+        %
+        %             function [valMax timeMax] = findMaxFn(time,data)
+        %                 [valMax i] = max(data);
+        %                 timeMax = time(i);
+        %             end
+        %         end
+        %
+        %         function [minValues minTimes] = findMinimum(pset, varargin)
+        %             % return nBases x nConditions x nAlign matrices with the minimum value and
+        %             % time of minimum value for each basis x condition x align
+        %
+        %             [minValues minTimes] = pset.alignBasisConditionDataFun(@findMinFn, 'asMatrix', [true true]);
+        %
+        %             function [valMin timeMin] = findMinFn(time,data)
+        %                 [valMin i] = min(data);
+        %                 timeMin = time(i);
+        %             end
+        %         end
+        %
+        %         function maxByBasis = findMaximumAcrossConditions(pset)
+        %             % return a nBases x nAlign vector of maximum values across conditions
+        %
+        %             maxValues = pset.findMaximum();
+        %             maxByBasis = max(maxValues, [], 2);
+        %         end
+        %
+        %         function minByBasis = findMinimumAcrossConditions(pset)
+        %             % return a nBases x nAlign vector of minimum values across conditions
+        %
+        %             minValues = pset.findMinimum();
+        %             minByBasis = min(minValues, [], 2);
+        %         end
+        %
+        %         function varData = computeVarianceOverTime(pset)
+        %             % varData is nBases x nConditions x nAlign
+        %
+        %             varData = pset.alignBasisConditionDataFun(@var, 'asMatrix', true);
+        %         end
+        %
+        %         function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionVariance(pset)
+        %             % compute variance across conditions per condition over time for each basis x align
+        %             % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
+        %             % tVecByAlign has the same size and carries the time vector associated with each ccv vector
+        %
+        %             [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
+        %
+        %             ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
+        %                 'contentsFn', @getCCV, 'asCell', true);
+        %
+        %             function ccv = getCCV(iBasis, iAlign)
+        %                 % time by conditions matrix for this basis x align
+        %                 tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
+        %
+        %                 % t by 1 vector of variance across conditions
+        %                 ccv = makecol(var(tByC, [], 2));
+        %             end
+        %         end
+        %
+        %         function [ccvByBasisByAlign tVecByBasisByAlign] = crossConditionStd(pset)
+        %             % compute variance across conditions per condition over time for each basis x align
+        %             % ccvByBasisByAlign is a cell array of nBases x nAlign with a T x 1 vector of ccv over time
+        %             % tVecByAlign has the same size and carries the time vector associated with each ccv vector
+        %
+        %             [data timeData tVecByBasisByAlign] = pset.getDataTimeWindowedValidAcrossConditions();
+        %
+        %             ccvByBasisByAlign = TensorUtils.mapToSizeFromSubs([pset.nBases pset.nAlign], ...
+        %                 'contentsFn', @getCCS, 'asCell', true);
+        %
+        %             function ccv = getCCS(iBasis, iAlign)
+        %                 % time by conditions matrix for this basis x align
+        %                 tByC = cell2mat(squeezedim(data(iBasis, :, iAlign), [1 3]));
+        %
+        %                 % t by 1 vector of variance across conditions
+        %                 ccv = makecol(std(tByC, [], 2));
+        %             end
+        %         end
     end
-
+    
     methods % Visualization and plotting utilities
-%         function alignTimeInfo = drawTimeAxisForAlign(pset, iAlign, alignTimeInfo)
-%             ad = pset.alignDescriptorSet{iAlign};
-%             if ~exist('alignTimeInfo', 'var')
-%                 alignTimeInfo = pset.alignTimeInfoData(:, :, iAlign);
-%                 emptyMask = cellfun(@isempty, alignTimeInfo);
-%                 alignTimeInfo = alignTimeInfo(~emptyMask);
-%                 alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
-%             end
-%             %ad.drawTimeAxis(alignTimeInfo);
-%         end
-%         
-%         function drawTimeAxisForConditionAlign(pset, iCondition, iAlign)
-%             ad = pset.alignDescriptorSet{iAlign};
-%             alignTimeInfo = pset.alignTimeInfoData(:, iCondition, iAlign);
-%             alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
-%             ad.drawTimeAxis(alignTimeInfo);
-%         end
-
-%         function plotConditionPanels(pset, varargin)
-%             % draw all bases together, with each condition as a panel
-%             %fig();
-%             clf
-%             p = panel();
-%             p.pack(nRow, nCol);
-%             p.margin = 10;
-%             
-%             % determine how to layout the conditions, use a row if 1-d conditions
-%             % 2-d if necessary
-%             nDims = min(2, pset.conditionDescriptor.nAxes);
-%             conditionInds = pset.conditionDescriptor.conditionsAsLinearInds;
-%             
-%             if pset.ConditionDescriptor.nAxes == 1
-%                 nRows = 1;
-%                 nCols = 
-%                 
-%                 
-%             for iAlign = 1:pset.nAlign 
-%                 if nDims == 1
-%                     % if there is only one attribute, plot it along one row
-%                     nRow = 1;
-% 
-%                     % we need a column for every valid condition on this align
-%                     nCol = nnz(conditionsValidThisAlign);
-%                     
-%                     conditionByRowCol = makerow(conditionInds(conditionsValidThisAlign));
-%                 else
-%                     % one row for each value of the first attribute
-%                     nRow = pset.conditionDescriptor.nValuesByAttributeGroupBy(1);
-%                     
-%                     % reshape conditionsValid into nRow rows and the rest
-%                     % as columns
-%                     conditionIndsReshaped = reshape(conditionInds(:), nRow, []);
-%                     conditionsValidReshaped = reshape(conditionsValidThisAlign, nRow, []);
-%                     
-%                     % pare down the rows and columns that have at least one
-%                     % valid condition in them
-%                     rowMask = any(conditionsValidReshaped, 2);
-%                     colMask = any(conditionsValidReshaped, 1);
-%                     conditionByRowCol = conditionIndsReshaped(rowMask, colMask);
-%                     
-%                     nRow = nnz(rowMask);
-%                     nCol = nnz(colMask);
-%                 end
-%                 
-%                 
-% 
-%                 % build a nice colormap
-%                 cmap = cbrewer('qual', 'Set1', pset.nBases);
-%                 cmap = jet(pset.nBases);
-%                 
-%                 % loop over row and column panels
-%                 yl = nan(pset.nConditions, 2);
-%                 panelHasData = false(nRow, nCol);
-%                 for iCol = 1:nCol
-%                     for iRow = 1:nRow
-%                         
-%                         iCondition = conditionByRowCol(iRow, iCol);
-%                         if ~conditionsValidThisAlign(iCondition)
-%                             continue;
-%                         end
-%                         
-%                         h(iCondition) = p(iRow, iCol).select();
-% 
-%                         [tMin, tMax, yMin, yMax] = deal(NaN);
-%                        
-%                         for iBasis = 1:pset.nBases
-%                             dataVec = data{iBasis, iCondition, iAlign};
-%                             tvec = time{iBasis, iCondition, iAlign};
-%                             
-%                             if ~isempty(dataVec) && any(~isnan(dataVec))
-%                                 panelHasData(iRow, iCol) = true;
-%                             end
-%                             
-%                             tMin = min([tMin min(tvec)]);
-%                             tMax = max([tMax max(tvec)]);
-%                             yMin = min([yMin min(dataVec)]);
-%                             yMax = max([yMax max(dataVec)]);
-%                             
-%                             plot(tvec, dataVec, '-', 'LineWidth', 2, 'Color', cmap(iBasis,:));
-%                             hold on
-%                             
-%                             yl(iCondition, :) = get(gca, 'YLim');
-%                         end
-%                         
-%                         xlim([tMin tMax]);
-%                         ylim([yMin yMax]);
-%                         
-%                         title(sprintf('%s (%s)', pset.conditionNames{iCondition}, pset.alignNames{iAlign}));
-%                     end
-%                 end
-%                 
-%                 % draw time axes
-%                 for iCol = 1:nCol
-%                     for iRow = 1:nRow
-%                         p(iRow, iCol).select();
-%                         iCondition = conditionByRowCol(iRow, iCol);
-%                         if ~panelHasData(iRow, iCol)
-%                             axis off;
-%                         else
-%                             pset.drawTimeAxisForConditionAlign(iCondition, iAlign);
-%                         end
-%                     end
-%                 end
-%                 %whitebg(gcf, [0 0 0]);
-%                 p.refresh();
-%             end
-%         end
-% 
-%         function plotBasisPanels(pset, varargin)
-%             p = inputParser;
-%             p.addParameter('basisIdx', [1:6], @(x) isvector(x) && ...
-%                 all(inRange(x, [1 pset.nBases])));
-%             p.parse(varargin{:});
-% 
-%             basisIdx = intersect(p.Results.basisIdx, 1:pset.nBases);
-%             nBasesPlot = length(basisIdx);
-% 
-%             [data, time] = pset.getDataTimeWindowed();
-% 
-%             for iAlign = 1:pset.nAlign
-%                 fig();
-%                 clf;
-%                 p = panel();
-%                 p.pack(nBasesPlot,1);
-% 
-%                 for iBasisIdx = 1:nBasesPlot
-%                     p(iBasisIdx,1).select();
-%                     iBasis = basisIdx(iBasisIdx);
-% 
-%                     for iCondition = 1:pset.nConditions
-%                         timeVec = time{iBasis, iCondition, iAlign};
-%                         dataVec = data{iBasis, iCondition, iAlign};
-% 
-%                         appear = pset.conditionDescriptor.appearances(iCondition);
-% 
-%                         plot(timeVec, dataVec, ...
-%                             'Color', appear.color, 'LineWidth', appear.lineWidth);
-%                         hold on
-%                     end
-%                     hold off
-%                     box off
-%                     title(sprintf('%s (%s)', pset.basisNames{iBasis}, pset.alignNames{iAlign}));
-%                     pset.drawTimeAxisForAlign(iAlign);
-%                     drawnow;
-%                 end
-%                 
-%                 p.margin = 10;
-%             end
-%         end
-
+        %         function alignTimeInfo = drawTimeAxisForAlign(pset, iAlign, alignTimeInfo)
+        %             ad = pset.alignDescriptorSet{iAlign};
+        %             if ~exist('alignTimeInfo', 'var')
+        %                 alignTimeInfo = pset.alignTimeInfoData(:, :, iAlign);
+        %                 emptyMask = cellfun(@isempty, alignTimeInfo);
+        %                 alignTimeInfo = alignTimeInfo(~emptyMask);
+        %                 alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
+        %             end
+        %             %ad.drawTimeAxis(alignTimeInfo);
+        %         end
+        %
+        %         function drawTimeAxisForConditionAlign(pset, iCondition, iAlign)
+        %             ad = pset.alignDescriptorSet{iAlign};
+        %             alignTimeInfo = pset.alignTimeInfoData(:, iCondition, iAlign);
+        %             alignTimeInfo = cell2mat(makecol(alignTimeInfo(:)));
+        %             ad.drawTimeAxis(alignTimeInfo);
+        %         end
+        
+        %         function plotConditionPanels(pset, varargin)
+        %             % draw all bases together, with each condition as a panel
+        %             %fig();
+        %             clf
+        %             p = panel();
+        %             p.pack(nRow, nCol);
+        %             p.margin = 10;
+        %
+        %             % determine how to layout the conditions, use a row if 1-d conditions
+        %             % 2-d if necessary
+        %             nDims = min(2, pset.conditionDescriptor.nAxes);
+        %             conditionInds = pset.conditionDescriptor.conditionsAsLinearInds;
+        %
+        %             if pset.ConditionDescriptor.nAxes == 1
+        %                 nRows = 1;
+        %                 nCols =
+        %
+        %
+        %             for iAlign = 1:pset.nAlign
+        %                 if nDims == 1
+        %                     % if there is only one attribute, plot it along one row
+        %                     nRow = 1;
+        %
+        %                     % we need a column for every valid condition on this align
+        %                     nCol = nnz(conditionsValidThisAlign);
+        %
+        %                     conditionByRowCol = makerow(conditionInds(conditionsValidThisAlign));
+        %                 else
+        %                     % one row for each value of the first attribute
+        %                     nRow = pset.conditionDescriptor.nValuesByAttributeGroupBy(1);
+        %
+        %                     % reshape conditionsValid into nRow rows and the rest
+        %                     % as columns
+        %                     conditionIndsReshaped = reshape(conditionInds(:), nRow, []);
+        %                     conditionsValidReshaped = reshape(conditionsValidThisAlign, nRow, []);
+        %
+        %                     % pare down the rows and columns that have at least one
+        %                     % valid condition in them
+        %                     rowMask = any(conditionsValidReshaped, 2);
+        %                     colMask = any(conditionsValidReshaped, 1);
+        %                     conditionByRowCol = conditionIndsReshaped(rowMask, colMask);
+        %
+        %                     nRow = nnz(rowMask);
+        %                     nCol = nnz(colMask);
+        %                 end
+        %
+        %
+        %
+        %                 % build a nice colormap
+        %                 cmap = cbrewer('qual', 'Set1', pset.nBases);
+        %                 cmap = jet(pset.nBases);
+        %
+        %                 % loop over row and column panels
+        %                 yl = nan(pset.nConditions, 2);
+        %                 panelHasData = false(nRow, nCol);
+        %                 for iCol = 1:nCol
+        %                     for iRow = 1:nRow
+        %
+        %                         iCondition = conditionByRowCol(iRow, iCol);
+        %                         if ~conditionsValidThisAlign(iCondition)
+        %                             continue;
+        %                         end
+        %
+        %                         h(iCondition) = p(iRow, iCol).select();
+        %
+        %                         [tMin, tMax, yMin, yMax] = deal(NaN);
+        %
+        %                         for iBasis = 1:pset.nBases
+        %                             dataVec = data{iBasis, iCondition, iAlign};
+        %                             tvec = time{iBasis, iCondition, iAlign};
+        %
+        %                             if ~isempty(dataVec) && any(~isnan(dataVec))
+        %                                 panelHasData(iRow, iCol) = true;
+        %                             end
+        %
+        %                             tMin = min([tMin min(tvec)]);
+        %                             tMax = max([tMax max(tvec)]);
+        %                             yMin = min([yMin min(dataVec)]);
+        %                             yMax = max([yMax max(dataVec)]);
+        %
+        %                             plot(tvec, dataVec, '-', 'LineWidth', 2, 'Color', cmap(iBasis,:));
+        %                             hold on
+        %
+        %                             yl(iCondition, :) = get(gca, 'YLim');
+        %                         end
+        %
+        %                         xlim([tMin tMax]);
+        %                         ylim([yMin yMax]);
+        %
+        %                         title(sprintf('%s (%s)', pset.conditionNames{iCondition}, pset.alignNames{iAlign}));
+        %                     end
+        %                 end
+        %
+        %                 % draw time axes
+        %                 for iCol = 1:nCol
+        %                     for iRow = 1:nRow
+        %                         p(iRow, iCol).select();
+        %                         iCondition = conditionByRowCol(iRow, iCol);
+        %                         if ~panelHasData(iRow, iCol)
+        %                             axis off;
+        %                         else
+        %                             pset.drawTimeAxisForConditionAlign(iCondition, iAlign);
+        %                         end
+        %                     end
+        %                 end
+        %                 %whitebg(gcf, [0 0 0]);
+        %                 p.refresh();
+        %             end
+        %         end
+        %
+        %         function plotBasisPanels(pset, varargin)
+        %             p = inputParser;
+        %             p.addParameter('basisIdx', [1:6], @(x) isvector(x) && ...
+        %                 all(inRange(x, [1 pset.nBases])));
+        %             p.parse(varargin{:});
+        %
+        %             basisIdx = intersect(p.Results.basisIdx, 1:pset.nBases);
+        %             nBasesPlot = length(basisIdx);
+        %
+        %             [data, time] = pset.getDataTimeWindowed();
+        %
+        %             for iAlign = 1:pset.nAlign
+        %                 fig();
+        %                 clf;
+        %                 p = panel();
+        %                 p.pack(nBasesPlot,1);
+        %
+        %                 for iBasisIdx = 1:nBasesPlot
+        %                     p(iBasisIdx,1).select();
+        %                     iBasis = basisIdx(iBasisIdx);
+        %
+        %                     for iCondition = 1:pset.nConditions
+        %                         timeVec = time{iBasis, iCondition, iAlign};
+        %                         dataVec = data{iBasis, iCondition, iAlign};
+        %
+        %                         appear = pset.conditionDescriptor.appearances(iCondition);
+        %
+        %                         plot(timeVec, dataVec, ...
+        %                             'Color', appear.color, 'LineWidth', appear.lineWidth);
+        %                         hold on
+        %                     end
+        %                     hold off
+        %                     box off
+        %                     title(sprintf('%s (%s)', pset.basisNames{iBasis}, pset.alignNames{iAlign}));
+        %                     pset.drawTimeAxisForAlign(iAlign);
+        %                     drawnow;
+        %                 end
+        %
+        %                 p.margin = 10;
+        %             end
+        %         end
+        
         function addConditionLabels(pset, varargin)
             pset.conditionDescriptor.addColoredLabels(varargin{:});
         end
@@ -4956,7 +5011,7 @@ classdef PopulationTrajectorySet
             % timeseries are plotted side by side along an axis, separated
             % by gaps given by .interAlignGaps. This returns the list of
             % time offsets where each alignment's zero event would be
-            % plotted. The time vectors in tvec Cell are used to determine 
+            % plotted. The time vectors in tvec Cell are used to determine
             % the "width" of each alignments and to find the appropriate
             % location to start the next alignment.
             %
@@ -4964,7 +5019,7 @@ classdef PopulationTrajectorySet
             %     time vectors, for common time across trials, or
             %     nTrials x 1 cell of time vectors, for different times
             %     across trials.
-            %  
+            %
             % Parameters:
             %     alignIdx : vector indicating which alignments to include
             
@@ -5020,13 +5075,13 @@ classdef PopulationTrajectorySet
             
             lims = [mins(1), maxs(end) + offsets(end)];
         end
-
+        
         function plotBases(pset, varargin)
-            % plot bases one above the next 
+            % plot bases one above the next
             p = inputParser;
             p.addParameter('dataRandomIndex', [], @(x) isempty(x) || isscalar(x));
             
-            p.addParameter('alignIdx', 1:pset.nAlign, @isnumeric);            
+            p.addParameter('alignIdx', 1:pset.nAlign, @isnumeric);
             p.addParameter('basisIdx', [], @(x) isempty(x) || isvector(x));
             p.addParameter('validBasesOnly', true, @islogical);
             p.addParameter('conditionIdx', 1:pset.nConditions, @(x) isvector(x) && ...
@@ -5081,9 +5136,9 @@ classdef PopulationTrajectorySet
             
             % make room for labels using AutoAxis
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
-           
+            
             p.parse(varargin{:});
-
+            
             axh = newplot;
             wasHolding = ishold(axh);
             hold(axh, 'on');
@@ -5128,11 +5183,11 @@ classdef PopulationTrajectorySet
                 alignGaps = repmat(alignGapFraction*sum(timeWidthByAlign) / (1 - alignGapFraction*nAlignUsed), nAlignUsed-1, 1);
             else
                 alignGaps = pset.interAlignGaps;
-            end 
+            end
             
             % keep track of start and stop of each align in time
             tAlignZero = nanvec(nAlignUsed);
-
+            
             % concatenate the data across alignments in order to compute
             % normalization constants. data is N x CTA
             
@@ -5169,23 +5224,23 @@ classdef PopulationTrajectorySet
                     end
                 else
                     % data will collectively be scaled to [0 1], but the same
-                    % transformation will apply to all bases 
+                    % transformation will apply to all bases
                     if p.Results.showSem
                         % include sem in limits
                         offsets = nanmin(data - dataSem, [], 2); % N x 1
-
+                        
                         %offsets = repmat(m, nBasesPlot, 1);
                         ranges = nanmax(data + dataSem, [], 2) - nanmin(data - dataSem, [], 2);
                         norms = repmat(nanmax(ranges), nBasesPlot, 1);
                     else
                         offsets = nanmin(data, [], 2); % N x 1
-
+                        
                         %offsets = repmat(m, nBasesPlot, 1);
                         ranges = nanmax(data, [], 2) - nanmin(data, [], 2);
                         norms = repmat(nanmax(ranges), nBasesPlot, 1);
                     end
                 end
-                            
+                
                 % apply scaling directly to norms since norms are computed
                 % for unit scaling above
                 norms = norms / scaling;
@@ -5247,7 +5302,7 @@ classdef PopulationTrajectorySet
                         dataC = TensorUtils.squeezeDims(data(:, iCondition, :), 2);
                         dataSemC = TensorUtils.squeezeDims(dataSem(:, iCondition, :), 2);
                         for iBasis = 1:nBasesPlot
-                            hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...                   
+                            hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...
                                 dataSemC(iBasis, :), app(idxCondition).Color, 'axh', axh, ...
                                 'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false);
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
@@ -5264,7 +5319,7 @@ classdef PopulationTrajectorySet
                             'EdgeColor', app(idxCondition).Color, 'EdgeAlpha', p.Results.alpha, ...
                             'LineWidth', p.Results.lineWidth, 'Parent', axh);
                     else
-                        hData{iCond, iAlign} = plot(tvecPlot, dataC, '-', ...
+                        hData{iCond, iAlign} = plot(tvecPlot, dataC', '-', ...
                             'Parent', axh, 'LineWidth', p.Results.lineWidth, ...
                             'Color', app(idxCondition).Color);
                     end
@@ -5282,10 +5337,10 @@ classdef PopulationTrajectorySet
                         idxBasis = basisIdx(iBasis);
                         alignSummary = pset.alignSummaryData{pset.basisAlignSummaryLookup(idxBasis), idxAlign};
                         
-                        % data needs to be T x D x C, currently N (select 1) x C x T 
+                        % data needs to be T x D x C, currently N (select 1) x C x T
                         dataPermute = permute(data(iBasis, :, :), [3 1 2]);
                         alignSummary.drawOnDataByCondition(tvecOrig, ...
-                            dataPermute + yOffset, ...  
+                            dataPermute + yOffset, ...
                             'conditionIdx', conditionIdx, ...
                             'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
                             'tOffsetZero', tAlignZero(iAlign), 'alpha', p.Results.alpha, ...
@@ -5318,7 +5373,7 @@ classdef PopulationTrajectorySet
             if p.Results.showBasisLabels
                 yloc = yOffset + (nBasesPlot-1:-1:0)' + 0.5;
                 ylabel = pset.basisNames(basisIdx);
-                au.addTicklessLabels('y', 'tick', yloc, 'tickLabel', ylabel);   
+                au.addTicklessLabels('y', 'tick', yloc, 'tickLabel', ylabel);
             end
             au.yUnits = pset.dataUnits;
             
@@ -5359,7 +5414,7 @@ classdef PopulationTrajectorySet
                     
                 end
             end
-                    
+            
             % make large left side to accommodate labels
             au.axisMarginLeft = p.Results.axisMarginLeft;
             axis off;
@@ -5386,7 +5441,7 @@ classdef PopulationTrajectorySet
             p.addParameter('doUpdate', true, @islogical);
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
-            p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis            
+            p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis
             p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
             p.addParameter('alignIdx', 1:pset.nAlign, @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
@@ -5409,11 +5464,11 @@ classdef PopulationTrajectorySet
                 'doUpdate', p.Results.doUpdate, ...
                 'showMarks', p.Results.showMarks, ...
                 'showIntervals', p.Results.showIntervals, ...
-                'showRanges', p.Results.showRanges, ...  
+                'showRanges', p.Results.showRanges, ...
                 'timeAxisStyle', p.Results.timeAxisStyle, ...
                 'tUnits', pset.timeUnitName);
         end
-
+        
         function plotSingleBasis(pset, basisIdx, varargin)
             assert(isscalar(basisIdx));
             pset.plotBases('basisIdx', basisIdx, 'showSem', true, ...
@@ -5479,7 +5534,7 @@ classdef PopulationTrajectorySet
             nConditions = numel(conditionIdx);
             nBasesPlot = numel(basisIdx);
             plotArgs = p.Results.plotOptions;
-
+            
             switch(nBasesPlot)
                 case 2
                     use3d = false;
@@ -5498,9 +5553,9 @@ classdef PopulationTrajectorySet
                     c = conditionIdx(iCondition);
                     appear = pset.conditionDescriptor.appearances(c);
                     plotArgsC = appear.getPlotArgs();
-
+                    
                     dataMat = squeeze(data(basisIdx, c, :));
-
+                    
                     if p.Results.plotTubes
                         h = TrialDataUtilities.Plotting.tubeplot(dataMat(1:3, :), p.Results.tubeRadius, 'FaceAlpha', p.Results.alpha, ...
                             'EdgeColor', 'none', 'FaceColor', appear.Color, 'Clipping', p.Results.clipping);
@@ -5523,41 +5578,41 @@ classdef PopulationTrajectorySet
                 end
             else
                 [dataMean, tvecCell] = pset.buildNbyCbyTA('timeDelta', p.Results.timeDelta, 'splitByAlign', true);
-%                 dataMean = squeeze(TensorUtils.splitAlongDimension(dataMean, 3, pset.nTimeDataMean));
-
+                %                 dataMean = squeeze(TensorUtils.splitAlongDimension(dataMean, 3, pset.nTimeDataMean));
+                
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
-%                     tvec = pset.tvecDataMean{idxAlign};
+                    %                     tvec = pset.tvecDataMean{idxAlign};
                     data = dataMean{idxAlign};
                     for iCondition = 1:nConditions
                         c = conditionIdx(iCondition);
                         appear = pset.conditionDescriptor.appearances(c);
                         plotArgsC = appear.getPlotArgs();
-
+                        
                         dataMat = squeeze(data(basisIdx, c, :));
-
-    %                     if p.Results.alpha < 1
-    %                         if use3d
-    %                             h = plot3(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-    %                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-    %                                 'Color', appear.Color, ...
-    %                                 'Clipping', p.Results.clipping, ...
-    %                                  plotArgs{:});
-    %                              
-    %                         else
-    %                             h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
-    %                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-    %                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
-    %                                 'Clipping', p.Results.clipping, ...
-    %                                 plotArgs{:});
-    %                         end
-    %                     else
+                        
+                        %                     if p.Results.alpha < 1
+                        %                         if use3d
+                        %                             h = plot3(dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
+                        %                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
+                        %                                 'Color', appear.Color, ...
+                        %                                 'Clipping', p.Results.clipping, ...
+                        %                                  plotArgs{:});
+                        %
+                        %                         else
+                        %                             h = TrialDataUtilities.Plotting.patchline(dataMat(1, :), dataMat(2, :), ...
+                        %                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
+                        %                                 'EdgeColor', appear.Color, 'EdgeAlpha', p.Results.alpha, ...
+                        %                                 'Clipping', p.Results.clipping, ...
+                        %                                 plotArgs{:});
+                        %                         end
+                        %                     else
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
                                 '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         else
-                        %                             dataMat = [dataVec1 dataVec2];
+                            %                             dataMat = [dataVec1 dataVec2];
                             h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
                                 'LineWidth', p.Results.lineWidth, ...
                                 'Clipping', p.Results.clipping, ...
@@ -5566,7 +5621,7 @@ classdef PopulationTrajectorySet
                         if p.Results.alpha < 1
                             TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
                         end
-
+                        
                         if iAlign == 1
                             TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{c});
                         else
@@ -5575,16 +5630,16 @@ classdef PopulationTrajectorySet
                     end
                 end
             end
-                    
+            
             % plot marks and intervals on each condition
             for iAlign = 1:nAlignUsed
                 idxAlign = alignIdx(iAlign);
                 tvec = tvecCell{iAlign};
                 data = dataMean{iAlign};
-
+                
                 for iCondition = 1:nConditions
                     c = conditionIdx(iCondition);
-
+                    
                     % draw marks and intervals on the data traces
                     as = pset.alignSummaryAggregated{idxAlign};
                     % data is nBases x C x T; drawOnDataByConditions needs T x nBasesPlot x C
@@ -5596,36 +5651,36 @@ classdef PopulationTrajectorySet
                         'alpha', p.Results.alpha, ...
                         'intervalAlpha', p.Results.intervalAlpha, ...
                         'showRanges', p.Results.showRangesOnData, ...
-                        'markSize', p.Results.markSize, 'clipping', p.Results.clipping); 
+                        'markSize', p.Results.markSize, 'clipping', p.Results.clipping);
                 end
             end
-
+            
             box(axh, 'off')
             axis(axh, 'tight');
-
-             xlabel(pset.basisNames{basisIdx(1)});
-             ylabel(pset.basisNames{basisIdx(2)});
-             if use3d
+            
+            xlabel(pset.basisNames{basisIdx(1)});
+            ylabel(pset.basisNames{basisIdx(2)});
+            if use3d
                 zlabel(pset.basisNames{basisIdx(3)});
                 view(axh, [-40 20]);
                 axis(axh, 'vis3d');
                 axis(axh, 'off');
-             else
+            else
                 axis(axh, 'off');
-             end
-             
-             if p.Results.useThreeVector
+            end
+            
+            if p.Results.useThreeVector
                 tv = ThreeVector(axh);
                 tv.vectorLength = p.Results.threeVectorLength;
-             end
-             
-             hold(axh, 'off');
-             set(get(axh, 'Parent'), 'CurrentAxes', axh);
-             axis(axh, 'vis3d');
+            end
+            
+            hold(axh, 'off');
+            set(get(axh, 'Parent'), 'CurrentAxes', axh);
+            axis(axh, 'vis3d');
         end
-         
+        
     end
-
+    
     methods % Build data matrices trial averaged
         % Notation:
         % C is nConditions
@@ -5659,7 +5714,7 @@ classdef PopulationTrajectorySet
             conditionIdx = makecol(p.Results.conditionIdx);
             dataRandomIndex = TensorUtils.vectorMaskToIndices(p.Results.dataRandomIndex);
             checkDataRandomIndex = @() assert(all(dataRandomIndex >= 1 & dataRandomIndex <= pset.nRandomSamples), ...
-                 'dataRandomIndex must be in range 1:%d (nRandomSamples)', pset.nRandomSamples);
+                'dataRandomIndex must be in range 1:%d (nRandomSamples)', pset.nRandomSamples);
             if p.Results.validBasesOnly
                 mask = pset.basisValid(basisIdx);
                 basisIdx = basisIdx(mask);
@@ -5686,7 +5741,7 @@ classdef PopulationTrajectorySet
                     otherwise
                         error('Unknown data type %s', p.Results.type);
                 end
-            end 
+            end
             
             basisValidMask = pset.basisValid(basisIdx);
             tvecCell = pset.tvecDataMean(alignIdx);
@@ -5694,7 +5749,7 @@ classdef PopulationTrajectorySet
             if p.Results.spliceAlignments
                 % data is N x C x T --> N x T x C
                 data = cellfun(@(d) permute(d, [1 3 2]), data, 'UniformOutput', false);
-                               
+                
                 data = TrialDataUtilities.Data.spliceTrajectories(data, 'basisMask', basisValidMask, p.Results.spliceOptions);
                 data = ipermute(data, [1 3 2]);
                 
@@ -5727,14 +5782,14 @@ classdef PopulationTrajectorySet
                 tvec = cat(1, tvecCell{:});
                 % nan out invalid bases
                 NbyCbyTA(~basisValidMask, :, :) = NaN;
-            
+                
                 if p.Results.validTimepointsAllConditionsBasesOnly
                     TAmask = all(all(~isnan(NbyCbyTA(basisValidMask, :, :)), 1), 2);
                     NbyCbyTA = NbyCbyTA(:, :, TAmask);
                 end
                 % nan out invalid tiempoints
             end
-        end 
+        end
         
         function [CTAbyN, cvec, tvec, avec, nvec] = buildCTAbyN(pset, varargin)
             % out is C*T*A x N concatenated matrix
@@ -5752,14 +5807,14 @@ classdef PopulationTrajectorySet
             p.parse(varargin{:});
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx); %#ok<NASGU>
             conditionIdx = TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
-
+            
             results = rmfield(p.Results, {'validTimepointsAllBasesOnly'});
             [NbyCbyTA, tvec, avec, nvec] = pset.buildNbyCbyTA(results);
             cvec = conditionIdx;
             labels = {nvec, cvec, [tvec, avec]};
             % we include dim 4 as this would hold randomized samples
             [CTAbyN, labelsOut] = TensorUtils.reshapeByConcatenatingDims(NbyCbyTA, {[3 2], 1}, labels);
-
+            
             if p.Results.validTimepointsAllBasesOnly
                 if p.Results.validBasesOnly
                     CTAmask = all(~isnan(CTAbyN), 2);
@@ -5774,24 +5829,24 @@ classdef PopulationTrajectorySet
             avec = labelsOut{1}(:, 3);
             nvec = labelsOut{2};
         end
-
-         function [NbyTAbyAttr, tvec, avec] = buildNbyTAbyConditionAttributes(pset, varargin)
-             % build a tensor of N by T by nValsAttr1 by nValsAttr2 x ...
-             % this tensor is the format used by dpca_covs
-             p = inputParser();
-             p.addParameter('type', 'mean', @ischar);
-             p.KeepUnmatched = true;
-             p.parse(varargin{:});
-             
-             [NbyCbyTA, tvec, avec] = pset.buildNbyCbyTA('type', p.Results.type, p.Unmatched);
-             NbyTAbyC = permute(NbyCbyTA, [1 3 2]);
-             N = size(NbyTAbyC, 1);
-             TA = size(NbyTAbyC, 2);
-             condSize = pset.conditionDescriptor.conditionsSize;
-             NbyTAbyAttr = reshape(NbyTAbyC, [N TA makerow(condSize)]);
-         end
+        
+        function [NbyTAbyAttr, tvec, avec] = buildNbyTAbyConditionAttributes(pset, varargin)
+            % build a tensor of N by T by nValsAttr1 by nValsAttr2 x ...
+            % this tensor is the format used by dpca_covs
+            p = inputParser();
+            p.addParameter('type', 'mean', @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [NbyCbyTA, tvec, avec] = pset.buildNbyCbyTA('type', p.Results.type, p.Unmatched);
+            NbyTAbyC = permute(NbyCbyTA, [1 3 2]);
+            N = size(NbyTAbyC, 1);
+            TA = size(NbyTAbyC, 2);
+            condSize = pset.conditionDescriptor.conditionsSize;
+            NbyTAbyAttr = reshape(NbyTAbyC, [N TA makerow(condSize)]);
+        end
     end
-
+    
     methods % Individual trial data
         function assertSimultaneous(pset)
             assert(pset.simultaneous, 'This method may only be called on simultaneously collected data sets, i.e. where there is only one data source');
@@ -5831,7 +5886,7 @@ classdef PopulationTrajectorySet
             end
             
             cvec = cvec(rmask);
-            NbyTAbyR = NbyTAbyR(:, :, rmask);  
+            NbyTAbyR = NbyTAbyR(:, :, rmask);
             
             % nan out invalid bases
             basisValidMask = pset.basisValid(basisIdx);
@@ -5855,7 +5910,7 @@ classdef PopulationTrajectorySet
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             nAlign = numel(alignIdx);
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
-
+            
             if p.Results.validBasesOnly
                 mask = pset.basisValid(basisIdx);
                 basisIdx = basisIdx(mask);
@@ -5863,7 +5918,7 @@ classdef PopulationTrajectorySet
             
             nBases = numel(basisIdx);
             
-            tMinDataMean = pset.tMinForDataMean; 
+            tMinDataMean = pset.tMinForDataMean;
             tMaxDataMean = pset.tMaxForDataMean;
             
             dataByTrial = cell(nBases, nAlign);
@@ -5898,7 +5953,7 @@ classdef PopulationTrajectorySet
                     
                     % lookup the new time limits which we'll compute the
                     % trial average within
-                    tMinValid = tMinDataMean(iAlign); 
+                    tMinValid = tMinDataMean(iAlign);
                     tMaxValid = tMaxDataMean(iAlign);
                     tMaskValid = tvecAll >= tMinValid & tvecAll <= tMaxValid;
                     
@@ -5915,10 +5970,10 @@ classdef PopulationTrajectorySet
             % dataByTrialGrouped will nBases x nAlign x nConditions cell containing ordered data by trial
             % each cell contains nTrialsThisCondition x nTime analog data for that
             % basis, where nTime is now set by .tvecDataMean instead of
-            % .tvecDataByTrial. 
-            % 
+            % .tvecDataByTrial.
+            %
             % nTrials will be nBases x nAlign x nConditions
-   
+            
             dataByTrial = pset.buildDataByTrialWithDataMeanTimeVector(varargin{:});
             nBases = size(dataByTrial, 1);
             nAlign = size(dataByTrial, 2);
@@ -5944,9 +5999,9 @@ classdef PopulationTrajectorySet
                     nTrials(iBasis, iAlign, :) = cellfun(@(x) size(x, 1), byCondition);
                 end
             end
-            prog.finish();            
+            prog.finish();
         end
-       
+        
         % added primarily for dpca-type noise floor
         function [NbyTAbyCbyR, nTrials_NbyC, tvec, avec, whichTrials] = buildNbyTAbyCbyTrials(pset, varargin)
             p = inputParser();
@@ -5954,7 +6009,7 @@ classdef PopulationTrajectorySet
             p.addParameter('chooseRandom', false, @islogical);
             
             % if the dataMean for a given basis, align, condition has S
-            % samples, then ignore individual trials with fewer than 
+            % samples, then ignore individual trials with fewer than
             % S * minFractionTrialSamples samples that overlap with
             % dataMean
             p.addParameter('ignoreTrialsWithTooFewSamples', true, @islogical);
@@ -5968,10 +6023,10 @@ classdef PopulationTrajectorySet
             % optionally include a third dimension with the same length as
             % nRepeatedSamples and that slice of trial lists will be used
             % for the nth sample
-            p.addParameter('trialListsByBasisCondition', [], @iscell); 
+            p.addParameter('trialListsByBasisCondition', [], @iscell);
             
             % if nRepeatedSamples is > 1, NbyTAbyCbyR will be
-            % NbyTAbyCbyRbyNsamples and whichTrials will be 
+            % NbyTAbyCbyRbyNsamples and whichTrials will be
             p.addParameter('nRepeats', 1, @isscalar);
             
             p.addParameter('message', 'Extracting individual trial data matrix by basis', @ischar);
@@ -6005,7 +6060,7 @@ classdef PopulationTrajectorySet
                         NbyTAbyCbyR = NbyTAbyCbyR(:, :, :, 1:p.Results.maxTrials, :);
                         nTrials_NbyC = min(nTrials_NbyC, p.Results.maxTrials);
                     end
-
+                    
                     avec = makecol(alignIdx(avecRaw));
                     tvec = cat(1, pset.tvecDataMean{alignIdx});
                     % leave empty, N x C x nRepeats
@@ -6020,7 +6075,7 @@ classdef PopulationTrajectorySet
             
             nBases = numel(basisIdx);
             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
-
+            
             if isempty(p.Results.trialListsByBasisCondition)
                 dataNTrials = pset.dataNTrials(alignIdx, basisIdx, conditionIdx);
                 trialLists = pset.trialLists;
@@ -6047,7 +6102,7 @@ classdef PopulationTrajectorySet
                 iAlign = alignIdx(iAlignIdx);
                 dataByAlign{iAlignIdx} = nan(nBases, pset.nTimeDataMean(iAlign), nConditions, maxTrials, nRepeats);
             end
-                
+            
             prog = ProgressBar(nBases, p.Results.message);
             for iBasisIdx = 1:nBases
                 prog.update(iBasisIdx);
@@ -6106,16 +6161,16 @@ classdef PopulationTrajectorySet
                     end
                     nTrialsByCondition = cellfun(@numel, fullListByCondition);
                     nTrialsByCondition = min(nTrialsByCondition, maxTrials);
-
+                    
                     if p.Results.ignoreTrialsWithTooFewSamples
-                        % use our precomputed table (above) to filter only trials 
+                        % use our precomputed table (above) to filter only trials
                         % that have enough samples for this condition
                         for iC = 1:nConditions
                             if ~cMask(iC), continue; end
                             fullListByCondition{iC}(~hasEnoughMatchingSamples(fullListByCondition{iC}, iC)) = [];
                         end
                     end
-                        
+                    
                     if p.Results.chooseRandom
                         listByCondition = cellfun(@(list, n) randsample(s, list, n), ...
                             fullListByCondition, num2cell(nTrialsByCondition), ...
@@ -6124,26 +6179,26 @@ classdef PopulationTrajectorySet
                         listByCondition = cellfun(@(list, n) list(1:n), ...
                             fullListByCondition, num2cell(nTrialsByCondition), ...
                             'UniformOutput', false);
-                    end    
-
+                    end
+                    
                     % store list for this by basis in matrix
                     whichTrials(iBasisIdx, :, iRep) = listByCondition(:);
-
+                    
                     for iAlignIdx = 1:nAlign
                         iAlign = alignIdx(iAlignIdx);
-
+                        
                         % compute time mask to select from this data by trial
                         % to match dataMean's tvec
                         tvecThis = pset.tvecDataByTrial{iBasis,iAlign};
                         tMaskValid = tvecThis >= pset.tMinForDataMean(iAlign) & tvecThis <= pset.tMaxForDataMean(iAlign);
-
+                        
                         % grab the valid time portion of the nTrials x
                         % nTime data matrix
                         byTrialValid = pset.dataByTrial{iBasis, iAlign}(:, tMaskValid);
-
+                        
                         % and reuse this list on subsequent aligns
                         listByCondition = whichTrials(iBasisIdx, :);
-
+                        
                         for iConditionIdx = 1:nConditions
                             dataByAlign{iAlignIdx}(iBasisIdx, :, iConditionIdx, 1:nTrialsByCondition(iConditionIdx), iRep) = ...
                                 permute(byTrialValid(listByCondition{iConditionIdx}, :), [3 2 4 1]);
@@ -6160,7 +6215,7 @@ classdef PopulationTrajectorySet
             avec = makecol(alignIdx(avecRaw));
             tvec = cat(1, pset.tvecDataMean{alignIdx});
         end
-         
+        
         function [meansExcluding_NbyTAbyCbyR, trials_NbyTAbyCbyR, nTrials_NbyC, tvec, avec] = buildDataMeansExcludingSampledTrials(pset, varargin)
             p = inputParser();
             p.addParameter('maxTrials', Inf, @isscalar);
@@ -6199,80 +6254,80 @@ classdef PopulationTrajectorySet
                 % finding the sum, subtracting that trial, and
                 % renormalizing
                 
-                 % nAlign cellvec with N x C x T --> N x C x TA --> N x TA x C
+                % nAlign cellvec with N x C x T --> N x C x TA --> N x TA x C
                 dataMeanTensor = permute(cat(3, pset.dataMean{:}), [1 3 2]);
-
+                
                 % A x N x C --> TA x N x C --> N x TA x C
                 dataNTrials = permute(repmat(max(pset.dataNTrials, [], 1), [sum(pset.nTimeDataMean) 1 1]), [2 1 3]);
-
+                
                 dataSumTensor = dataMeanTensor .* dataNTrials;
-
+                
                 % compute new mean by taking Sum - Sampled Trial / (Ntrials - 1)
                 meansExcluding_NbyTAbyCbyR = bsxfun(@rdivide, bsxfun(@minus, dataSumTensor, trials_NbyTAbyCbyR), dataNTrials-1);
             end
         end
         
-         % added primarily for dpca-type noise floor
+        % added primarily for dpca-type noise floor
         function [NbyTAbyAttrbyR, nTrials_NbyAttr, tvec, avec, whichTrials_NbyAttr] = buildNbyTAbyConditionAttributesbyTrials(pset, varargin)
-             [NbyTAbyCbyR, nTrialsTensor, tvec, avec, whichTrials] = pset.buildNbyTAbyCbyTrials(varargin{:});
-             N = size(NbyTAbyCbyR, 1);
-             TA = size(NbyTAbyCbyR, 2);
-             R = size(NbyTAbyCbyR, 4);
-             condSize = makerow(pset.conditionDescriptor.conditionsSize);
-             if pset.conditionDescriptor.nAxes == 1
-                 condSize = condSize(1);
-             end
-             
-             assert(prod(condSize) == size(NbyTAbyCbyR, 3), 'Sub-selecting conditionIdx not supported');
-             
-             NbyTAbyAttrbyR = reshape(NbyTAbyCbyR, [N TA condSize R]);
-             
-             % N x C --> N by condSize
-             nTrials_NbyAttr = reshape(nTrialsTensor, [N condSize]);
-             whichTrials_NbyAttr = reshape(whichTrials, [N condSize]);
-         end
-         
-         function [NbyTAbyRbyAttr, nTrials_NbyAttr, tvec, avec, whichTrials_NbyAttr] = buildNbyTAbyTrialsbyConditionAttributes(pset, varargin)
-             [NbyTAbyCbyR, nTrialsTensor, tvec, avec, whichTrials] = pset.buildNbyTAbyCbyTrials(varargin{:});
-             N = size(NbyTAbyCbyR, 1);
-             TA = size(NbyTAbyCbyR, 2);
-             R = size(NbyTAbyCbyR, 4);
-             NbyTAbyRbyC = permute(NbyTAbyCbyR, [1 2 4 3]);
-             condSize = pset.conditionDescriptor.conditionsSize;
-             
-             assert(prod(condSize) == size(NbyTAbyCbyR, 3), 'Sub-selecting conditionIdx not supported');
-             
-             NbyTAbyRbyAttr = reshape(NbyTAbyRbyC, [N TA R makerow(condSize)]);
-             
-             % N x C --> N by condSize
-             nTrials_NbyAttr = reshape(nTrialsTensor, [N makerow(condSize)]);
-             whichTrials_NbyAttr = reshape(whichTrials, [N makerow(condSize)]);
-         end
-
-         function nTrials_NbyC = buildTrialCountsNbyC(pset)
-             nTrials_NbyC = permute(min(pset.dataNTrials, [], 1), [2 3 1]);
-         end
-         
-         function nTrials_NbyAttr = buildTrialCountsNbyConditionAttr(pset)
-             nTrials_NbyC = pset.buildTrialCountsNbyC();
-             condSize = pset.conditionDescriptor.conditionsSize;
-             nTrials_NbyAttr = reshape(nTrials_NbyC, [size(nTrials_NbyC, 1) makerow(condSize)]);
-         end 
+            [NbyTAbyCbyR, nTrialsTensor, tvec, avec, whichTrials] = pset.buildNbyTAbyCbyTrials(varargin{:});
+            N = size(NbyTAbyCbyR, 1);
+            TA = size(NbyTAbyCbyR, 2);
+            R = size(NbyTAbyCbyR, 4);
+            condSize = makerow(pset.conditionDescriptor.conditionsSize);
+            if pset.conditionDescriptor.nAxes == 1
+                condSize = condSize(1);
+            end
+            
+            assert(prod(condSize) == size(NbyTAbyCbyR, 3), 'Sub-selecting conditionIdx not supported');
+            
+            NbyTAbyAttrbyR = reshape(NbyTAbyCbyR, [N TA condSize R]);
+            
+            % N x C --> N by condSize
+            nTrials_NbyAttr = reshape(nTrialsTensor, [N condSize]);
+            whichTrials_NbyAttr = reshape(whichTrials, [N condSize]);
+        end
+        
+        function [NbyTAbyRbyAttr, nTrials_NbyAttr, tvec, avec, whichTrials_NbyAttr] = buildNbyTAbyTrialsbyConditionAttributes(pset, varargin)
+            [NbyTAbyCbyR, nTrialsTensor, tvec, avec, whichTrials] = pset.buildNbyTAbyCbyTrials(varargin{:});
+            N = size(NbyTAbyCbyR, 1);
+            TA = size(NbyTAbyCbyR, 2);
+            R = size(NbyTAbyCbyR, 4);
+            NbyTAbyRbyC = permute(NbyTAbyCbyR, [1 2 4 3]);
+            condSize = pset.conditionDescriptor.conditionsSize;
+            
+            assert(prod(condSize) == size(NbyTAbyCbyR, 3), 'Sub-selecting conditionIdx not supported');
+            
+            NbyTAbyRbyAttr = reshape(NbyTAbyRbyC, [N TA R makerow(condSize)]);
+            
+            % N x C --> N by condSize
+            nTrials_NbyAttr = reshape(nTrialsTensor, [N makerow(condSize)]);
+            whichTrials_NbyAttr = reshape(whichTrials, [N makerow(condSize)]);
+        end
+        
+        function nTrials_NbyC = buildTrialCountsNbyC(pset)
+            nTrials_NbyC = permute(min(pset.dataNTrials, [], 1), [2 3 1]);
+        end
+        
+        function nTrials_NbyAttr = buildTrialCountsNbyConditionAttr(pset)
+            nTrials_NbyC = pset.buildTrialCountsNbyC();
+            condSize = pset.conditionDescriptor.conditionsSize;
+            nTrials_NbyAttr = reshape(nTrials_NbyC, [size(nTrials_NbyC, 1) makerow(condSize)]);
+        end
     end
     
     methods % Comparative statistics
         function [distByFromAlign, timeVecByFromAlign] = getDistanceBetween(pset, cFromList, cToList, varargin)
             % dist: length(fromAlign) cell of T x length(cFromList) distance traces as columns
             % comparing each condition cFromList(i) to condition cToList(i)
-
+            
             p = inputParser;
-            % if true, search the entire from trajectory for the closest point to 
+            % if true, search the entire from trajectory for the closest point to
             % each point on the to trajectory looking across multiple alignments as well.
             % If false, compute distance at each timepoint separately
-            p.addParameter('searchEntire', true, @islogical); 
+            p.addParameter('searchEntire', true, @islogical);
             % calculate distances within this subset of bases
             p.addParameter('basisIdx', true(pset.nBases, 1), @isvector);
-
+            
             % when searchEntire is true, calculate distances from trajectories (with condition cTo) along
             % each of the alignments indexed in fromAlign, to the closest point in
             % trajectories in ANY of the alignments indexed in  toAlign
@@ -6285,9 +6340,9 @@ classdef PopulationTrajectorySet
             % nAlign x 1 cell array of time points to compute the distance
             % only from a specific set of time points
             p.addParameter('timepointsByFromAlign', [], @(x) isempty(x) || iscell(x));
-
+            
             p.addParameter('showPlot', true, @islogical);
-
+            
             p.parse(varargin{:});
             searchEntire = p.Results.searchEntire;
             basisIdx = p.Results.basisIdx;
@@ -6302,26 +6357,26 @@ classdef PopulationTrajectorySet
             elseif isscalar(cToList)
                 cToList = repmat(cToList, size(cFromList));
             end
-
+            
             assert(isequal(size(cFromList), size(cToList)), 'Sizes of cFrom and cTo must match');
             nPair = length(cFromList);
-
+            
             % C x A cell array of T x N data points
             [tByNEachCA, timeVecByAlign] = pset.buildTByNEachCA('timeValidAcrossConditions', true);
             timeVecByFromAlign = makecol(timeVecByAlign(1, fromAlign));
-
+            
             % loop over pieces of the cFrom trajectories from each alignment
             distByFromAlign = cell(length(fromAlign), 1);
             for iIdxFromAlign = 1:length(fromAlign)
                 iFromAlign = fromAlign(iIdxFromAlign);
                 tvecFromAlign = timeVecByFromAlign{iFromAlign};
                 nTime = length(tvecFromAlign);
-
+                
                 % are we computing distances only from selected timepoints on the from trajectories?
                 if ~isempty(timepointsByFromAlign)
                     timepoints = timepointsByFromAlign{iFromAlign};
                     nTime = length(timepoints);
-                    timeMask = nan(nTime, 1); 
+                    timeMask = nan(nTime, 1);
                     for iTime = 1:nTime
                         ind = find(floor(tvecFromAlign) == floor(timepoints(iTime)), 1, 'first');
                         assert(~isempty(ind), 'Could not find timepoint %g in alignment %s', ...
@@ -6330,28 +6385,28 @@ classdef PopulationTrajectorySet
                     end
                     timeVecByFromAlign{iFromAlign} = timeVecByFromAlign{iFromAlign}(timeMask);
                 else
-                    timeMask = true(size(tvecFromAlign)); 
+                    timeMask = true(size(tvecFromAlign));
                 end
-
+                
                 distByFromAlign{iFromAlign} = nan(nTime, nPair);
-
+                
                 % loop over comparison condition pairs (maybe avoidable?)
                 for iPair = 1:nPair
                     cFrom = cFromList(iPair);
                     cTo = cToList(iPair);
-
+                    
                     % dataFrom is T*A x N matrix of concatenated trajectories for condition cFrom
                     dataFrom = tByNEachCA{cFrom, iFromAlign};
                     dataFrom = dataFrom(timeMask,basisIdx);
-
+                    
                     if searchEntire
                         % we search over every point in the cTo trajectories in all
                         % alignments in toAlign
-
+                        
                         % dataTo is an T*A x N matrix of concatenated trajectories for condition cTo
                         dataTo = cell2mat(tByNEachCA(cTo, toAlign)');
                         dataTo = dataTo(:, basisIdx);
-
+                        
                         % dist will be T*A x 1 vector of distances from
                         % each point along dataFrom to ANY point along
                         % dataTo
@@ -6360,7 +6415,7 @@ classdef PopulationTrajectorySet
                         % dataTo is T*A x N matrix of concatenated trajectories for condition cTo
                         dataTo = tByNEachCA{cTo, iFromAlign};
                         dataTo = dataTo(timeMask, basisIdx);
-
+                        
                         % compute distances and summing over N bases
                         dist = sqrt(sum((dataFrom - dataTo).^2, 2));
                     end
@@ -6368,28 +6423,28 @@ classdef PopulationTrajectorySet
                     distByFromAlign{iIdxFromAlign}(:, iPair) =  dist;
                 end
             end
-
+            
             if showPlot
                 % display a 1 x nAlign row of all condition pairs distance traces superimposed
                 fig();
                 p = panel();
                 p.pack(1, length(fromAlign));
-
+                
                 legstr = cell(nPair, 1);
-
+                
                 for iIdxFromAlign = 1:length(fromAlign)
                     p(1, iIdxFromAlign).select();
                     tvec = timeVecByFromAlign{iIdxFromAlign};
-
+                    
                     for iPair = 1:nPair
                         % use the appearance for the from condition, arbitrarily
                         appear = pset.conditionDescriptor.appearances(cFromList(iPair));
-
+                        
                         plot(tvec, distByFromAlign{iIdxFromAlign}(:, iPair), ...
                             'k-', 'LineWidth', 2, ...
                             'Color', appear.color, 'LineWidth', appear.lineWidth);
                         hold on
-
+                        
                         if iIdxFromAlign == 1
                             legstr{iPair} = sprintf('%s to %s', pset.conditionNames{cFromList(iPair)}, ...
                                 pset.conditionNames{cToList(iPair)});
@@ -6399,11 +6454,11 @@ classdef PopulationTrajectorySet
                     hold off
                     xlim([min(tvec) max(tvec)]);
                 end
-
+                
                 figsize(6, 6*length(fromAlign));
                 for iIdxFromAlign = 1:length(fromAlign)
                     p(1, iIdxFromAlign).select();
-
+                    
                     if iIdxFromAlign == 1
                         legend(legstr, 'Location', 'NorthEast', 'FontSize', 10);
                         legend boxoff;
@@ -6412,7 +6467,7 @@ classdef PopulationTrajectorySet
                 end
             end
         end
-
+        
         function [distByFromAlign, timeVecByFromAlign, cFromList, cToList] = getDistanceAlongComparisonAxis(pset, compareAcross, varargin)
             p = inputParser;
             % default is to compare
@@ -6422,10 +6477,10 @@ classdef PopulationTrajectorySet
             p.KeepUnmatched = true;
             p.parse(compareAcross, varargin{:});
             reverse = p.Results.reverse;
-
+            
             idxCompare = pset.conditionDescriptor.compareAlong(compareAcross);
             
-            nCompare = length(idxCompare); 
+            nCompare = length(idxCompare);
             [cFromList, cToList] = deal(zeros(nCompare, 1));
             for iCompare = 1:nCompare
                 idxThisComparison = idxCompare{iCompare};
@@ -6436,10 +6491,10 @@ classdef PopulationTrajectorySet
                 cFromList(iCompare) = idxThisComparison(1);
                 cToList(iCompare) = idxThisComparison(2);
             end
-
+            
             [distByFromAlign, timeVecByFromAlign] = ...
                 pset.getDistanceBetween(cFromList, cToList, p.Unmatched);
         end
     end
-
+    
 end

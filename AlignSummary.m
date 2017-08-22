@@ -645,7 +645,9 @@ classdef AlignSummary
                 m = nan(1, size(mat, 2));
                 for c = 1:size(mat, 2)
                     mask = ~isnan(w) & ~isnan(mat(:, c));
-                    m(c) = w(mask)' * mat(mask, c) ./ sum(w(mask));
+                    if any(mask)
+                        m(c) = w(mask)' * mat(mask, c) ./ sum(w(mask));
+                    end
                 end
             end
                     
