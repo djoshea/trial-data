@@ -27,7 +27,7 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     p.addRequired('timeCell', @(x) iscell(x));
     p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('timeReference', 0, @isscalar);
-    p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
+    p.addParameter('fixNonmonotonicTimes', true, @(x) islogical(x) && isscalar(x));
     p.addParameter('interpolate', true, @(x) islogical(x) && isscalar(x));
     p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
     
@@ -37,22 +37,29 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     p.addParameter('tMinExcludingPadding', -Inf, @ismatrix);
     p.addParameter('tMaxExcludingPadding', Inf, @ismatrix);
     
+    p.addParameter('origDelta', [], @(x) isempty(x) || isscalar(x)); % specify manually to save time if known, otherwise will be inferred
+    p.addParameter('ignoreNaNSamples', false, @islogical); % ignore NaN data samples when inferring origDelta (time skips among successive non-nan samples)
+    
    % p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.parse(timeCell, varargin{:});
 
     timeDelta = double(p.Results.timeDelta);
     timeReference = p.Results.timeReference;
-    fixDuplicateTimes = p.Results.fixDuplicateTimes;
     binAlignmentMode = p.Results.binAlignmentMode;
     interpolate = p.Results.interpolate;
     %interpolateMethod = p.Results.interpolateMethod;
    
     % compute the global min / max timestamps or each trial
-    if fixDuplicateTimes
-        [timeCell, dataCell] = cellfun(@fixDup, timeCell, dataCell, 'UniformOutput', false);
+    if p.Results.fixNonmonotonicTimes
+        [timeCell, dataCell] = TrialDataUtilities.Data.fixNonmonotonicTimeseries(timeCell, dataCell);
     end
     
-    [tMinRaw, tMaxRaw, origDelta, indMin, indMax] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
+    if isempty(p.Results.origDelta)
+        origDelta = TrialDataUtilities.Data.inferTimeDeltaFromSampleTimes(timeCell, dataCell, 'ignoreNaNSamples', p.Results.ignoreNaNSamples);
+    else
+        origDelta = p.Results.origDelta;
+    end
+    [tMinRaw, tMaxRaw, indMin, indMax] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
     
     nTimes = cellfun(@numel, timeCell);
     if isempty(timeDelta)
@@ -112,20 +119,4 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     end
     tMinCell = tMin;
     tMaxCell = tMax;
-end
-
-function [t, d] = fixDup(t, d)
-    if isempty(t)
-        t = [];
-        return;
-    end
-    
-    diffT = diff(t);
-    stuck = find(diffT(1:end-1) == 0 & diffT(2:end) == 2);
-    t(stuck+1) = t(stuck+1) + 1;
-    skip = find(diffT(1:end-1) == 2 & diffT(2:end) == 0);
-    t(skip+1) = t(skip+1) - 1;
-
-    [t, idx] = unique(t, 'last');
-    d = d(idx, :);
 end

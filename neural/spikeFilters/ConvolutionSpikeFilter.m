@@ -128,6 +128,18 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         % times in the preceding and postceding padding window.
         
         function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec, varargin)
+            p = inputParser();
+            p.addParameter('useTimeDelta', true, @islogical);
+            p.parse(varargin{:});
+            
+            if p.Results.useTimeDelta
+                timeDelta = sf.timeDelta;
+            else
+                % resampling will be done by caller later (typically on all
+                % trials at once)
+                timeDelta = sf.binWidthMs;
+            end
+            
             if isempty(spikeCell)
                 rateCell = cell(size(spikeCell));
                 timeCell = cell(size(spikeCell, 1), 0);
@@ -147,9 +159,9 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % If binWidthMs = 20 and timeDelta = 1, to get a sample at 0 we
             % need binning to start at 0, which already spans -20:0.
             
-            if sf.timeDelta > sf.binWidthMs
-            	window = [-sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.timeDelta), ...
-                         sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.timeDelta)];
+            if timeDelta > sf.binWidthMs
+            	window = [-sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(timeDelta), ...
+                         sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(timeDelta)];
             else
                 window = [-sf.preWindow sf.postWindow];
             end
@@ -166,11 +178,11 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % timeDelta.
             
             
-            if sf.timeDelta > sf.binWidthMs
+            if timeDelta > sf.binWidthMs
                 % we need to set the bin limits wider to facilitate
                 % resampling, as per the first example above.
-                tPre = sf.binAlignmentMode.getBinStartOffsetForBinWidth(sf.timeDelta);
-                tPost = sf.binAlignmentMode.getBinStopOffsetForBinWidth(sf.timeDelta);
+                tPre = sf.binAlignmentMode.getBinStartOffsetForBinWidth(timeDelta);
+                tPost = sf.binAlignmentMode.getBinStopOffsetForBinWidth(timeDelta);
             else
                 tPre = 0;
                 tPost = 0;
@@ -204,7 +216,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             end
             
             % do the resampling to timeDelta bins
-            if ~TrialDataUtilities.Data.isequaltol(sf.timeDelta, sf.binWidthMs)
+            if p.Results.useTimeDelta && ~TrialDataUtilities.Data.isequaltol(timeDelta, sf.binWidthMs)
                 [rateCell, timeCell] = TrialDataUtilities.Data.resampleDataCellInTime(rateCell, timeCell, 'timeDelta', sf.timeDelta, ...
                     'timeReference', 0, 'binAlignmentMode', sf.binAlignmentMode, ...
                     'resampleMethod', sf.resampleMethod, 'uniformlySampled', true, ...

@@ -1,4 +1,4 @@
-function [tMin, tMax, timeDelta, indMin, indMax] = getValidTimeExtents(time, data, varargin)
+function [tMin, tMax, indMin, indMax] = getValidTimeExtents(time, data, varargin)
 % for cells time and data, return the min and max time for which
 % data is present on each trial. If data is a a matrix, the first dim must
 % be over trials. If data is a cell over trials, time runs over dim 1
@@ -23,24 +23,15 @@ if iscell(data)
     tMaxExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMaxExcludingPadding, size(time));
 
     % different time vector for each
-    timeDelta = nan(size(data));
     for i = 1:numel(data)
         if ~isempty(data{i}) && ~isempty(time{i})
             mask = ~all(isnan(data{i}), 2) & time{i} >= tMinExcludingPadding(i) & time{i} <= tMaxExcludingPadding(i);
             if any(mask)
-                if numel(time{i}(mask)) == 1
-                    timeDelta(i) = 0; % 0 means single sample
-                else
-                    timeDelta(i) = nanmedian(diff(time{i}(mask))); % ignore the mask here
-                end
-                
                 [tMin(i), indMin(i)] = min(time{i}(mask), [], 'omitnan');
                 [tMax(i), indMax(i)] = max(time{i}(mask), [], 'omitnan');
             end
         end
     end
-    
-    timeDelta = nanmedian(timeDelta, 1);
 else
     [tMin, tMax, indMin, indMax] = deal(nan(size(data, 1), 1));
     
@@ -53,7 +44,6 @@ else
     time = makecol(time);
     
     mask = ~all(isnan(data), 1);
-    timeDelta = nanmedian(diff(time(mask)));
     
     for i = 1:size(data, 1)
         mask = ~isnan(data(i, :))' & time >= tMinExcludingPadding & time <= tMaxExcludingPadding;

@@ -172,12 +172,15 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             p.parse(varargin{:});
             
             % calls checkOkay
-            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec);
+            % don't do resampling within since we'll do it all at once
+            % below, by setting useTimeDelta false
+            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, 'useTimeDelta', false);
             
             % convert to matrix
             [rates, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(rateCell, timeCell, ...
                 'assumeUniformSampling', true, ...
-                'fixDuplicateTimes', false, ... % no need for this since we know the time vectors are monotonic
+                'fixNonmonotonicTimes', false, ...
+                'origDelta', sf.binWidthMs, ... % saves time if this is provided rather than inferred, requires 'useTimeDelta' false above
                 'tMinExcludingPadding', p.Results.tMinByTrialExcludingPadding, ...
                 'tMaxExcludingPadding', p.Results.tMaxByTrialExcludingPadding); 
         end

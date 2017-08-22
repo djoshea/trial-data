@@ -63,10 +63,10 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addRequired('dataCell', @(x) iscell(x));
     p.addRequired('timeCell', @(x) iscell(x));
     p.addParameter('assumeUniformSampling', false, @islogical); % allows us to skip the interp/resample step if the data are known to be uniform
-    p.addParameter('tvec', [], @(x) isempty(x) || isvector(x));
+%     p.addParameter('tvec', [], @(x) isempty(x) || isvector(x));
     p.addParameter('interpolateMethod', 'linear', @ischar);
     
-    p.addParameter('fixDuplicateTimes', true, @(x) islogical(x) && isscalar(x));
+    p.addParameter('fixNonmonotonicTimes', true, @(x) islogical(x) && isscalar(x));
     p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('timeReference', 0, @isscalar);
     p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
@@ -82,6 +82,10 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % resampling
     p.addParameter('tMinExcludingPadding', [], @ismatrix);
     p.addParameter('tMaxExcludingPadding', [], @ismatrix);
+    
+    p.addParameter('origDelta', [], @(x) isempty(x) || isscalar(x)); % specify manually to save time if known, otherwise will be inferred
+    p.addParameter('ignoreNaNSamples', false, @islogical); % ignore NaN data samples when inferring origDelta (time skips among successive non-nan samples)
+    
     p.PartialMatching = false;
     p.parse(dataCell, timeCell, varargin{:});
     
@@ -133,7 +137,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     end
     
     % fix duplicate timestamps
-    if p.Results.fixDuplicateTimes
+    if p.Results.fixNonmonotonicTimes
         [timeCell, dataCell] = TrialDataUtilities.Data.fixNonmonotonicTimeseries(timeCell, dataCell);
     end
 
@@ -143,26 +147,19 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     assert(size(timeCell, 2) == size(dataCell, 2), 'Column counts of data cell and time cell must match');
     
     timeDelta = p.Results.timeDelta;
-    if isempty(p.Results.tvec)
-        % auto-compute appropriate time vector
-        [tvec, tMin, tMax, origDelta] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
-            'timeDelta', timeDelta, 'timeReference', p.Results.timeReference, ...
-            'binAlignmentMode', p.Results.binAlignmentMode, ...
-            'tMinExcludingPadding', p.Results.tMinExcludingPadding, 'tMaxExcludingPadding', p.Results.tMaxExcludingPadding);
+    
+    
+    if isempty(p.Results.origDelta)
+        origDelta = TrialDataUtilities.Data.inferTimeDeltaFromSampleTimes(timeCell, dataCell, 'ignoreNaNSamples', p.Results.ignoreNaNSamples);
     else
-        error('Not sure if direct specification of the time vector is still working');
-%         tvec = p.Results.tvec;
-%         % compute the global min / max timestamps or each trial
-%         [tMinRaw, tMaxRaw, origDelta] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell, ...
-%             'tMinExcludingPadding', p.Results.tMinExcludingPadding, 'tMaxExcludingPadding', p.Results.tMaxExcludingPadding);
-% 
-%         % then shift these to lie within tvec, without overwriting nans
-%         tMin = max(min(tvec), tMinRaw);
-%         tMin(isnan(tMinRaw)) = NaN;
-%         
-%         tMax = min(max(tvec), tMaxRaw);
-%         tMax(isnan(tMaxRaw)) = NaN;
+        origDelta = p.Results.origDelta;
     end
+    [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
+        'timeDelta', timeDelta, 'timeReference', p.Results.timeReference, ...
+        'binAlignmentMode', p.Results.binAlignmentMode, ...
+        'origDelta', origDelta, ...
+        'fixNonmonotonicTimes', false, ... % consider already fixed
+        'tMinExcludingPadding', p.Results.tMinExcludingPadding, 'tMaxExcludingPadding', p.Results.tMaxExcludingPadding);
     
     timeCell = TrialDataUtilities.Data.removeSmallTimeErrors(timeCell, origDelta, p.Results.timeReference);
     
