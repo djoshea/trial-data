@@ -431,6 +431,12 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p.addParameter('equalizeTimeVectors', false, @islogical); % takes time but necessary if time vectors (min to max) are not matched exactly 
             p.parse(varargin{:});
             
+            % check for equal conditions size
+            sz = psetCell{1}.conditionsSize;
+            for i = 2:numel(psetCell)
+                assert(isequal(sz, psetCell{i}.conditionsSize), 'Condition Size for psetCell{%d} does not match psetCell{1}', i);
+            end
+                
             % expand the time vectors of each pset to the full common
             tMinByAlign = min(cell2mat(cellfun(@(p) p.tMinForDataMean, makerow(psetCell), 'UniformOutput', false)), [], 2);
             tMaxByAlign = max(cell2mat(cellfun(@(p) p.tMaxForDataMean, makerow(psetCell), 'UniformOutput', false)), [], 2);
@@ -458,6 +464,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             end
             b.basisValid = basisValid;
             b.basisInvalidCause(~basisValid) = {''};
+            
+            assert(numel(axisValueList) == numel(psetCell), 'Value list along new concatenation axis must have same length as psetCell');
             
             % update condition descriptor
             cd = pset.conditionDescriptor;

@@ -446,7 +446,7 @@ classdef StateSpaceProjection
             if any(pset.basisValid & ~proj.basisValid)
                 % ensure proj-invalid bases are marked invalid
                 % this isn't strictly necessary but just in case
-                pset = pset.setBasesInvalid(~proj.basisValid, 'invalidated before state space projection');
+                pset = pset.markBasesPermanentlyInvalid(~proj.basisValid, 'invalidated before state space projection');
             end
             
             if any(proj.basisValid & ~pset.basisValid)

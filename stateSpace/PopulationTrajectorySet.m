@@ -4255,7 +4255,7 @@ classdef PopulationTrajectorySet
             end
             assert(iscellstr(cause) || ischar(cause), 'Cause must be a cellstr or a string');
             if ischar(cause)
-                cause = repmat({cause}, nnz(mask), 1);
+                cause = repmat({cause}, nnz(maskOrig), 1);
             end
             cause = makecol(cause);
             
