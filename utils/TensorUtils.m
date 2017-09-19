@@ -1243,9 +1243,11 @@ classdef TensorUtils
             if isscalar(in)
                 out = repmat(in, szOut);
             else
+                % check that size is okay
                 szIn = size(in);
                 szOut = TensorUtils.expandScalarSize(szOut);
                 assert(isequal(szOut, szIn));
+                out = in;
             end
         end
         
@@ -1273,6 +1275,14 @@ classdef TensorUtils
             maskByDim = TensorUtils.maskByDimCellSelectPartialFromOrigin(size(out), dims, szInDims);
             
             out(maskByDim{:}) = in;
+        end
+        
+        function out = repmatAlongDims(in, dims, toSz)
+            sz = size(in);
+            repmatArg = sz;
+            repmatArg(:) = 1;
+            repmatArg(dims) = toSz;
+            out = repmat(in, repmatArg);
         end
         
         function t = expandOrTruncateToSize(t, dims, makeSize)
