@@ -272,7 +272,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         end
         
         function [array, electrode, unit] = parseArrayElectrodeUnit(unitName)
-            tokens = regexp(unitName, '(?<array>[A-Za-z_]*)(?<electrode>\d+)[_+](?<unit>\d+)', 'names', 'once');
+            tokens = regexp(unitName, '(?<array>[A-Za-z0-9_]*?)(?<electrode>\d+)[_+](?<unit>\d+)', 'names', 'once');
             if isempty(tokens)
                 array = '';
                 electrode = NaN;
