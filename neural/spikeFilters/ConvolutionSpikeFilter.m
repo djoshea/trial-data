@@ -37,7 +37,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     methods
         function sf = ConvolutionSpikeFilter(varargin)
             p = inputParser();
-            p.addParameter('binWidthMs', 1, @isscalar);
+            p.addOptional('binWidthMs', 1, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             sf = sf@SpikeFilter(p.Unmatched);

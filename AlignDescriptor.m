@@ -978,11 +978,13 @@ classdef AlignDescriptor
         end
        
         function ad = lag(ad, tDelay)
-            % shift the alignment tDelay units forward in time, instead of
-            % start/stop at Event, start/stop at Event-tDelay. We must move
+            % shift so that aligned data is exctracted tDelay units earlier in time, 
+            % instead of start/stop at Event, start/stop at Event-tDelay. We must move
             % the zero so that the time reference for interpolation /
             % re-sampling remains fixed when we lag, otherwise we end up
-            % with different numbers of samples
+            % with different numbers of samples. e.g. a signal extracted at
+            % Move-100:+100 can be compared against a 50 ms lagged signal
+            % which was taken from Move-150:+50.
             ad.warnIfNoArgOut(nargout);
             ad.startOffset = ad.startOffset - tDelay;
             ad.stopOffset = ad.stopOffset - tDelay;

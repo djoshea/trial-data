@@ -1520,6 +1520,13 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function td = lag(td, varargin)
+            % shift so that aligned data is exctracted tDelay units earlier in time, 
+            % instead of start/stop at Event, start/stop at Event-tDelay. We must move
+            % the zero so that the time reference for interpolation /
+            % re-sampling remains fixed when we lag, otherwise we end up
+            % with different numbers of samples. e.g. a signal extracted at
+            % Move-100:+100 can be compared against a 50 ms lagged signal
+            % which was taken from Move-150:+50.
             td.warnIfNoArgOut(nargout);
             td.alignInfoActive = td.alignInfoActive.lag(varargin{:});
             td = td.postUpdateAlignInfo();
