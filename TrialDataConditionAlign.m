@@ -2780,7 +2780,8 @@ classdef TrialDataConditionAlign < TrialData
                 'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
                 'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
             
-            % interpolate to common time vector
+            % interpolate to common time vector, we can assume uniform
+            % sampling since they've already been interpolated to timeDelta
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
                 'assumeUniformSampling', true);
         end

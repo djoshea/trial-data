@@ -37,7 +37,7 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     p.addParameter('tMinExcludingPadding', -Inf, @ismatrix);
     p.addParameter('tMaxExcludingPadding', Inf, @ismatrix);
     
-    p.addParameter('origDelta', [], @(x) isempty(x) || isscalar(x)); % specify manually to save time if known, otherwise will be inferred
+    p.addParameter('origDelta', [], @(x) isempty(x) || isvector(x)); % specify manually to save time if known, otherwise will be inferred
     p.addParameter('ignoreNaNSamples', false, @islogical); % ignore NaN data samples when inferring origDelta (time skips among successive non-nan samples)
     
    % p.addParamValue('interpolateMethod', 'linear', @ischar);
