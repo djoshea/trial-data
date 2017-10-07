@@ -13,6 +13,5 @@ function map = hslmap(n, varargin)
     hues = 360 * mod(p.Results.fracHueShift + circspace(0, p.Results.fracHueSpan, n)', 1);    
     hsl = [hues, p.Results.saturation * ones(n, 1), p.Results.luminance * ones(n,1)];
     map = colorspace('HSL->RGB', hsl);
-%    map = hsl2rgb(hsl);
 end
 

@@ -1973,7 +1973,7 @@ classdef PopulationTrajectorySet
         
         function pset = filterAlign(pset, idx)
             if ~pset.dataSourceManual
-                pset.setAlignDescriptorSet(pset.alignDescriptorSet(idx));
+                pset = pset.setAlignDescriptorSet(pset.alignDescriptorSet(idx));
             else
                 % manually slice everything
                 if ~isempty(pset.interAlignGaps)
