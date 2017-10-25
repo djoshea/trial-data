@@ -11,8 +11,19 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
     methods
         function sf = NonOverlappingSpikeBinFilter(varargin)
             % args: 'binWidthMs', #, binAlignmentMode, BinAlignmentMode.Acausal
-            sf = sf@ConvolutionSpikeFilter(varargin{:});
-            sf.timeDelta = sf.binWidthMs;
+            p = inputParser();
+            p.addOptional('binWidthMs', 1, @(x) isnumeric(x) && isscalar(x));
+            p.addParameter('timeDelta', [], @(x) isnumeric(x) && isscalar(x) || isempty(x));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            if isempty(p.Results.timeDelta)
+                bin = p.Results.binWidthMs;
+            else
+                bin = p.Results.timeDelta;
+            end
+            
+            sf = sf@ConvolutionSpikeFilter('binWidthMs', bin, 'timeDelta', bin, p.Unmatched);
         end
         
         % filter used for convolution, as an impulse response which may 

@@ -37,7 +37,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     methods
         function sf = ConvolutionSpikeFilter(varargin)
             p = inputParser();
-            p.addOptional('binWidthMs', 1, @isscalar);
+            p.addOptional('binWidthMs', 1, @(x) isnumeric(x) && isscalar(x));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             sf = sf@SpikeFilter(p.Unmatched);
@@ -102,22 +102,21 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
         function t = getPreWindow(sf)
-            % this gives us the right number of ms for the spike bins to
-            % the left of zero, as well as the extra ms needed for the t=0
-            % bin
-            t = (sf.indZero - 1)*sf.binWidthMs;
+            % this gives us the right number of ms to include for the spike bins 
+            % extending in the causal direction, which are the inds right
+            % of zero in the filter (which is the impulse response).
+            filtSize = length(sf.filter);
+            t = (filtSize - sf.indZero) * sf.binWidthMs;
         end
 
         % return the time window of preceding spike data in ms required to estimate
         % the rate at any particular time 
         function t = getPostWindow(sf)
-            % this gives us the right number of ms for the spike bins to
-            % the right of zero. We no longer need to include the extra ms needed for the t=0
-            % bin
-%             t = (sf.indZero - 1)*sf.binWidthMs; 
-            
-            filtSize = length(sf.filter);
-            t = filtSize - sf.indZero;
+            % this gives us the right number of ms to include for the spike bins 
+            % extending in the acausal direction, which are the inds left
+            % of zero in the filter (which is the impulse response).
+ 
+            t = (sf.indZero - 1)*sf.binWidthMs;
         end
         
         function tf = getIsCausal(sf) % allows subclasses to override

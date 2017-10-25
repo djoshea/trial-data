@@ -59,7 +59,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         end
         
         function tf = getIsCausal(sf) % allows subclasses to override
-            tf = sf.getPreWindow() >= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
+            tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
         end
     end
 

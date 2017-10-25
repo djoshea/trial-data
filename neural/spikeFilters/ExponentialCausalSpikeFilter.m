@@ -21,12 +21,11 @@ classdef ExponentialCausalSpikeFilter < ConvolutionSpikeFilter
             p.addParamValue('filterLengthTaus', 4, @isscalar);
             p.parse(varargin{:});
 
+            sf.binAlignmentMode = BinAlignmentMode.Causal;
             sf.tauMs = p.Results.tauMs;
             sf.filterLength = p.Results.filterLengthTaus * sf.tauMs;
         end
                
-
-        
         % filter used for convolution, as an impulse response which may 
         % have acausal elements if indZero > 1
         function [filt indZero] = getFilter(sf)
