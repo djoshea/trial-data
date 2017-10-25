@@ -40,12 +40,17 @@ classdef DrawOnData
 % %                     h = patchsphere(flatten(dMark(:, 1, :)), flatten(dMark(:, 2, :)), flatten(dMark(:, 3, :)), ...
 % %                         markerSize, 'FaceColor', app.Color, 'FaceAlpha', alpha);
 %                 else
-                h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, flatten(dMark(:, 3, :)) + zOffset, ...
-                    'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
-                    'Parent', axh, 'MarkerSize', markerSize, 'Clipping', p.Results.clipping);
-                if alpha < 1 && p.Results.useTranslucentMark3d
-                    TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
-                end
+%                 h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, flatten(dMark(:, 3, :)) + zOffset, ...
+%                     'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
+%                     'Parent', axh, 'MarkerSize', markerSize, 'Clipping', p.Results.clipping);
+                
+                h = scatter3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, flatten(dMark(:, 3, :)) + zOffset, markerSize, ...
+                    'filled', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
+                    'Parent', axh, 'MarkerFaceAlpha', alpha, 'Clipping', p.Results.clipping);
+                
+%                 if alpha < 1 && p.Results.useTranslucentMark3d
+%                     TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
+%                 end
             else
                 error('Invalid Dimensionality of data');
             end

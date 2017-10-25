@@ -96,6 +96,6 @@ set(ha, 'FaceColor', faceColor, ...
 % hide shading from legend
 set(get(get(ha, 'Annotation'), 'LegendInformation'), 'IconDisplayStyle', 'off');
 
-set(axh, 'Layer', 'top')
+% set(axh, 'Layer', 'top')
 
 end

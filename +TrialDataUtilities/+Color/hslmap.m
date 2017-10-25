@@ -4,10 +4,10 @@ function map = hslmap(n, varargin)
 % returns hue-spaced color map in rgb
     
     p = inputParser();
-    p.addParameter('fracHueShift', 0.001, @issscalar); % between 0 and 1
-    p.addParameter('saturation', 0.7, @isscalar);
+    p.addParameter('fracHueShift', -0.02, @isscalar); % between 0 and 1
+    p.addParameter('saturation', 0.95, @isscalar);
     p.addParameter('luminance', 0.65, @isscalar);
-    p.addParameter('fracHueSpan', 1, @isscalar);
+    p.addParameter('fracHueSpan', 0.9, @isscalar);
     p.parse(varargin{:});
     
     hues = 360 * mod(p.Results.fracHueShift + circspace(0, p.Results.fracHueSpan, n)', 1);    
