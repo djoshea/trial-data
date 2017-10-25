@@ -158,7 +158,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         newClass = ChannelDescriptor.cellDetermineCommonClass(data);
                         data = ChannelDescriptor.cellCast(data, newClass);
                         data = cell2mat(data);
-                        assert(isvector(data) && numel(data) == nel);
+                        assert(isempty(data) || isvector(data) && numel(data) == nel);
                     end
                 end
             end

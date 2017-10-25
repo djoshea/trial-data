@@ -747,7 +747,7 @@ classdef TrialDataConditionAlign < TrialData
                     continue;
                 end
                 
-                cd = td.channelDescriptorsByName.(name);
+                cd = td.getAnalogChannelDescriptor(name);
                 if isa(cd, 'EventChannelDescriptor')
                     % the event time will be referenced from the current
                     % zero event
@@ -5818,14 +5818,17 @@ classdef TrialDataConditionAlign < TrialData
             % grab raw data (for marking) and grouped data (for plotting)
             if td.hasAnalogChannel(name)
                 [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);
+                cd = td.getAnalogChannelDescriptor(name); % in case analogGroup(5)
+                
             elseif td.hasSpikeChannel(name)
                 [dataByGroup, timeByGroup] = td.getSpikeRateFilteredGrouped(name);
+                cd = td.channelDescriptorsByName.(name);
             else
                 error('Unknown channel type');
             end
             
             td.plotProvidedAnalogDataGroupedEachTrial(1, 'time', timeByGroup, ...
-                'data', dataByGroup, 'axisInfoY', td.channelDescriptorsByName.(name), ...
+                'data', dataByGroup, 'axisInfoY', cd, ...
                 p.Unmatched);
         end
         
@@ -5960,10 +5963,11 @@ classdef TrialDataConditionAlign < TrialData
                 quantileData = [];
             end
             
+            cd = td.getAnalogChannelDescriptor(name);
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
                 'quantileData', quantileData, ...
-                'axisInfoX', 'time', 'axisInfoY', td.channelDescriptorsByName.(name), 'labelY', p.Results.label, ...
+                'axisInfoX', 'time', 'axisInfoY', cd, 'labelY', p.Results.label, ...
                 p.Unmatched);
         end
         
@@ -6030,9 +6034,9 @@ classdef TrialDataConditionAlign < TrialData
             
             td.plotProvidedAnalogDataGroupMeans(3, 'time', tvecCell, ...
                 'data', meanMat, p.Unmatched, ...
-                'axisInfoX', td.channelDescriptorsByName.(name1), ...
-                'axisInfoY', td.channelDescriptorsByName.(name2), ...
-                'axisInfoZ', td.channelDescriptorsByName.(name3));
+                'axisInfoX', td.getAnalogChannelDescriptor(name1), ...
+                'axisInfoY', td.getAnalogChannelDescriptor(name2), ...
+                'axisInfoZ', td.getAnalogChannelDescriptor(name3));
         end
         
         function plotAnalogGroupMeansByConditionAxes(td, name, varargin) 
@@ -6591,7 +6595,7 @@ classdef TrialDataConditionAlign < TrialData
                                 if plotErrorY
                                     hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...                   
                                         errmat, app(iCond).Color, 'axh', axh, ...
-                                        'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false); % we'll plot the mean line ourselves
+                                        'alpha', p.Results.errorAlpha, 'z', zOffset, 'showLine', false); % we'll plot the mean line ourselves
                                     TrialDataUtilities.Plotting.hideInLegend(hShade);
                                 end
                                 hData(iCond, iAlign) = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...

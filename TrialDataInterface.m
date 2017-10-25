@@ -66,7 +66,12 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
         % return the time conversion factor, i.e. number of time units in 1 second
         function N = getTimeUnitsPerSecond(tdi, varargin)
             timeUnitName = tdi.getTimeUnitName();
-
+            N = TrialDataInterface.lookupTimeUnitsPerSecond(timeUnitName);
+        end
+    end
+    
+    methods(Static)
+        function N = lookupTimeUnitsPerSecond(timeUnitName)
             switch(timeUnitName)
                 case 'ms'
                     N = 1000;
@@ -76,7 +81,6 @@ classdef TrialDataInterface < handle & matlab.mixin.Copyable
                     error('Unrecognized timeUnits %s', timeUnitName);
             end
         end
-
     end
 
     methods(Sealed)

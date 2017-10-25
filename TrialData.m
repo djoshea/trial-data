@@ -76,20 +76,25 @@ classdef TrialData
             p.addParameter('suppressWarnings', false, @islogical); % don't warn about any minor issues
             p.parse(varargin{:});
             %             quiet = p.Results.quiet;
-            suppressWarnings = p.Results.suppressWarnings;
             
             td = td.rebuildOnDemandCache();
             
-            if ~isempty(varargin)
-                if isa(p.Results.buildFrom, 'TrialData')
-                    td = td.initializeFromTrialData(p.Results.buildFrom, ...
-                        'suppressWarnings', suppressWarnings);
-                elseif isa(p.Results.buildFrom, 'TrialDataInterface')
-                    td = td.initializeFromTrialDataInterface(p.Results.buildFrom, ...
-                        'suppressWarnings', suppressWarnings);
-                else
-                    error('Unknown initializer');
-                end
+            if isempty(p.Results.buildFrom)
+                from = ManualTrialDataInterface();
+                suppressWarnings = true;
+            else
+                from = p.Results.buildFrom;
+                suppressWarnings = p.Results.suppressWarnings;
+            end
+            
+            if isa(from, 'TrialData')
+                td = td.initializeFromTrialData(from, ...
+                    'suppressWarnings', suppressWarnings);
+            elseif isa(from, 'TrialDataInterface')
+                td = td.initializeFromTrialDataInterface(from, ...
+                    'suppressWarnings', suppressWarnings);
+            else
+                error('Unknown initializer');
             end
         end
         
@@ -135,7 +140,11 @@ classdef TrialData
             specialParams = makecol(tdi.getSpecialParamChannelDescriptors());
             specialNames = {specialParams.name};
             regularChannels = makecol(tdi.getChannelDescriptors('suppressWarnings', p.Results.suppressWarnings));
-            regularNames = {regularChannels.name};
+            if isempty(regularChannels)
+                regularNames = {};
+            else
+                regularNames = {regularChannels.name};
+            end
             
             % check for reserved channel names
             overlap = intersect(specialNames, regularNames);
@@ -620,6 +629,53 @@ classdef TrialData
         end
     end
        
+    % simple build from scratch type methods
+    methods(Static)
+        % copy everything over from the TrialDataInterface
+        function td = buildEmptyWithTrialDurations(durations, varargin)
+            td = TrialData.buildEmptyWithTrialStartTrialEnd(0*durations, durations, varargin{:});
+        end
+        
+        function td = buildEmptyWithTrialStartTrialEnd(trialStart, trialEnd, varargin)
+            p = inputParser();
+            p.addParameter('timeUnitName', 'ms', @ischar);
+            p.parse(varargin{:});
+            
+            tdi = ManualTrialDataInterface('timeUnitName', p.Results.timeUnitName, ...
+                'TrialStart', makecol(trialStart), 'TrialEnd', makecol(trialEnd));
+            td = TrialData(tdi, 'suppressWarnings', true);
+        end
+        
+        function td = buildForAnalogChannelGroupTensor(groupName, chNames, data, time, varargin)
+            p = inputParser();
+            p.addParameter('timeUnitName', 'ms', @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            % args are name, tensor (nTrials x nTime x nChannels)
+            assert(isvector(time) && isnumeric(data));
+            nTrials = size(data, 1);
+            nTime = size(data, 2);
+            if isempty(time)
+                time = 0:nTime-1;
+            else
+                assert(numel(time) == nTime);
+            end
+            
+            % add extra time so that padding takes the full window when
+            % needed
+            pad = (time(2) - time(1)) / 2;
+                
+            start = repmat(min(time) - pad, nTrials, 1);
+            stop = repmat(max(time) + pad, nTrials, 1);
+            
+            td = TrialData.buildEmptyWithTrialStartTrialEnd(start, stop, 'timeUnitName', p.Results.timeUnitName);
+            td = td.addAnalogChannelGroup(groupName, chNames, data, time, p.Unmatched);
+        end
+        
+    end
+        
+    
     methods(Static)
         % general utility to send plots to the correct axis
         function [axh, unmatched] = getRequestedPlotAxis(varargin)
@@ -1942,9 +1998,17 @@ classdef TrialData
             td = td.setChannelData(name, {data, time}, 'fieldMask', [true false]);
         end
         
-        function tf = hasAnalogChannel(td, name)
+        function tf = hasAnalogChannel(td, name, allowSubIndex)
+            if nargin < 3
+                allowSubIndex = true; % allow analogGroup(4) as name
+            end
+            
             if td.hasChannel(name)
                 tf = isa(td.getChannelDescriptor(name), 'AnalogChannelDescriptor');
+            elseif allowSubIndex
+                % check for 
+                cd = td.getAnalogChannelDescriptor(name);
+                tf = ~isempty(cd);
             else
                 tf = false;
             end
@@ -2107,10 +2171,12 @@ classdef TrialData
         
         function timeField = getAnalogTimeField(td, name)
             if td.hasAnalogChannel(name) || td.hasAnalogChannelGroup(name)
-                cd = td.channelDescriptorsByName.(name);
+                cd = td.getAnalogChannelDescriptor(name);
                 timeField = cd.timeField;
             else
-                error('%s is not an analog channel or analog channel group', name);
+                if isempty(td)
+                    error('%s is not an analog channel or analog channel group', name);
+                end
             end
         end
         
@@ -2136,14 +2202,45 @@ classdef TrialData
             time = cellfun(@minus, time, num2cell(offsets), 'UniformOutput', false);
         end
         
+        function [ch, idx, cdSubChannel] = parseIndexedAnalogChannelName(td, name)
+            % if name is a normal analog channel, do nothing
+            % if it is a name like analogGroup(5), make a sub channel
+            % channelDescriptor for analogGroup referring to column 5
+            
+            tokens = regexp(name, '(?<ch>[\w_]+)\((?<idx>\d+)\)', 'names');
+            if isempty(tokens)
+                ch = name;
+                idx = NaN;
+                if td.hasChannel(name)
+                    cdSubChannel = td.channelDescriptorsByName.(name);
+                else
+                    cdSubChannel = [];
+                end
+            else
+                ch = tokens.ch;
+                idx = str2double(tokens.idx);
+                if td.hasAnalogChannelGroup(ch)
+                    chName = sprintf('%s_%d', ch, idx);
+                    cdSubChannel = td.channelDescriptorsByName.(ch).buildIndividualSubChannel(chName, idx);
+                else
+                    cdSubChannel = [];
+                end
+            end
+        end
+        
+        function cd = getAnalogChannelDescriptor(td, name)
+            % grabs the channel descriptor for a given analog channel name
+            % specification
+            [~, ~, cd] = td.parseIndexedAnalogChannelName(name);
+        end
+        
         function [data, time] = getAnalogRaw(td, name, varargin)
             p = inputParser();
             p.addParameter('sort', false, @islogical);
             p.addParameter('applyScaling', true, @islogical);
             p.parse(varargin{:});
             
-            td.assertHasChannel(name);
-            cd = td.channelDescriptorsByName.(name);
+            cd = td.getAnalogChannelDescriptor(name);
             assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
             
             if cd.isColumnOfSharedMatrix
