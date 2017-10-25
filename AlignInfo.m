@@ -962,8 +962,8 @@ classdef AlignInfo < AlignDescriptor
             end
             zero = ad.timeInfoValid.zero;
 
-            beforeStartMask = bsxfun(@le, rawTimesMatrix, start);
-            afterStopMask = bsxfun(@ge, rawTimesMatrix, stop);
+            beforeStartMask = bsxfun(@lt, rawTimesMatrix, start);
+            afterStopMask = bsxfun(@gt, rawTimesMatrix, stop);
             if beforeStartReplaceStart
                 mask = beforeStartMask;
                 rawTimesMatrix(mask) = repmat(start(mask), 1, size(rawTimesMatrix, 2));
