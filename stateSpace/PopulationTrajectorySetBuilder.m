@@ -231,7 +231,8 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceIdx = onesvec(numel(chNames));
             pset.basisDataSourceChannelNames = chNames;
             
-            pset.timeDelta = td.getAnalogTimeDelta(chNames);
+            % don't want spiking filter to add padding
+            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', td.getAnalogTimeDelta(chNames));
             
             pset = pset.setConditionDescriptor(td.conditionInfo);
             pset = pset.setAlignDescriptorSet(td.alignInfoSet);
