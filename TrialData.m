@@ -43,6 +43,8 @@ classdef TrialData
     
     properties(Access=protected, Hidden)
         odc % TrialDataOnDemandCache instance
+        
+        nTrialsManual % used when loading just the metadata, otherwise ignored
     end
     
     % properties which are stored in odc, see get/set below
@@ -594,38 +596,68 @@ classdef TrialData
             %             [path, name, ext] = fileparts(location);
             %             location = fullfile(path, name);
             
-            if ~exist(location, 'dir')
+            if exist(location, 'file')
+                ld = load(location);
+                if isfield(ld, 'td')
+                    td = ld.td;
+                elseif numel(fieldnames(ld)) == 1
+                    fld = fieldnames(ld);
+                    td = ld.(fld{1});
+                else
+                    error('File %s has no td variable and more than one variable was found');
+                end
+                td = td.rebuildOnDemandCache();
+            
+            elseif exist(location, 'dir')
+                loaded = load(fullfile(location, 'td.mat'));
+                td = loaded.td;
+
+                % load elements of data
+                msg = sprintf('Loading TrialData from %s', location);
+                td.data = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg);
+
+                td = td.rebuildOnDemandCache();
+            else
                 error('Directory %s not found. Did you save with saveFast?', location);
             end
-            loaded = load(fullfile(location, 'td.mat'));
-            td = loaded.td;
-            
-            % load elements of data
-            msg = sprintf('Loading TrialData from %s', location);
-            td.data = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg);
-            
-            td = td.rebuildOnDemandCache();
         end
         
         function td = loadFastMetaOnly(location)
             % returns TrialData without the .data field, which will provide
             % access to metadata and channel info but not the data
             
-            if ~exist(location, 'dir')
+            if exist(location, 'file')
+                td = TrialData.loadFast(location);
+                td.nTrialsManual = TrialData.loadFastTrialCount(location);
+            elseif exist(location, 'dir')
+                loaded = load(fullfile(location, 'td.mat'));
+                td = loaded.td;
+            else
                 error('Directory %s not found. Did you save with saveFast?', location);
             end
-            loaded = load(fullfile(location, 'td.mat'));
-            td = loaded.td;
         end
         
         function nTrials = loadFastTrialCount(location)
-            nTrials = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(location);
+            if exist(location, 'file')
+                td = TrialData.loadFast(location);
+                nTrials = td.nTrials;
+            elseif exist(location, 'dir')
+                nTrials = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(location);
+            else
+                error('Location %s not found', location);
+            end
         end
         
         function tf = loadFastIsValidLocation(location)
-            tf = exist(location, 'dir') && ...
-                 exist(fullfile(location, 'td.mat'), 'file') && ...
-                 TrialDataUtilities.Data.SaveArrayIndividualized.isValidLocation(location);
+            if exist(location, 'file')
+                info = whos('-file', location);
+                names = {info.name};
+                tf = numel(names) == 1 || ismember('td', names);
+            else
+                tf = exist(location, 'dir') && ...
+                     exist(fullfile(location, 'td.mat'), 'file') && ...
+                     TrialDataUtilities.Data.SaveArrayIndividualized.isValidLocation(location);
+            end
         end
     end
        
@@ -929,7 +961,12 @@ classdef TrialData
         end
         
         function nTrials = get.nTrials(td)
-            nTrials = numel(td.data);
+            % support nTrialsManual only for loadMetaOnly
+            if ~isempty(td.data) || isempty(td.nTrialsManual)
+                nTrials = numel(td.data);
+            else 
+                nTrials = td.nTrialsManual;
+            end
         end
         
         function nTrials = get.nTrialsPermanentlyInvalid(td)
@@ -1634,7 +1671,7 @@ classdef TrialData
             % to find the times for this channel
             p = inputParser();
             p.addOptional('values', {}, @(x) iscell(x) || ismatrix(x));
-            p.addOptional('times', {}, @(x) ischar(x) || iscell(x) || isvector(x)); % char or time cell
+            p.addOptional('times', {}, @(x) isempty(x) || ischar(x) || iscell(x) || isvector(x)); % char or time cell
             p.addParameter('timeField', '', @ischar);
             p.addParameter('units', '', @ischar);
             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
@@ -1652,7 +1689,11 @@ classdef TrialData
             
             td.warnIfNoArgOut(nargout);
             
-            if ischar(times)
+            if isempty(times)
+                assert(~isempty(p.Results.timeField))
+                timeField = p.Results.timeField;
+                times = [];
+            elseif ischar(times)
                 % allow specifying char in times as well as timeField
                 timeField = times;
                 times = [];
@@ -1786,7 +1827,7 @@ classdef TrialData
             times = makecol(p.Results.times);
             
             % check the values and convert to nTrials cellvec
-            if ismatrix(values) && isnumeric(values)
+            if ismatrix(values) && (isnumeric(values) || islogical(values))
                 % values must be nTrials x nTimes
                 assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
                 values = mat2cell(values', size(values, 2), onesvec(td.nTrials))';
