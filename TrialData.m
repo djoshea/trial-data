@@ -596,7 +596,7 @@ classdef TrialData
             %             [path, name, ext] = fileparts(location);
             %             location = fullfile(path, name);
             
-            if exist(location, 'file')
+            if exist(location, 'file') == 2
                 ld = load(location);
                 if isfield(ld, 'td')
                     td = ld.td;
@@ -626,7 +626,7 @@ classdef TrialData
             % returns TrialData without the .data field, which will provide
             % access to metadata and channel info but not the data
             
-            if exist(location, 'file')
+            if exist(location, 'file') == 2
                 td = TrialData.loadFast(location);
                 td.nTrialsManual = TrialData.loadFastTrialCount(location);
             elseif exist(location, 'dir')
@@ -638,7 +638,7 @@ classdef TrialData
         end
         
         function nTrials = loadFastTrialCount(location)
-            if exist(location, 'file')
+            if exist(location, 'file') == 2
                 td = TrialData.loadFast(location);
                 nTrials = td.nTrials;
             elseif exist(location, 'dir')
@@ -649,7 +649,7 @@ classdef TrialData
         end
         
         function tf = loadFastIsValidLocation(location)
-            if exist(location, 'file')
+            if exist(location, 'file') == 2
                 info = whos('-file', location);
                 names = {info.name};
                 tf = numel(names) == 1 || ismember('td', names);
