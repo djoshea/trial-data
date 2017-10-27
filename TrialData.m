@@ -628,10 +628,10 @@ classdef TrialData
             
             if exist(location, 'file') == 2
                 td = TrialData.loadFast(location);
-                td.nTrialsManual = TrialData.loadFastTrialCount(location);
             elseif exist(location, 'dir')
                 loaded = load(fullfile(location, 'td.mat'));
                 td = loaded.td;
+                td.nTrialsManual = TrialData.loadFastTrialCount(location);
             else
                 error('Directory %s not found. Did you save with saveFast?', location);
             end
@@ -962,7 +962,7 @@ classdef TrialData
         
         function nTrials = get.nTrials(td)
             % support nTrialsManual only for loadMetaOnly
-            if ~isempty(td.data) || isempty(td.nTrialsManual)
+            if isstruct(td.data) || isempty(td.nTrialsManual)
                 nTrials = numel(td.data);
             else 
                 nTrials = td.nTrialsManual;
