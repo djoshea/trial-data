@@ -605,7 +605,6 @@ classdef TrialDataConditionAlign < TrialData
             dataByGroup = td.groupElements(varargin{:});
             out = cellfun(fn, dataByGroup, 'UniformOutput', false);
         end
-
         
         function td = setConditionDescriptor(td, cd)
             td.warnIfNoArgOut(nargout);
@@ -671,6 +670,26 @@ classdef TrialDataConditionAlign < TrialData
         function td = colorByAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.colorByAxes(varargin{:});
+        end
+        
+        function td = lineWidthByAttributes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.lineStyleByAttributes(varargin{:});
+        end
+        
+        function td = lineWidthByAxes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.lineWidthByAxes(varargin{:});
+        end
+        
+        function td = lineStyleByAttributes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.lineStyleByAttributes(varargin{:});
+        end
+        
+        function td = lineStyleByAxes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.lineStyleByAxes(varargin{:});
         end
         
         function setAxisColorOrderToConditionColors(td, axh)

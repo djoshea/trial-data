@@ -84,6 +84,16 @@ classdef ConditionDescriptor
         appearanceColorByAxesList
         appearanceColorByAxesCmap
         
+        appearanceLineStyleByAttributesList 
+        appearanceLineStyleByAttributesMap
+        appearanceLineStyleByAxesList
+        appearanceLineStyleByAxesMap
+
+        appearanceLineWidthByAttributesList
+        appearanceLineWidthByAttributesMap
+        appearanceLineWidthByAxesList
+        appearanceLineWidthByAxesMap
+        
         % A x 1 : by attribute                       
         attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
 %         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
@@ -1246,6 +1256,17 @@ classdef ConditionDescriptor
             ci.appearanceColorByAttributesCmap = [];
             ci.appearanceColorByAxesList = [];
             ci.appearanceColorByAxesCmap = [];
+            
+            ci.appearanceLineStyleByAxesList = [];
+            ci.appearanceLineStyleByAxesMap = [];
+            ci.appearanceLineStyleByAxesList = [];
+            ci.appearanceLineStyleByAxesMap = [];
+            
+            ci.appearanceLineWidthByAttributesList = [];
+            ci.appearanceLineWidthByAttributesMap = [];
+            ci.appearanceLineWidthByAxesList = [];
+            ci.appearanceLineWidthByAxesMap = [];
+            
             ci = ci.invalidateAppearanceInfo();
         end
         
@@ -1255,8 +1276,9 @@ classdef ConditionDescriptor
                 @(x) ismatrix(x) || isa(x, 'function_handle'));
             p.parse(varargin{:});
             
-            ci = ci.clearAppearanceModifications();
-            
+            ci.appearanceColorByAxesList = [];
+            ci.appearanceColorByAxesCmap = [];
+                       
             ci.warnIfNoArgOut(nargout);
             if ~iscell(attributes), attributes = {attributes}; end
             ci.appearanceColorByAttributesList = attributes;
@@ -1273,7 +1295,9 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             ci.axisLookupByAttributes(axesSpec);
             
-            ci = ci.clearAppearanceModifications();
+            ci.appearanceColorByAttributesList = [];
+            ci.appearanceColorByAttributesCmap = [];
+                       
             % want list to be cell of cellstr
             if ~iscell(axesSpec), axesSpec = {axesSpec}; end
             if iscellstr(axesSpec), axesSpec = {axesSpec}; end
@@ -1282,7 +1306,81 @@ classdef ConditionDescriptor
             ci = ci.invalidateAppearanceInfo();
         end
         
+        function ci = lineStyleByAttributes(ci, attributes, varargin)
+            p = inputParser();
+            p.addOptional('styleFn', @TrialDataUtilities.Appearance.listLineStyles, ...
+                @(x) iscellstr(x) || isa(x, 'function_handle'));
+            p.parse(varargin{:});
+            
+            ci.appearanceLineStyleByAxesList = [];
+            ci.appearanceLineStyleByAxesMap = [];
+            
+            ci.warnIfNoArgOut(nargout);
+            if ~iscell(attributes), attributes = {attributes}; end
+            ci.appearanceLineStyleByAttributesList = attributes;
+            ci.appearanceLineStyleByAttributesMap = p.Results.styleFn;
+            ci = ci.invalidateAppearanceInfo();
+        end
+        
+        function ci = lineStyleByAxes(ci, axesSpec, varargin)
+            p = inputParser();
+            p.addOptional('styleFn', @TrialDataUtilities.Appearance.listLineStyles, ...
+                @(x) iscellstr(x) || isa(x, 'function_handle'));
+            p.parse(varargin{:});
+            
+            ci.warnIfNoArgOut(nargout);
+            ci.axisLookupByAttributes(axesSpec);
+            
+            ci.appearanceLineStyleByAttributesList = [];
+            ci.appearanceLineStyleByAttributesMap = [];
+
+            % want list to be cell of cellstr
+            if ~iscell(axesSpec), axesSpec = {axesSpec}; end
+            if iscellstr(axesSpec), axesSpec = {axesSpec}; end
+            ci.appearanceLineStyleByAxesList = axesSpec;
+            ci.appearanceLineStyleByAxesMap = p.Results.styleFn; 
+            ci = ci.invalidateAppearanceInfo();
+        end
+        
+        function ci = lineWidthByAttributes(ci, attributes, varargin)
+            p = inputParser();
+            p.addOptional('widthFn', @(n) (1:n)', ...
+                @(x) isvector(x) || isa(x, 'function_handle'));
+            p.parse(varargin{:});
+            
+            ci.appearanceLineWidthByAxesList = [];
+            ci.appearanceLineWidthByAxesMap = [];
+            
+            ci.warnIfNoArgOut(nargout);
+            if ~iscell(attributes), attributes = {attributes}; end
+            ci.appearanceLineWidthByAttributesList = attributes;
+            ci.appearanceLineWidthByAttributesMap = p.Results.widthFn;
+            ci = ci.invalidateAppearanceInfo();
+        end
+        
+        function ci = lineWidthByAxes(ci, axesSpec, varargin)
+            p = inputParser();
+            p.addOptional('widthFn', @(n) (1:n)', ...
+                @(x) isvector(x) || isa(x, 'function_handle'));
+            p.parse(varargin{:});
+            
+            ci.warnIfNoArgOut(nargout);
+            ci.axisLookupByAttributes(axesSpec);
+            
+            ci.appearanceLineWidthByAttributesList = [];
+            ci.appearanceLineWidthByAttributesMap = [];
+
+            % want list to be cell of cellstr
+            if ~iscell(axesSpec), axesSpec = {axesSpec}; end
+            if iscellstr(axesSpec), axesSpec = {axesSpec}; end
+            ci.appearanceLineWidthByAxesList = axesSpec;
+            ci.appearanceLineWidthByAxesMap = p.Results.widthFn; 
+            ci = ci.invalidateAppearanceInfo();
+        end
+        
         function appear = applyAppearanceModifications(ci, appear)
+            
+            % Color
             if ~isempty(ci.appearanceColorByAttributesList)
                 % Color by attributes
                 list = ci.appearanceColorByAttributesList;
@@ -1352,7 +1450,135 @@ classdef ConditionDescriptor
                         end
                     end
                 end
-            end    
+            end
+            
+            % Line Style
+            if ~isempty(ci.appearanceLineStyleByAttributesList)
+                % Color by attributes
+                list = ci.appearanceLineStyleByAttributesList;
+                
+                % remove attributes not in use along an axis
+                list = setdiff(list, ci.attributeNames(isnan(ci.attributeAlongWhichAxis)));
+                if isempty(list), return, end
+               
+                % generate combinatorial list of attribute values
+                valueList = cell(numel(list), 1);
+                for i = 1:numel(list)
+                    vals = ci.getAttributeValueList(list{i});
+                    if ~iscell(vals), vals = num2cell(vals); end
+                    valueList{i} = struct(list{i}, vals);
+                end
+                combined = TensorUtils.buildCombinatorialStructTensor(valueList{:});
+                nVals = numel(combined);
+                
+                map = ci.appearanceLineStyleByAttributesMap;
+                if isa(map, 'function_handle')
+                    map = map(nVals);
+                end
+                
+                % match appearances to attribute value sets
+                for c = 1:numel(appear)
+                    cond = ci.conditions(c);
+                    for v = 1:numel(combined)
+                        if isequal(rmfield(cond, setdiff(fieldnames(cond), list)), combined(v))
+                            appear(c).LineStyle = map{v};
+                        end
+                    end
+                end
+                
+            elseif ~isempty(ci.appearanceLineStyleByAxesList)
+                % color by axes
+                list = ci.appearanceLineStyleByAxesList;
+                
+                allAttr = [list{:}];
+               
+                % generate combinatorial list of axis value values
+                valueList = cell(numel(list), 1);
+                for i = 1:numel(list)
+                    valueList{i} = ci.getAxisValueList(list{i});
+                end
+                combined = TensorUtils.buildCombinatorialStructTensor(valueList{:});
+                nVals = numel(combined);
+                
+                map = ci.appearanceLineStyleByAxesMap;
+                if isa(map, 'function_handle')
+                    map = map(nVals);
+                end
+                
+                % match appearances to attribute value sets
+                for c = 1:numel(appear)
+                    cond = ci.conditions(c);
+                    for v = 1:numel(combined)
+                        if isequal(rmfield(cond, setdiff(fieldnames(cond), allAttr)), combined(v))
+                            appear(c).LineStyle = map{v};
+                        end
+                    end
+                end
+            end
+            
+            % Line Width
+            if ~isempty(ci.appearanceLineWidthByAttributesList)
+                % Color by attributes
+                list = ci.appearanceLineWidthByAttributesList;
+                
+                % remove attributes not in use along an axis
+                list = setdiff(list, ci.attributeNames(isnan(ci.attributeAlongWhichAxis)));
+                if isempty(list), return, end
+               
+                % generate combinatorial list of attribute values
+                valueList = cell(numel(list), 1);
+                for i = 1:numel(list)
+                    vals = ci.getAttributeValueList(list{i});
+                    if ~iscell(vals), vals = num2cell(vals); end
+                    valueList{i} = struct(list{i}, vals);
+                end
+                combined = TensorUtils.buildCombinatorialStructTensor(valueList{:});
+                nVals = numel(combined);
+                
+                map = ci.appearanceLineWidthByAttributesMap;
+                if isa(map, 'function_handle')
+                    map = map(nVals);
+                end
+                
+                % match appearances to attribute value sets
+                for c = 1:numel(appear)
+                    cond = ci.conditions(c);
+                    for v = 1:numel(combined)
+                        if isequal(rmfield(cond, setdiff(fieldnames(cond), list)), combined(v))
+                            appear(c).LineWidth = map(v);
+                        end
+                    end
+                end
+                
+            elseif ~isempty(ci.appearanceLineWidthByAxesList)
+                % color by axes
+                list = ci.appearanceLineWidthByAxesList;
+                
+                allAttr = [list{:}];
+               
+                % generate combinatorial list of axis value values
+                valueList = cell(numel(list), 1);
+                for i = 1:numel(list)
+                    valueList{i} = ci.getAxisValueList(list{i});
+                end
+                combined = TensorUtils.buildCombinatorialStructTensor(valueList{:});
+                nVals = numel(combined);
+                
+                map = ci.appearanceLineWidthByAxesCmap;
+                if isa(map, 'function_handle')
+                    map = map(nVals);
+                end
+                
+                % match appearances to attribute value sets
+                for c = 1:numel(appear)
+                    cond = ci.conditions(c);
+                    for v = 1:numel(combined)
+                        if isequal(rmfield(cond, setdiff(fieldnames(cond), allAttr)), combined(v))
+                            appear(c).LineWidth = map(v);
+                        end
+                    end
+                end
+            end
         end
     end
     
@@ -2218,7 +2444,11 @@ classdef ConditionDescriptor
                             % convert valueList from 1 x 2 vector to '#-#' string
                             for iV = 1:numel(valueLists{iX})
                                 if ~iscellstr(valueLists{iX}(iV).(attr{iA}))
-                                    valueLists{iX}(iV).(attr{iA}) = sprintf('%.3g-%.3g', cell2mat(valueLists{iX}(iV).(attr{iA})));
+                                    if all(TrialDataUtilities.Data.isintegertol(cell2mat(valueLists{iX}(iV).(attr{iA}))))
+                                        valueLists{iX}(iV).(attr{iA}) = sprintf('%d-%d', round(cell2mat(valueLists{iX}(iV).(attr{iA}))));
+                                    else
+                                        valueLists{iX}(iV).(attr{iA}) = sprintf('%.3g-%.3g', cell2mat(valueLists{iX}(iV).(attr{iA})));
+                                    end
                                 end
                             end
                     end
@@ -2260,7 +2490,7 @@ classdef ConditionDescriptor
                         strCell{iX} = cellfun(@(s) [s ' ' randStrCell{iX}], strCell{iX}, 'UniformOutput', false);
                     end
                 end
-            end
+            end    
         end
 
         function names = buildNames(ci, varargin)
@@ -2390,10 +2620,18 @@ classdef ConditionDescriptor
                             if iscell(valueList{i})
                                 % could have multiple attribute values
                                 % grouped together as one element
-                                valueList{i} = cellfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
+                                if TrialDataUtilities.Data.isintegertol(valueList{i})
+                                    valueList{i} = cellfun(@(i) sprintf('%d%s', i, unitStr), round(valueList{i}), 'UniformOutput', false);
+                                else
+                                    valueList{i} = cellfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
+                                end
                                 valueList{i} = cellfun(@(vals) strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
                             else
-                                valueList{i} = arrayfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
+                                if TrialDataUtilities.Data.isintegertol(valueList{i})
+                                    valueList{i} = arrayfun(@(i) sprintf('%d%s', i, unitStr), round(valueList{i}), 'UniformOutput', false);
+                                else
+                                    valueList{i} = arrayfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
+                                end
                             end
                         else
                             % non-numeric, can leave as is unless...
@@ -2411,8 +2649,13 @@ classdef ConditionDescriptor
                             else
                                 bins = cat(1, valueList{i}{:});
                             end
-                            valueList{i} = arrayfun(@(row) sprintf('%.3g-%.3g%s', bins(row, 1), bins(row, 2), unitStr), ...
+                            if all(TrialDataUtilities.Data.isintegertol(bins(:)))
+                                valueList{i} = arrayfun(@(row) sprintf('%d-%d%s', round(bins(row, 1)), round(bins(row, 2)), unitStr), ...
                                 1:size(bins, 1), 'UniformOutput', false);
+                            else
+                                valueList{i} = arrayfun(@(row) sprintf('%.3g-%.3g%s', bins(row, 1), bins(row, 2), unitStr), ...
+                                    1:size(bins, 1), 'UniformOutput', false);
+                            end
                         end
                         
                     case ci.AttributeValueListAuto

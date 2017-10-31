@@ -60,7 +60,7 @@
 function lineStyles=linspecer(N,varargin)
 
 if nargin==0 % return a colormap
-    lineStyles = linspecer(64);
+    lineStyles = TrialDataUtilities.Color.linspecer(64);
 %     temp = [temp{:}];
 %     lineStyles = reshape(temp,3,255)';
     return;

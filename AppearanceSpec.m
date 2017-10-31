@@ -2,6 +2,7 @@ classdef AppearanceSpec
     properties(Dependent)
         Color
         LineWidth
+        LineStyle
         TextOffsetX
         TextOffsetY
         HorizontalAlignment
@@ -11,6 +12,7 @@ classdef AppearanceSpec
     properties(Hidden)
         mColor
         mLineWidth
+        mLineStyle
         mTextOffsetX
         mTextOffsetY
         mHorizontalAlignment
@@ -48,6 +50,22 @@ classdef AppearanceSpec
         
         function c = defaultLineWidth(~)
             c = 1;
+        end
+        
+        function v = get.LineStyle(app)
+            if isempty(app.mLineStyle)
+                v = app.defaultLineStyle();
+            else
+                v = app.mLineStyle;
+            end
+        end
+
+        function app = set.LineStyle(app, v)
+            app.mLineStyle = v;
+        end
+        
+        function s = defaultLineStyle(app)
+            s = '-';
         end
         
         function v = get.HorizontalAlignment(app)
@@ -137,7 +155,7 @@ classdef AppearanceSpec
         end
        
        function args = getPlotArgs(app)
-           args = app.getNonEmptyArgsByName({'Color', 'LineWidth'});
+           args = app.getNonEmptyArgsByName({'Color', 'LineWidth', 'LineStyle'});
        end
        
        function args = getMarkerPlotArgs(app, showEdges)
