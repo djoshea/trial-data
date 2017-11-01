@@ -30,7 +30,7 @@ classdef AlignSummary
     
     properties(SetAccess=protected)
         nTrials
-        
+      
         startMin
         startMax
         startMean
@@ -791,7 +791,8 @@ classdef AlignSummary
 
             % include the zero event provided that it lies within the start/stop window
             if isequal(ad.zeroMark, true) || (ad.nMarks == 0 && ad.nIntervals == 0)
-                info(counter).name = ad.zeroLabel; 
+                info(counter).name = ad.zeroLabel;
+                info(counter).nameShort = ad.zeroLabelShort; 
                 info(counter).time = 0;
                 info(counter).min = 0;
                 info(counter).max = 0;
@@ -811,6 +812,7 @@ classdef AlignSummary
                 % loop over each occurrence of the mark
                 for iOccur = 1:numel(as.markMean{iMark})
                     info(counter).name = ad.markLabels{iMark};
+                    info(counter).nameShort = ad.markLabelsShort{iMark};
                     info(counter).time = as.markMean{iMark}(iOccur);
                     info(counter).min = as.markMin{iMark}(iOccur);
                     info(counter).max = as.markMax{iMark}(iOccur);
@@ -887,7 +889,7 @@ classdef AlignSummary
             p.addParameter('which', 'x', @(x) ismember(x, {'x', 'y', 'z'}));
             p.addParameter('axh', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('tOffsetZero', 0, @isscalar); % x position of t=0 on the axis
-            p.addParameter('style', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
+            p.addParameter('style', 'tickBridge', @ischar); % 'tickBridge', 'tickBridgeStartStop', or 'marker'
             p.addParameter('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
             p.addParameter('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
             p.addParameter('tUnits', 'ms', @ischar); % units for time
@@ -923,6 +925,15 @@ classdef AlignSummary
                 intervalInfo = intervalInfo([intervalInfo.stopTime] >= tMin & [intervalInfo.startTime] <= tMax);
             end
             
+            indLabelZero = find([labelInfo.time] == 0, 1);
+            if any(indLabelZero)
+                zeroLabel = labelInfo(indLabelZero).name;
+                zeroLabelShort = labelInfo(indLabelZero).nameShort;
+            else
+                zeroLabel = as.alignDescriptor.zeroLabel;
+                zeroLabelShort = as.alignDescriptor.zeroLabelShort;
+            end
+            
             if ~quick
                 au.removeAutoAxisX();
                 au.removeAutoScaleBarX();
@@ -932,44 +943,21 @@ classdef AlignSummary
                 case 'none'
                     
                 case 'quick'
-                    xlabel(sprintf('Time from %s (%s)', as.alignDescriptor.zeroLabel, as.timeUnitName));
+                    xlabel(sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
                     
                 case 'auto'
                     au.addAutoAxisX();
-                    xlabel(sprintf('Time from %s (%s)', as.alignDescriptor.zeroLabel, as.timeUnitName));
+                    xlabel(sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
                     
                 case 'tickBridge'      
+                    au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
+                        'zeroLabel', zeroLabelShort, ...
+                        'autoTicks', true);
                     
-                    % include tMin and tMax ticks
-                    ticks = [tMin, tMax, labelInfo.time]' + xOffset; 
-                    labels = cellvec(numel(labelInfo));
-                    
-                    % wrap labels with some range to their occurrences with < >
-                    for iLabel = 1:numel(labelInfo)
-                        if labelInfo(iLabel).max - labelInfo(iLabel).min <= allowedRange
-                            labels{iLabel} = labelInfo(iLabel).name;
-                        else
-                            labels{iLabel} = sprintf('<%s>', labelInfo(iLabel).name);
-                        end
-                    end
-                    tickLabels = cat(1,{sprintf('%g', tMin); sprintf('%g', tMax)}, labels);
-                    tickAlignment = cat(1, {'left'; 'right'}, repmat({'center'}, numel(labels), 1)); 
-                    
-                    % remove tMin and/or tMax if redundant
-                    tickMask = true(size(ticks));
-                    if any(ticks(3:end) == tMin)
-                        tickMask(1) = false;
-                        tickAlignment(ticks==tMin) = {'left'};
-                    end
-                    if any(ticks(3:end) == tMax)
-                        tickMask(2) = false;
-                        tickAlignment(ticks==tMax) = {'right'};
-                    end
-                    ticks = ticks(tickMask);
-                    tickLabels = tickLabels(tickMask);
-                    tickAlignment = tickAlignment(tickMask);
-                    
-                    au.addTickBridge('x', 'tick', ticks, 'tickLabel', tickLabels, 'tickAlignment', tickAlignment); 
+                case 'tickBridgeStartStop'      
+                    au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
+                        'zeroLabel', zeroLabelShort, ...
+                        'autoTicks', false);
                     
                 case 'marker'
                     if p.Results.showIntervals
@@ -1039,6 +1027,12 @@ classdef AlignSummary
                             au.addScaleBarX('length', p.Results.timeScaleBarWidth);
                         end
                     end
+                    
+                    % just for setting grid lines and blanking between grid
+                    au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
+                        'zeroLabel', zeroLabelShort, ...
+                        'autoTicks', true, 'drawBridge', false);
+                    
                 case 'scaleBar'
                     if isnan(p.Results.timeScaleBarWidth)
                         au.addAutoScaleBarX();

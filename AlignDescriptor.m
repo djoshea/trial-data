@@ -129,11 +129,16 @@ classdef AlignDescriptor
     properties(Dependent, Hidden)
         padWindow
         markLabels
+        markLabelsShort
         intervalLabels
+        intervalLabelsShort
         
         startLabel
+        startLabelShort
         stopLabel
+        stopLabelShort
         zeroLabel
+        zeroLabelShort
 
         startUnabbreviatedLabel
         stopUnabbreviatedLabel
@@ -261,12 +266,24 @@ classdef AlignDescriptor
         function str = get.startLabel(ad)
             if isempty(ad.startLabelStored)
                 if ad.isStartFixedTime && ~ad.isStartZero && ad.omitRedundantLabel 
-                    str = ad.buildLabel('', [], ad.startOffset);
+                    str = ad.buildLabel('', [], ad.startOffset, false);
                 else
-                    str = ad.buildLabel(ad.startEvent, ad.startEventIndex, ad.startOffset);
+                    str = ad.buildLabel(ad.startEvent, ad.startEventIndex, ad.startOffset, false);
                 end
             else
                 str = ad.startLabelStored;
+            end
+        end
+        
+        function str = get.startLabelShort(ad)
+            if isempty(ad.startLabelStored)
+                if ad.isStartFixedTime && ~ad.isStartZero && ad.omitRedundantLabel 
+                    str = ad.buildLabel('', [], ad.startOffset, true);
+                else
+                    str = ad.buildLabel(ad.startEvent, ad.startEventIndex, ad.startOffset, true);
+                end
+            else
+                str = ad.buildLabel(ad.startLabelStored, [], 0, true);
             end
         end
         
@@ -277,12 +294,24 @@ classdef AlignDescriptor
         function str = get.stopLabel(ad)
             if isempty(ad.stopLabelStored)
                 if ad.isStopFixedTime && ~ad.isStopZero && ad.omitRedundantLabel 
-                    str = ad.buildLabel('', [], ad.stopOffset);
+                    str = ad.buildLabel('', [], ad.stopOffset, false);
                 else
-                    str = ad.buildLabel(ad.stopEvent, ad.stopEventIndex, ad.stopOffset);
+                    str = ad.buildLabel(ad.stopEvent, ad.stopEventIndex, ad.stopOffset, false);
                 end
             else
                 str = ad.stopLabelStored;
+            end
+        end
+        
+        function str = get.stopLabelShort(ad)
+            if isempty(ad.stopLabelStored)
+                if ad.isStopFixedTime && ~ad.isStopZero && ad.omitRedundantLabel 
+                    str = ad.buildLabel('', [], ad.stopOffset, true);
+                else
+                    str = ad.buildLabel(ad.stopEvent, ad.stopEventIndex, ad.stopOffset, true);
+                end
+            else
+                str = ad.buildLabel(ad.stopLabelStored, [], 0, true);
             end
         end
         
@@ -292,9 +321,17 @@ classdef AlignDescriptor
 
         function str = get.zeroLabel(ad)
             if isempty(ad.zeroLabelStored)
-                str = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset);
+                str = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, false);
             else
                 str = ad.zeroLabelStored;
+            end
+        end
+        
+        function str = get.zeroLabelShort(ad)
+            if isempty(ad.zeroLabelStored)
+                str = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, true);
+            else
+                str = ad.buildLabel(ad.zeroLabelStored, [], 0, true);
             end
         end
         
@@ -314,12 +351,34 @@ classdef AlignDescriptor
                     markLabels{iMark} = ad.markLabelsStored{iMark};
                 elseif ad.isMarkFixedTime(iMark) && ad.omitRedundantLabel
                     % same as zero, just include the offset (e.g. '+100')
-                    markLabels{iMark} = ad.buildLabel('', [], ad.markOffsets(iMark));
+                    markLabels{iMark} = ad.buildLabel('', [], ad.markOffsets(iMark), false);
                 else
                     % full label string, omit the index since everything
                     % will be labeled the same
                     markLabels{iMark} = ad.buildLabel(ad.markEvents{iMark}, ...
-                        [], ad.markOffsets(iMark));
+                        [], ad.markOffsets(iMark), false);
+                end
+            end
+        end
+        
+        function markLabels = get.markLabelsShort(ad)
+            if isempty(ad.markLabelsStored)
+                ad.markLabelsStored = cell(length(ad.markEvents), 1);
+            end
+            
+            markLabels = cell(length(ad.markLabelsStored), 1);
+            for iMark = 1:length(ad.markLabelsStored)
+                if ~strcmp(ad.markLabelsStored{iMark}, AlignDescriptor.AUTO)
+                    % abbrev manual label
+                    markLabels{iMark} = ad.buildLabel(ad.markLabelsStored{iMark}, [], 0, true);
+                elseif ad.isMarkFixedTime(iMark) && ad.omitRedundantLabel
+                    % same as zero, just include the offset (e.g. '+100')
+                    markLabels{iMark} = ad.buildLabel('', [], ad.markOffsets(iMark), true);
+                else
+                    % full label string, omit the index since everything
+                    % will be labeled the same
+                    markLabels{iMark} = ad.buildLabel(ad.markEvents{iMark}, ...
+                        [], ad.markOffsets(iMark), true);
                 end
             end
         end
@@ -353,6 +412,38 @@ classdef AlignDescriptor
                     else
                         label2 = ad.buildLabel(ad.intervalEventsStop{i}, ...
                             [], ad.intervalOffsetsStop(i));
+                    end
+
+                    intervalLabels{i} = sprintf('%s : %s', label1, label2);
+                end
+            end
+        end
+        
+        function intervalLabels = get.intervalLabelsShort(ad)
+            nIntervals = size(ad.intervalEventsStart, 1); %#ok<*PROP>
+            if isempty(ad.intervalLabelsStored)
+                ad.intervalLabelsStored = cell(nIntervals, 1);
+            end
+            
+            intervalLabels = cell(length(ad.intervalLabelsStored), 1);
+            for i = 1:nIntervals
+                if ~strcmp(ad.intervalLabelsStored{i}, AlignDescriptor.AUTO)
+                    % manual label
+                    intervalLabels{i} = ad.buildLabel(ad.intervalLabelsStored{i}, [], 0, true);
+                else
+                    if ad.isIntervalFixedTime(i) && ad.omitRedundantLabel
+                        % same as zero, just include the offset (e.g. '+100')
+                        label1 = ad.buildLabel('', [], ad.intervalOffsetsStart(i), true);
+                    else
+                        label1 = ad.buildLabel(ad.intervalEventsStart{i}, ...
+                            [], ad.intervalOffsetsStart(i), true);
+                    end
+                    if ad.isIntervalFixedTime(i) && ad.omitRedundantLabel
+                        % same as zero, just include the offset (e.g. '+100')
+                        label2 = ad.buildLabel('', [], ad.intervalOffsetsStop(i), true);
+                    else
+                        label2 = ad.buildLabel(ad.intervalEventsStop{i}, ...
+                            [], ad.intervalOffsetsStop(i), true);
                     end
 
                     intervalLabels{i} = sprintf('%s : %s', label1, label2);
@@ -1330,12 +1421,15 @@ classdef AlignDescriptor
             label = info.label;
         end
 
-        function str = buildLabel(ad, name, index, offset)
+        function str = buildLabel(ad, name, index, offset, abbrev)
             if nargin < 3 || isempty(index)
                 index = 1;
             end
             if nargin < 4
                 offset = 0;
+            end
+            if nargin < 5
+                abbrev = false;
             end
 
             % determine the appropriate abbreviation
@@ -1347,7 +1441,7 @@ classdef AlignDescriptor
                 % abbrev has been specified via addEventAbbrev
                 abbrev = ad.eventAbbrevLookup.(name);
 
-            elseif ad.autoAbbreviateLabels 
+            elseif ad.autoAbbreviateLabels  || abbrev
                 % auto abbreviate:
                 % here we assume name is WordCased or camelCased, we convert it to the capitalized
                 % initials of each word in the event name

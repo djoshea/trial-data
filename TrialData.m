@@ -724,6 +724,7 @@ classdef TrialData
             if ~isempty(p.Results.axh)
                 % if specified, use that axis
                 axh = p.Results.axh;
+                
                 if ~ishold(axh)
                     cla(axh);
                 end
@@ -733,11 +734,17 @@ classdef TrialData
                 if isempty(axh)
                     axh = axes('Parent', figh);
                 end
+                
             else
                 % if neither, use newplot
                 axh = newplot();
             end
             
+            aa = AutoAxis.recoverForAxis(axh);
+            if ~isempty(aa)
+                aa.uninstall();
+                delete(aa);
+            end
             unmatched = p.Unmatched;
         end
         

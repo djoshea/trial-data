@@ -5363,9 +5363,9 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
             
-            p.addParameter('markShowOnData', true, @islogical);
+            p.addParameter('markShowOnData', false, @islogical);
             p.addParameter('markShowOnAxis', true, @islogical);
-            p.addParameter('markShowInLegend', true, @islogical);
+            p.addParameter('markShowInLegend', false, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 4, @isscalar);
             
@@ -6430,7 +6430,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             
             p.addParameter('alpha', 1, @isscalar); % alpha for main traces
-            p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
+            p.addParameter('errorAlpha', 0.3, @isscalar); % alpha for surrounding error fills
             
             p.addParameter('quantileData', [], @(x) isnumeric(x) || iscell(x));
             
@@ -6447,7 +6447,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showRangesOnData', false, @islogical); % show ranges for marks on traces
             p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
             
-            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('timeScaleBarWidth', NaN, @isscalar);
             
             p.addParameter('useThreeVector', true, @islogical);

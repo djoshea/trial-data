@@ -49,12 +49,16 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             [filt, indZero] = sf.getFilter(); %#ok<PROP>
             filt = filt ./ sum(filt);
             tvec = ((1:numel(filt))' - indZero) * sf.binWidthMs; %#ok<PROP>
-            plot(tvec, filt, '.-', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+            TrialDataUtilities.Plotting.verticalLine(0, 'Color', [0.7 0.7 0.7]);
+            hold on;
+            if isscalar(filt)
+                stem(tvec, filt, 'filled', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+            else
+                plot(tvec, filt, '.-', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+            end
             xlabel('Time (ms)');
             ylabel('Impulse Response');
             
-            hold on;
-            TrialDataUtilities.Plotting.verticalLine(0, 'Color', [0.7 0.7 0.7]);
             h = gobjects(0, 1);
             if sf.getPreWindow() > 0
                 h(end+1) = text(0, 0, '  Causal', 'HorizontalAlignment', 'left', 'BackgroundColor', 'none', 'VerticalAlignment', 'bottom', 'XLimInclude', 'on');
