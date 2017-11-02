@@ -5249,15 +5249,14 @@ classdef PopulationTrajectorySet
             
             app = pset.conditionDescriptor.appearances;
             
-            if ~indTrials
-                if ~isempty(p.Results.dataRandomIndex)
-                    % use a sample from dataMeanRandomized instead
-                    [data, indexInfo] = pset.buildNbyCbyT('type', 'meanRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-                        'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-                else
-                    [data, indexInfo] = pset.buildCTAbyN('basisIdx', basisIdx, ...
-                        'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-                end
+            if ~isempty(p.Results.dataRandomIndex)
+                % use a sample from dataMeanRandomized instead
+                [data, indexInfo] = pset.buildCTAbyN('type', 'meanRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
+                    'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+            else
+                [data, indexInfo] = pset.buildCTAbyN('basisIdx', basisIdx, ...
+                    'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+            end
 
             if p.Results.showSem
                 if ~isempty(p.Results.dataRandomIndex)
@@ -5296,7 +5295,8 @@ classdef PopulationTrajectorySet
                         data = pset.dataMeanRandomized{idxAlign}(indexInfo.basis, indexInfo.condition, :, p.Results.dataRandomIndex);
                     end
                 else
-                    pset.dataByTrial
+                    error('not yet implemented');
+                end
                 data = bsxfun(@minus, data, offsets);
                 data = bsxfun(@rdivide, data, norms);
 
@@ -5739,7 +5739,6 @@ classdef PopulationTrajectorySet
             end
             nAlignUsed = numel(alignIdx);
             
-            nConditions = numel(conditionIdx);
             nBasesPlot = numel(basisIdx);
             plotArgs = p.Results.plotOptions;
             
