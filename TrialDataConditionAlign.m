@@ -893,6 +893,25 @@ classdef TrialDataConditionAlign < TrialData
             td = td.markTrialsTemporarilyInvalid(drop, 'withFirstNTrialsEachCondition');
         end
         
+        function td = withTrials(td, mask, desc)
+            td.warnIfNoArgOut(nargout);
+            if nargin < 3
+                desc = 'withTrials';
+            end
+            % temporarily keep only trial in mask
+            keep = false(td.nTrials, 1);
+            keep(mask) = true;
+            td = td.markTrialsTemporarilyInvalid(~keep, desc);
+        end
+        
+        function td = withRandomSubsetOfTrials(td, n)
+            td.warnIfNoArgOut(nargout);
+            % temporarily keep only n of the currently valid trials
+            inds = find(td.valid);
+            keep = randsample(inds, n, false);
+            td = td.withTrials(keep, 'withRandomSubsetOfTrials');
+        end
+        
         function td = reshapeAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.reshapeAxes(varargin{:});
@@ -5925,6 +5944,13 @@ classdef TrialDataConditionAlign < TrialData
             % each condition
             
             p = inputParser();
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('assumeUniformSampling', false, @islogical);
+            
             p.addParameter('minTrials', 1, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
@@ -5933,6 +5959,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            
             p.addParameter('label', '', @ischar); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -5946,7 +5973,12 @@ classdef TrialDataConditionAlign < TrialData
                     'minTrialFraction', p.Results.minTrialFraction, ...
                     'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                     'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
-                    'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt);     
+                    'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
+                    'timeDelta', p.Results.timeDelta, ...
+                    'timeReference', p.Results.timeReference, ...
+                    'binAlignmentMode', p.Results.binAlignmentMode, ...
+                    'resampleMethod', p.Results.resampleMethod, ...
+                    'assumeUniformSampling', p.Results.assumeUniformSampling);   
                 [tvecCell{iAlign}, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
                     TrialDataUtilities.Data.sliceValidNonNaNTimeRegion(tvecCell{iAlign}, meanMat{iAlign}, ...
                     semMat{iAlign}, stdMat{iAlign});
