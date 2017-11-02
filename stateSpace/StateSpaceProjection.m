@@ -524,6 +524,7 @@ classdef StateSpaceProjection
             
             % project single trial data if any
             if pset.simultaneous && ~isempty(pset.dataByTrial)
+                b.dataSources = pset.dataSources;
                 [b.dataByTrial, b.tMinByTrial, b.tMaxByTrial] = deal(cell(proj.nBasesProj, pset.nAlign));
                 
                 % dataByTrial is nBases x nAlign cell of nTrials (R) x T_a

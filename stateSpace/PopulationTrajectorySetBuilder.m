@@ -85,7 +85,7 @@ classdef PopulationTrajectorySetBuilder
         
         fDataSourceInfo = {'basisDataSourceIdx', 'basisDataSourceChannelNames'};
         
-        fSingleTrial = {'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
+        fSingleTrial = {'dataSources', 'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
             'alignValidByTrial', 'tMinByTrial', 'tMaxByTrial'};
         
         fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
@@ -214,10 +214,13 @@ classdef PopulationTrajectorySetBuilder
             pset = pset.initialize();
         end
         
-        function pset = fromAnalogChannelsInTrialData(td, chNames)
+        function pset = fromAnalogChannelsInTrialData(td, chNames, varargin)
             if nargin < 2
                 chNames = td.listAnalogChannels();
             end
+            p = inputParser();
+            p.addParameter('timeDelta', td.getAnalogTimeDelta(chNames), @isscalar);
+            p.parse(varargin{:});
             
             pset = PopulationTrajectorySet();
             pset.datasetName = td.datasetName;
@@ -232,7 +235,7 @@ classdef PopulationTrajectorySetBuilder
             pset.basisDataSourceChannelNames = chNames;
             
             % don't want spiking filter to add padding
-            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', td.getAnalogTimeDelta(chNames));
+            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', p.Results.timeDelta);
             
             pset = pset.setConditionDescriptor(td.conditionInfo);
             pset = pset.setAlignDescriptorSet(td.alignInfoSet);
