@@ -134,7 +134,7 @@ classdef EventAccumulator
                     out(i,j) = EventAccumulator();
                     out(i,j).bins = bins;
                     out(i,j).counts = counts;
-                    out(i,j).delta = delta;
+                    out(i,j).delta = delta(1);
                 end
             end
         end

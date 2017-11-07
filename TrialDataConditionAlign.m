@@ -1908,7 +1908,7 @@ classdef TrialDataConditionAlign < TrialData
             %   the average value for each condition, not each trial
             
             p = inputParser;
-            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('timeDelta', [], @(x) isscalar(x) || isempty(x));
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
@@ -6489,6 +6489,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('clickable', false, @islogical);
             
             p.addParameter('axh', [], @(x) true); % pass thru to getRequestedPlotAxis
+            p.addParameter('deferUpdate', false, @islogical);
             
             p.KeepUnmatched = false;
             p.parse(varargin{:});
@@ -6810,7 +6811,7 @@ classdef TrialDataConditionAlign < TrialData
             box(axh, 'off');
             axis(axh, 'tight');
             
-            if ~p.Results.quick
+            if ~p.Results.quick && ~p.Results.deferUpdate
                 au = AutoAxis(axh);
                 au.update();
             end

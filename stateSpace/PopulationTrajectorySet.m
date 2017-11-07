@@ -5188,21 +5188,23 @@ classdef PopulationTrajectorySet
                 if ~isempty(p.Results.dataRandomIndex)
                     % use a sample from dataMeanRandomized instead
                     [data, indexInfo] = pset.buildCTAbyN('type', 'meanRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-                        'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+                        'basisIdx', basisIdx, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
                 else
                     [data, indexInfo] = pset.buildCTAbyN('basisIdx', basisIdx, ...
-                        'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+                        'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
                 end
+                data = data';
 
                 if p.Results.showSem
                     if ~isempty(p.Results.dataRandomIndex)
                         % use a sample from dataSemRandomized instead
                         dataSem = pset.buildCTAbyN('type', 'semRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-                            'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+                            'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx);   
                     else
                         dataSem = pset.buildCTAbyN('type', 'sem', 'basisIdx', basisIdx, ...
-                            'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+                            'conditionIdx', conditionIdx, 'alignIdx', alignIdx);
                     end
+                    dataSem = dataSem';
                 end
             else
                 [data, indexInfo] = pset.simultaneous_buildCTAbyN('basisIdx', basisIdx, 'validBasesOnly', p.Results.validBasesOnly, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx, 'trialIdx', trialIdx, 'validTrialsOnly', true);
@@ -5249,25 +5251,32 @@ classdef PopulationTrajectorySet
             
             app = pset.conditionDescriptor.appearances;
             
-            if ~isempty(p.Results.dataRandomIndex)
-                % use a sample from dataMeanRandomized instead
-                [data, indexInfo] = pset.buildCTAbyN('type', 'meanRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-                    'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-            else
-                [data, indexInfo] = pset.buildCTAbyN('basisIdx', basisIdx, ...
-                    'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-            end
-
-            if p.Results.showSem
-                if ~isempty(p.Results.dataRandomIndex)
-                    % use a sample from dataSemRandomized instead
-                    dataSem = pset.buildCTAbyN('type', 'semRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-                        'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-                else
-                    dataSem = pset.buildCTAbyN('type', 'sem', 'basisIdx', basisIdx, ...
-                        'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-                end
-            end
+%             if ~isempty(p.Results.dataRandomIndex)
+%                 % use a sample from dataMeanRandomized instead
+%                 [data, indexInfo] = pset.buildCTAbyN('type', 'meanRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
+%                     'basisIdx', basisIdx, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
+%             else
+%                 [data, indexInfo] = pset.buildCTAbyN('basisIdx', basisIdx, ...
+%                     'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
+%             end
+%             data = data';
+% 
+%             if p.Results.showSem
+%                 if ~isempty(p.Results.dataRandomIndex)
+%                     % use a sample from dataSemRandomized instead
+%                     dataSem = pset.buildCTAbyN('type', 'semRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
+%                         'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+%                 else
+%                     dataSem = pset.buildCTAbyN('type', 'sem', 'basisIdx', basisIdx, ...
+%                         'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
+%                 end
+%             end
+            
+            nConditionsPlot = numel(indexInfo.condition);
+            conditionIdx = indexInfo.condition;
+            conditionNames = pset.conditionNames(conditionIdx);
+            alignIdx = indexInfo.align;
+            basisIdx = indexInfo.basis; nBasesPlot = numel(basisIdx);
             
             hData = cell(nConditionsPlot, nAlignUsed);
             for iAlign = 1:nAlignUsed
@@ -5288,7 +5297,7 @@ classdef PopulationTrajectorySet
                 % N x C x T matrices
                 % apply separate translation /normalization to each basis
                 % to bring in range
-                if ~indTrials
+                if ~indTrial
                     if isempty(p.Results.dataRandomIndex)
                         data = pset.dataMean{idxAlign}(indexInfo.basis, indexInfo.condition, :);
                     else
@@ -5599,7 +5608,7 @@ classdef PopulationTrajectorySet
                     TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{c});
                 end
             else
-                [dataMean, tvecCell] = pset.buildNbyCbyTA('timeDelta', p.Results.timeDelta, 'splitByAlign', true, ...
+                [dataMean, indexInfo, tvecCell] = pset.buildNbyCbyTA('timeDelta', p.Results.timeDelta, 'splitByAlign', true, ...
                     'basisIdx', basisIdx);
                 %                 dataMean = squeeze(TensorUtils.splitAlongDimension(dataMean, 3, pset.nTimeDataMean));
                 

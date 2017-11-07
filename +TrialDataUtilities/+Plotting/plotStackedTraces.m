@@ -283,8 +283,14 @@ if ~p.Results.quick
     end
 
     if showLabels
+        if ~isempty(p.Results.colormapStacked)
+            colormapStacked = TrialDataUtilities.Plotting.expandWrapColormap(p.Results.colormapStacked, numel(traceLows));
+        else
+            colormapStacked = [0 0 0];
+        end
         spans = [makerow(traceLows); makerow(traceHighs)];
-        au.addLabeledSpan('y', 'span', spans, 'label', labels, 'rotation', p.Results.labelRotation, 'showSpanLines', p.Results.showSpanLines);
+        au.addLabeledSpan('y', 'span', spans, 'label', labels, 'color', colormapStacked, ...
+            'rotation', p.Results.labelRotation, 'showSpanLines', p.Results.showSpanLines);
     end
 
     hold off;
@@ -437,7 +443,7 @@ function r = nanmaxNanEmpty(v1, varargin)
 end
 
 function [map, colorByStack] = getColormap(cmapStacked, nStacked, cmapSuperimposed, nSuperimposed)
-    if isempty(cmapStacked)
+    if ~isempty(cmapSuperimposed)
         cmapFn = cmapSuperimposed;
         colorByStack = false;
         N = nSuperimposed;

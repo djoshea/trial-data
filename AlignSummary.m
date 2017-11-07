@@ -380,7 +380,7 @@ classdef AlignSummary
             p = inputParser();
             p.addParameter('aggregateMarks', true, @islogical);
             p.addParameter('aggregateIntervals', true, @islogical);
-            p.addParameter('aggregateConditions', true, @islogical); % for internal use only
+%             p.addParameter('aggregateConditions', true, @islogical); % for internal use only
             p.parse(varargin{:});
             
             if iscell(alignSummarySet)
@@ -430,36 +430,34 @@ classdef AlignSummary
                 end
             end
             
-            if p.Results.aggregateConditions
-                % nConditions x nSummary matrix of trial counts for doing
-                % proper re-weighting
-                nTrialsByConditionMat = cat(2, [set.nTrialsByCondition]);
+            % nConditions x nSummary matrix of trial counts for doing
+            % proper re-weighting
+            nTrialsByConditionMat = cat(2, [set.nTrialsByCondition]);
 
-                % add up trial counts
-                as.nTrialsByCondition = sum(nTrialsByConditionMat, 2);
-            
-                args = cellfun(@(as) as.startAggC, alignSummarySet, 'UniformOutput', false);
-                as.startAggC = EventAccumulator.aggregate(args{:});
+            % add up trial counts
+            as.nTrialsByCondition = sum(nTrialsByConditionMat, 2);
 
-                args = cellfun(@(as) as.stopAggC, alignSummarySet, 'UniformOutput', false);
-                as.stopAggC = EventAccumulator.aggregate(args{:});
-            
-                if p.Results.aggregateMarks
-                    as.markAggC = cell(set1.nMarks, 1);
-                    for iM = 1:set1.nMarks
-                        args = arrayfun(@(as) as.markAggC{iM}, set, 'UniformOutput', false);
-                        as.markAggC{iM} = EventAccumulator.aggregate(args{:});
-                    end
+            args = arrayfun(@(as) as.startAggC, set, 'UniformOutput', false);
+            as.startAggC = EventAccumulator.aggregate(args{:});
+
+            args = arrayfun(@(as) as.stopAggC, set, 'UniformOutput', false);
+            as.stopAggC = EventAccumulator.aggregate(args{:});
+
+            if p.Results.aggregateMarks
+                as.markAggC = cell(set1.nMarks, 1);
+                for iM = 1:set1.nMarks
+                    args = arrayfun(@(as) as.markAggC{iM}, set, 'UniformOutput', false);
+                    as.markAggC{iM} = EventAccumulator.aggregate(args{:});
                 end
-            
-                if p.Results.aggregateIntervals
-                    [as.intervalStartAggC, as.intervalStopAggC] = deal(cell(set1.nIntervals, 1));
-                    for iM = 1:set1.nIntervals
-                        args = arrayfun(@(as) as.intervalStartAggC{iM}, set, 'UniformOutput', false);
-                        as.intervalStartAggC{iM} = EventAccumulator.aggregate(args{:});
-                        args = arrayfun(@(as) as.intervalStopAggC{iM}, set, 'UniformOutput', false);
-                        as.intervalStopAggC{iM} = EventAccumulator.aggregate(args{:});
-                    end
+            end
+
+            if p.Results.aggregateIntervals
+                [as.intervalStartAggC, as.intervalStopAggC] = deal(cell(set1.nIntervals, 1));
+                for iM = 1:set1.nIntervals
+                    args = arrayfun(@(as) as.intervalStartAggC{iM}, set, 'UniformOutput', false);
+                    as.intervalStartAggC{iM} = EventAccumulator.aggregate(args{:});
+                    args = arrayfun(@(as) as.intervalStopAggC{iM}, set, 'UniformOutput', false);
+                    as.intervalStopAggC{iM} = EventAccumulator.aggregate(args{:});
                 end
             end
             
@@ -473,7 +471,7 @@ classdef AlignSummary
             p.parse(varargin{:});
             
             % let aggregation handle the non-condition specific values
-            as = AlignSummary.buildByAggregation(alignSummarySet, p.Results, 'aggregateConditions', false);
+            as = AlignSummary.buildByAggregation(alignSummarySet, p.Results);
             
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
@@ -785,9 +783,15 @@ classdef AlignSummary
                     info(counter).time = as.markMedian{iMark}(iOccur);
                     info(counter).min = as.markMin{iMark}(iOccur);
                     info(counter).max = as.markMax{iMark}(iOccur);
-                    info(counter).timeByCondition = as.markMeanByCondition{iMark}(:, iOccur);
-                    info(counter).minByCondition = as.markMinByCondition{iMark}(:, iOccur);
-                    info(counter).maxByCondition = as.markMaxByCondition{iMark}(:, iOccur);
+                    if ~isempty(as.markMeanByCondition)
+                        info(counter).timeByCondition = as.markMeanByCondition{iMark}(:, iOccur);
+                        info(counter).minByCondition = as.markMinByCondition{iMark}(:, iOccur);
+                        info(counter).maxByCondition = as.markMaxByCondition{iMark}(:, iOccur);
+                    else
+                        info(counter).timeByCondition = [];
+                        info(counter).minByCondition = [];
+                        info(counter).maxByCondition = [];
+                    end
                     info(counter).appear = ad.markAppear{iMark};
                     info(counter).fixed = ad.isMarkFixedTime(iMark);
                     info(counter).occurrence = iOccur;
