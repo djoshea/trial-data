@@ -9,6 +9,10 @@ function map = hslmap(n, varargin)
     p.addParameter('hueSpan', [-0.01 0.8], @isvector);
     p.parse(varargin{:});
     
+    if nargin < 1
+        n = 100;
+    end
+    
     hueSpan = p.Results.hueSpan;
     if mod(hueSpan(1), 1) == mod(hueSpan(2), 1)
         hues = 360 * mod(circspace(hueSpan(1), hueSpan(2), n)', 1);   
