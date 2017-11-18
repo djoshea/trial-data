@@ -342,8 +342,8 @@ classdef AlignSummary
             [startGrouped, stopGrouped] = conditionInfo.groupElementsFlattened(startData, stopData);
  
             % compute summary statistics for each condition separately
-            as.startAggC = cellfun(@(d) EventAccumulator(d), startGrouped);
-            as.stopAggC = cellfun(@(d) EventAccumulator(d), stopGrouped);
+            as.startAggC = cellfun(@(d) EventAccumulator(d), startGrouped, 'UniformOutput', false);
+            as.stopAggC = cellfun(@(d) EventAccumulator(d), stopGrouped, 'UniformOutput', false);
             
             as.markAggC = aggMultipleEventByCondition(markData, conditionInfo);
             as.intervalStartAggC = aggMultipleEventByCondition(markData, conditionInfo);
@@ -639,9 +639,9 @@ classdef AlignSummary
             
             as.startAggC = aggregateRows(as.startAggC);
             as.stopAggC = aggregateRows(as.stopAggC);
-            as.markAggC = cellfun(@aggregateRows, as.markAggC);
-            as.intervalStartAggC = cellfun(@aggregateRows, as.intervalStartAggC);
-            as.intervalStopAggC = cellfun(@aggregateRows, as.intervalStopAggC);
+            as.markAggC = cellfun(@aggregateRows, as.markAggC, 'UniformOutput', false);
+            as.intervalStartAggC = cellfun(@aggregateRows, as.intervalStartAggC, 'UniformOutput', false);
+            as.intervalStopAggC = cellfun(@aggregateRows, as.intervalStopAggC, 'UniformOutput', false);
             
             % must do this last as above calculations depend on nTrials
             % field
