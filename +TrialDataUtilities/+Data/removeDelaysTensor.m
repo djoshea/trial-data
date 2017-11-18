@@ -24,17 +24,17 @@ function data = removeDelaysTensor(data, delays, varargin)
     szDataOrig = size(data);
     timeDim = p.Results.timeDimension;
     channelDims = makecol(p.Results.simultaneousDimensions);
-    groupDims = makecol(p.Results.alignToEachOtherDimensions);
-    loopOverDims = setdiff((1:ndims(data))', [timeDim; channelDims; groupDims]);
+    groupDims = makecol(p.Results.alignToEachOtherDimensions); % e.g. over trials or over discrete elements that are to be aligned
+    loopOverDims = setdiff((1:ndims(data))', [timeDim; channelDims; groupDims]); % then we just repeat completely independently for each along this axis
 
     data = TensorUtils.reshapeByConcatenatingDims(data, {timeDim, channelDims, groupDims, loopOverDims});
     delays = TensorUtils.reshapeByConcatenatingDims(delays, {timeDim, channelDims, groupDims, loopOverDims});
 
-    T = size(data, 1);
-    %C = size(data, 2);
-    G = size(data, 3);
+    T = size(data, 1); % time dim
+    %C = size(data, 2); % simultaneously recorded channels
+    G = size(data, 3); 
     L = size(data, 4);
-
+    
     hold = false;
     if ischar(p.Results.fillMode)
         if strcmp(p.Results.fillMode, 'hold')
@@ -47,10 +47,12 @@ function data = removeDelaysTensor(data, delays, varargin)
         fill = p.Results.fillMode;
     end
 
-    prog = ProgressBar(L, p.Results.message);
+    prog = ProgressBar(max(L,G), p.Results.message);
     for iL = 1:L
-        prog.update(iL);
+        if L >= G, prog.update(iL); end
         for g = 1:G
+            if G > L, prog.update(g); end
+                
             slice = data(:, :, g, iL);
             
             % upsample
@@ -116,7 +118,7 @@ function alignedMat = shift(mat, delay, fill, hold)
     % mat is T x C
     T = size(mat, 1);
     idxGrab = 1:T;
-    idxInsert = (1:T) - delay;
+    idxInsert = (1:T) - round(delay);
     mask = idxInsert > 1 & idxInsert < T;
     idxInsert = idxInsert(mask);
     idxGrab = idxGrab(mask);

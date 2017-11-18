@@ -447,19 +447,20 @@ function [map, colorByStack] = getColormap(cmapStacked, nStacked, cmapSuperimpos
         cmapFn = cmapSuperimposed;
         colorByStack = false;
         N = nSuperimposed;
-    else
+        map = TrialDataUtilities.Plotting.expandWrapColormap(cmapFn, N);
+    elseif ~isempty(cmapStacked)
         cmapFn = cmapStacked;
         colorByStack = true;
         N = nStacked;
-    end
-    % expand colormap to be exactly nSuperimposed long
-    if isempty(cmapFn)
-        if N == 1
-            map = [0 0 0]; % use black with one trace
-        else
-            map = TrialDataUtilities.Plotting.expandWrapColormap(@TrialDataUtilities.Color.hslmap, N);
-        end
-    else
         map = TrialDataUtilities.Plotting.expandWrapColormap(cmapFn, N);
+    else
+        % no colormap specified
+        if nSuperimposed == 1
+            map = [0 0 0];
+            colorByStack = false;
+        else
+            map =  TrialDataUtilities.Plotting.expandWrapColormap(@TrialDataUtilities.Color.hslmap, nSuperimposed);
+            colorByStack = false;
+        end
     end
 end
