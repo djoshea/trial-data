@@ -69,7 +69,9 @@ for iext = 1:length(nsxExts)
         
         t = cell(numel(nsxInfo.MetaTags.Timestamp), 1);
         for iPart = 1:numel(nsxInfo.MetaTags.Timestamp)
-            t{iPart} = single(nsxInfo.MetaTags.Timestamp(iPart)) + single(0:nsxInfo.MetaTags.DataPoints(iPart)-1)' * single((1000 / nsxInfo.MetaTags.SamplingFreq));
+            % NOTE single does not have sufficient resolution on the
+            % integers for this
+            t{iPart} = double(nsxInfo.MetaTags.Timestamp(iPart)) + double(0:nsxInfo.MetaTags.DataPoints(iPart)-1)' * double((1000 / nsxInfo.MetaTags.SamplingFreq));
         end
         nsxData(nsxCount).time = cat(1, t{:});
         nsxData(nsxCount).timeSamplePeriod = 1000 / nsxInfo.MetaTags.SamplingFreq;

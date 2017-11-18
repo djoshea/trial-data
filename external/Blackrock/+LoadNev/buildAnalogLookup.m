@@ -22,7 +22,7 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
 %               i.e. data(chInd(i), :) corresponds to analogInfo.group( .lookup (i) )
 %              this is necessary because not all channels in the analogInfo.group array may be found
 
-par.suppressNotFoundWarningsForGroups = {'lfp'};
+par.suppressNotFoundWarningsForGroups = {'lfp', 'broadband'};
 assignargs(par, varargin);
 
 fprintf('\tBuilding analog channel lookup table\n');

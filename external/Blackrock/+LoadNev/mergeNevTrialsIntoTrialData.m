@@ -9,10 +9,12 @@ p.addParameter('includePhotobox', false, @islogical); % copy Q photobox to td.ph
 p.addParameter('overwriteSpikes', true, @islogical);
 p.addParameter('includeWaveforms', true, @islogical);
 p.addParameter('includeLFP', true, @islogical);
+p.addParameter('includeBroadband', true, @islogical);
 p.parse(varargin{:});
 includeSpikes = p.Results.overwriteSpikes;
 includeWaveforms = p.Results.includeWaveforms;
 includeLFP = p.Results.includeLFP;
+includeBroadband = p.Results.includeBroadband;
 
 % align td to Q based on computed delay periods
 qMatchInTD = LoadNev.findNevTrialsMatchInTrialData(td, Q);
@@ -23,8 +25,8 @@ spikeData = struct();
 waveData = struct();
 lfpData = cellvec(nTD);
 lfpTime = cellvec(nTD);
-photoboxNev = cellvec(nTD);
-photoboxNevTime = cellvec(nTD);
+broadbandData = cellvec(nTD);
+broadbandTime = cellvec(nTD);
 
 td = td.reset();
 nevShort = cellvec(nTD);
@@ -99,6 +101,13 @@ for iQ = 1:numel(Q)
         lfpScaleFromLims = q.lfp.scaleLims(1:2);
         lfpScaleToLims = q.lfp.scaleLims(3:4);
     end
+    
+    if isfield(q, 'broadband') && includeBroadban
+        broadbandData{iR} = q.broadband.data'; % need each channel as successive column
+        broadbandTime{iR} = makecol(q.broadband.time - tOffsetQ);
+        broadbandScaleFromLims = q.broadband.scaleLims(1:2);
+        broadbandScaleToLims = q.broadband.scaleLims(3:4);
+    end
 end
 prog.finish();
 
@@ -140,36 +149,30 @@ end
 
 if includeLFP && isfield(q, 'lfp')
     chLookup = Q(1).lfp.lookup;
-    if q.lfp.samplingFreq >= 30000
-        prefix = 'broadband';
-    else
-        prefix = 'lfp';
-    end
+    prefix = 'lfp';
     lfpCh = arrayfun(@(ch) sprintf('%s_ch%03d', prefix, ch), chLookup, 'UniformOutput', false);
-    
+
     debug('Adding %s data to TrialData as continuous neural group\n', prefix);
     td = td.addOrUpdateContinuousNeuralChannelGroup(prefix, lfpCh, ...
-        lfpData, lfpTime, 'mask', qMatchInTD, 'units', 'uV', 'scaleFromLims', lfpScaleFromLims, 'scaleToLims', lfpScaleToLims, ...
-        'dataInMemoryScale', true);
-    
-%     prog = ProgressBar(numel(lfpCh), 'Adding LFP channels');
-%     for iL = 1:numel(lfpCh)
-%         prog.update(iL);
-%         chName = lfpCh{iL};
-%         if iL == 1
-%             timeInput = lfpTime;
-%         else
-%             timeInput = {};
-%         end
-%         
-%         td = td.addContinuousNeural(chName, lfpData.(chName), timeInput, 'timeField', 'lfp_time', ...
-%             'units', 'mV', 'isAligned', false, 'clearForInvalid', false, ...
-%             'scaleFromLims', lfpScaleFromLims, 'scaleToLims', lfpScaleToLims);
-%     end
+     lfpData, lfpTime, 'mask', qMatchInTD, 'units', 'uV', 'scaleFromLims', lfpScaleFromLims, 'scaleToLims', lfpScaleToLims, ...
+     'dataInMemoryScale', true);
     
     hasLfp = cellfun(@(x) size(x, 2) > 0, lfpData);
     td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasLfp, 'mask', qMatchInTD);
 end
+if includeBroadband && isfield(q, 'broadband')
+    chLookup = Q(1).broadband.lookup;
+    prefix = 'broadband';
+    broadbandCh = arrayfun(@(ch) sprintf('%s_ch%03d', prefix, ch), chLookup, 'UniformOutput', false);
+        
+    debug('Adding %s data to TrialData as continuous neural group\n', prefix);
+    td = td.addOrUpdateContinuousNeuralChannelGroup(prefix, broadbandCh, ...
+        broadbandData, broadbandTime, 'mask', qMatchInTD, 'units', 'uV', 'scaleFromLims', broadbandScaleFromLims, 'scaleToLims', broadbandScaleToLims, ...
+        'dataInMemoryScale', true);
+    hasBroadband = cellfun(@(x) size(x, 2) > 0, broadbandData);
+    td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasBroadband, 'mask', qMatchInTD);
+end
+
 prog.finish();
 
 td = td.addOrUpdateBooleanParam('nevMerged', mergedMask, 'mask', qMatchInTD);

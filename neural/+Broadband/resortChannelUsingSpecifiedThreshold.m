@@ -19,6 +19,7 @@ if p.Results.thresholdPerTrial
 end
 
 timeDelta = tdca.getAnalogTimeDelta(chNameAR);
+assert(timeDelta > 0);
 waveTvec = makecol((-p.Results.samplesPrePost(1) : p.Results.samplesPrePost(2)-1) * timeDelta);
 nWaveSamples = sum(p.Results.samplesPrePost(1:2));
 assert(nWaveSamples == numel(waveTvec));
