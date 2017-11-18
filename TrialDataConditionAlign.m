@@ -1886,6 +1886,20 @@ classdef TrialDataConditionAlign < TrialData
             means = cellfun(@nanmean, meansCell);
         end
         
+        function rms = getAnalogRMSEachTrial(td, name, varargin)
+            data = td.getAnalog(name, varargin{:});
+            ssqByTrial = cellfun(@(x) nansum((x-nanmean(x)).^2), data);
+            countByTrial = cellfun(@(x) nnz(~isnan(x)), data);
+            rms = sqrt(ssqByTrial ./ countByTrial);
+        end
+        
+        function rms = getAnalogRMS(td, name, varargin)
+            data = td.getAnalog(name, varargin{:});
+            ssqByTrial = cellfun(@(x) nansum((x-nanmean(x)).^2), data);
+            countByTrial = cellfun(@(x) nnz(~isnan(x)), data);
+            rms = sqrt(nansum(ssqByTrial, 1) ./ nansum(countByTrial, 1))';
+        end
+        
         function [mat, tvec] = getAnalogAsMatrix(td, name, varargin)
             % return aligned analog channel, resampled and interpolated to
             % a uniformly spaced time vector around t=0 such that the
@@ -4659,6 +4673,35 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
+        function [waveTvec, indStartByUnit, indStopByUnit] = getSpikeWaveformCommonTime(td, units)
+            % for spike channels in cellstr units, find a common time
+            % vector by aligning each units waveform tvec at 0
+            
+            if ischar(units)
+                % easy single unit case
+                waveTvec = makecol(td.channelDescriptorsByName.(units).waveformsTime);
+                indStartByUnit = 1;
+                indStopByUnit = numel(waveTvec);
+                
+            else
+                [nPre, nPost, delta] = nanvec(numel(units));
+                for iU = 1:numel(units)
+                    tvec = td.channelDescriptorsByName.(units{iU}).waveformsTime;
+                    [~, idxMin] = min(abs(tvec));
+                    nPre(iU) = idxMin - 1;
+                    nPost(iU) = numel(tvec) - idxMin;
+                    delta(iU) = median(diff(tvec));
+                end
+                
+                assert(max(delta) - min(delta) < 0.01 * median(delta), 'Waveform time vectors differ in their time deltas');
+                
+                
+                waveTvec = (-max(nPre) : max(nPost)) * median(delta);
+                indStartByUnit = max(nPre) - nPre + 1;
+                indStopByUnit = numel(waveTvec) - (max(nPost) - nPost);
+            end
+        end
+        
         function [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
             % [wavesMat, waveTvec, timeWithinTrial, trialIdx, whichUnit] = getSpikeWaveformMatrix(td, units, varargin)
             % returns a matrix containing all waveforms in units. Units
@@ -4698,11 +4741,7 @@ classdef TrialDataConditionAlign < TrialData
             % flatten search results
             units = cat(1, units{:});
             
-            waveTvec = td.channelDescriptorsByName.(units{1}).waveformsTime;
-            for iU = 2:numel(units)
-                assert(isequal(waveTvec, td.channelDescriptorsByName.(units{iU}).waveformsTime), ...
-                    'Differing waveform time vectors found for units %s and %s', units{1}, units{iU});
-            end
+            [waveTvec, indStart, indStop] = td.getSpikeWaveformCommonTime(units);
             
             s = RandStream('mt19937ar','Seed',p.Results.seed);
             
@@ -4743,12 +4782,19 @@ classdef TrialDataConditionAlign < TrialData
                     timeByU{iU} = timeByU{iU}(maskKeep);
                 end
             end
-                
+               
             % concatenate waveforms together
-            [wavesMat, whichUnit] = TensorUtils.catWhich(1, waveByU{:});
+            nWavesByUnit = cellfun(@(mat) size(mat, 1), waveByU);
+            wavesMat = nan(sum(nWavesByUnit), numel(waveTvec));
+            whichUnit = nan(sum(nWavesByUnit), 1);
+            offset = 0;
+            for iU = 1:numel(waveByU)
+                wavesMat(offset + (1:nWavesByUnit(iU)), indStart(iU):indStop(iU)) = waveByU{iU};
+                whichUnit(offset + (1:nWavesByUnit(iU))) = iU;
+                offset = offset + nWavesByUnit(iU);
+            end
             trialIdx = cat(1, trialByU{:});
             timeWithinTrial = cat(1, timeByU{:});
-            waveTvec = newWaveTvec;
             
             function [iwaves, itvec] = interpWaves(waves, tvec, factor)
                 itvec = linspace(min(tvec), max(tvec), factor*numel(tvec))';

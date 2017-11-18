@@ -2141,11 +2141,10 @@ classdef TrialData
                         end
                     end
                 end
-                idx = idx(mask);
 
                 channelsByGroup = cellvec(numel(groupNames));
                 for iG = 1:numel(groupNames)
-                    channelsByGroup{iG} = chList(idx==iG);
+                    channelsByGroup{iG} = td.listAnalogChannelsInGroup(groupNames{iG});
                 end
             end
         end
@@ -2279,7 +2278,15 @@ classdef TrialData
         function cd = getAnalogChannelDescriptor(td, name)
             % grabs the channel descriptor for a given analog channel name
             % specification
-            [~, ~, cd] = td.parseIndexedAnalogChannelName(name);
+            if ischar(name)
+                [~, ~, cd] = td.parseIndexedAnalogChannelName(name);
+            else
+                cd = cell(numel(name), 1);
+                for i = 1:numel(name)
+                    [~, ~, cd{i}] = td.parseIndexedAnalogChannelName(name{i});
+                end
+                cd = cat(1, cd{:});
+            end
         end
         
         function [data, time] = getAnalogRaw(td, name, varargin)
@@ -2288,36 +2295,42 @@ classdef TrialData
             p.addParameter('applyScaling', true, @islogical);
             p.parse(varargin{:});
             
-            cd = td.getAnalogChannelDescriptor(name);
-            assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
+            cds = td.getAnalogChannelDescriptor(name);
+            assert(isa(cds, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
             
-            if cd.isColumnOfSharedMatrix
-                data = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
-                    td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
-            else
-                data = {td.data.(cd.dataFields{1})}';
+            if ischar(name)
+                name = {name};
             end
-            time = {td.data.(cd.dataFields{2})}';
-            for i = 1:numel(data)
-                if numel(data{i}) == numel(time{i}) - 1
-                    time{i} = makecol(time{i}(1:end-1));
+            
+            [data, time] = deal(cell(td.nTrials, numel(name)));
+            for iC = 1:numel(name)
+                cd = cds(iC);
+                if cd.isColumnOfSharedMatrix
+                    data(:, iC) = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
+                        td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
                 else
-                    time{i} = makecol(time{i});
+                    data(:, iC) = {td.data.(cd.dataFields{1})}';
                 end
-                data{i} = makecol(data{i});
-            end
-            
-            if p.Results.applyScaling
-                % do scaling and convert to double
-                data = cd.convertDataCellOnAccess(1, data);
-            end
-            
-            data = makecol(data);
-            
-            if p.Results.sort
-                for iT = 1:td.nTrials
-                    [time{iT}, idx] = sort(time{iT}, 'ascend');
-                    data{iT} = data{iT}(idx);
+                time(:, iC) = {td.data.(cd.dataFields{2})}';
+                for i = 1:td.nTrials
+                    if numel(data{i, iC}) == numel(time{i, iC}) - 1
+                        time{i, iC} = makecol(time{i, iC}(1:end-1));
+                    else
+                        time{i, iC} = makecol(time{i, iC});
+                    end
+                    data{i, iC} = makecol(data{i, iC});
+                end
+
+                if p.Results.applyScaling
+                    % do scaling and convert to double
+                    data(:, iC) = cd.convertDataCellOnAccess(1, data(:, iC));
+                end
+                
+                if p.Results.sort
+                    for iT = 1:td.nTrials
+                        [time{iT, iC}, idx] = sort(time{iT, iC}, 'ascend');
+                        data{iT, iC} = data{iT, iC}(idx);
+                    end
                 end
             end
         end
