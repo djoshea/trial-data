@@ -39,7 +39,7 @@ classdef ProjPCA < StateSpaceProjection
         function [proj, psetProjected, stats] = createFromAndProject(pset, varargin)
             proj = ProjPCA();
             [proj, unmatched] = ProjPCA.parseCreateParams(proj, varargin{:});
-            [proj, psetProjected] = proj.buildFromAndProjectPopulationTrajectorySet(pset, 'computeStatistics', nargout >= 3, unmatched);
+            [proj, psetProjected, stats] = proj.buildFromAndProjectPopulationTrajectorySet(pset, 'computeStatistics', nargout >= 3, unmatched);
         end
         
         function [denoised, proj, stats] = denoiseViaLowRankApproximation(pset, K, varargin)

@@ -100,7 +100,9 @@ classdef EventAccumulator
         function out = aggregate(varargin)
             % varargin is the cell over which to aggregate. Each can be a
             % matrix of EventAccumulators and the aggregation will happen
-            % along that axis. If the sizes of these matrices don't match,
+            % among elements at the same location in each matrix, so that the result
+            % will be a matrix of the same size. 
+            % If the sizes of these matrices don't match,
             % the result will be the largest size along each dimension
             
             args = varargin;
