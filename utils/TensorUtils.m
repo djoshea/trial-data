@@ -1,6 +1,68 @@
 classdef TensorUtils
     % set of classes for building, manipulating, and computing on
     % high-d (or arbitrary-d) matrices easily
+    
+    methods(Static) % Simple internalized utils
+        function v = wrapCell(v)
+        % v = wrapCell(v)
+        % Wrap v as cell {v} if ~iscell(v)
+            if ~iscell(v)
+                v = {v};
+            end
+        end
+        
+        function varargout = cellvec(N)
+            [varargout{1:nargout}] = deal(cell(N, 1));
+        end
+        
+        function varargout = falsevec(N)
+            [varargout{1:nargout}] = deal(false(N, 1));
+        end
+        
+        function varargout = truevec(N)
+            [varargout{1:nargout}] = deal(true(N, 1));
+        end
+        
+        function varargout = nanvec(N)
+            [varargout{1:nargout}] = deal(nan(N, 1));
+        end
+        
+        function varargout = onesvec(N, varargin)
+            [varargout{1:nargout}] = deal(ones(N, 1, varargin{:}));
+        end
+        
+        function varargout = zerosvec(N, varargin)
+            [varargout{1:nargout}] = deal(zeros(N, 1, varargin{:}));
+        end
+        
+        function vec = makecol( vec )
+            % transpose if it's currently a row vector (unless its 0 x 1, keep as is)
+            if (size(vec,2) > size(vec, 1) && isvector(vec)) && ~(size(vec, 1) == 0 && size(vec, 2) == 1)
+                vec = vec';
+            end
+
+            if size(vec, 1) == 1 && size(vec, 2) == 0
+                vec = vec';
+            end
+        end
+
+        function vec = makerow( vec )
+        % convert vector to row vector
+
+            % leave size == [1 0] alone too
+            if(size(vec, 1) > size(vec,2) && isvector(vec)) && ~(size(vec, 2) == 0 && size(vec, 1) == 1)
+                vec = vec';
+            end
+
+            if size(vec, 1) == 0 && size(vec, 2) == 1
+                vec = vec';
+            end
+        end
+
+
+    end
+        
+    
     methods(Static) % Mapping, construction via callback
         function varargout = mapToSizeFromSubs(sz, varargin)
             % t = mapTensor(sz, contentsFn = @(varargin) NaN, asCell = false)
@@ -18,7 +80,7 @@ classdef TensorUtils
             contentsFn = p.Results.contentsFn;
             
             if isempty(sz)
-                varargout = cellvec(nargout);
+                varargout = TensorUtils.cellvec(nargout);
                 for i = 1:nargout
                     if asCell
                         varargout{i} = {};
@@ -175,7 +237,7 @@ classdef TensorUtils
             [varargout{1:nargout}] = TensorUtils.mapToSizeFromSubs(sz, @indexFn, 'asCell', p.Results.asCell);
             
             function varargout = indexFn(varargin)
-                inputs = cellvec(numel(axisLists));
+                inputs = TensorUtils.cellvec(numel(axisLists));
                 for iAx = 1:numel(axisLists)
                     if iscell(axisLists{iAx})
                         inputs{iAx} = axisLists{iAx}{varargin{iAx}};
@@ -322,7 +384,7 @@ classdef TensorUtils
                 ndims = numel(sz);
             end
             allDims = 1:ndims;
-            other = makerow(setdiff(allDims, dims));
+            other = TensorUtils.makerow(setdiff(allDims, dims));
         end
         
         function d = firstNonSingletonDim(t)
@@ -337,18 +399,18 @@ classdef TensorUtils
     methods(Static) % Mask generation and mask utilities
        function idx = vectorMaskToIndices(mask)
             if islogical(mask)
-                idx = makecol(find(mask));
+                idx = TensorUtils.makecol(find(mask));
             else
-                idx = makecol(mask);
+                idx = TensorUtils.makecol(mask);
             end
         end
         
         function mask = vectorIndicesToMask(idx, len)
             if islogical(idx)
-                mask = makecol(idx);
+                mask = TensorUtils.makecol(idx);
             else
                 if ~isscalar(len) && isvector(len), len = numel(len); end % assume its a mask of the same size
-                mask = falsevec(len);
+                mask = TensorUtils.falsevec(len);
                 mask(idx) = true;
             end
         end
@@ -388,13 +450,13 @@ classdef TensorUtils
                 masks = repmat(masks, numel(dims), 1);
             end
             assert(numel(masks) == numel(dims), 'Number of dimensions must match number of masks provided');
-            masks = makecol(masks);
+            masks = TensorUtils.makecol(masks);
                 
             nInflatedVec = cellfun(@numel, masks);
             nSelectedVec = cellfun(@nnz, masks);
             
             % check size along selected dims
-            assert(isequal(makecol(TensorUtils.sizeMultiDim(maskedTensor, dims)), nSelectedVec), ...
+            assert(isequal(TensorUtils.makecol(TensorUtils.sizeMultiDim(maskedTensor, dims)), nSelectedVec), ...
                 'Size along each masked dimension must match nnz(mask)');
             
             % compute inflated size
@@ -476,7 +538,7 @@ classdef TensorUtils
             ndims = length(sz);
             subsCell = cell(ndims, 1);
             
-            [subsCell{:}] = ind2sub(sz, makecol(inds));
+            [subsCell{:}] = ind2sub(sz, TensorUtils.makecol(inds));
             
             mat = [subsCell{:}];
         end
@@ -601,7 +663,7 @@ classdef TensorUtils
         function tCell = nestedRegroupAlongDimension(t, dimSets)
             assert(iscell(dimSets), 'dimSets must be a cell array of dimension sets');
             
-            dimSets = makecol(cellfun(@makecol, dimSets, 'UniformOutput', false));
+            dimSets = TensorUtils.makecol(cellfun(@TensorUtils.makecol, dimSets, 'UniformOutput', false));
             allDims = cell2mat(dimSets);
             
             assert(length(unique(allDims)) == length(allDims), ...
@@ -776,7 +838,7 @@ classdef TensorUtils
         end
         
         function vec = flatten(t)
-            vec = makecol(t(:));
+            vec = TensorUtils.makecol(t(:));
         end
         
         function mat = flattenAlongDimension(t, dim)
@@ -814,19 +876,19 @@ classdef TensorUtils
             % inputs each element of out came from
             out = cat(dim, varargin{:});
             if nargout > 1
-                which = cell2mat(makecol(cellfun(@(in, idx) idx*ones(size(in, dim), 1), varargin, ...
+                which = cell2mat(TensorUtils.makecol(cellfun(@(in, idx) idx*ones(size(in, dim), 1), varargin, ...
                     num2cell(1:numel(varargin)), 'UniformOutput', false)));
             end
         end
         
         function paddedCell = expandToSameSizeAlongDims(dims, varargin)
             nd = max(max(dims), max(cellfun(@ndims, varargin)));
-            szMat = cell2mat(cellfun(@(x) TensorUtils.sizeNDims(x, nd), makecol(varargin), 'UniformOutput', false));
+            szMat = cell2mat(cellfun(@(x) TensorUtils.sizeNDims(x, nd), TensorUtils.makecol(varargin), 'UniformOutput', false));
             
             szPadTo = max(szMat, [], 1);
             padFn = @(x) TensorUtils.expandOrTruncateToSize(x, dims, szPadTo(dims));
             
-            paddedCell = cellfun(padFn, makecol(varargin), 'UniformOutput', false);
+            paddedCell = cellfun(padFn, TensorUtils.makecol(varargin), 'UniformOutput', false);
         end
         
         function out = catPad(dim, varargin)
@@ -913,7 +975,7 @@ classdef TensorUtils
                 return;
             end
             if nargout > 1
-                whichMasked = cell2mat(makecol(cellfun(@(in, idx) idx*ones(size(in, dim), 1), varargin(~isEmpty), ...
+                whichMasked = cell2mat(TensorUtils.makecol(cellfun(@(in, idx) idx*ones(size(in, dim), 1), varargin(~isEmpty), ...
                     num2cell(1:nnz(~isEmpty)), 'UniformOutput', false)));
                 
                 % whichMasked indexes into masked varargin, reset these to
@@ -980,7 +1042,7 @@ classdef TensorUtils
             if ~iscell(whichDims)
                 whichDims = {whichDims};
             end
-            whichDims = makecol(whichDims);
+            whichDims = TensorUtils.makecol(whichDims);
             
             allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
             allDims = cat(1, allDims{:});
@@ -1022,13 +1084,13 @@ classdef TensorUtils
                 end
                 
                 szOut = size(out);
-                labelsByDimOut = cellvec(ndimsOut);
+                labelsByDimOut = TensorUtils.cellvec(ndimsOut);
                 for iDimOut = 1:ndimsOut
                     dimsFromIn = whichDims{iDimOut};
                     % temporary storage of the columns of
                     % labelsByDimOut{iDimOut}, before concatenation
-                    labelsThisOut = cellvec(numel(dimsFromIn));
-                    subsCell = cellvec(numel(dimsFromIn));
+                    labelsThisOut = TensorUtils.cellvec(numel(dimsFromIn));
+                    subsCell = TensorUtils.cellvec(numel(dimsFromIn));
                     
                     % get subscripts for each element in the dimsFromIn slice
                     [subsCell{1:numel(dimsFromIn)}] = ind2sub(szIn(dimsFromIn), 1:szOut(iDimOut));
@@ -1037,7 +1099,7 @@ classdef TensorUtils
                         % column vector
                         labelsThisIn = labelsByDim{dimsFromIn(iDimFromIn)};
                         if isvector(labelsThisIn) && length(labelsThisIn) == size(in, dimsFromIn(iDimFromIn))
-                            labelsThisIn = makecol(labelsThisIn);
+                            labelsThisIn = TensorUtils.makecol(labelsThisIn);
                         end
                         % and pull the correct labels by selecting the
                         % correct rows (typically multiple times)
@@ -1060,7 +1122,7 @@ classdef TensorUtils
             if ~iscell(whichDims)
                 whichDims = {whichDims};
             end
-            whichDims = makecol(whichDims);
+            whichDims = TensorUtils.makecol(whichDims);
             allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
             allDims = cat(1, allDims{:});
             assert(all(ismember(1:numel(allDims), allDims)), ...
@@ -1088,7 +1150,7 @@ classdef TensorUtils
             % whichDims and making these a new size, e.g. tensorizes a
             % flattened dim or set of dims
             sz = size(in);
-            assert(isequal(makecol(whichDims), makecol(min(whichDims):max(whichDims))), 'Dims must be consecutive');
+            assert(isequal(TensorUtils.makecol(whichDims), TensorUtils.makecol(min(whichDims):max(whichDims))), 'Dims must be consecutive');
             
             nElements = prod(TensorUtils.sizeMultiDim(in, whichDims));
             if nnz(isnan(newSizeInThoseDims)) == 1
@@ -1172,8 +1234,8 @@ classdef TensorUtils
             %szSlice = size(slice);
             ndimsSlice = length(spanDim);
             if ndimsSlice == 1
-                % when spanDim is scalar, expect column vector or makecol
-                slice = makecol(squeeze(slice));
+                % when spanDim is scalar, expect column vector or TensorUtils.makecol
+                slice = TensorUtils.makecol(squeeze(slice));
             end
             
             ndimsOut = max(2, max(spanDim));
@@ -1289,7 +1351,7 @@ classdef TensorUtils
             % along each dims(i), truncate or expand with NaN to be size sz(i)
             
             sz = TensorUtils.sizeMultiDim(t, dims);
-            makeSize = makerow(makeSize);
+            makeSize = TensorUtils.makerow(makeSize);
             expandBy = makeSize - sz;
                 
             tooSmall = expandBy > 0;
@@ -1396,7 +1458,7 @@ classdef TensorUtils
         
         function list = combineListFromCells(t)
             % gathers all lists from t{:} into one long column vector
-            t = cellfun(@makecol, t, 'UniformOutput', false);
+            t = cellfun(@TensorUtils.makecol, t, 'UniformOutput', false);
             % make empty vectors column vectors to allow cell2mat to work
             [t{cellfun(@isempty, t)}] = deal(nan(0, 1));
             list = cell2mat(t(:));
@@ -1408,9 +1470,9 @@ classdef TensorUtils
             % This undoes combineListFromCells
             if isempty(list)
                 % all cells will be empty, special case
-                t = cellvec(numel(nPerCell));
+                t = TensorUtils.cellvec(numel(nPerCell));
             else
-                t = mat2cell(makecol(list), nPerCell(:), 1);
+                t = mat2cell(TensorUtils.makecol(list), nPerCell(:), 1);
             end
             t = reshape(t, size(nPerCell));
             
@@ -1424,9 +1486,9 @@ classdef TensorUtils
            % will independently split along each dimension in dim. If
            % nPerCell is omitted, will be ones(size(t, dim))
            
-           args = cellvec(ndims(t));
+           args = TensorUtils.cellvec(ndims(t));
            if nargin < 3
-               nPerCell = arrayfun(@(dim) onesvec(size(t, dim)), dim, 'UniformOutput', false);
+               nPerCell = arrayfun(@(dim) TensorUtils.onesvec(size(t, dim)), dim, 'UniformOutput', false);
            end
            if ~iscell(nPerCell)
                nPerCell = {nPerCell};
@@ -1507,7 +1569,7 @@ classdef TensorUtils
             
             % create a template for findInner to use with the correct size
             % and orientation
-            sizeSlice = onesvec(max(dim, ndims(t)))';
+            sizeSlice = TensorUtils.onesvec(max(dim, ndims(t)))';
             sizeSlice(dim) = N;
             emptySlice = nan(sizeSlice);
             
@@ -1585,13 +1647,13 @@ classdef TensorUtils
             end
             assert(numel(namesAlongAxes) == nAx, 'Number of axes must match numel(namesAlongAxes)');
             
-            group = cellvec(nAx);
+            group = TensorUtils.cellvec(nAx);
             for a = 1:nAx
                 group{a} = cell(sz);
             end
             
             % construct the cell of factor level names
-            subs = cellvec(nAx);
+            subs = TensorUtils.cellvec(nAx);
             for i = 1:numel(valueCell)
                 [subs{1:nAx}] = ind2sub(sz, i);
                 n = numel(valueCell{i});
@@ -1599,7 +1661,7 @@ classdef TensorUtils
                     group{a}{i} = repmat(namesAlongAxes{a}(subs{a}), n, 1);
                 end
                 
-                valueCell{i} = makecol(valueCell{i});
+                valueCell{i} = TensorUtils.makecol(valueCell{i});
             end
             
             % collapse over treatments
@@ -1833,7 +1895,7 @@ classdef TensorUtils
             nNew = size(logicalNewByOld, 1);
             
             % compute min over all trial counts included in each basis
-            parts = cellvec(nNew);
+            parts = TensorUtils.cellvec(nNew);
             for iNew = 1:nNew
                 fnSelect = @(c) fn(c(logicalNewByOld(iNew, :) ~= 0));
                 parts{iNew} = TensorUtils.mapSlices(fnSelect, dim, t);
@@ -1867,6 +1929,38 @@ classdef TensorUtils
             assert(isscalar(value), 'Value must be scalar');
             maskByDim = TensorUtils.maskByDimCellSelectAlongDimension(size(in), dims, mask);
             in(maskByDim{:}) = value;
+        end
+        
+        function data = clip(data, clipAt, replace)
+            % if replace is empty or not provided, data will be replaced by
+            % the correspondign limit. 
+            % both clipAt can be scalar positive to clip at +/- or [low
+            % high] vectors
+            if isempty(clipAt)
+                return;
+            elseif isscalar(clipAt)
+                clipAt = [-clipAt clipAt];
+            end
+            if nargin < 3 || isempty(replace)
+                replace = clipAt;
+            else
+                if isscalar(replace)
+                    replace = [-replace replace];
+                end
+            end 
+            
+            if ~iscell(data)
+                data = clip_I(data);
+            else
+                for i = 1:numel(data)
+                    data{i} = clip_I(data{i});
+                end
+            end
+            
+            function d = clip_I(d)
+                d(d < clipAt(1)) = replace(1);
+                d(d > clipAt(2)) = replace(2);
+            end  
         end
     end
 end
