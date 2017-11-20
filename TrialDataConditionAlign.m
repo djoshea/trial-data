@@ -1886,17 +1886,28 @@ classdef TrialDataConditionAlign < TrialData
             means = cellfun(@nanmean, meansCell);
         end
         
-        function rms = getAnalogRMSEachTrial(td, name, varargin)
-            data = td.getAnalog(name, varargin{:});
-            ssqByTrial = cellfun(@(x) nansum((x-nanmean(x)).^2), data);
-            countByTrial = cellfun(@(x) nnz(~isnan(x)), data);
+        function [rms, ssqByTrial, countByTrial] = getAnalogRMSEachTrial(td, name, varargin)
+            p = inputParser();
+            p.addParameter('clip', [], @(x) numel(x) <= 2);
+            p.addParameter('replace', NaN, @(x) numel(x) <= 2);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            data = td.getAnalog(name, p.Unmatched);
+            if ~isempty(p.Results.clip)
+                data = TensorUtils.clip(data, p.Results.clip, p.Results.replace);
+            end
+            
+            ssqByTrial = cellfun(@(x) nansum((x-nanmean(x)).^2), data(td.valid));
+            countByTrial = cellfun(@(x) nnz(~isnan(x)), data(td.valid));
             rms = sqrt(ssqByTrial ./ countByTrial);
+            rms = TensorUtils.inflateMaskedTensor(rms, 1, td.valid, NaN);
+            ssqByTrial = TensorUtils.inflateMaskedTensor(ssqByTrial, 1, td.valid, NaN);
+            countByTrial = TensorUtils.inflateMaskedTensor(countByTrial, 1, td.valid, NaN);
         end
         
         function rms = getAnalogRMS(td, name, varargin)
-            data = td.getAnalog(name, varargin{:});
-            ssqByTrial = cellfun(@(x) nansum((x-nanmean(x)).^2), data);
-            countByTrial = cellfun(@(x) nnz(~isnan(x)), data);
+            [~, ssqByTrial, countByTrial] = td.getAnalogRMSEachTrial(name, varargin{:});
             rms = sqrt(nansum(ssqByTrial, 1) ./ nansum(countByTrial, 1))';
         end
         
@@ -2670,6 +2681,33 @@ classdef TrialDataConditionAlign < TrialData
             time = td.alignInfoActive.getAlignedTimesCell(time, false, 'singleTimepointTolerance', Inf); % no padding
         end
 
+        function [rms, ssqByTrial, countByTrial] = getAnalogChannelGroupRMSEachTrial(td, name, varargin)
+            p = inputParser();
+            p.addParameter('clip', [], @(x) numel(x) <= 2);
+            p.addParameter('replace', NaN, @(x) numel(x) <= 2);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            data = td.getAnalogChannelGroup(name, p.Unmatched);
+            if ~isempty(p.Results.clip)
+                data = TensorUtils.clip(data, p.Results.clip, p.Results.replace);
+            end
+            
+            temp = cellfun(@(x) nansum((x-nanmean(x, 1)).^2, 1), data(td.valid), 'UniformOutput', false);
+            ssqByTrial = cat(1, temp{:}); % nTrials x nChannels
+            temp = cellfun(@(x) nansum(~isnan(x), 1), data(td.valid), 'UniformOutput', false);
+            countByTrial = cat(1, temp{:}); % nTrials x nChannels
+            rms = sqrt(ssqByTrial ./ countByTrial);
+            rms = TensorUtils.inflateMaskedTensor(rms, 1, td.valid, NaN);
+            ssqByTrial = TensorUtils.inflateMaskedTensor(ssqByTrial, 1, td.valid, NaN);
+            countByTrial = TensorUtils.inflateMaskedTensor(countByTrial, 1, td.valid, NaN);
+        end
+        
+        function rms = getAnalogChannelGroupRMS(td, name, varargin)
+            [~, ssqByTrial, countByTrial] = td.getAnalogChannelGroupRMSEachTrial(name, varargin{:});
+            rms = sqrt(nansum(ssqByTrial, 1) ./ nansum(countByTrial, 1))';
+        end
+        
         function [dataCell, timeCell] = getAnalogMulti(td, name, varargin)
             % [data, time] = getAnalogMulti(td, chNames, varargin)
             % data and time are cell(nTrials, nChannels)
