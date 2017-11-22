@@ -381,7 +381,7 @@ classdef TensorUtils
             % otherDims(t, dims, [ndims]) returns a list of dims in t NOT in dims
             % e.g. if ndims(t) == 3, dims = 2, other = [1 3]
             if nargin < 3
-                ndims = numel(sz);
+                ndims = max(numel(sz), max(dims));
             end
             allDims = 1:ndims;
             other = TensorUtils.makerow(setdiff(allDims, dims));
@@ -1138,6 +1138,9 @@ classdef TensorUtils
 
             % intermediate size to "unconcatenate" the dims that were
             % concatenated
+            if numel(szOrig) < max(allDims)
+                szOrig = [szOrig ones(1, max(allDims)-numel(szOrig))];
+            end
             szExpand = szOrig(allDims(1:numel(szOrig)));
             expand = reshape(in, szExpand); 
             

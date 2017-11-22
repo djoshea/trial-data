@@ -767,10 +767,11 @@ classdef ConditionDescriptor
         end
         
         function nv = get.conditionsSizeNoExpand(ci)
+            % ensure nv has the same length as ci.nAxes
             if ci.nAxes <= 1
                 nv = size(ci.conditions, 1);
             else
-                nv = size(ci.conditions);
+                nv = TensorUtils.expandSizeToNDims(size(ci.conditions), ci.nAxes);
             end
         end
             
