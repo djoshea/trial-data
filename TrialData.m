@@ -312,6 +312,8 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             
             [td.data, td.channelDescriptorsByName] = td.validateDataInternal(td.data, td.channelDescriptorsByName, varargin{:});
+            
+            td = td.fixCheckAnalogDataMatchesTimeVectors();
         end
         
         function [data, channelDescriptorsByName] = validateDataInternal(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
@@ -497,7 +499,7 @@ classdef TrialData
                     resort(iT) = ~issorted(timeThis) || numel(timeThis) > numel(unique(timeThis));
                 end
                 if any(resort)
-                    warning('%d trials have duplicate or non-monotonically increasing timestamps for %s', nnz(resort), dataField); 
+                    warning('%d trials have duplicate or non-monotonically increasing timestamps for %s. Fixing by deleting non-montonic samples.', nnz(resort), dataField); 
                     
                     if isGroup(iA)
                         td = td.copyRenameSharedChannelFields(channelsByGroup{groupIdx(iA)}, [false true]);
@@ -5253,15 +5255,17 @@ classdef TrialData
             end
         end
         
-        function [names, units] = listSpikeChannelsOnArray(td, arrayName)
+        function [names, units, electrodes] = listSpikeChannelsOnArray(td, arrayName)
             % [names, channelDescriptors] = getChannelsOnArray(td, arrayName)
             names = td.listSpikeChannels();
             units = nanvec(numel(names));
+            electrodes = nanvec(numel(names));
             mask = falsevec(numel(names));
             for iC = 1:numel(names)
                 cd = td.channelDescriptorsByName.(names{iC});
                 mask(iC) = strcmp(cd.array, arrayName);
                 units(iC) = cd.unit;
+                electrodes(iC) = cd.electrode;
             end
             
             names = names(mask);

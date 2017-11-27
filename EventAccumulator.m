@@ -34,7 +34,10 @@ classdef EventAccumulator
             
             for c = 1:C
                 ea(c).bins = bins;
-                counts = histc(data(:, c), edges);
+                counts = histc(data(:, c), edges)';
+                if size(counts, 2) > size(counts, 1)
+                    counts = counts'; % needs to be column vector
+                end
                 counts(end-1) = counts(end-1) + counts(end); % include the right edge in the last bin
                 ea(c).counts = counts(1:end-1);
             end
@@ -89,12 +92,23 @@ classdef EventAccumulator
                 return;
             end
             
-            if nargin < 3 || isempty(bw)
-                bw = (bins(2) - bins(1)) * 10;
+            if nargin < 3
+                bw = [];
             end
             
             data = cell2mat(arrayfun(@(b, c) repmat(b, c, 1), bins, counts, 'UniformOutput', false));
-            out = ksdensity(data, bins, 'Bandwidth', bw);
+            minmax = [min(data) max(data)];
+            binMask = bins >= minmax(1) & bins <= minmax(2);
+            if nnz(binMask) == 1
+                out = counts;
+            else
+                if ~isempty(bw)
+                    args = {'Bandwidth', bw};
+                else
+                    args = {};
+                end
+                out = ksdensity(data, bins, args{:});
+            end
         end
         
         function out = aggregate(varargin)

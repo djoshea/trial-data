@@ -328,7 +328,7 @@ classdef AlignSummary
             
              % compute summary statistics for all trials
             as.startAgg = EventAccumulator(startData);
-            as.stopAgg = EventAccumulator(startData);
+            as.stopAgg = EventAccumulator(stopData);
             
             % compute summary statistics for EACH occurrence of EACH
             % mark and interval event.
