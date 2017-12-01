@@ -332,9 +332,9 @@ classdef AlignSummary
             
             % compute summary statistics for EACH occurrence of EACH
             % mark and interval event.
-            as.markAgg = cellfun(@(d) EventAccumulator(d), markData, 'UniformOutput', false);
-            as.intervalStartAgg = cellfun(@(d) EventAccumulator(d), intervalStartData, 'UniformOutput', false);
-            as.intervalStopAgg = cellfun(@(d) EventAccumulator(d), intervalStopData, 'UniformOutput', false);
+            as.markAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d), markData, 'UniformOutput', false);
+            as.intervalStartAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d), intervalStartData, 'UniformOutput', false);
+            as.intervalStopAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d), intervalStopData, 'UniformOutput', false);
                         
             % group the data by condition into a flattened nConditions x 1
             % array
@@ -342,8 +342,10 @@ classdef AlignSummary
             [startGrouped, stopGrouped] = conditionInfo.groupElementsFlattened(startData, stopData);
  
             % compute summary statistics for each condition separately
-            as.startAggC = cellfun(@(d) EventAccumulator(d), startGrouped, 'UniformOutput', true);
-            as.stopAggC = cellfun(@(d) EventAccumulator(d), stopGrouped, 'UniformOutput', true);
+            temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d), startGrouped, 'UniformOutput', false);
+            as.startAggC = cat(1, temp{:}); % only new versions of Matlab support cellfun uniform output with objects
+            temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d), stopGrouped, 'UniformOutput', false);
+            as.stopAggC = cat(1, temp{:});
             
             as.markAggC = aggMultipleEventByCondition(markData, conditionInfo);
             as.intervalStartAggC = aggMultipleEventByCondition(markData, conditionInfo);
@@ -366,7 +368,7 @@ classdef AlignSummary
                 
                 for iE = 1:nEvents
                     dataGrouped = ci.groupElementsFlattened(dataCell{iE});          
-                    out = cellfun(@(d) EventAccumulator(d)', dataGrouped, 'UniformOutput', false); % nConditions x 1 cell of 1 x nOccurrences arrays
+                    out = cellfun(@(d) EventAccumulator.constructForEachColumn(d)', dataGrouped, 'UniformOutput', false); % nConditions x 1 cell of 1 x nOccurrences arrays
                     agg{iE} = cat(1, out{:}); % nConditions x nOccurrences
                 end
             end
@@ -382,6 +384,11 @@ classdef AlignSummary
             p.addParameter('aggregateIntervals', true, @islogical);
 %             p.addParameter('aggregateConditions', true, @islogical); % for internal use only
             p.parse(varargin{:});
+            
+            if isempty(alignSummarySet)
+                as = [];
+                return;
+            end
             
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
@@ -775,7 +782,7 @@ classdef AlignSummary
             for iMark = 1:ad.nMarks
                 if ~ad.markShowOnAxis(iMark), continue; end
                 % loop over each occurrence of the mark
-                for iOccur = 1:numel(as.markMean{iMark})
+                for iOccur = 1:as.nOccurrencesByMark(iMark)
                     info(counter).name = ad.markLabels{iMark};
                     info(counter).nameShort = ad.markLabelsShort{iMark};
                     info(counter).dist = as.markAgg{iMark}(iOccur).counts;
@@ -783,8 +790,8 @@ classdef AlignSummary
                     info(counter).time = as.markMedian{iMark}(iOccur);
                     info(counter).min = as.markMin{iMark}(iOccur);
                     info(counter).max = as.markMax{iMark}(iOccur);
-                    if ~isempty(as.markMeanByCondition)
-                        info(counter).timeByCondition = as.markMeanByCondition{iMark}(:, iOccur);
+                    if ~isempty(as.markMeanByCondition) && ~isempty(as.markMedianByCondition{iMark})
+                        info(counter).timeByCondition = as.markMedianByCondition{iMark}(:, iOccur);
                         info(counter).minByCondition = as.markMinByCondition{iMark}(:, iOccur);
                         info(counter).maxByCondition = as.markMaxByCondition{iMark}(:, iOccur);
                     else

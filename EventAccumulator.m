@@ -6,11 +6,17 @@ classdef EventAccumulator
     end
     
     properties(Dependent)
+        % Statistics are computed assuming each value takes the left edge
+        % of its bin
+        has_samples
         total_count
         min
         max
         mean
         median
+        std
+        var
+        values
     end
     
     methods
@@ -24,6 +30,9 @@ classdef EventAccumulator
                 delta = 1;
             end
             
+            if isempty(data)
+                error('No data provided to EventAccumulator constructor');
+            end
             C = size(data, 2);
             ea(C, 1) = EventAccumulator();
             
@@ -38,9 +47,15 @@ classdef EventAccumulator
                 if size(counts, 2) > size(counts, 1)
                     counts = counts'; % needs to be column vector
                 end
-                counts(end-1) = counts(end-1) + counts(end); % include the right edge in the last bin
-                ea(c).counts = counts(1:end-1);
+                if numel(counts) > 1
+                    counts(end-1) = counts(end-1) + counts(end); % include the right edge in the last bin
+                    ea(c).counts = counts(1:end-1);
+                end
             end
+        end
+        
+        function tf = get.has_samples(ea)
+            tf = ~isempty(ea.counts) && sum(ea.counts) > 0;
         end
         
         function v = get.total_count(ea)
@@ -48,7 +63,7 @@ classdef EventAccumulator
         end
         
         function v = get.min(ea)
-            if isempty(ea.counts)
+            if ~ea.has_samples
                 v = NaN;
             else
                 v = ea.bins(find(ea.counts > 0, 1, 'first'));
@@ -56,7 +71,7 @@ classdef EventAccumulator
         end
         
         function v = get.max(ea)
-            if isempty(ea.counts)
+            if ~ea.has_samples
                 v = NaN;
             else
                 v = ea.bins(find(ea.counts > 0, 1, 'last'));
@@ -64,7 +79,7 @@ classdef EventAccumulator
         end
         
         function v = get.mean(ea)
-            if isempty(ea.counts)
+            if ~ea.has_samples
                 v = NaN;
             else
                 v = sum(ea.counts .* ea.bins) / sum(ea.counts);
@@ -72,7 +87,7 @@ classdef EventAccumulator
         end
         
         function v = get.median(ea)
-            if isempty(ea.counts)
+            if ~ea.has_samples
                 v = NaN;
             else
                 cs = cumsum(ea.counts);
@@ -80,12 +95,81 @@ classdef EventAccumulator
             end
         end   
         
+        function v = get.std(ea)
+            if ~ea.has_samples
+                v = NaN;
+            else
+                mu = ea.mean;
+                v = sqrt(sum(ea.counts .* (ea.bins - mu).^2) / (ea.total_count - 1));
+            end
+        end
+        
+        function v = get.var(ea)
+            if ~ea.has_samples
+                v = NaN;
+            else
+                mu = ea.mean;
+                v = sum(ea.counts .* (ea.bins - mu).^2);
+            end
+        end
+                
         function out = kde(ea, varargin)
             out = EventAccumulator.build_kde(ea.bins, ea.counts, varargin{:});
         end
+        
+        function values = get.values(ea)
+            values = cell2mat(arrayfun(@(b, c) repmat(b, c, 1), ea.bins, ea.counts, 'UniformOutput', false));
+        end
+        
+        function h = plotDistribution(ea, varargin)
+            if ea.has_samples
+                h = histogram(ea.values, ea.bins, varargin{:});
+            end
+        end
+        
+        function h = plotKDE(ea, bw, varargin)
+            if nargin < 2
+                bw = [];
+            end
+           
+            density = ea.kde(bw);
+            h = plot(ea.bins, density * ea.total_count, varargin{:});
+        end
+        
+        function plotDistributionWithKDE(ea, bw)
+            if nargin < 2
+                bw = [];
+            end
+            
+            tf = ishold();
+            ea.plotDistribution('FaceColor', [0 0.4470 0.7410]);
+            hold on;
+            ea.plotKDE(bw, 'Color', 'k', 'LineWidth', 2);
+            if ~tf, hold off; end
+        end
+            
     end 
     
     methods(Static)
+        function ea = constructForEachColumn(data, delta)
+            % like the constructor, except supports empty data matrix
+            
+            % data is a column vector or a matrix. Each column of data will
+            % generate its own EventAccumulator
+            if nargin < 1
+                return;
+            end
+            if nargin < 2
+                delta = 1;
+            end
+            
+            if isempty(data)
+                ea = [];
+            else
+                ea = EventAccumulator(data, delta);
+            end
+        end
+            
         function out = build_kde(bins, counts, bw)
             if numel(bins) < 2
                 out = counts;
@@ -119,7 +203,8 @@ classdef EventAccumulator
             % If the sizes of these matrices don't match,
             % the result will be the largest size along each dimension
             
-            args = varargin;
+            emptyMask = cellfun(@isempty, varargin);
+            args = varargin(~emptyMask);
             nA = numel(args);
             delta = cellfun(@(ag) ag(1).delta, args);
             assert(all(delta == delta(1)), 'Deltas must match');

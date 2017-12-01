@@ -4800,14 +4800,12 @@ classdef TrialDataConditionAlign < TrialData
                 
                 if p.Results.align
                     % will also do interpolation
-                    [waveByU{iU}, newWaveTvec] = TrialDataUtilities.MKsort.alignSpline(waveByU{iU}, waveTvec, ...
+                    [waveByU{iU}, waveTvec] = TrialDataUtilities.MKsort.alignSpline(waveByU{iU}, waveTvec, ...
                         'alignMethod', p.Results.alignMethod, 'interpFactor', p.Results.interpFactor, ...
                         'interpTroughThresh', p.Results.interpTroughThresh);
                 elseif p.Results.interp
                     % just do interpolation
-                    [waveByU{iU}, newWaveTvec] = interpWaves(waveByU{iU}, waveTvec, p.Results.interpFactor);
-                else
-                    newWaveTvec = waveTvec;
+                    [waveByU{iU}, waveTvec] = interpWaves(waveByU{iU}, waveTvec, p.Results.interpFactor);
                 end
                 
                 if p.Results.clean
@@ -5141,6 +5139,8 @@ classdef TrialDataConditionAlign < TrialData
             end
             yCentersByCondition = mean(yLimsByCondition, 1)';
             
+            yDividersByCondition = yOffsetByCondition(2:end) + gap/2;
+            
             % if we're drawing waveforms, normalize all waveforms to the [0 1] range]
             if p.Results.drawSpikeWaveforms
                 [maxW, minW] = deal(nan(nAlignUsed, nConditionsUsed, nUnits));
@@ -5272,8 +5272,9 @@ classdef TrialDataConditionAlign < TrialData
                 au = AutoAxis(axh);
                 au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
                     conditionNames(mask), 'color', colors(mask, :));
+                set(axh, 'YTick', flipud(yDividersByCondition));
             else
-                set(gca, 'YTick', flipud(yCentersByCondition), 'YTickLabels', flipud(conditionNames));
+                set(axh, 'YTick', flipud(yCentersByCondition), 'YTickLabels', flipud(conditionNames));
             end
                 
             % setup time axis markers

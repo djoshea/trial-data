@@ -1757,13 +1757,13 @@ classdef TensorUtils
         end
         
         
-        function t = centerSlicesSpanningDimension(t, alongDims)
+        function [t, mu] = centerSlicesSpanningDimension(t, alongDims)
             % for each subscript in dimension(s) alongDims, computes the mean 
             % along all other dimensions and subtracts it. this ensures
             % that the mean along any slice in alongDims will have zero
             % mean.
-            meanTensor =  TensorUtils.nanmeanMultiDim(t, alongDims);
-            t = bsxfun(@minus, t, meanTensor);
+            mu =  TensorUtils.nanmeanMultiDim(t, alongDims);
+            t = bsxfun(@minus, t, mu);
         end
         
         function t = zscoreAlongDimension(t, alongDims)

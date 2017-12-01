@@ -717,19 +717,15 @@ classdef AlignInfo < AlignDescriptor
 
         function buildMarkData(ad)
             % compute the mark times and store in odc.markInfo
-
+            % DONT MARK AS NAN here, this happens in buildMarkDataValid
             markData = cell(ad.nMarks, 1);
             markCounts = nan(ad.nTrials, ad.nMarks);
             for i = 1:length(ad.markEvents)
                 [markData{i}, markCounts(:, i)] = ...
                     ad.getEventIndexedTimeMatrix(ad.markEvents{i}, ...
                     ad.markEventsIndex{i}, ad.markOffsets(i), ad.timeInfo.zero);
-
-                %markData{i}(~ad.computedValid, :) = NaN;
             end
-
-            %markCounts(~ad.computedValid, :) = NaN;
-
+            
             c = ad.odc;
             c.markData = markData;
             c.markCounts = markCounts;
