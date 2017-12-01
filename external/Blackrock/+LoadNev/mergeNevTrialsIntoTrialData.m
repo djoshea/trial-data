@@ -74,15 +74,6 @@ for iQ = 1:numel(Q)
     
     % overwrite lfp
     if isfield(q, 'lfp') && includeLFP
-%         nLFP = numel(q.lfp.lookup);
-%         for iL = 1:nLFP
-%             ch = q.lfp.lookup(iL);
-%             chName = sprintf('lfp%d', ch);
-%             if ~isfield(lfpData, chName)
-%                 lfpData.(chName) = cellvec(nTD);
-%             end
-%             lfpData.(chName){iR} = q.lfp.data(iL, :)';
-%         end
         lfpData{iR} = q.lfp.data'; % need each channel as successive column
         lfpTime{iR} = makecol(q.lfp.time - tOffsetQ);
         lfpScaleFromLims = q.lfp.scaleLims(1:2);
@@ -109,6 +100,8 @@ if numMerged == 0
     return
 end
 
+tdMask = removenan(qMatchInTD);
+
 if includeSpikes
     units = fieldnames(spikeData);
     prog = ProgressBar(numel(units), 'Adding spike data to TrialData');
@@ -126,9 +119,9 @@ if includeSpikes
                 nWave = size(wd{nonEmpty}, 2);
                 wavetvec = (-10 : nWave-11) / 30;
             end
-            td = td.addOrUpdateSpikeChannel(chName, spikeData.(units{iU}), 'mask', qMatchInTD, 'waveforms', wd, 'waveformsTime', wavetvec);
+            td = td.addOrUpdateSpikeChannel(chName, spikeData.(units{iU}), 'mask', tdMask, 'waveforms', wd, 'waveformsTime', wavetvec);
         else
-            td = td.addOrUpdateSpikeChannel(chName, spikeData.(units{iU}), 'mask', qMatchInTD);
+            td = td.addOrUpdateSpikeChannel(chName, spikeData.(units{iU}), 'mask', tdMask);
         end
     end
     prog.finish();
@@ -141,11 +134,11 @@ if includeLFP && isfield(q, 'lfp')
 
     debug('Adding %s data to TrialData as continuous neural group\n', prefix);
     td = td.addOrUpdateContinuousNeuralChannelGroup(prefix, lfpCh, ...
-     lfpData, lfpTime, 'mask', qMatchInTD, 'units', 'uV', 'scaleFromLims', lfpScaleFromLims, 'scaleToLims', lfpScaleToLims, ...
+     lfpData, lfpTime, 'mask', tdMask, 'units', 'uV', 'scaleFromLims', lfpScaleFromLims, 'scaleToLims', lfpScaleToLims, ...
      'dataInMemoryScale', true);
     
     hasLfp = cellfun(@(x) size(x, 2) > 0, lfpData);
-    td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasLfp, 'mask', qMatchInTD);
+    td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasLfp, 'mask', tdMask);
 end
 if includeBroadband && isfield(q, 'broadband')
     chLookup = Q(1).broadband.lookup;
@@ -154,13 +147,13 @@ if includeBroadband && isfield(q, 'broadband')
         
     debug('Adding %s data to TrialData as continuous neural group\n', prefix);
     td = td.addOrUpdateContinuousNeuralChannelGroup(prefix, broadbandCh, ...
-        broadbandData, broadbandTime, 'mask', qMatchInTD, 'units', 'uV', 'scaleFromLims', broadbandScaleFromLims, 'scaleToLims', broadbandScaleToLims, ...
+        broadbandData, broadbandTime, 'mask', tdMask, 'units', 'uV', 'scaleFromLims', broadbandScaleFromLims, 'scaleToLims', broadbandScaleToLims, ...
         'dataInMemoryScale', true);
     hasBroadband = cellfun(@(x) size(x, 2) > 0, broadbandData);
-    td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasBroadband, 'mask', qMatchInTD);
+    td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasBroadband, 'mask', tdMask);
 end
 
 prog.finish();
 
-td = td.addOrUpdateBooleanParam('nevMerged', mergedMask, 'mask', qMatchInTD);
-td = td.addOrUpdateStringParam('nevMergedFile', nevShort,  'mask', qMatchInTD);
+td = td.addOrUpdateBooleanParam('nevMerged', mergedMask, 'mask', tdMask);
+td = td.addOrUpdateStringParam('nevMergedFile', nevShort,  'mask', tdMask);
