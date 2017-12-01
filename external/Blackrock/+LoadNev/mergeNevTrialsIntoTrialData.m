@@ -52,32 +52,19 @@ for iQ = 1:numel(Q)
         warning('Trial %d in TrialData has already been merged with file %s', iR, nevShort{iR});
     end 
     nevShort{iR} = q.CerebusInfo.nevNameShort;
-    
+
 %     % get photobox
 %     photoboxNev{iR} = q.analog.photobox;
 %     photoboxNevTime{iR} = q.analog.time;
 %     photoboxScaleLims = q.analog.scaleLims;
     
-    % overwrite spikes
+    % grab spikes into spikeData struct
     for iK = 1:numel(units)
         chName = convertName(units{iK});
-%         if ~isfield(spikeData, chName)
-%             if td.hasSpikeChannel(chName)
-%                 % retrieve original spike and wave data so we only
-%                 % overwrite on merged trials
-%                 spikeData.(chName) = td.getSpikeTimesUnaligned(chName);
-%                 if includeWaveforms
-%                     if td.hasSpikeWaveforms(chName)
-%                         waveData.(chName) = td.getSpikeWaveforms(chName);
-%                     else
-%                         waveData.(chName) = cellvec(nTD);
-%                     end
-%                 end
-%             else
-                spikeData.(chName) = cellvec(nTD);
-                waveData.(chName) = cellvec(nTD);
-%             end
-%         end
+        if ~isfield(spikeData, chName) % add field if needed
+            spikeData.(chName) = cellvec(nTD);
+            waveData.(chName) = cellvec(nTD);
+        end
             
         spikeData.(chName){iR} = q.spikesRaw(units{iK}) - tOffsetQ;
         if includeWaveforms
