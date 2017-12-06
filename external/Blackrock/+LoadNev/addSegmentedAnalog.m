@@ -22,9 +22,22 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
 
     prog = ProgressBar(length(Q), 'Adding segmented analog data');
     for insx = 1:length(nsxData)
-        % find start inds
-        startInds = ceil((startTimes - nsxData(insx).timeStart) / nsxData(insx).timeSamplePeriod) + 1;
-        endInds =  floor((endTimes - nsxData(insx).timeStart) / nsxData(insx).timeSamplePeriod) + 1;
+        % find start and end inds
+        
+        [startInds, endInds] = deal(nan(length(Q), 1));
+        for iq = 1:length(Q)
+            temp = find(nsxData(insx).time >= startTimes(iq), 1, 'first');
+            if ~isempty(temp)
+                startInds(iq) = temp;
+            end
+            temp = find(nsxData(insx).time <= endTimes(iq), 1, 'last');
+            if ~isempty(temp)
+                endInds(iq) = temp;
+            end
+        end    
+        
+%         startInds = ceil((startTimes - nsxData(insx).timeStart) / nsxData(insx).timeSamplePeriod) + 1;
+%         endInds =  floor((endTimes - nsxData(insx).timeStart) / nsxData(insx).timeSamplePeriod) + 1;
 
         % first remove trials outside of the boundaries of .time
         lastValidTrial = find(startInds < length(nsxData(insx).time), 1, 'last');
@@ -58,7 +71,7 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
         end
 
         % now we want preTrialCols, then interleaved trialCols and [interTrialCols postTrialCols]
-        colsCount = [preTrialCols reshape([trialCols; [interTrialCols postTrialCols]], 1, [])];
+        colsCount = [preTrialCols reshape([trialCols'; [interTrialCols' postTrialCols]], 1, [])];
 
         % use these counts to split the giant data matrix into a cell
         timeCell{insx} = mat2cell(makerow(nsxData(insx).time), 1, colsCount);

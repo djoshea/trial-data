@@ -80,7 +80,7 @@ for iQ = 1:numel(Q)
         lfpScaleToLims = q.lfp.scaleLims(3:4);
     end
     
-    if isfield(q, 'broadband') && includeBroadban
+    if isfield(q, 'broadband') && includeBroadband
         broadbandData{iR} = q.broadband.data'; % need each channel as successive column
         broadbandTime{iR} = makecol(q.broadband.time - tOffsetQ);
         broadbandScaleFromLims = q.broadband.scaleLims(1:2);
@@ -148,7 +148,7 @@ if includeBroadband && isfield(q, 'broadband')
     debug('Adding %s data to TrialData as continuous neural group\n', prefix);
     td = td.addOrUpdateContinuousNeuralChannelGroup(prefix, broadbandCh, ...
         broadbandData, broadbandTime, 'mask', tdMask, 'units', 'uV', 'scaleFromLims', broadbandScaleFromLims, 'scaleToLims', broadbandScaleToLims, ...
-        'dataInMemoryScale', true);
+        'dataInMemoryScale', true, 'isAligned', false);
     hasBroadband = cellfun(@(x) size(x, 2) > 0, broadbandData);
     td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasBroadband, 'mask', tdMask);
 end

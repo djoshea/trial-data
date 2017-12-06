@@ -64,14 +64,15 @@ for iext = 1:length(nsxExts)
             nsxData(nsxCount).channelIds = channelIds(found);
         end 
         
-        % in ms
+        % convert cerebus timestamp to ms
         nsxData(nsxCount).timeStart = nsxInfo.MetaTags.Timestamp(1) / 30;
         
         t = cell(numel(nsxInfo.MetaTags.Timestamp), 1);
         for iPart = 1:numel(nsxInfo.MetaTags.Timestamp)
             % NOTE single does not have sufficient resolution on the
-            % integers for this
-            t{iPart} = double(nsxInfo.MetaTags.Timestamp(iPart)) + double(0:nsxInfo.MetaTags.DataPoints(iPart)-1)' * double((1000 / nsxInfo.MetaTags.SamplingFreq));
+            % integers for this. Convert timestamp offset to ms, then add a
+            % clock with the right sampling rate for ms
+            t{iPart} = double(nsxInfo.MetaTags.Timestamp(iPart)) / 30 + double(0:nsxInfo.MetaTags.DataPoints(iPart)-1)' * double((1000 / nsxInfo.MetaTags.SamplingFreq));
         end
         nsxData(nsxCount).time = cat(1, t{:});
         nsxData(nsxCount).timeSamplePeriod = 1000 / nsxInfo.MetaTags.SamplingFreq;
