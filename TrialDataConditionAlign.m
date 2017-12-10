@@ -359,6 +359,12 @@ classdef TrialDataConditionAlign < TrialData
             % this will flush .valid and .invalidCause
             td = invalidateValid@TrialData(td);
             
+            if ~td.initialized
+                % this gets called during initialization, so we return
+                % early here
+                return;
+            end
+            
             % reset the manual valid arrays of all condition info and align
             % info instances so that no attributes are overlooked
             td.conditionInfo = td.conditionInfo.setManualValidTo(td.manualValid);
@@ -4544,8 +4550,14 @@ classdef TrialDataConditionAlign < TrialData
             else
 %                 colormap = distinguishable_colors(nUnits, {'w', 'k'});
                 % cbrewer set 1 with gray removed
-                colormap = [0.894 0.102 0.11;0.216 0.494 0.722;0.302 0.686 0.29;0.596 0.306 0.639;1 0.498 0;1 1 0.2;0.651 0.337 0.157;0.969 0.506 0.749];
+                if nUnits < 8
+                    colormap = [0.894 0.102 0.11;0.216 0.494 0.722;0.302 0.686 0.29;0.596 0.306 0.639;1 0.498 0;1 1 0.2;0.651 0.337 0.157;0.969 0.506 0.749];
+                else
+                    colormap = distinguishable_colors(nUnits, {'w'});
+                end
             end
+            
+            colormap = TrialDataUtilities.Plotting.expandWrapColormap(colormap, nUnits);
            
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
             [wavesCell, waveTvec, waveTimeCell] = td.getSpikeWaveforms(unitName, 'combine', false);
@@ -5113,10 +5125,19 @@ classdef TrialDataConditionAlign < TrialData
             if isempty(p.Results.gapBetweenConditions)
                 gap = nTrialsTotal * 0.1 / nConditionsUsed;
                 if p.Results.annotateAboveEachCondition
-                    gap = gap + 3; % 2 above, 1 below
+                    gap = gap + p.Results.annotationHeight + 2; % 1 above, 1 below (plus annotation height)
+                    dividerOffset = p.Results.annotationHeight + 1.5;
+                else
+                    dividerOffset = gap / 2;
                 end
+                
             else
                 gap = p.Results.gapBetweenConditions;
+                if p.Results.annotateAboveEachCondition
+                    dividerOffset = p.Results.annotationHeight + 1 + gap/2;
+                else
+                    dividerOffset = gap/2;
+                end
             end
                     
             % compute y-axis offsets for each condition
@@ -5139,7 +5160,7 @@ classdef TrialDataConditionAlign < TrialData
             end
             yCentersByCondition = mean(yLimsByCondition, 1)';
             
-            yDividersByCondition = yOffsetByCondition(2:end) + gap/2;
+            yDividersByCondition = yOffsetByCondition(2:end) + dividerOffset;
             
             % if we're drawing waveforms, normalize all waveforms to the [0 1] range]
             if p.Results.drawSpikeWaveforms

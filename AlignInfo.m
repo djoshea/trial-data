@@ -962,12 +962,14 @@ classdef AlignInfo < AlignDescriptor
             afterStopMask = bsxfun(@gt, rawTimesMatrix, stop);
             if beforeStartReplaceStart
                 mask = beforeStartMask;
-                rawTimesMatrix(mask) = repmat(start(mask), 1, size(rawTimesMatrix, 2));
+                startMat = repmat(start, size(rawTimesMatrix, 2));
+                rawTimesMatrix(mask) = startMat(mask);
                 beforeStartMask(:) = false;
             end
             if afterStopReplaceStop
                 mask = afterStopMask;
-                rawTimesMatrix(mask) = repmat(stop(mask), 1, size(rawTimesMatrix, 2));
+                stopMat = repmat(stop, size(rawTimesMatrix, 2));
+                rawTimesMatrix(mask) = stopMat(mask);
                 afterStopMask(:) = false;
             end
 
@@ -1168,7 +1170,7 @@ classdef AlignInfo < AlignDescriptor
             alignedMarkMat = markDataAll{markIdx};
 
             % align the raw
-            [alignedTimesTrial, rawTimesMaskTrial] = ad.getAlignedTimesCell(rawTimesCell, includePadding, varargin);
+            [alignedTimesTrial, rawTimesMaskTrial] = ad.getAlignedTimesCell(rawTimesCell, includePadding, varargin{:});
 
             % filter the spikes within the window and recenter on zero
             startMat = alignedMarkMat + window(1);

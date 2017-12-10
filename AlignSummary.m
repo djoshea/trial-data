@@ -348,8 +348,8 @@ classdef AlignSummary
             as.stopAggC = cat(1, temp{:});
             
             as.markAggC = aggMultipleEventByCondition(markData, conditionInfo);
-            as.intervalStartAggC = aggMultipleEventByCondition(markData, conditionInfo);
-            as.intervalStopAggC = aggMultipleEventByCondition(markData, conditionInfo);
+            as.intervalStartAggC = aggMultipleEventByCondition(intervalStartData, conditionInfo);
+            as.intervalStopAggC = aggMultipleEventByCondition(intervalStopData, conditionInfo);
             
             as = as.initialize();
             
@@ -779,21 +779,29 @@ classdef AlignSummary
             end
 
             % label each of the event marks that are fixed with respect to the zero event
+            markMin = as.markMin;
+            markMax = as.markMax;
+            markMedian = as.markMedian;
+            markMinByCondition = as.markMedianByCondition;
+            markMaxByCondition = as.markMaxByCondition;
+            markMedianByCondition = as.markMedianByCondition;
+            
             for iMark = 1:ad.nMarks
                 if ~ad.markShowOnAxis(iMark), continue; end
                 % loop over each occurrence of the mark
+                
                 for iOccur = 1:as.nOccurrencesByMark(iMark)
                     info(counter).name = ad.markLabels{iMark};
                     info(counter).nameShort = ad.markLabelsShort{iMark};
                     info(counter).dist = as.markAgg{iMark}(iOccur).counts;
                     info(counter).bins = as.markAgg{iMark}(iOccur).bins;
-                    info(counter).time = as.markMedian{iMark}(iOccur);
-                    info(counter).min = as.markMin{iMark}(iOccur);
-                    info(counter).max = as.markMax{iMark}(iOccur);
-                    if ~isempty(as.markMeanByCondition) && ~isempty(as.markMedianByCondition{iMark})
-                        info(counter).timeByCondition = as.markMedianByCondition{iMark}(:, iOccur);
-                        info(counter).minByCondition = as.markMinByCondition{iMark}(:, iOccur);
-                        info(counter).maxByCondition = as.markMaxByCondition{iMark}(:, iOccur);
+                    info(counter).time = markMedian{iMark}(iOccur);
+                    info(counter).min = markMin{iMark}(iOccur);
+                    info(counter).max = markMax{iMark}(iOccur);
+                    if ~isempty(markMedianByCondition) && ~isempty(markMedianByCondition{iMark})
+                        info(counter).timeByCondition = markMedianByCondition{iMark}(:, iOccur);
+                        info(counter).minByCondition = markMinByCondition{iMark}(:, iOccur);
+                        info(counter).maxByCondition = markMaxByCondition{iMark}(:, iOccur);
                     else
                         info(counter).timeByCondition = [];
                         info(counter).minByCondition = [];
@@ -829,22 +837,46 @@ classdef AlignSummary
             
             info = struct('name', {}, 'startTime', {}, 'startMin', {}, 'startMax', {}, 'appear', {}, 'fixed', {});
             counter = 1;
+            
+            intervalStartMin = as.intervalStartMin;
+            intervalStartMax = as.intervalStartMax;
+            intervalStartMedian = as.intervalStartMedian;
+            intervalStopMin = as.intervalStopMin;
+            intervalStopMax = as.intervalStopMax;
+            intervalStopMedian = as.intervalStopMedian;
+            
+            intervalStartMinByCondition = as.intervalStartMinByCondition;
+            intervalStartMaxByCondition = as.intervalStartMaxByCondition;
+            intervalStartMedianByCondition = as.intervalStartMedianByCondition;
+            intervalStopMinByCondition = as.intervalStopMinByCondition;
+            intervalStopMaxByCondition = as.intervalStopMaxByCondition;
+            intervalStopMedianByCondition = as.intervalStopMedianByCondition;
+            
             for iInterval = 1:ad.nIntervals
                 if ~ad.intervalShowOnAxis(iInterval), continue; end
                 for iOccur = 1:numel(as.intervalStartMean{iInterval})
                     info(counter).name = ad.intervalLabels{iInterval};
-                    info(counter).startTime = as.intervalStartMedian{iInterval}(iOccur);
-                    info(counter).startMin = as.intervalStartMin{iInterval}(iOccur);
-                    info(counter).startMax = as.intervalStartMax{iInterval}(iOccur);
-                    info(counter).stopTime = as.intervalStopMedian{iInterval}(iOccur);
-                    info(counter).stopMin = as.intervalStopMin{iInterval}(iOccur);
-                    info(counter).stopMax = as.intervalStopMax{iInterval}(iOccur);
-                    info(counter).startTimeByCondition = as.intervalStartMedianByCondition{iInterval}(:, iOccur);
-                    info(counter).startMinByCondition = as.intervalStartMinByCondition{iInterval}(:, iOccur);
-                    info(counter).startMaxByCondition = as.intervalStartMaxByCondition{iInterval}(:, iOccur);
-                    info(counter).stopTimeByCondition = as.intervalStopMedianByCondition{iInterval}(:, iOccur);
-                    info(counter).stopMinByCondition = as.intervalStopMinByCondition{iInterval}(:, iOccur);
-                    info(counter).stopMaxByCondition = as.intervalStopMaxByCondition{iInterval}(:, iOccur);
+                    info(counter).startTime = intervalStartMedian{iInterval}(iOccur);
+                    info(counter).startMin = intervalStartMin{iInterval}(iOccur);
+                    info(counter).startMax = intervalStartMax{iInterval}(iOccur);
+                    info(counter).stopTime = intervalStopMedian{iInterval}(iOccur);
+                    info(counter).stopMin = intervalStopMin{iInterval}(iOccur);
+                    info(counter).stopMax = intervalStopMax{iInterval}(iOccur);
+                    if ~isempty(as.intervalStartMedianByCondition) && ~isempty(intervalStartMedianByCondition{iInterval})
+                        info(counter).startTimeByCondition = intervalStartMedianByCondition{iInterval}(:, iOccur);
+                        info(counter).startMinByCondition = intervalStartMinByCondition{iInterval}(:, iOccur);
+                        info(counter).startMaxByCondition = intervalStartMaxByCondition{iInterval}(:, iOccur);
+                        info(counter).stopTimeByCondition = intervalStopMedianByCondition{iInterval}(:, iOccur);
+                        info(counter).stopMinByCondition = intervalStopMinByCondition{iInterval}(:, iOccur);
+                        info(counter).stopMaxByCondition = intervalStopMaxByCondition{iInterval}(:, iOccur);
+                    else
+                        info(counter).startTimeByCondition = [];
+                        info(counter).startMinByCondition = [];
+                        info(counter).startMaxByCondition = [];
+                        info(counter).stopTimeByCondition = [];
+                        info(counter).stopMinByCondition = [];
+                        info(counter).stopMaxByCondition = [];
+                    end
                     info(counter).appear = ad.intervalAppear{iInterval};
                     info(counter).fixed = ad.isIntervalFixedTime(iInterval);
                     info(counter).occurrence = iOccur;
