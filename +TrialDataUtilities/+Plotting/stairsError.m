@@ -20,6 +20,7 @@ function [hMean, hError] = stairsError(x,y, varargin)
     p.addParameter('errorStyle', 'fill', @ischar); % fill or stairs
     p.addParameter('errorColor', [], @(x) true);
     p.addParameter('errorAlpha', 0.5, @isscalar);
+    p.addParameter('showLine', true, @islogical);
     p.addParameter('lineWidth', 1, @isscalar);
     p.addParameter('alpha', 1, @isscalar); % alpha for mean line, not supported yet
     p.addParameter('lastX', [], @isvector);
@@ -93,7 +94,16 @@ function [hMean, hError] = stairsError(x,y, varargin)
     yhi = cat(1, yhi, yhi(end, :));
 
     holdstate = ishold;
-    hMean = stairs(x, y, colorArg{:}, 'LineWidth', p.Results.lineWidth);
+    if p.Results.showLine
+        hMean = stairs(x, y, colorArg{:}, 'LineWidth', p.Results.lineWidth);
+        color = hMean.Color;
+    else
+        hMean = [];
+        color = p.Results.color;
+        if isempty(color)
+            color = 'k';
+        end
+    end
     hold on;
 
     switch p.Results.errorStyle
@@ -106,7 +116,7 @@ function [hMean, hError] = stairsError(x,y, varargin)
             hError = patch(X, Y, [0 0 0], 'EdgeColor', 'none', 'FaceAlpha', p.Results.errorAlpha, 'Parent', axh);
             for i = 1:nlin
                 if isempty(p.Results.errorColor)
-                    hError(i).FaceColor = hMean(i).Color;
+                    hError(i).FaceColor = color;
                 else
                     hError(i).FaceColor = p.Results.errorColor;
                 end
@@ -119,7 +129,7 @@ function [hMean, hError] = stairsError(x,y, varargin)
             
             for i = 1:nlin
                 if isempty(p.Results.errorColor)
-                    set(hError(i, :), 'Color', hMean(i).Color);
+                    set(hError(i, :), 'Color', color);
                 else
                     set(hError(i, :), 'Color', p.Results.errorColor);
                 end
@@ -129,6 +139,8 @@ function [hMean, hError] = stairsError(x,y, varargin)
     if ~holdstate
         hold off;
     end
-    uistack(hMean, 'top');
+    if ishandle(hMean)
+        uistack(hMean, 'top');
+    end
     TrialDataUtilities.Plotting.hideInLegend(hError);
 end

@@ -29,7 +29,6 @@ function h = stairs(x,y, varargin)
     
     if isvector(x)
         x = makecol(x);
-        y = makecol(y);
         assert(numel(x) == size(y, 1), 'X and Y must have same number of rows');
         assert(isscalar(lastX));
     else
@@ -39,7 +38,7 @@ function h = stairs(x,y, varargin)
     end
     
     xWithLast = [x; lastX];
-    yWithLast = [y; y(end)];
+    yWithLast = [y; y(end, :)];
     
     if isempty(p.Results.color)
         colorArg = {};

@@ -5118,6 +5118,7 @@ classdef PopulationTrajectorySet
             p.addParameter('yOffset', 0, @isscalar);
             
             p.addParameter('lineWidth', 1, @isscalar);
+            p.addParameter('style', 'line', @ischar); % line, stairs
             
             p.addParameter('alpha', 1, @isscalar); % alpha for main traces
             p.addParameter('showSem', false, @islogical); % show standard error traces?
@@ -5137,7 +5138,7 @@ classdef PopulationTrajectorySet
             p.addParameter('showRangesOnData', false, @islogical); % show ranges for marks on traces
             p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
             
-            p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
+            p.addParameter('timeAxisStyle', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             
             % make room for labels using AutoAxis
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
@@ -5156,8 +5157,9 @@ classdef PopulationTrajectorySet
             if isempty(p.Results.basisIdx)
                 basisIdx = 1:min(pset.nBases, 20);
             else
-                basisIdx = p.Results.basisIdx;
+                basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             end
+            nBasesPlot = numel(basisIdx);
             
             scaleBases = p.Results.scaleBases;
             scaling = p.Results.scaling;
@@ -5207,7 +5209,7 @@ classdef PopulationTrajectorySet
                     dataSem = dataSem';
                 end
             else
-                [data, indexInfo] = pset.simultaneous_buildCTAbyN('basisIdx', basisIdx, 'validBasesOnly', p.Results.validBasesOnly, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx, 'trialIdx', trialIdx, 'validTrialsOnly', true);
+                [data, indexInfo] = pset.simultaneous_buildCTAbyN('basisIdx', basisIdx, 'validBasesOnly', p.Results.validBasesOnly, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx, 'trialIdx', trialIdx, 'validTrialsOnly', true);
                 dataSem = zeros(size(data)); % to ease normalization calculations below only
             end
             
@@ -5250,27 +5252,6 @@ classdef PopulationTrajectorySet
             end
             
             app = pset.conditionDescriptor.appearances;
-            
-%             if ~isempty(p.Results.dataRandomIndex)
-%                 % use a sample from dataMeanRandomized instead
-%                 [data, indexInfo] = pset.buildCTAbyN('type', 'meanRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-%                     'basisIdx', basisIdx, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
-%             else
-%                 [data, indexInfo] = pset.buildCTAbyN('basisIdx', basisIdx, ...
-%                     'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
-%             end
-%             data = data';
-% 
-%             if p.Results.showSem
-%                 if ~isempty(p.Results.dataRandomIndex)
-%                     % use a sample from dataSemRandomized instead
-%                     dataSem = pset.buildCTAbyN('type', 'semRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-%                         'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-%                 else
-%                     dataSem = pset.buildCTAbyN('type', 'sem', 'basisIdx', basisIdx, ...
-%                         'conditionIdx', conditionIdx, 'alignIdx', alignIdx)';
-%                 end
-%             end
             
             nConditionsPlot = numel(indexInfo.condition);
             conditionIdx = indexInfo.condition;
@@ -5326,6 +5307,8 @@ classdef PopulationTrajectorySet
                     dataSem = flipud(dataSem);
                 end
                 
+                stairsXOffset = -pset.spikeFilter.binAlignmentMode.getBinStartOffsetForBinWidth(pset.timeDelta); % for stairs plotting only
+                
                 % draw error bars
                 if p.Results.showSem
                     for iCondition = 1:nConditionsPlot
@@ -5333,9 +5316,18 @@ classdef PopulationTrajectorySet
                         dataC = TensorUtils.squeezeDims(data(:, iCondition, :), 2);
                         dataSemC = TensorUtils.squeezeDims(dataSem(:, iCondition, :), 2);
                         for iBasis = 1:nBasesPlot
-                            hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...
-                                dataSemC(iBasis, :), app(idxCondition).Color, 'axh', axh, ...
-                                'alpha', p.Results.errorAlpha, 'z', 1, 'showLine', false);
+                            if strcmp(p.Results.style, 'stairs')
+                                % offset the plot so as to resemble the binning
+                                % mode used
+                                [~, hShade] = TrialDataUtilities.Plotting.stairsError(...
+                                     tvecPlot + stairsXOffset, dataC(iBasis, :), dataSemC(iBasis, :), ...
+                                     'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(idxCondition).Color, 'alpha', p.Results.alpha, ...
+                                     'errorStyle', 'fill', 'errorColor', app(idxCondition).Color, 'lineWidth', p.Results.lineWidth, 'showLine', false);
+                            else
+                                hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...
+                                    dataSemC(iBasis, :), app(idxCondition).Color, 'axh', axh, ...
+                                    'alpha', p.Results.errorAlpha, 'z', 0, 'showLine', false);
+                            end
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
                         end
                     end
@@ -5345,14 +5337,21 @@ classdef PopulationTrajectorySet
                 for iCond = 1:nConditionsPlot
                     idxCondition = conditionIdx(iCond);
                     dataC = TensorUtils.squeezeDims(data(:, iCond, :), 2);
-                    if p.Results.alpha < 1
-                        hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvecPlot, dataC', ...
-                            'EdgeColor', app(idxCondition).Color, 'EdgeAlpha', p.Results.alpha, ...
-                            'LineWidth', p.Results.lineWidth, 'Parent', axh);
+                    if strcmp(p.Results.style, 'stairs')
+                        hData{iCond, iAlign} = TrialDataUtilities.Plotting.stairs(...
+                                 tvecPlot + stairsXOffset, dataC', ...
+                                 'axh', axh, 'color', app(idxCondition).Color, 'alpha', p.Results.alpha, ...
+                                 'lineWidth', p.Results.lineWidth);
                     else
-                        hData{iCond, iAlign} = plot(tvecPlot, dataC', '-', ...
-                            'Parent', axh, 'LineWidth', p.Results.lineWidth, ...
-                            'Color', app(idxCondition).Color);
+                        if p.Results.alpha < 1
+                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvecPlot, dataC', ...
+                                'EdgeColor', app(idxCondition).Color, 'EdgeAlpha', p.Results.alpha, ...
+                                'LineWidth', p.Results.lineWidth, 'Parent', axh);
+                        else
+                            hData{iCond, iAlign} = plot(tvecPlot, dataC', '-', ...
+                                'Parent', axh, 'LineWidth', p.Results.lineWidth, ...
+                                'Color', app(idxCondition).Color);
+                        end
                     end
                     
                     if iAlign==1
@@ -5473,7 +5472,7 @@ classdef PopulationTrajectorySet
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis
-            p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
+            p.addParameter('timeAxisStyle', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
             p.addParameter('alignIdx', 1:pset.nAlign, @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
             p.parse(varargin{:});
@@ -6304,7 +6303,7 @@ classdef PopulationTrajectorySet
             nBases = size(dataByTrial, 1);
             nAlign = size(dataByTrial, 2);
             
-            cMask = pset.conditionHasValidTrialAverageAllAlignsBases;
+%             cMask = pset.conditionHasValidTrialAverageAllAlignsBases;
             
             prog = ProgressBar(nBases, 'Grouping dataByTrial into conditions');
             
@@ -6319,7 +6318,7 @@ classdef PopulationTrajectorySet
                     if ~alignValid(iAlign), continue; end
                     byCondition = cellfun(@(idx) dataByTrial{iBasis, iAlign}(idx,:), trialLists, ...
                         'UniformOutput', false);
-                    [byCondition{~cMask}] = {};
+%                     [byCondition{~cMask}] = {};
                     
                     dataByTrialGrouped(iBasis, iAlign, :) = byCondition;
                     nTrials(iBasis, iAlign, :) = cellfun(@(x) size(x, 1), byCondition);

@@ -6660,7 +6660,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             
             p.addParameter('alpha', 1, @isscalar); % alpha for main traces
-            p.addParameter('errorAlpha', 0.3, @isscalar); % alpha for surrounding error fills
+            p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
             
             p.addParameter('quantileData', [], @(x) isnumeric(x) || iscell(x));
             

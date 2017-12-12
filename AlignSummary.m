@@ -1096,9 +1096,9 @@ classdef AlignSummary
         function setupTimeAutoAxisForMultipleAligns(asSet, tvecByAlign, varargin)
             nAlign = numel(asSet);
             p = inputParser();
-            p.addParamValue('tOffsetByAlign', zerosvec(nAlign), @isvector);
-            p.addParamValue('axh', gca, @ishandle);
-            p.addParamValue('doUpdate', true, @islogical);
+            p.addParameter('tOffsetByAlign', zerosvec(nAlign), @isvector);
+            p.addParameter('axh', gca, @ishandle);
+            p.addParameter('doUpdate', true, @islogical);
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis            
@@ -1136,6 +1136,10 @@ classdef AlignSummary
                             'showRanges', p.Results.showRanges);
                     end
                     au.addAutoScaleBarX();
+                    
+                otherwise
+                    error('Unknown timeAxisStyle %s', p.Results.timeAxisStyle);
+           
             end
             
             if p.Results.doUpdate
