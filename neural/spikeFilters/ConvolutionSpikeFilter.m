@@ -51,10 +51,10 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             tvec = ((1:numel(filt))' - indZero) * sf.binWidthMs; %#ok<PROP>
             TrialDataUtilities.Plotting.verticalLine(0, 'Color', [0.7 0.7 0.7]);
             hold on;
-            if isscalar(filt)
+            if true || isscalar(filt)
                 stem(tvec, filt, 'filled', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
-            else
-                plot(tvec, filt, '.-', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+%             else
+%                 plot(tvec, filt, '.-', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
             end
             xlabel('Time (ms)');
             ylabel('Impulse Response');
@@ -65,10 +65,17 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             end
             if sf.getPostWindow() > 0
                 h(end+1) = text(0, 0, 'Acausal  ', 'HorizontalAlignment', 'right', 'BackgroundColor', 'none', 'VerticalAlignment', 'bottom', 'XLimInclude', 'on');
-           end
+            end
+            TrialDataUtilities.Plotting.verticalLine(0, 'Color', 'r');
             hold off;
+            xlim([tvec(1) - sf.binWidthMs tvec(end) + sf.binWidthMs]);
+            
+            del = max(filt) - min(filt);
+            yl = [min(filt) - del*0.05, max(filt) + del*0.05];
+            ylim(yl);
             ax = AutoAxis.replace();
-            ax.addAnchor(AutoAxis.AnchorInfo(h, AutoAxis.PositionType.Bottom, gca, AutoAxis.PositionType.Bottom, 0.1));
+            
+            ax.addAnchor(AutoAxis.AnchorInfo(h, AutoAxis.PositionType.Bottom, gca, AutoAxis.PositionType.Top, ax.axisPaddingTop));
             ax.update();
         end
     end
