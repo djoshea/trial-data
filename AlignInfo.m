@@ -1301,7 +1301,7 @@ classdef AlignInfo < AlignDescriptor
                      % add the time offset if plotting against time
                     if D == 1
                         for i = 1:numel(intLoc)
-                            if isempty(intLoc{i}), continue; end;
+                            if isempty(intLoc{i}), continue; end
                             intLoc{i}(:, 1, :) = intLoc{i}(:, 1, :) + tOffsetZero;
                         end
                     end

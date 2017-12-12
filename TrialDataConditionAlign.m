@@ -227,6 +227,49 @@ classdef TrialDataConditionAlign < TrialData
             c.eventCounts = eventCounts;
             c.eventData = eventData;
         end
+        
+        function td = updateEventData(td, eventsUpdate)
+            % similar to buildEventData, but updates a specific subset of
+            % fields to save time when event data is changed
+            
+            % since this isn't computed on demand, a copy is needed
+            c = td.odc.copy();
+            
+            if ischar(eventsUpdate)
+                eventsUpdate = {eventsUpdate};
+            end
+
+            if isempty(td.odc.eventCounts) || isempty(td.odc.eventData)
+                % hasn't been computed yet, no need to update
+                return;
+            else
+                evPartialStruct = td.getRawEventFlatStruct(eventsUpdate);
+                nEvents = numel(eventsUpdate);
+                for iE = 1:nEvents
+                    ev = eventsUpdate{iE};
+                    times = evPartialStruct.(ev);
+                    if iscell(times)
+                        % event may happen zero, one, or multiple times
+                        % convert to nTrials x nOccur matrix
+                        counts = cellfun(@(x) nnz(~isnan(x)), times); 
+                        maxCount = max(counts);
+                        timeMat = nan(td.nTrials, maxCount);
+                        for iT = 1:td.nTrials
+                            timeMat(iT, 1:counts(iT)) = times{iT};
+                        end
+                        c.eventCounts.(ev) = counts;
+                        c.eventData.(ev) = timeMat;
+                    else
+                        c.eventCounts.(ev) = makecol(double(~isnan(times)));
+                        c.eventData.(ev) = makecol(times);
+                    end
+                end
+            end
+            td.odc = c;
+            
+            % update the cached events inside the align info as well
+            td = td.applyAlignInfoSet();
+        end
 
         function buildAlignSummarySet(td)
             alignSummarySet = cell(td.nAlign, 1);
@@ -314,10 +357,10 @@ classdef TrialDataConditionAlign < TrialData
             eventFields = td.listEventChannels();
             if any(ismember(fieldsAffected, eventFields))
                 needUpdate = true; % force update of .valid below
-                td = td.invalidateEventCache(); % this will also flush alignSummarySet
-                for iA = 1:td.nAlign
-                    td.alignInfoSet{iA} = td.alignInfoSet{iA}.applyToTrialData(td);
-                end
+                td = td.updateEventData(intersect(fieldsAffected, eventFields)); 
+                % this will also flush alignSummarySet and reapply the
+                % alignDescriptors to trial data
+
             end
             
             % check whether the affected fields matter for the 
@@ -3362,14 +3405,12 @@ classdef TrialDataConditionAlign < TrialData
             lastCell = td.groupElements(td.getEventLast(name));
         end
 
-        function td = addEvent(td, varargin)
+        function td = addEvent(td, eventName, varargin)
             td.warnIfNoArgOut(nargout);
-            td = addEvent@TrialData(td, varargin{:});
+            td = addEvent@TrialData(td, eventName, varargin{:});
             
-            % force .eventData and .eventCounts to be recomputed
-            td.eventData = [];
-            td.eventCounts = [];
-            td = td.applyAlignInfoSet();
+            % force .eventData and .eventCounts to be updated
+            td = td.updateEventData(eventName);
         end
         
         function td = addEventByThresholdingAnalogChannel(td, eventChName, analogChName, level, varargin)
