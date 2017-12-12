@@ -627,8 +627,8 @@ classdef StateSpaceProjection
             % ensure there is no translation normalization by default
             b.translationNormalization = [];
             
-            b.basisValid = proj.basisValidProj;
-            b.basisInvalidCause = proj.basisInvalidCauseProj;
+            b.basisValidManual = proj.basisValidProj;
+            b.basisInvalidCauseManual = proj.basisInvalidCauseProj;
             
             if pset.simultaneous && ~isempty(pset.dataByTrial)
                 psetProjected = b.buildManualWithSingleTrialData();

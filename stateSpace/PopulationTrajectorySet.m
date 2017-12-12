@@ -401,7 +401,7 @@ classdef PopulationTrajectorySet
     % Properties within *Manual properties store manually-specified values for each of the
     % above properties. These are used to store persistent copies of
     % the data when .dataSourceManual is true
-    properties(Hidden, Access=protected)
+    properties(Hidden, Access=?PopulationTrajectorySetBuilder)
         basisNamesManual
         basisUnitsManual
         
@@ -411,7 +411,7 @@ classdef PopulationTrajectorySet
         basisValidTemporary % temporary invalid data
         basisInvalidCauseTemporary
         
-        %         conditionIncludeMaskManual
+        % conditionIncludeMaskManual
         alignSummaryDataManual
         alignSummaryAggregatedManual
         basisAlignSummaryLookupManual
