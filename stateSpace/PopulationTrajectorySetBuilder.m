@@ -367,6 +367,11 @@ classdef PopulationTrajectorySetBuilder
         end
         
         function pset = concatenatePopulationTrajectorySets(psetCell)
+            if numel(psetCell) == 1
+                pset = psetCell{1};
+                return;
+            end
+            
             bld = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(psetCell{1});
             
             % determine simultaneity (when the data source is the same
