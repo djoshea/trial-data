@@ -4974,6 +4974,8 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
+            sf = p.Results.spikeFilter;
+            
             axh = TrialDataConditionAlign.getRequestedPlotAxis('axh', p.Results.axh);
             
             % loop over alignments and gather mean data
@@ -4983,7 +4985,7 @@ classdef TrialDataConditionAlign < TrialData
                 [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(iAlign).getSpikeRateFilteredGroupMeans(unitNames, ...
                     'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
-                    'spikeFilter', p.Results.spikeFilter, ...
+                    'spikeFilter', sf, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
             
                 if numel(tvecCell{iAlign}) > 1
@@ -5017,7 +5019,7 @@ classdef TrialDataConditionAlign < TrialData
                     quantileData{iAlign} = td.useAlign(iAlign).getSpikeRateFilteredGroupMeansRandomizedQuantiles(unitNames, ...
                         'quantiles', p.Results.showRandomizedQuantiles, ...
                         'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
-                        'timeDelta', p.Results.timeDelta, 'spikeFilter', p.Results.spikeFilter, ...
+                        'spikeFilter', sf, ...
                         'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
                     
                     % apply same time slicing
@@ -5035,8 +5037,7 @@ classdef TrialDataConditionAlign < TrialData
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, 'quantileData', quantileData, 'axh', axh, ...
                 'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'), ...
-                'quick', p.Results.quick, ...
-                p.Unmatched);
+                'quick', p.Results.quick, 'binAlignmentMode', sf.binAlignmentMode, 'binWidth', sf.timeDelta, p.Unmatched);
             
             TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s : Unit %s', td.datasetName, TrialDataUtilities.String.strjoin(unitNames, ', '));
             axis(axh, 'tight');
@@ -5519,7 +5520,7 @@ classdef TrialDataConditionAlign < TrialData
                 offsets(iAlign) = currentOffset;
             end
             
-            lims = [mins(1), maxs(end) + offsets(end)];
+            lims = [mins + offsets, maxs + offsets];
             
             function r = nanmaxNanEmpty(v1)
                 if isempty(v1)
@@ -6650,6 +6651,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('axisStyleY', 'tickBridge', @ischar);
             
             p.addParameter('style', 'line', @ischar); % line, stairs
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Acausal, @(x) isa(x, 'BinAlignmentMode')); % used for stairs style to draw the staircase appropriately
+            p.addParameter('binWidth', 0, @isscalar); % used for stairs to draw the staircase appropriately
+            
             p.addParameter('lineWidth', get(0, 'DefaultLineLineWidth'), @isscalar);
             p.addParameter('conditionIdx', [], @isnumeric);
             p.addParameter('alignIdx', [], @isnumeric);
@@ -6863,15 +6867,19 @@ classdef TrialDataConditionAlign < TrialData
                             end
     
                         elseif strcmp(p.Results.style, 'stairs')
+                            % offset the plot so as to resemble the binning
+                            % mode used
+                            xBinOffset = -p.Results.binAlignmentMode.getBinStartOffsetForBinWidth(p.Results.binWidth);
+                            
                             if plotErrorY
                                  [hData(iCond, iAlign), hShade] = TrialDataUtilities.Plotting.stairsError(...
-                                     tvec + tOffset + xOffset, dmat + yOffset, errmat, ...
+                                     tvec + tOffset + xOffset + xBinOffset, dmat + yOffset, errmat, ...
                                      'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(iCond).Color, 'alpha', p.Results.alpha, ...
                                      'errorStyle', 'fill', 'errorColor', app(iCond).Color, 'lineWidth', p.Results.lineWidth);
                                 TrialDataUtilities.Plotting.hideInLegend(hShade);
                             else
                                 hData(iCond, iAlign) = TrialDataUtilities.Plotting.stairs(...
-                                 tvec + tOffset + xOffset, dmat + yOffset, ...
+                                 tvec + tOffset + xOffset + xBinOffset, dmat + yOffset, ...
                                  'axh', axh, 'color', app(iCond).Color, 'alpha', p.Results.alpha, ...
                                  'lineWidth', p.Results.lineWidth);
                             end
