@@ -66,12 +66,12 @@ classdef ProjPCA < StateSpaceProjection
     methods
         function [decoderKbyN, encoderNbyK, proj] = computeProjectionCoefficients(proj, pset, varargin)
             p = inputParser;
-            p.addParamValue('nBasesProj', NaN, @isscalar);
+            p.addParameter('nBasesProj', NaN, @isscalar);
             p.parse(varargin{:});
             K = p.Results.nBasesProj;
             
             % run pca on valid bases
-            CTAbyNvalid = pset.buildCTAbyN('validBasesOnly', true);
+            CTAbyNvalid = pset.arrangeCTAbyN('validBasesOnly', true);
             
             idx = find(all(isnan(CTAbyNvalid), 1));
             if ~isempty(idx)

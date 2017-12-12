@@ -119,7 +119,7 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
             
             % Extract trial averaged data
             debug('Extracting trial-averaged data for DPCA\n');
-            NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true);
+            NvbyTAbyAttr = pset.arrangeNbyTAbyConditionAttributes('validBasesOnly', true);
             Nv = size(NvbyTAbyAttr, 1);
             
             % compute optimal lambda
@@ -144,7 +144,7 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
                     end  
                     
                     [meansExcluding_NbyTAbyCbyR, trials_NbyTAbyCbyR, nTrials_NbyC_sampled] = ...
-                        pset.buildDataMeansExcludingSampledTrials(...
+                        pset.computeDataMeansExcludingSampledTrials(...
                         'maxTrials', proj.nIterationsOptimizeLambda, ...
                         'validBasesOnly', true, ...
                         'message', 'Building individual trials tensor for optimizing lambda');
