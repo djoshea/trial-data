@@ -5199,10 +5199,10 @@ classdef PopulationTrajectorySet
                     if ~isempty(p.Results.dataRandomIndex)
                         % use a sample from dataSemRandomized instead
                         dataSem = pset.buildCTAbyN('type', 'semRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
-                            'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx);   
+                            'basisIdx', basisIdx, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);   
                     else
                         dataSem = pset.buildCTAbyN('type', 'sem', 'basisIdx', basisIdx, ...
-                            'conditionIdx', conditionIdx, 'alignIdx', alignIdx);
+                            'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
                     end
                     dataSem = dataSem';
                 end
