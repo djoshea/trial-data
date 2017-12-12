@@ -1,4 +1,9 @@
 classdef EventChannelDescriptor < ChannelDescriptor
+    
+    properties
+        color % default color used when used in a mark or interval 
+    end
+    
     methods(Access=protected)
         function cd = EventChannelDescriptor(varargin)
             cd = cd@ChannelDescriptor(varargin{:});

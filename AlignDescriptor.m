@@ -704,9 +704,7 @@ classdef AlignDescriptor
             p.addParameter('color', [], @(x) true);
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
-            %p.addParameter('conditionMatch', struct(), @(x) isstruct(x) && isscalar(x));
             p.parse(varargin{:});
-            %conditionMatch = p.Results.conditionMatch;
             as = p.Results.as;
 
             % try inferring offsets, indexes from provided strings, then
@@ -818,7 +816,7 @@ classdef AlignDescriptor
             ad.warnIfNoArgOut(nargout);
 
             p = inputParser;
-            p.addOptional('offset', 0, @isscalar);
+            p.addOptional('offset', 0, @(x) isnumeric(x) && isscalar(x));
             p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.addParameter('as', AlignDescriptor.AUTO, @ischar);
             p.addParameter('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
@@ -873,7 +871,7 @@ classdef AlignDescriptor
         function color = getNextMarkColor(ad)
             nMarks = ad.nMarks;
             map = TrialDataUtilities.Color.cbrewer('qual', 'Set1');
-            color = map(mod(nMarks + 1, size(map, 1)), :);
+            color = map(mod(nMarks, size(map, 1)) + 1, :);
         end
         
         function ad = removeMarksByIdx(ad, mask)

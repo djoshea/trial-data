@@ -1473,6 +1473,18 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         function td = mark(td, eventStr, varargin)
+            p = inputParser;
+            p.addOptional('offset', 0, @isscalar);
+            p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
+            p.addParameter('as', AlignDescriptor.AUTO, @ischar);
+            p.addParameter('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
+            p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParameter('showOnData', true, @islogical);
+            p.addParameter('showOnAxis', true, @islogical);
+            p.parse(varargin{:});
+            
+            opts = p.Results;
+            
             td.warnIfNoArgOut(nargout);
             
             eventName = td.alignInfoActive.parseEventOffsetString(eventStr, ...
@@ -1482,9 +1494,19 @@ classdef TrialDataConditionAlign < TrialData
                 % times so we can mark the sample times
                 [td, eventField] = td.addEventFromAnalogTimes(eventName);
                 eventStr = strrep(eventStr, eventName, eventField);
+                
+            elseif td.hasEventChannel(eventName)
+                % an actual event, check for auto color
+                cd = td.getChannelDescriptor(eventName);
+                if isempty(opts.color)
+                    opts.color = cd.color;
+                end
+            else
+                error('Event %s not found', eventName);
             end
             
-            td.alignInfoActive = td.alignInfoActive.mark(eventStr, varargin{:});
+            % color arg must come last because of optional offset arg
+            td.alignInfoActive = td.alignInfoActive.mark(eventStr, opts);
             td = td.postUpdateAlignInfo();
         end
         
@@ -1500,9 +1522,34 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateAlignInfo();
         end
         
-        function td = interval(td, varargin)
+        function td = interval(td, eventStart, eventStop, varargin)
+            p = inputParser;
+            p.addParameter('offsetStart', 0, @isscalar);
+            p.addParameter('offsetStop', 0, @isscalar);
+            p.addParameter('indexStart', ':', @(x) ischar(x) || isscalar(x));
+            p.addParameter('indexStop', ':', @(x) ischar(x) || isscalar(x));
+            p.addParameter('as', AlignDescriptor.AUTO, @ischar);
+            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('color', [], @(x) true);
+            p.addParameter('showOnData', true, @islogical);
+            p.addParameter('showOnAxis', true, @islogical);
+            p.parse(varargin{:});
+            opts = p.Results;
+            
             td.warnIfNoArgOut(nargout);
-            td.alignInfoActive = td.alignInfoActive.interval(varargin{:});
+            
+            eventName = td.alignInfoActive.parseEventOffsetString(eventStart, 'interval start', 'defaultIndex', ':');
+            if td.hasEventChannel(eventName)
+                % an actual event, check for auto color
+                cd = td.getChannelDescriptor(eventName);
+                if isempty(opts.color)
+                    opts.color = cd.color;
+                end
+            else
+                error('Event %s not found', eventName);
+            end
+ 
+            td.alignInfoActive = td.alignInfoActive.interval(eventStart, eventStop, opts);
             td = td.postUpdateAlignInfo();
         end
         

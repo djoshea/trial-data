@@ -3546,6 +3546,7 @@ classdef TrialData
             p.addRequired('times', @(x) isempty(x) || isvector(x));
             p.addParameter('isAligned', true, @islogical);
             p.addParameter('useExistingDataField', false, @islogical);
+            p.addParameter('color', [], @(x) true);
             %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.parse(name, times, varargin{:});
             %cd = p.Results.channelDescriptor;
@@ -3577,6 +3578,8 @@ classdef TrialData
             else
                 error('Times must be numeric vector or cell vector of numeric vectors');
             end
+            
+            cd.color = p.Results.color;
             
             if p.Results.useExistingDataField
                 td = td.addChannel(cd, {}, 'ignoreDataFields', true, 'ignoreExisting', true);
@@ -3655,12 +3658,22 @@ classdef TrialData
             eventName = timeField;
         end
         
-        function tf = hasEventChannel(td, name)
+        function [tf, cd] = hasEventChannel(td, name)
             if td.hasChannel(name)
-                tf = isa(td.getChannelDescriptor(name), 'EventChannelDescriptor');
+                cd = td.getChannelDescriptor(name);
+                tf = isa(cd, 'EventChannelDescriptor');
             else
                 tf = false;
+                cd = [];
             end
+        end
+        
+        function td = setEventColor(td, name, color)
+            td.warnIfNoArgOut(nargout);
+            if ~td.hasEventChannel(name)
+                error('Event %s not found', name);
+            end
+            td.channelDescriptorsByName.(name).color = color;
         end
         
         function names = listEventChannels(td)
