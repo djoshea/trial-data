@@ -3521,11 +3521,48 @@ classdef TrialDataConditionAlign < TrialData
         function plotParamScatter(td, nameX, nameY, varargin)
             dataX = td.getParamGrouped(nameX);
             dataY = td.getParamGrouped(nameY);
-            cdX = td.channelDescriptorsByName.(nameX);
-            cdY = td.channelDescriptorsByName.(nameY);
+            cdX = td.getParamChannelDescriptor(nameX);
+            cdY = td.getParamChannelDescriptor(nameY);
             td.plotProvidedGroupedScatterData(dataX, dataY, ...
                 'axisInfoX', cdX, 'axisInfoY', cdY, varargin{:});
         end
+        
+        function plotParamScatter3(td, nameX, nameY, nameZ, varargin)
+            dataX = td.getParamGrouped(nameX);
+            dataY = td.getParamGrouped(nameY);
+            dataZ = td.getParamGrouped(nameZ);
+            cdX = td.getParamChannelDescriptor(nameX);
+            cdY = td.getParamChannelDescriptor(nameY);
+            cdZ = td.getParamChannelDescriptor(nameZ);
+            td.plotProvidedGroupedScatterData(dataX, dataY, dataZ, ...
+                'axisInfoX', cdX, 'axisInfoY', cdY, 'axisInfoZ', cdZ, varargin{:});
+        end
+        
+        
+        function plotParamScatterMatrixPCA(td, name, varargin)
+            p = inputParser();
+            p.addParameter('dims', 3, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            dims = p.Results.dims;
+            data = td.getParam(name);
+            [~, dataPCA] = pca(data(td.valid, :), 'NumComponents', dims);
+            dataPCA = TensorUtils.inflateMaskedTensor(dataPCA, 1, td.valid);
+            
+            dataX = td.groupElements(dataPCA(:, 1));
+            dataY = td.groupElements(dataPCA(:, 2));
+                        
+            if dims == 2
+                td.plotProvidedGroupedScatterData(dataX, dataY, ...
+                    'axisInfoX', 'PC 1', 'axisInfoY', 'PC 2', p.Unmatched);
+            else
+                dataZ = td.groupElements(dataPCA(:, 3));
+                td.plotProvidedGroupedScatterData(dataX, dataY, dataZ, ...
+                    'axisInfoX', 'PC 1', 'axisInfoY', 'PC 2', 'axisInfoZ', 'PC 3', p.Unmatched);
+            end
+        end
+        
             
         function plotProvidedGroupedScatterData(td, varargin)
             % common utility function for drawing data points grouped by
@@ -3542,11 +3579,11 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addRequired('dataX', @(x) isnumeric(x) || iscell(x)); 
             p.addRequired('dataY', @(x) isnumeric(x) || iscell(x)); 
-            %p.addOptional('dataZ', [], @(x) isnumeric(x) || iscell(x)); 
+            p.addOptional('dataZ', [], @(x) isnumeric(x) || iscell(x)); 
             
             p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            %p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
             
             p.addParameter('scaleBars', false, @islogical);
             p.addParameter('axisStyleX', 'tickBridge', @ischar);
@@ -3571,14 +3608,11 @@ classdef TrialDataConditionAlign < TrialData
 %             end
             
             axh = td.getRequestedPlotAxis(p.Unmatched);
-            hold(axh, 'on');
             
-            if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
-                axisStyleX = 'scaleBar';
-                axisStyleY = 'scaleBar';
+            if isempty(p.Results.dataZ)
+                dims = 2;
             else
-                axisStyleX = p.Results.axisStyleX;
-                axisStyleY = p.Results.axisStyleY;
+                dims = 3;
             end
             
             conditionIdx = p.Results.conditionIdx; %#ok<*PROPLC>
@@ -3587,50 +3621,108 @@ classdef TrialDataConditionAlign < TrialData
             end
             nConditionsUsed = numel(conditionIdx);
             app = td.conditionAppearances(conditionIdx);
-            
+
             dataX = p.Results.dataX;
             dataY = p.Results.dataY;
             if isempty(dataX) || isempty(dataY)
                 error('Must provide dataX and dataY');
             end
-            
-            h = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nConditionsUsed);
-            for iC = 1:nConditionsUsed
-                idxC = conditionIdx(iC);
-                args = app(idxC).getMarkerPlotArgs(false);
-                if isempty(dataX{iC}) || isempty(dataY{iC})
-                    continue;
-                end
-                
-                if p.Results.xJitter > 0
-                    X = dataX{iC} + (rand(size(dataX{iC}))-0.5) * p.Results.xJitter;
-                else
-                    X = dataX{iC};
-                end
-                
-%                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
-%                     args{:}, p.Results.plotOptions{:});
-                h(iC) = scatter(X, dataY{iC}, p.Results.markerSize, ...
-                    args{:}, 'MarkerFaceAlpha', p.Results.alpha, p.Results.plotOptions{:});
-                hold on;
 
-                TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNamesShort{idxC});
+            if dims == 2
+                if ~ismember('scaleBars', p.UsingDefaults) && p.Results.scaleBars
+                    axisStyleX = 'scaleBar';
+                    axisStyleY = 'scaleBar';
+                else
+                    axisStyleX = p.Results.axisStyleX;
+                    axisStyleY = p.Results.axisStyleY;
+                end
+                
+                h = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nConditionsUsed);
+                for iC = 1:nConditionsUsed
+                    idxC = conditionIdx(iC);
+                    args = app(idxC).getMarkerPlotArgs(false);
+                    if isempty(dataX{iC}) || isempty(dataY{iC})
+                        continue;
+                    end
+
+                    if p.Results.xJitter > 0
+                        X = dataX{iC} + (rand(size(dataX{iC}))-0.5) * p.Results.xJitter;
+                    else
+                        X = dataX{iC};
+                    end
+
+    %                 h(iC) = plot(dataX{iC}, dataY{iC}, 'o', 'MarkerSize', p.Results.markerSize, ...
+    %                     args{:}, p.Results.plotOptions{:});
+                    h(iC) = scatter(X, dataY{iC}, p.Results.markerSize, ...
+                        args{:}, 'MarkerFaceAlpha', p.Results.alpha, p.Results.plotOptions{:});
+                    hold on;
+
+                    TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNamesShort{idxC});
+                end
+
+                if ~isempty(p.Results.axisInfoX)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                        'which', 'x', 'style', axisStyleX);
+                end
+                if ~isempty(p.Results.axisInfoY)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                        'which', 'y', 'style', axisStyleY);
+                end
+
+                hold(axh, 'off');
+                box(axh, 'off');
+                axis(axh, 'tight');
+
+                AutoAxis.updateIfInstalled(axh);
+                
+            else
+                % 3D plot
+                dataZ = p.Results.dataZ;
+                if isempty(dataZ) || isempty(dataZ)
+                    error('Must provide dataZ and dataZ');
+                end 
+                
+                h = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nConditionsUsed);
+                for iC = 1:nConditionsUsed
+                    idxC = conditionIdx(iC);
+                    args = app(idxC).getMarkerPlotArgs(false);
+                    if isempty(dataX{iC}) || isempty(dataY{iC}) || isempty(dataZ{iC})
+                        continue;
+                    end
+
+                    if p.Results.xJitter > 0
+                        X = dataX{iC} + (rand(size(dataX{iC}))-0.5) * p.Results.xJitter;
+                    else
+                        X = dataX{iC};
+                    end
+
+                    h(iC) = scatter3(X, dataY{iC}, dataZ{iC}, p.Results.markerSize, ...
+                        args{:}, 'MarkerFaceAlpha', p.Results.alpha, p.Results.plotOptions{:});
+                    hold on;
+
+                    TrialDataUtilities.Plotting.showInLegend(h(iC), td.conditionNamesShort{idxC});
+                end
+
+                if ~isempty(p.Results.axisInfoX)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
+                        'which', 'x', 'style', 'label');
+                end
+                if ~isempty(p.Results.axisInfoY)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
+                        'which', 'y', 'style', 'label');
+                end
+                if ~isempty(p.Results.axisInfoZ)
+                    TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoZ, ...
+                        'which', 'z', 'style', 'label');
+                end
+
+                hold(axh, 'off');
+                box(axh, 'off');
+                axis(axh, 'tight');
+                axis(axh, 'vis3d');
+
+                AutoAxis.updateIfInstalled(axh);
             end
-      
-            if ~isempty(p.Results.axisInfoX)
-                TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
-                    'which', 'x', 'style', axisStyleX);
-            end
-            if ~isempty(p.Results.axisInfoY)
-                TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoY, ...
-                    'which', 'y', 'style', axisStyleY);
-            end
-            
-            hold(axh, 'off');
-            box(axh, 'off');
-            axis(axh, 'tight');
-            
-            AutoAxis.updateIfInstalled(axh);
                     
 %             for iC = 1:numel(h)
 %                 % not sure why this needs to go last

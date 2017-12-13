@@ -85,6 +85,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                     cd.originalDataClassByField = {''};
                 end 
             end
+            
         end
         
     end

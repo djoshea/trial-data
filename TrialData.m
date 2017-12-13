@@ -4133,18 +4133,42 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
+        function [ch, idx] = parseIndexedParamChannelName(td, name) %#ok<INUSL>
+            % if name is a normal param channel, do nothing
+            % if it is a name like param(5), return param, 5
+            
+            tokens = regexp(name, '(?<ch>[\w_]+)\((?<idx>\d+)\)', 'names');
+            if isempty(tokens)
+                ch = name;
+                idx = NaN;
+            else
+                ch = tokens.ch;
+                idx = str2double(tokens.idx);
+            end
+        end
+        
+        function cd = getParamChannelDescriptor(td, name)
+            chName = td.parseIndexedParamChannelName(name);
+            cd = td.channelDescriptorsByName.(chName);
+        end
+        
         function values = getParamRaw(td, name)
             % grab the raw value for a parameter without considering
             % validity. if name is an analog channel, grab the first sample
             % of that channel
-            cd = td.channelDescriptorsByName.(name);
+            
+            [chName, colIdx] = td.parseIndexedParamChannelName(name);
+            cd = td.channelDescriptorsByName.(chName);
             
             if isa(cd, 'ParamChannelDescriptor')
                 values = {td.data.(cd.dataFields{1})}';
                 values = cd.convertDataCellOnAccess(1, values); % convert to access data class
                 
+                if ~isnan(colIdx)
+                    values = values(:, colIdx);
+                end
             elseif isa(cd, 'AnalogChannelDescriptor')
-                values = td.getAnalogSample(name);
+                values = td.getAnalogSample(chName);
             else
                 error('Only valid for parameter or analog channels');
             end
@@ -4152,7 +4176,8 @@ classdef TrialData
         
         % Basic access methods, very fast
         function values = getParam(td, name)
-            cd = td.channelDescriptorsByName.(name);
+            [chName, ~] = td.parseIndexedParamChannelName(name);
+            cd = td.channelDescriptorsByName.(chName);
             values = td.getParamRaw(name);
             values = td.replaceInvalidMaskWithValue(values, cd.missingValueByField{1});
         end

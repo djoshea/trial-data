@@ -1,9 +1,9 @@
 function setupAxisForChannel(channelDescriptor, varargin)
     p = inputParser();
-    p.addParamValue('axh', gca, @ishandle);
-    p.addParamValue('which', 'y', @(str) ismember(str, {'x', 'y', 'z'}));
-    p.addParamValue('useAutoAxis', true, @islogical);
-    p.addParamValue('style', 'tickBridge', @ischar);
+    p.addParameter('axh', gca, @ishandle);
+    p.addParameter('which', 'y', @(str) ismember(str, {'x', 'y', 'z'}));
+    p.addParameter('useAutoAxis', true, @islogical);
+    p.addParameter('style', 'tickBridge', @ischar);
     p.addParameter('label', '', @ischar);
     p.parse(varargin{:});
     
@@ -31,6 +31,8 @@ function setupAxisForChannel(channelDescriptor, varargin)
         else
             label = sprintf('%s (%s)', name, units);
         end
+    elseif ischar(channelDescriptor)
+        label = channelDescriptor;
     end
     
     useAutoAxis = p.Results.useAutoAxis;
@@ -49,6 +51,11 @@ function setupAxisForChannel(channelDescriptor, varargin)
         useScaleBar = true;
         useAutoAxis = true;
         useTickBridge = true;
+    elseif strcmp(p.Results.style, 'label')
+        useLabel = true;
+        useScaleBar = false;
+        useAutoAxis = false;
+        useTickBridge = false;
     elseif strcmp(p.Results.style, 'none')
         useLabel = false;
         useScaleBar = false;

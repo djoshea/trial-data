@@ -16,7 +16,7 @@ classdef Run < LFADS.Run
     
     % Override as necessary
     methods 
-        function tf = usesDifferentTrialDataForAlignment(r)
+        function tf = usesDifferentTrialDataForAlignment(r) %#ok<MANU>
             % set this to true and override prepareTrialDataForAlignment
             % below
             tf = false;
@@ -28,7 +28,7 @@ classdef Run < LFADS.Run
             td = r.prepareTrialDataForLFADS(td);
         end
         
-        function chList = listChannelsForLFADS(r, td, varargin)
+        function chList = listChannelsForLFADS(r, td, varargin) %#ok<INUSD>
             warning('Override listChannelsForLFADS in order to specify channel names in the posterior mean rates');
             chList = {};
         end
@@ -112,11 +112,12 @@ classdef Run < LFADS.Run
                      
                 td =  r.trialDataSet{i};
                 inflate = @(data) TensorUtils.inflateMaskedTensor(data, 1, td.valid); % loaded data only spans valid trials in td.data
+                inflate2 = @(data) TensorUtils.inflateMaskedTensor(data, 2, td.valid);
                 pm = r.posteriorMeans(i);
                 
                 % data must be nTrials x nTime x nChannels tensor
                 td = td.dropAnalogChannelGroup({'controllerOutputs', 'factors', 'generatorStates', 'rates'});
-                td = td.dropChannel('generatorIC');
+                td = td.dropChannels({'generatorIC', 'post_g0_mean', 'post_g0_logvar'});
                 
                 td = td.addAnalogChannelGroup('factors', genNames('f', pm.nFactors), ...
                     inflate(permute(pm.factors, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
@@ -138,7 +139,9 @@ classdef Run < LFADS.Run
                         inflate(permute(pm.controller_outputs, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 end
                 
-                td = td.addVectorParamAccessAsMatrix('generatorIC', inflate(TensorUtils.splitAlongDimension(pm.generator_ics, 2)'));
+                td = td.addVectorParamAccessAsMatrix('generatorIC', TensorUtils.splitAlongDimension(inflate2(pm.generator_ics), 2)');
+                td = td.addVectorParamAccessAsMatrix('post_g0_mean', TensorUtils.splitAlongDimension(inflate2(pm.post_g0_mean), 2)');
+                td = td.addVectorParamAccessAsMatrix('post_g0_logvar', TensorUtils.splitAlongDimension(inflate2(pm.post_g0_logvar), 2)');
                 
                 tdSet{i} = td;
             end
@@ -157,7 +160,7 @@ classdef Run < LFADS.Run
             
             if ~exist('W', 'var')
                 W = cat(1, ro.rates_W); % N_all x Far')
-                b = cat(1, ro.rates_b); %#ok<NASGU> % N_all x 1
+                b = cat(1, ro.rates_b); % N_all x 1
             end
             
             % row normalize as is done in lfads code
@@ -230,9 +233,8 @@ classdef Run < LFADS.Run
             
             % take the limits of the posterior means in the appropriate
             % alignment
-            td = r.trialDataSet{dsIdx(1)};
-   
             prog = ProgressBar(r.nDatasets, 'Building T structs');
+            Tset = cell(numel(dsIdx), 1);
             for iDS = 1:numel(dsIdx)
                 prog.update(iDS);
                 td = r.trialDataSet{dsIdx(iDS)};
@@ -461,11 +463,11 @@ classdef Run < LFADS.Run
                     % GPFA is expecting data to be in a field
                     % called 'spikes'
                     [seq.spikes] = seq.y;
-                    rmfield(seq, 'y');
+                    seq = rmfield(seq, 'y');
 
                     % GPFA is expecting each trial to be numbered
                     % with a "trialId"
-                    tid = mat2cell(1:numel(seq), 1, ones(numel(seq), ...
+                    tid = num2cell(1:numel(seq), 1, ones(numel(seq), ...
                                                       1));
                     [seq.trialId] = tid{:};
 
@@ -547,7 +549,7 @@ classdef Run < LFADS.Run
                 gs = r.gpfaSequenceData{iDS};
                 
                 td = tdSet{iDS};
-                pm = r.posteriorMeans(iDS);
+                %pm = r.posteriorMeans(iDS);
                 
                 % data must be nTrials x nTime x nChannels tensor
                 nGP = size(gs.seqTrain(1).xorth, 1);

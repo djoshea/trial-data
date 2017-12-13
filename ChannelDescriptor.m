@@ -306,7 +306,13 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 if cd.isVectorByField(fieldIdx)
                     data = cellfun(@makerow, data, 'UniformOutput', false);
                 end
-                data = cell2mat(data);
+                
+                % because of the way missingValue works, empty trials will
+                % be NaN for invalid trials when setting channel data
+                % trials missing values will have a single Nan
+                nanMask = cellfun(@(x) isscalar(x) && isnan(x), data);
+                data = cell2mat(data(~nanMask));
+                data = TensorUtils.inflateMaskedTensor(data, 1, ~nanMask);
             end
         end
         
