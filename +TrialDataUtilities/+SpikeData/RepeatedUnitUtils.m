@@ -138,6 +138,65 @@ classdef RepeatedUnitUtils
             nRemovedMat = cellfun(@(x) nnz(~x), maskKeep);
         end
         
+        function [td, nRemoved] = removeSharedSpikesUsingAdjacencyMatrix(td, chNames, adjacencyMatrix, varargin)
+            % chNames is nChannels x 1 cellstr of spike channel names in td
+            % adjacencyMatrix should be constructed so that spikes on
+            % channel i will be deleted if they are coincident with spikes
+            % on channel j if adjacencyMatrix(i, j) == true. Thus a lower triangular matrix will preserve
+            % shared spikes on the channel with the lower index but delete
+            % them from the channel with the higher index.
+            %
+            % nRemoved is nTrials x nChannels
+            
+            import TrialDataUtilities.SpikeData.RepeatedUnitUtils;
+            
+            p = inputParser;
+            p.addParameter('timeWindow', 0.1, @isscalar);
+            p.addParameter('electrodeSpan', 1, @isscalar);
+            p.addParameter('keepRemovedSpikes', false, @islogical);
+            p.parse(varargin{:});
+            
+            assert(all(ismember(chNames, td.listSpikeChannels())), 'Some spike channels were not found');
+           
+            N = numel(chNames);
+            nRemoved = zeros(td.nTrials, N);
+            
+            assert(size(adjacencyMatrix, 1) == N && size(adjacencyMatrix, 2) == N, 'Size of adjacency matrix must be nChannels x nChannels');
+            adjacencyMatrix = logical(adjacencyMatrix);
+            for c = 1:N
+                adjacencyMatrix(c, c) = false; % set diagonal false
+            end
+            
+            % loop from max electrode number to min, remove spikes from the
+            % max of the two, so that the effects cascade up the 
+            prog = ProgressBar(N, 'Removing shared spikes');
+            for cRemoveFrom = 1:N
+                chRemoveFrom = chNames{cRemoveFrom};
+                
+                % we'll remove spike from cRemoveFrom that are coincident
+                % with spikes on these channels
+                refChannels = chNames(adjacencyMatrix(cRemoveFrom, :))';
+
+                if isempty(refChannels)
+                    continue;
+                end
+                prog.increment('Removing spikes from electrode %s', chRemoveFrom);
+                    
+                if p.Results.keepRemovedSpikes
+                    [a,e] = SpikeChannelDescriptor.parseArrayElectrodeUnit(chRemoveFrom);
+                    keepAs = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(a, e, 255);
+                else
+                    keepAs = '';
+                end
+                
+                % keep in low, remove from high
+                [td, nRemoved(:, cRemoveFrom)] = RepeatedUnitUtils.removeSharedSpikes(td, ...
+                    refChannels, chRemoveFrom, 'timeWindow', p.Results.timeWindow, ...
+                    'keepRemovedSpikesAs', keepAs);
+            end
+            prog.finish();
+        end
+        
         
         function [td, nRemoved] = removeSharedSpikesAdjacentElectrodesOnArray(td, array, varargin)
             % remove spikes that occur in channels in setWillRemove if they also occur in setWillKeep
@@ -145,7 +204,7 @@ classdef RepeatedUnitUtils
             import TrialDataUtilities.SpikeData.RepeatedUnitUtils;
             
             p = inputParser;
-            p.addParameter('timeWindow', 0.5, @isscalar);
+            p.addParameter('timeWindow', 0.1, @isscalar);
             p.addParameter('electrodeSpan', 1, @isscalar);
             p.addParameter('keepRemovedSpikes', false, @islogical);
             p.parse(varargin{:});

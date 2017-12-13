@@ -1,4 +1,7 @@
 function [td, artifactCounts] = removeSharedSpikeArtifacts(td, varargin)
+% detects spikes coincident on at least a certain number or fraction of
+% trials and removes them from ALL channels. This is for removing
+% corrupting artifacts, e.g. from a solenoid.
 
 p = inputParser();
 p.addOptional('unitNames', td.listSpikeChannels, @iscellstr);
@@ -51,7 +54,7 @@ for c = 1:C
                     matchCounts{t, c} = matchCounts{t, c} + maskHasMatch;
                     % increment count for other channel
                     matchCounts{t, oc}(idxOC(maskHasMatch)) = matchCounts{t, oc}(idxOC(maskHasMatch)) + 1;
-                end
+                end 
             end
 
             maskKeep{t} = matchCounts{t, c} < threshC; 
