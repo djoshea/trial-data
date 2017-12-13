@@ -111,6 +111,7 @@ classdef Run < LFADS.Run
                 prog.update(i);
                      
                 td =  r.trialDataSet{i};
+                inflate = @(data) TensorUtils.inflateMaskedTensor(data, 1, td.valid); % loaded data only spans valid trials in td.data
                 pm = r.posteriorMeans(i);
                 
                 % data must be nTrials x nTime x nChannels tensor
@@ -118,9 +119,9 @@ classdef Run < LFADS.Run
                 td = td.dropChannel('generatorIC');
                 
                 td = td.addAnalogChannelGroup('factors', genNames('f', pm.nFactors), ...
-                    permute(pm.factors, [3 2 1]), pm.time, 'timeField', timeField, 'isAligned', true);
+                    inflate(permute(pm.factors, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 td = td.addAnalogChannelGroup('generatorStates', genNames('g', pm.nGeneratorUnits), ...
-                    permute(pm.generator_states, [3 2 1]), pm.time, 'timeField', timeField, 'isAligned', true);
+                    inflate(permute(pm.generator_states, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 
                 rnames = r.listChannelsForLFADS(td);
                 if isempty(rnames)
@@ -129,15 +130,15 @@ classdef Run < LFADS.Run
                     rnames = cellfun(@(n) sprintf('rate_%s', n), rnames, 'UniformOutput', false);
                 end
                 td = td.addAnalogChannelGroup('rates', rnames, ...
-                    permute(pm.rates, [3 2 1]), pm.time, 'timeField', timeField, 'isAligned', true);
+                    inflate(permute(pm.rates, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 td = td.setChannelUnitsPrimary('rates', 'spikes / sec');
                 
                 if pm.nControllerOutputs > 0
                     td = td.addAnalogChannelGroup('controllerOutputs', genNames('co', pm.nControllerOutputs), ...
-                        permute(pm.controller_outputs, [3 2 1]), pm.time, 'timeField', timeField, 'isAligned', true);
+                        inflate(permute(pm.controller_outputs, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 end
                 
-                td = td.addVectorParamAccessAsMatrix('generatorIC', TensorUtils.splitAlongDimension(pm.generator_ics, 2)');
+                td = td.addVectorParamAccessAsMatrix('generatorIC', inflate(TensorUtils.splitAlongDimension(pm.generator_ics, 2)'));
                 
                 tdSet{i} = td;
             end
