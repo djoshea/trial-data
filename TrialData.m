@@ -1656,18 +1656,25 @@ classdef TrialData
         end
     end
     
-    %     methods
-    %         function saveTags = listSaveTags(td)
-    %             saveTags = td.getParamUnique('saveTag');
-    %         end
-    %
-    %         function td = selectTrialsFromSaveTag(td, saveTags)
-    %             td.warnIfNoArgOut(nargout);
-    %
-    %             mask = ismember(td.getParam('saveTag'), saveTags);
-    %             td = td.selectTrials(mask);
-    %         end
-    %     end
+        methods
+            function saveTags = listSaveTags(td)
+                saveTags = td.getParamUnique('saveTag');
+            end
+    
+            function td = selectTrialsFromSaveTag(td, saveTags)
+                td.warnIfNoArgOut(nargout);
+    
+                mask = ismember(td.getParam('saveTag'), saveTags);
+                td = td.selectTrials(mask);
+            end
+            
+            function td = withTrialsFromSaveTag(td, saveTags)
+                td.warnIfNoArgOut(nargout);
+    
+                mask = ismember(td.getParam('saveTag'), saveTags);
+                td = td.withTrials(mask);
+            end
+        end
     
     methods % Analog channel methods
         function td = addAnalog(td, name, varargin)
@@ -2526,7 +2533,7 @@ classdef TrialData
                             existingTimeData = td.getAnalogTimeRaw(timeField);
                         end
                           
-                        eqByTrial = cellfun(@(x, y) isequal(makecol(x), makecol(y)), times, existingTimeData);
+                        eqByTrial = cellfun(@(x, y) (isempty(x) && isempty(y)) || isequal(makecol(x), makecol(y)), times, existingTimeData);
                         assert(all(eqByTrial), 'Time passed in differ from existing times in .times on some trials. Note that incoming data is trimmed.');
                     else
                         % new, specified time field
@@ -4357,6 +4364,11 @@ classdef TrialData
             names = {channelDescriptors(mask).name}';
         end
         
+        function names = lookupSpikeChannelByIndex(td, idx)
+            allUnits = td.listSpikeChannels();
+            names = allUnits(idx);
+        end
+        
         function td = addSpikeChannel(td, unitStr, varargin)
             td.warnIfNoArgOut(nargout);
             
@@ -4773,6 +4785,9 @@ classdef TrialData
             if ischar(unitName)
                 unitName = {unitName};
             end
+            if isnumeric(unitName)
+                unitName = td.lookupSpikeChannelByIndex(unitName);
+            end
             
             intervalCell = cell(td.nTrials, numel(unitName));
             for iU = 1:numel(unitName)
@@ -4828,8 +4843,13 @@ classdef TrialData
             if ischar(unitNames)
                 field = getField(unitNames);
                 timesCell = {td.data.(field)}';
-            elseif iscell(unitNames)
+            elseif iscell(unitNames) || isnumeric(unitNames)
                 nUnits = numel(unitNames);
+                
+                if isnumeric(unitNames)
+                    unitNames = td.lookupSpikeChannelByIndex(unitNames);
+                end
+                
                 timesCellByUnit = cell(td.nTrials, nUnits);
                 for iU = 1:nUnits
                     if ischar(unitNames{iU})
@@ -4858,7 +4878,7 @@ classdef TrialData
                     end
                 else
                     timesCell = timesCellByUnit;
-                end
+                end 
             else
                 error('Unsupported unit name argument');
             end

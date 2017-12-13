@@ -4067,6 +4067,10 @@ classdef TrialDataConditionAlign < TrialData
             % Pad trial data alignment for spike filter
             td = td.padForSpikeFilter(sf);
             
+            if isnumeric(unitNames)
+                unitNames = td.lookupSpikeChannelByIndex(unitNames);
+            end
+            
             % critical to include the spike times in the padded window
             spikeCell = td.getSpikeTimes(unitNames, 'includePadding', true, 'combine', p.Results.combine);
             [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
@@ -4156,7 +4160,7 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be nConditions x T matrices
             % if randomized, will be nConditions x T x nRandomized
             p = inputParser();
-            p.addRequired('unitNames', @(x) ischar(x) || iscellstr(x));
+            p.addRequired('unitNames', @(x) isnumeric(x) || ischar(x) || iscellstr(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             
@@ -4963,7 +4967,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial fraction to average
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
-            p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
             p.addParameter('showSem', true, @islogical); % equivalent to 'errorType', 'sem'
             p.addParameter('showRandomizedQuantiles', [], @(x) isempty(x) || isvector(x));
@@ -4975,7 +4979,7 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             
             sf = p.Results.spikeFilter;
-            
+
             axh = TrialDataConditionAlign.getRequestedPlotAxis('axh', p.Results.axh);
             
             % loop over alignments and gather mean data
@@ -5062,7 +5066,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeColorMap', cat(1, [0 0 0], distinguishable_colors(5, {'k', 'w'})), @(x) true);
 %             p.addParameter('spikeColor', 'k', @(x) true);
             p.addParameter('colorSpikesLikeCondition', false, @islogical);
-            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('tickHeight', 1, @isscalar);
             
             p.addParameter('markAlpha', 0.5, @isscalar);
@@ -5112,6 +5116,9 @@ classdef TrialDataConditionAlign < TrialData
             % looking at spike sorting issues
             if ischar(unitNames)
                 unitNames = {unitNames};
+            end
+            if isnumeric(unitNames)
+                unitNames = td.lookupSpikeChannelByIndex(unitNames);
             end
             if p.Results.combine
                 nUnits = 1;
@@ -5382,9 +5389,10 @@ classdef TrialDataConditionAlign < TrialData
                 au = AutoAxis(axh);
                 au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
                     conditionNames(mask), 'color', colors(mask, :));
-                set(axh, 'YTick', flipud(yDividersByCondition));
+                set(axh, 'YTick', flipud(yDividersByCondition(mask)));
             else
-                set(axh, 'YTick', flipud(yCentersByCondition), 'YTickLabels', flipud(conditionNames));
+                mask = trialCounts(conditionIdx) > 0;
+                set(axh, 'YTick', flipud(yCentersByCondition(mask)), 'YTickLabels', flipud(conditionNames(mask)));
             end
                 
             % setup time axis markers
@@ -5446,7 +5454,7 @@ classdef TrialDataConditionAlign < TrialData
     % Plotting Analog each trial
     methods
         function setupTimeAxis(td, varargin)
-            td.alignSummaryActive.setupTimeAutoAxis('style', 'marker', varargin{:});
+            td.alignSummaryActive.setupTimeAutoAxis('style', 'tickBridge', varargin{:});
         end
         
         function [offsets, lims] = getAlignPlottingTimeOffsets(td, tvecCell, varargin)
@@ -5587,7 +5595,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('intervalShowOnAxis', true, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
 
-            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
             
@@ -6356,7 +6364,7 @@ classdef TrialDataConditionAlign < TrialData
                     
                     tdTheseCond = td.selectConditions(cIndsThisPanel);
                     for iAlign = 1:td.nAlign
-                        tdTheseCond.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign), 'style', 'marker');
+                        tdTheseCond.alignSummarySet{iAlign}.setupTimeAutoAxis('tOffsetZero', tOffsets(iAlign), 'style', 'tickBridge');
                     end   
                     au.axisInset(2) = 2;
                     
@@ -6392,7 +6400,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('quick', false, @islogical);
             p.addParameter('commonTime', false, @islogical);
             p.addParameter('channelLabels', {}, @iscellstr);
-            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -6451,7 +6459,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
             p.addParameter('unitNames', td.listSpikeChannels(), @iscellstr);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
-            p.addParameter('timeAxisStyle', 'marker', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('tickHeight', 1, @isscalar);
 %             % if true, draw spike waveforms instead of ticks
             p.addParameter('drawSpikeWaveforms', false, @islogical);
