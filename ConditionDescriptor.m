@@ -336,7 +336,7 @@ classdef ConditionDescriptor
             tcprintf('inline', '  {bright blue}Axes:\n');
             for i = 1:ci.nAxes
                 tcprintf('inline', '    %s: {white}%s\n', axisDesc{i}, ...
-                    tcprintfEscape(strjoin(ci.axisValueListsAsStrings{i}, ', ')));
+                    tcprintfEscape(strjoin(ci.axisValueListsAsStringsShort{i}, ', ')));
             end
             
             nRandom = nnz(ci.axisRandomizeModes ~= ci.AxisOriginal);
