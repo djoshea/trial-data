@@ -433,6 +433,7 @@ classdef StateSpaceProjection
 
         function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, varargin)
             p = inputParser();
+            p.addParameter('projectSingleTrialData', true, @islogical);
             p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical); % clear existing pset trnorm first
             p.addParameter('applyTranslationNormalization', true, @islogical); % apply proj.trNorm to pset before projecting
             p.addParameter('applyTranslationNormalizationPostProject', true, @islogical); % apply the post projection trNorm, mainly used for inverse projections
@@ -523,7 +524,8 @@ classdef StateSpaceProjection
             end
             
             % project single trial data if any
-            if pset.simultaneous && ~isempty(pset.dataByTrial)
+            if pset.simultaneous && ~isempty(pset.dataByTrial) && p.Results.projectSingleTrialData
+                debug('Projecting single-trial data\n');
                 b.dataSources = pset.dataSources;
                 [b.dataByTrial, b.tMinByTrial, b.tMaxByTrial] = deal(cell(proj.nBasesProj, pset.nAlign));
                 
@@ -537,12 +539,18 @@ classdef StateSpaceProjection
                     
                     b.dataByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(tensor, 3);
                     
-                    b.tMinByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
-                        TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
-                            cat(2, pset.tMinByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmax), 2);
-                    b.tMaxByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
-                        TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
-                            cat(2, pset.tMaxByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmin), 2);
+                    % the old version of the code works when tMinByTrial
+                    % differs across bases, but we've asserted that this is
+                    % simultaneous already, so we just keep the first.
+                    b.tMinByTrial = repmat(pset.tMinByTrial(1), proj.nBasesProj, 1);
+                    b.tMaxByTrial = repmat(pset.tMaxByTrial(1), proj.nBasesProj, 1);
+                    
+%                     b.tMinByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
+%                         TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+%                             cat(2, pset.tMinByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmax), 2);
+%                     b.tMaxByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
+%                         TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+%                             cat(2, pset.tMaxByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmin), 2);
                 end
                 
                 b.tMinForDataByTrial = pset.tMinForDataByTrial;
