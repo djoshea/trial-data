@@ -772,7 +772,7 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
             p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
             p.addParameter('combineAxesWithTime', true, @(x) islogical(x) || iscell(x));
-            p.KeepUnmatched = false; % experimental, not sure if this should accept unwanted args
+            p.KeepUnmatched = true; % experimental, not sure if this should accept unwanted args, but need to pass args to project from buildFromAndProject above, so true for now
             p.parse(varargin{:});
             
             s = StateSpaceProjectionStatistics();
