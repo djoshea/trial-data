@@ -176,7 +176,8 @@ classdef TimeseriesComparisonStatistics
             Tmat = cellfun(@(x) size(x, 2), dataAxisFirst);
             T = max(Tmat(:));
 
-            nArg = nargout(fn);
+            nArg = nargout - 1;
+%             nArg = nargout(fn);
             [varargout{1:nArg}] = deal(nan([T, sizeOtherAxes]));
 
             for iOtherAxes = 1:nOtherAxes
@@ -206,7 +207,7 @@ classdef TimeseriesComparisonStatistics
             delta = nanmean(inCell{1}, 1) - nanmean(inCell{2}, 1);
             v1 = nanvar(inCell{1}, 0, 1);
             v2 = nanvar(inCell{2}, 0, 1);
-            sd = sqrt(0.5* (v1 + v2));
+            sd = sqrt(0.5 * (v1 + v2));
             dprime = delta ./ sd;
             n1 = sum(~isnan(inCell{1}), 1);
             n2 = sum(~isnan(inCell{2}), 1);

@@ -71,6 +71,7 @@ classdef PopulationTrajectorySetBuilder
         dataMeanRandomized
         dataSemRandomized
         dataDifferenceOfTrialsScaledNoiseEstimateRandomized
+        dataNTrialsRandomized
 %         dataIntervalHigh
 %         dataIntervalLow
     end
@@ -104,7 +105,7 @@ classdef PopulationTrajectorySetBuilder
         fDiffTrialsNoise = {'dataDifferenceOfTrialsScaledNoiseEstimate'};
         
         fTrialAvgRandomized = {'dataMeanRandomized', 'dataSemRandomized', ...
-            'dataDifferenceOfTrialsScaledNoiseEstimateRandomized'};
+            'dataDifferenceOfTrialsScaledNoiseEstimateRandomized', 'dataNTrialsRandomized'};
         
         fCanBeEmptyExceptions = {'translationNormalization', 'conditionDescriptorRandomized', 'basisInvalidCauseTemporary', 'basisValidTemporary'};
     end
