@@ -807,10 +807,10 @@ classdef StateSpaceProjectionStatistics
                 'combineAxesWithTime', p.Results.combineAxesWithTime);
                    
             % Extract trial averaged data
-            NvbyTAbyAttr = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true);
+            NvbyTAbyAttr = pset.arrangeNbyTAbyConditionAttributes('validBasesOnly', true);
             
             % Save covariance matrices
-            CTAbyNv = pset.buildCTAbyN('validBasesOnly', true);
+            CTAbyNv = pset.arrangeCTAbyN('validBasesOnly', true);
             if size(CTAbyNv, 1) == 1
                 CTAbyNv = repmat(CTAbyNv, 2, 1); % some methods below transpose automatically if the matrix looks like a row vector
             end
@@ -854,7 +854,7 @@ classdef StateSpaceProjectionStatistics
                 prog = ProgressBar(pset.nRandomSamples, 'Computing projection statitics on dataMeanRandomized');
                 for iR = 1:pset.nRandomSamples
                     prog.update(iR);
-                    NvbyTAbyAttrRand = pset.buildNbyTAbyConditionAttributes('validBasesOnly', true, ...
+                    NvbyTAbyAttrRand = pset.arrangeNbyTAbyConditionAttributes('validBasesOnly', true, ...
                         'type', 'meanRandom', 'dataRandomIndex', iR);
                     
                     % normalize each variance to exactly match variance of
