@@ -66,19 +66,21 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             % generate new names from differences
             if p.Results.autoNamesAlongAxis
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                valueList = valueLists{aIdx}(idxKeep);
-                valueSubtract = valueLists{aIdx}{conditionToSubtract};
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                valueList = stringLists{aIdx}(idxKeep);
+                valueSubtract = stringLists{aIdx}{conditionToSubtract};
                 
                 newNamesAlongAxis = cellfun(@(v) [v ' - ' valueSubtract], valueList, ...
                     'UniformOutput', false); 
             elseif isempty(p.Results.newNamesAlongAxis)
                 % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                newNamesAlongAxis = valueLists{aIdx};
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                newNamesAlongAxis = stringLists{aIdx};
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
             end
+            
+            % generate new value lists
             
             % generate differencing matrix
             mat = eye(nAlongAxis);
