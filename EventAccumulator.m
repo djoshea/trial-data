@@ -30,9 +30,9 @@ classdef EventAccumulator
                 delta = 1;
             end
             
-            if isempty(data)
-                error('No data provided to EventAccumulator constructor');
-            end
+%             if isempty(data)
+%                 error('No data provided to EventAccumulator constructor');
+%             end
             C = size(data, 2);
             ea(C, 1) = EventAccumulator();
             
@@ -152,10 +152,13 @@ classdef EventAccumulator
     
     methods(Static)
         function ea = constructForEachColumn(data, delta)
-            % like the constructor, except supports empty data matrix
+            % like the constructor, except supports empty data matrix (in
+            % which case this returns [])
             
             % data is a column vector or a matrix. Each column of data will
-            % generate its own EventAccumulator
+            % generate its own EventAccumulator, so this will return a
+            % column vector of EventAccumulator objects, one for each
+            % column in data
             if nargin < 1
                 return;
             end
@@ -163,11 +166,16 @@ classdef EventAccumulator
                 delta = 1;
             end
             
-            if isempty(data)
+            if isempty(data) && size(data, 2) == 0
                 ea = [];
             else
                 ea = EventAccumulator(data, delta);
             end
+        end
+        
+        function ea = constructMatrixFromEventDataCell(dataCell, delta)
+            % dataCell is a cell vector of 
+            
         end
             
         function out = build_kde(bins, counts, bw)

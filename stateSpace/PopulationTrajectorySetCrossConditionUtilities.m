@@ -199,6 +199,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             % setup new condition descriptor, optionally drop the axis
             % we're combining along, if the new size is 1
+            
             newCD = pset.conditionDescriptor.setAxisValueList(axisName, newNamesAlongAxis);
             if p.Results.removeAxis
                 assert(cNewAlongAxis == 1, 'New condition count along axis must be 1 in order to removeAxis');
@@ -219,7 +220,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             [b.dataMean, b.dataSem] = cellvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
                 % build N x TA x C1 x C2 x ...
-                tensorMean = pset.buildNbyTAbyConditionAttributes('alignIdx', iAlign);
+                tensorMean = pset.arrangeNbyTAbyConditionAttributes('alignIdx', iAlign);
                 tensorMeanReweighted = TensorUtils.linearCombinationAlongDimension(tensorMean, aIdx+2, wNbyO, ...
                     'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
                     'keepNaNIfAllNaNs', true, ...
@@ -231,7 +232,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 % build N x TA x C1 x C2 x ...
                 % use sd1+2 = sqrt(sd1^2 / n1 + sd2^2 / n2) formula
                 % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
-                tensorSem = pset.buildNbyTAbyConditionAttributes('type', 'sem', 'alignIdx', iAlign);
+                tensorSem = pset.arrangeNbyTAbyConditionAttributes('type', 'sem', 'alignIdx', iAlign);
                 tensorSemReweighted = sqrt( TensorUtils.linearCombinationAlongDimension(tensorSem.^2, aIdx+2, abs(wNbyO), ...
                     'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
                     'keepNaNIfAllNaNs', true, ...
@@ -462,8 +463,13 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             for i = 2:numel(psetCell)
                 basisValid = basisValid | psetCell{i}.basisValid;
             end
-            b.basisValid = basisValid;
-            b.basisInvalidCause(~basisValid) = {''};
+            b.basisValidManual = basisValid;
+            if isempty(b.basisInvalidCauseManual)
+                b.basisInvalidCauseManual = cell(numel(basisValid), 1);
+                b.basisInvalidCauseManual(:) = {''};
+            else
+                b.basisInvalidCauseManual(~basisValid) = {''};
+            end
             
             assert(numel(axisValueList) == numel(psetCell), 'Value list along new concatenation axis must have same length as psetCell');
             

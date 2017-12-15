@@ -117,6 +117,9 @@ classdef ConditionDescriptor
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
         axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
 
+        axisValueListsAsStringsManual = {}; % G x 1 array of cellstr which define manual settings for axisValueListsAsStrings
+        axisValueListsAsStringsShortManual = {}; % G x 1 array of cells which define manual settings for axisValueListsAsStringsShort
+        
         axisRandomizeModes % G x 1 numeric of constants beginning with Axis* (see below)
         axisRandomizeWithReplacement % G x 1 logical indicating whether ot not to use replacement
         axisRandomizeResampleFromList % G x 1 cell of cells: one for each axis

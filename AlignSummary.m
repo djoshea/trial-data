@@ -626,6 +626,7 @@ classdef AlignSummary
     % manipulations of AlignSummary that yield new AlignSummary objects
     methods    
         function as = combineSetsOfConditions(as, newConditionDescriptor, conditionIdxCell)
+            assert(nargout == 1);
             % recombine conditions, for each entry of conditionIdxCell,
             % collect stats across the condition indices inside
             as.conditionDescriptor = newConditionDescriptor;
@@ -654,7 +655,7 @@ classdef AlignSummary
             % field
             as.nTrialsByCondition = cellfun(@(idx) sum(as.nTrialsByCondition(idx)), conditionIdxCell);
             
-            as.initialize();
+            as = as.initialize();
         end
         
 %         function as = manualSliceTimeWindow(as, tMin, tMax)

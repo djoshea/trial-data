@@ -5289,7 +5289,7 @@ classdef PopulationTrajectorySet
                 end
             else
                 [dataMean, indexInfo, tvecCell] = pset.arrangeNbyCbyTA('timeDelta', p.Results.timeDelta, 'splitByAlign', true, ...
-                    'basisIdx', basisIdx);
+                    'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx);
                 %                 dataMean = squeeze(TensorUtils.splitAlongDimension(dataMean, 3, pset.nTimeDataMean));
                 
                 for iAlign = 1:nAlignUsed
@@ -5297,11 +5297,11 @@ classdef PopulationTrajectorySet
                     %                     tvec = pset.tvecDataMean{idxAlign};
                     data = dataMean{idxAlign};
                     for iCondition = 1:nConditions
-                        c = conditionIdx(iCondition);
-                        appear = pset.conditionDescriptor.appearances(c);
+                        idxCondition = conditionIdx(iCondition);
+                        appear = pset.conditionDescriptor.appearances(idxCondition);
                         plotArgsC = appear.getPlotArgs();
                         
-                        dataMat = squeeze(data(basisIdx, c, :));
+                        dataMat = squeeze(data(:, iCondition, :));
                         
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
@@ -5319,7 +5319,7 @@ classdef PopulationTrajectorySet
                         end
                         
                         if iAlign == 1
-                            TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{c});
+                            TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{idxCondition});
                         else
                             TrialDataUtilities.Plotting.hideInLegend(h);
                         end
@@ -5339,7 +5339,7 @@ classdef PopulationTrajectorySet
                     % draw marks and intervals on the data traces
                     as = pset.alignSummaryAggregated{idxAlign};
                     % data is nBases x C x T; drawOnDataByConditions needs T x nBasesPlot x C
-                    dataForDraw = permute(data(basisIdx, c, :), [3 1 2]);
+                    dataForDraw = permute(data(:, c, :), [3 1 2]);
                     as.drawOnDataByCondition(tvec, dataForDraw, ...
                         'conditionIdx', c, 'markAlpha', p.Results.markAlpha, ...
                         'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
