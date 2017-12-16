@@ -7,7 +7,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p = inputParser();
             p.addParameter('autoNamesAlongAxis', true, @islogical);
             p.addParameter('newNamesAlongAxis', {}, @iscellstr);
-            p.addParameter('reverse', false, @islogical);
+            p.addParameter('newNamesShortAlongAxis', {}, @iscellstr);
+            p.addParameter('reverse', false, @islogical); % default is 2-1, reverse is 1-2
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -18,25 +19,61 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             % generate new names from differences
             if p.Results.autoNamesAlongAxis
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                valueList = valueLists{aIdx};
-                if reverse
-                    newNamesAlongAxis = cellfun(@(v1, v2) [v2 ' - ' v1], valueList(1:end-1), ...
-                        valueList(2:end), 'UniformOutput', false);
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', false);
+                stringList = stringLists{aIdx};
+                if ~reverse
+                    newNamesAlongAxis = cellfun(@(v1, v2) [v2 ' - ' v1], stringList(1:end-1), ...
+                        stringList(2:end), 'UniformOutput', false);
                 else
-                    newNamesAlongAxis = cellfun(@(v1, v2) [v1 ' - ' v2], valueList(1:end-1), ...
-                        valueList(2:end), 'UniformOutput', false);
+                    newNamesAlongAxis = cellfun(@(v1, v2) [v1 ' - ' v2], stringList(1:end-1), ...
+                        stringList(2:end), 'UniformOutput', false);
                 end
-            elseif isempty(p.Results.newNamesAlongAxis)
-                % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                newNamesAlongAxis = valueLists{aIdx};
+                
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                stringList = stringLists{aIdx};
+                if ~reverse
+                    newNamesShortAlongAxis = cellfun(@(v1, v2) [v2 ' - ' v1], stringList(1:end-1), ...
+                        stringList(2:end), 'UniformOutput', false);
+                else
+                    newNamesShortAlongAxis = cellfun(@(v1, v2) [v1 ' - ' v2], stringList(1:end-1), ...
+                        stringList(2:end), 'UniformOutput', false);
+                end
+                
             else
-                newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                if isempty(p.Results.newNamesAlongAxis)
+                    % keep same names
+                    valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', false);
+                    if ~reverse
+                        newNamesAlongAxis = valueLists{aIdx}(2:end);
+                    else
+                        newNamesAlongAxis = valueLists{aIdx}(1:end-1);
+                    end   
+                else
+                    newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                end
+                
+                if isempty(p.Results.newNamesShortAlongAxis)
+                    % keep same names
+                    valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                    if ~reverse
+                        newNamesShortAlongAxis = valueLists{aIdx}(2:end);
+                    else
+                        newNamesShortAlongAxis = valueLists{aIdx}(1:end-1);
+                    end  
+                else
+                    newNamesShortAlongAxis = p.Results.newNamesAlongAxis;
+                end
+            end
+            
+            newValueList = pset.conditionDescriptor.getAxisValueList(aIdx);
+            if ~reverse
+                newValueList = newValueList(2:end);
+            else
+                newValueList = newValueList(1:end-1);
             end
             
             % generate differencing matrix
-            if reverse
+            if ~reverse
                 % compute conditions 2-1, 3-2, 4-3, etc.
                 mat = diag(-onesvec(nAlongAxis)) + diag(onesvec(nAlongAxis-1), 1);
                 wNbyO = mat(1:nAlongAxis-1, :);
@@ -47,7 +84,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             end
             
             psetDiff = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
-                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, p.Unmatched);
+                axisName, wNbyO, 'newValueListAlongAxis', newValueList, ...
+                'newNamesAlongAxis', newNamesAlongAxis, 'newNamesShortAlongAxis', newNamesShortAlongAxis, p.Unmatched);
         end
         
         function psetDiff = subtractOneConditionFromOthersAlongAxis(pset, axisName, conditionToSubtract, varargin)
@@ -55,6 +93,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p = inputParser();
             p.addParameter('autoNamesAlongAxis', true, @islogical);
             p.addParameter('newNamesAlongAxis', {}, @iscellstr);
+            p.addParameter('newNamesShortAlongAxis', {}, @iscellstr);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -66,19 +105,36 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             % generate new names from differences
             if p.Results.autoNamesAlongAxis
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                valueList = valueLists{aIdx}(idxKeep);
-                valueSubtract = valueLists{aIdx}{conditionToSubtract};
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', false);
+                stringList = stringLists{aIdx}(idxKeep);
+                stringSubtract = stringLists{aIdx}{conditionToSubtract};
+                newNamesAlongAxis = cellfun(@(v1) [v1 ' - ' stringSubtract], stringList, 'UniformOutput', false);
                 
-                newNamesAlongAxis = cellfun(@(v) [v ' - ' valueSubtract], valueList, ...
-                    'UniformOutput', false); 
-            elseif isempty(p.Results.newNamesAlongAxis)
-                % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                newNamesAlongAxis = valueLists{aIdx};
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                stringSubtract = stringLists{aIdx}{conditionToSubtract};
+                newNamesShortAlongAxis = cellfun(@(v1) [v1 ' - ' stringSubtract], stringList, 'UniformOutput', false);
+                
             else
-                newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                if isempty(p.Results.newNamesAlongAxis)
+                    % keep same names
+                    valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', false);
+                    newNamesAlongAxis = valueLists{aIdx}(idxKeep);
+                else
+                    newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                end
+                
+                if isempty(p.Results.newNamesShortAlongAxis)
+                    % keep same names
+                    valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                    newNamesShortAlongAxis = valueLists{aIdx}(idxKeep);
+                else
+                    newNamesShortAlongAxis = p.Results.newNamesAlongAxis;
+                end
             end
+           
+            % generate new value lists
+            newValueList = pset.conditionDescriptor.getAxisValueList(aIdx);
+            newValueList = newValueList(idxKeep);
             
             % generate differencing matrix
             mat = eye(nAlongAxis);
@@ -86,7 +142,8 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             wNbyO = mat(idxKeep, :);
             
             psetDiff = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
-                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, p.Unmatched);
+                axisName, wNbyO, 'newValueListAlongAxis', newValueList, ...
+                'newNamesAlongAxis', newNamesAlongAxis, 'newNamesShortAlongAxis', newNamesShortAlongAxis, p.Unmatched);
         end
         
         function psetMean = computeMeanAlongAxis(pset, axisName, varargin)
@@ -94,29 +151,38 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p = inputParser();
             p.addParameter('autoNamesAlongAxis', true, @islogical);
             p.addParameter('newNamesAlongAxis', {}, @iscell);
+            p.addParameter('newNamesShortAlongAxis', {}, @iscellstr);
+            p.addParameter('removeAxis', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
             nAlongAxis = pset.conditionsSize(aIdx);
+            axisName = pset.conditionDescriptor.axisNames{aIdx};
             
             % generate new names from differences
             if p.Results.autoNamesAlongAxis
-                newNamesAlongAxis = {sprintf('Mean Over %s', pset.conditionDescriptor.axisNames{aIdx}) }; 
-            elseif isempty(p.Results.newNamesAlongAxis)
-                % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                newNamesAlongAxis = valueLists{aIdx};
+                newNamesAlongAxis = { sprintf('Mean Over %s', axisName) }; 
+                newNamesShortAlongAxis = { sprintf('Mean Over %s', axisName) }; 
             else
                 newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                newNamesShortAlongAxis = p.Results.newNamesShortAlongAxis;
             end
-
+            
+            newValueList = pset.conditionDescriptor.getAxisValueList(aIdx);
+            newValueList = newValueList(1);
+            flds = fieldnames(newValueList);
+            for iF = 1:numel(flds)
+                newValueList.(flds{iF}) = sprintf('Mean Over %s', axisName);
+            end
+            
             % normalization is done by normalizeCoefficientsByNumNonNaN
             % below
             wNbyO = ones(1, nAlongAxis);
             
             psetMean = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
-                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, ...
+                axisName, wNbyO, 'removeAxis', p.Results.removeAxis, 'newValueListAlongAxis', newValueList, ...
+                'newNamesAlongAxis', newNamesAlongAxis, 'newNamesShortAlongAxis', newNamesShortAlongAxis, ...
                 'replaceNaNWithZero', true, 'normalizeCoefficientsByNumNonNaN', true, p.Unmatched);
         end
         
@@ -125,31 +191,51 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p = inputParser();
             p.addParameter('autoNamesAlongAxis', true, @islogical);
             p.addParameter('newNamesAlongAxis', '', @iscell);
+            p.addParameter('newNamesShortAlongAxis', {}, @iscellstr);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
             nAlongAxis = pset.conditionsSize(aIdx);
             
+            % generate new names from differences
             if p.Results.autoNamesAlongAxis
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                valueList = valueLists{aIdx};
-                newNamesAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted', s), valueList, 'UniformOutput', false); 
-            elseif isempty(p.Results.newNamesAlongAxis)
-                % keep same names
-                valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
-                newNamesAlongAxis = valueLists{aIdx};
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', false);
+                stringList = stringLists{aIdx};
+                newNamesAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted', s), stringList, 'UniformOutput', false); 
+                
+                stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                stringList = stringLists{aIdx};
+                newNamesShortAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted', s), stringList, 'UniformOutput', false); 
+                
             else
-                newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                if isempty(p.Results.newNamesAlongAxis)
+                    % keep same names
+                    valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', false);
+                    newNamesAlongAxis = valueLists{aIdx};
+                else
+                    newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                end
+                
+                if isempty(p.Results.newNamesShortAlongAxis)
+                    % keep same names
+                    valueLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
+                    newNamesShortAlongAxis = valueLists{aIdx};
+                else
+                    newNamesShortAlongAxis = p.Results.newNamesAlongAxis;
+                end
             end
-
+            
+            newValueList = pset.conditionDescriptor.getAxisValueList(aIdx);
+            
             % normalization is done by 'normalizeCoefficientsByNumNonNaN' below
             % and the identity matrix is added in after normalization by
             % 'addToOriginal'
             wNbyO = -ones(nAlongAxis, nAlongAxis);
             
             psetMean = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
-                axisName, wNbyO, 'newNamesAlongAxis', newNamesAlongAxis, ...
+                axisName, wNbyO, 'newValueListAlongAxis', newValueList, ...
+                'newNamesAlongAxis', newNamesAlongAxis, 'newNamesShortAlongAxis', newNamesShortAlongAxis, ...
                 'replaceNaNWithZero', true, ...
                 'normalizeCoefficientsByNumNonNaN', true, ...
                 'addToOriginal', true, ...
@@ -158,7 +244,9 @@ classdef PopulationTrajectorySetCrossConditionUtilities
         
         function psetReweighted = applyLinearCombinationAlongConditionAxis(pset, axisName, weightsNewCByOldC, varargin)
             p = inputParser();
+            p.addParameter('newValueListAlongAxis', [], @isstruct);
             p.addParameter('newNamesAlongAxis', {}, @iscellstr);
+            p.addParameter('newNamesShortAlongAxis', {}, @iscellstr);
             p.addParameter('removeAxis', false, @islogical);
             p.addParameter('conditionAppearanceFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             
@@ -188,21 +276,36 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             cNewAlongAxis = size(wNbyO, 1);
             
-            newNamesAlongAxis = p.Results.newNamesAlongAxis;
-            if isempty(newNamesAlongAxis)
-                newNamesAlongAxis = arrayfun(@(i) sprintf('Condition Combination %d', i), 1:cNewAlongAxis, 'UniformOutput', false);
+            removeAxis = p.Results.removeAxis;
+            
+            if ~removeAxis
+                newNamesAlongAxis = p.Results.newNamesAlongAxis;
+                if isempty(newNamesAlongAxis)
+                    newNamesAlongAxis = arrayfun(@(i) sprintf('Condition Combination %d', i), 1:cNewAlongAxis, 'UniformOutput', false);
+                end
+                assert(numel(newNamesAlongAxis) == cNewAlongAxis, 'newNamesAlongAxis must have numel == number of new conditions (%d)', cNewAlongAxis);
+
+                newNamesShortAlongAxis = p.Results.newNamesShortAlongAxis;
+                if ~isempty(newNamesShortAlongAxis)
+                    assert(numel(newNamesShortAlongAxis) == cNewAlongAxis, 'newNamesShortAlongAxis must have numel == number of new conditions (%d)', cNewAlongAxis);
+                end
+                
+                newValueListAlongAxis = p.Results.newValueListAlongAxis;
+                assert(numel(newValueListAlongAxis) == cNewAlongAxis, 'newNamesAlongAxis must have numel == number of new conditions (%d)', cNewAlongAxis);
+                
             end
-            assert(numel(newNamesAlongAxis) == cNewAlongAxis, 'newNamesAlongAxis must have numel == number of new conditions (%d)', cNewAlongAxis);
             
             % pset.warnIfAnyBasesMissingTrialAverageForNonEmptyConditionAligns();
             b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
             
             % setup new condition descriptor, optionally drop the axis
             % we're combining along, if the new size is 1
-            newCD = pset.conditionDescriptor.setAxisValueList(axisName, newNamesAlongAxis);
-            if p.Results.removeAxis
+            if removeAxis
                 assert(cNewAlongAxis == 1, 'New condition count along axis must be 1 in order to removeAxis');
-                newCD = newCD.removeAxis(aIdx);
+                newCD = pset.conditionDescriptor.removeAxis(aIdx);
+            else
+                newCD = pset.conditionDescriptor.setAxisValueList(axisName, newValueListAlongAxis, ...
+                    'asStrings', newNamesAlongAxis, 'asStringsShort', newNamesShortAlongAxis);
             end
             
             % update the condition appearance fn if specified
@@ -219,7 +322,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             [b.dataMean, b.dataSem] = cellvec(pset.nAlign);
             for iAlign = 1:pset.nAlign
                 % build N x TA x C1 x C2 x ...
-                tensorMean = pset.buildNbyTAbyConditionAttributes('alignIdx', iAlign);
+                tensorMean = pset.arrangeNbyTAbyConditionAttributes('alignIdx', iAlign);
                 tensorMeanReweighted = TensorUtils.linearCombinationAlongDimension(tensorMean, aIdx+2, wNbyO, ...
                     'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
                     'keepNaNIfAllNaNs', true, ...
@@ -231,7 +334,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 % build N x TA x C1 x C2 x ...
                 % use sd1+2 = sqrt(sd1^2 / n1 + sd2^2 / n2) formula
                 % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
-                tensorSem = pset.buildNbyTAbyConditionAttributes('type', 'sem', 'alignIdx', iAlign);
+                tensorSem = pset.arrangeNbyTAbyConditionAttributes('type', 'sem', 'alignIdx', iAlign);
                 tensorSemReweighted = sqrt( TensorUtils.linearCombinationAlongDimension(tensorSem.^2, aIdx+2, abs(wNbyO), ...
                     'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
                     'keepNaNIfAllNaNs', true, ...
@@ -462,8 +565,13 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             for i = 2:numel(psetCell)
                 basisValid = basisValid | psetCell{i}.basisValid;
             end
-            b.basisValid = basisValid;
-            b.basisInvalidCause(~basisValid) = {''};
+            b.basisValidManual = basisValid;
+            if isempty(b.basisInvalidCauseManual)
+                b.basisInvalidCauseManual = cell(numel(basisValid), 1);
+                b.basisInvalidCauseManual(:) = {''};
+            else
+                b.basisInvalidCauseManual(~basisValid) = {''};
+            end
             
             assert(numel(axisValueList) == numel(psetCell), 'Value list along new concatenation axis must have same length as psetCell');
             

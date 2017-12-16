@@ -30,6 +30,7 @@ classdef PopulationTrajectorySetBuilder
         
         basisValidManual
         basisInvalidCauseManual
+        
         basisValidTemporary
         basisInvalidCauseTemporary
                
@@ -107,7 +108,9 @@ classdef PopulationTrajectorySetBuilder
         fTrialAvgRandomized = {'dataMeanRandomized', 'dataSemRandomized', ...
             'dataDifferenceOfTrialsScaledNoiseEstimateRandomized', 'dataNTrialsRandomized'};
         
-        fCanBeEmptyExceptions = {'translationNormalization', 'conditionDescriptorRandomized', 'basisInvalidCauseTemporary', 'basisValidTemporary'};
+        fCanBeEmptyExceptions = {'translationNormalization', 'conditionDescriptorRandomized', ...
+            'basisInvalidCauseTemporary', 'basisValidTemporary', ...
+            'basisValidManual', 'basisInvalidCauseManual'};
     end
         
     methods(Static)

@@ -117,6 +117,9 @@ classdef ConditionDescriptor
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
         axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
 
+        axisValueListsAsStringsManual = {}; % G x 1 array of cellstr which define manual settings for axisValueListsAsStrings
+        axisValueListsAsStringsShortManual = {}; % G x 1 array of cells which define manual settings for axisValueListsAsStringsShort
+        
         axisRandomizeModes % G x 1 numeric of constants beginning with Axis* (see below)
         axisRandomizeWithReplacement % G x 1 logical indicating whether ot not to use replacement
         axisRandomizeResampleFromList % G x 1 cell of cells: one for each axis
@@ -587,6 +590,9 @@ classdef ConditionDescriptor
             ci.axisAttributes{idx} = makecol(attr);
             ci.axisAttributes = makecol(ci.axisAttributes);
             ci.axisValueListsManual{idx} = valueList;
+            ci.axisValueListsAsStringsManual{idx} = {};
+            ci.axisValueListsAsStringsManual{idx} = {};
+            ci.axisValueListsAsStringsShortManual{idx} = {};
             ci.axisRandomizeModes(idx) = ci.AxisOriginal;
             ci.axisRandomizeWithReplacement(idx) = false;
             ci.axisRandomizeResampleFromList{idx} = [];
@@ -608,6 +614,8 @@ classdef ConditionDescriptor
             
             ci.axisAttributes = makecol(ci.axisAttributes(mask));
             ci.axisValueListsManual = ci.axisValueListsManual(mask);
+            ci.axisValueListsAsStringsManual = ci.axisValueListsAsStringsShortManual(mask);
+            ci.axisValueListsAsStringsShortManual = ci.axisValueListsAsStringsShortManual(mask);
             ci.axisRandomizeModes = ci.axisRandomizeModes(mask);
             ci.axisRandomizeWithReplacement = ci.axisRandomizeWithReplacement(mask);
             ci.axisRandomizeResampleFromList = ci.axisRandomizeResampleFromList(mask);
@@ -679,6 +687,8 @@ classdef ConditionDescriptor
                     ci.axisAttributes{iX} = makecol(ci.axisAttributes{iX}(~maskInAxis));
                     % clear out manual value list as it's likely invalid now
                     ci.axisValueListsManual{iX} = [];
+                    ci.axisValueListsAsStringsManual{iX} = {};
+                    ci.axisValueListsAsStringsShortManual{iX} = {};
                     % and reset the randomization
                     ci.axisRandomizeModes(iX) = ci.AxisOriginal;
                 end
@@ -687,7 +697,12 @@ classdef ConditionDescriptor
             ci = ci.maskAxes(~removeAxisMask);
         end
         
-        function ci = setAxisValueList(ci, axisSpec, valueList)
+        function ci = setAxisValueList(ci, axisSpec, valueList, varargin)
+            p = inputParser();
+            p.addParameter('asStrings', {}, @iscellstr);
+            p.addParameter('asStringsShort', {}, @iscellstr);
+            p.parse(varargin{:});
+            
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
                 
@@ -710,8 +725,50 @@ classdef ConditionDescriptor
             assert(isempty(setxor(fieldnames(valueList), ci.axisAttributes{idx})), ...
                 'Value list fields must match axis attributes');
             ci.axisValueListsManual{idx} = valueList;
+            ci.axisValueListsAsStringsManual{idx} = p.Results.asStrings;
+            % if strings short not specified, use asStrings instead
+            if isempty(p.Results.asStringsShort) && ~isempty(p.Results.asStrings)
+                ci.axisValueListsAsStringsShortManual{idx} = p.Results.asStrings;
+            else
+                ci.axisValueListsAsStringsShortManual{idx} = p.Results.asStringsShort;
+            end
             
             ci = ci.notifyConditionsChanged();
+        end
+        
+        function ci = setAxisValueListDisplayAs(ci, axisSpec, strCell)
+            ci.warnIfNoArgOut(nargout);
+            idx = ci.axisLookupByAttributes(axisSpec);
+            assert(isscalar(idx));
+            
+            assert(ci.axisValueListIsManual(idx), 'You must call setAxisValueList to make this value list manual first');
+            
+            N = numel(ci.axisValueLists{idx});
+            assert(numel(strCell) == N);
+            
+            ci.axisValueListsAsStringsManual{idx} = strCell;
+            if isempty(ci.axisValueListsAsStringsShortManual{idx})
+                % also set the axisValueListAsStringsShort if not already
+                % specified
+                ci.axisValueListsAsStringsShortManual{idx} = strCell;
+            end
+            
+            ci = ci.invalidateNames();
+        end
+        
+        function ci = setAxisValueListDisplayAsShort(ci, axisSpec, strCell)
+            ci.warnIfNoArgOut(nargout);
+            idx = ci.axisLookupByAttributes(axisSpec);
+            assert(isscalar(idx));
+            
+            assert(ci.axisValueListIsManual(idx), 'You must call setAxisValueList to make this value list manual first');
+            
+            N = numel(ci.axisValueLists{idx});
+            assert(numel(strCell) == N);
+            
+            ci.axisValueListsAsStringsShortManual{idx} = strCell;
+            
+            ci = ci.invalidateNames();
         end
         
         function ci = fixAxisValueList(ci, axisSpec)
@@ -738,6 +795,8 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             for idx = 1:ci.nAxes
                 ci.axisValueListsManual(idx) = {[]};
+                ci.axisValueListsAsStringsManual{idx} = {};
+                ci.axisValueListsAsStringsShortManual{idx} = {};
                 ci.axisValueListsOccupiedOnly(idx) = false;
             end
             ci = ci.notifyConditionsChanged();
@@ -748,6 +807,8 @@ classdef ConditionDescriptor
             idx = ci.axisLookupByAttributes(axisSpec);
             
             ci.axisValueListsManual(idx) = {[]};
+            ci.axisValueListsAsStringsManual{idx} = {};
+            ci.axisValueListsAsStringsShortManual{idx} = {};
             ci.axisValueListsOccupiedOnly(idx) = false;
             ci = ci.notifyConditionsChanged();
         end
@@ -756,7 +817,9 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
             
-            [ci.axisValueListsManual{idx}]= deal({});
+            ci.axisValueListsManual{idx} = {[]};
+            ci.axisValueListsAsStringsManual{idx} = {};
+            ci.axisValueListsAsStringsShortManual{idx} = {};
             ci.axisValueListsOccupiedOnly(idx) = true;
             
             ci = ci.notifyConditionsChanged();
@@ -1128,7 +1191,8 @@ classdef ConditionDescriptor
                 ci = ci.addAxis(newAxisAttributes{iArg});
                 switch newValueListModes(iArg)
                     case ci.AxisValueListManual
-                        ci.axisValueListsManual{iArg} = newAxisValueListsManual{iArg};
+                        ci = ci.setAxisValueList(iArg, newAxisValueListsManual{iArg});
+%                         ci.axisValueListsManual{iArg} = newAxisValueListsManual{iArg};
                     case ci.AxisValueListAutoAll
                         ci = ci.setAxisValueListAutoAll(iArg);
                     case ci.AxisValueListAutoOccupied
@@ -1226,7 +1290,13 @@ classdef ConditionDescriptor
                 % for single attribute axes, convert to a match struct to
                 % make the search the same as for multi-attribute axes
                 if ~iscell(match)
-                    match = num2cell(match);
+                    if ischar(match)
+                        match = {match};
+                    elseif isnumeric(match)
+                        match = num2cell(match);
+                    else
+                        error('Unknown match class');
+                    end
                 end
                 match = struct(ci.axisAttributes{aIdx}{1}, match);
             end
@@ -1969,6 +2039,22 @@ classdef ConditionDescriptor
             ci = ci.notifyConditionsChanged();
         end
 
+        function ci = fixAttributeValueList(ci, name)
+            ci.warnIfNoArgOut(nargout);
+            iAttr = ci.getAttributeIdx(name);
+            for i = 1:numel(iAttr)
+                idx = iAttr(i);
+                ci = ci.setAttributeValueList(iidx,  ci.attributeValueLists{idx});
+            end
+        end
+        
+        function ci = fixAllAttributeValueLists(ci)
+            ci.warnIfNoArgOut(nargout);
+            for iA = 1:ci.nAxes
+                ci = ci.fixAttributeValueList(iA);
+            end
+        end
+        
         % manually set attribute bins
         function ci = binAttribute(ci, name, bins)
             ci.warnIfNoArgOut(nargout);
@@ -2256,6 +2342,25 @@ classdef ConditionDescriptor
             ci.odc = ci.odc.copy();
             ci.odc.axisValueListsAsStringsShort = v;
         end
+        
+        function v = get.axisValueListsAsStringsManual(ci)
+            if isempty(ci.axisValueListsAsStringsManual)
+                v = cell(ci.nAxes, 1);
+                v(:) = {''};
+            else
+                v = ci.axisValueListsAsStringsManual;
+            end
+        end
+        
+        function v = get.axisValueListsAsStringsShortManual(ci)
+            if isempty(ci.axisValueListsAsStringsShortManual)
+                v = cell(ci.nAxes, 1);
+                v(:) = {''};
+            else
+                v = ci.axisValueListsAsStringsShortManual;
+            end
+        end
+            
     end
 
     % build data stored inside odc (used by getters above)
@@ -2404,6 +2509,7 @@ classdef ConditionDescriptor
             p.addParameter('includeUnits', ci.includeUnits, @islogical);
             p.addParameter('logicalNotPrefix', ci.logicalNotPrefix, @ischar);
             p.addParameter('useDisplayAs', true, @islogical);
+            p.addParameter('useManualIfPresent', true, @islogical);
             p.parse(varargin{:});
            
             separator = p.Results.separator;
@@ -2432,6 +2538,25 @@ classdef ConditionDescriptor
             
             % describe the list of values selected for along each position on each axis
             for iX = 1:ci.nAxes  
+                
+                % check for usable axisValueListAsStrings(Short)Manual
+                if p.Results.useManualIfPresent
+                    if p.Results.short && ~isempty(ci.axisValueListsAsStringsShortManual{iX})
+                        if numel(ci.axisValueListsAsStringsShortManual{iX}) == numel(valueLists{iX})
+                            strCell{iX} = ci.axisValueListsAsStringsShortManual{iX};
+                            continue;
+                        else
+                            warning('Mismatch between axisValueListsAsStringsShortManual{%d} and num axis values', iX);
+                        end
+                    elseif ~p.Results.short && ~isempty(ci.axisValueListsAsStringsManual{iX})
+                        if numel(ci.axisValueListsAsStringsManual{iX}) == numel(valueLists{iX})
+                            strCell{iX} = ci.axisValueListsAsStringsManual{iX};
+                            continue;
+                        else
+                            warning('Mismatch between axisValueListsAsStringsManual{%d} and num axis values', iX);
+                        end
+                    end
+                end
                 
                 % loop over all attributes on this axis
                 attr = ci.axisAttributes{iX};

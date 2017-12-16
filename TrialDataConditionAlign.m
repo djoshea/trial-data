@@ -1080,7 +1080,9 @@ classdef TrialDataConditionAlign < TrialData
         
         function td = setAttributeValueListDisplayAs(td, attrName, displayAs)
             td.warnIfNoArgOut(nargout);
-            td = td.addAttribute(attrName);
+            if ischar(attrName)
+                td = td.addAttribute(attrName);
+            end
             td.conditionInfo = td.conditionInfo.setAttributeValueListDisplayAs(attrName, displayAs);
             td = td.postUpdateConditionInfo();
         end
@@ -1091,6 +1093,18 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo = td.conditionInfo.setAttributeDisplayAs(attrName, displayAs);
             td = td.postUpdateConditionInfo();
         end 
+        
+        function td = fixAttributeValueList(td, attrName)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.fixAttributeValueList(attrName);
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = fixAllAttributeValueLists(td)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.fixAllAttributeValueLists();
+            td = td.postUpdateConditionInfo();
+        end
         
         function td = filter(td, attrName, valueList)
             % td = filter(td, attr, valueList)
@@ -1135,6 +1149,20 @@ classdef TrialDataConditionAlign < TrialData
 
         function valueList = getAxisValueList(td, varargin)
             valueList = td.conditionInfo.getAxisValueList(varargin{:});
+        end
+        
+        function td = setAxisValueListDisplayAs(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setAxisValueListAsStrings(varargin{:});
+            % no need to update condition info since the conditions and
+            % validity won't change
+        end
+        
+        function td = setAxisValueListDisplayAsShort(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setAxisValueListAsStringsShort(varargin{:});
+            % no need to update condition info since the conditions and
+            % validity won't change
         end
         
         function td = postUpdateConditionInfo(td, clearRandomized)
