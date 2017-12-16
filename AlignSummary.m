@@ -156,7 +156,7 @@ classdef AlignSummary
         end
         
         function nvec = get.nOccurrencesByInterval(as)
-            % intervalStartMean is nMark x 1 cell array with nOccurrences x 1 vectors
+            % intervalStartMean is nMark x 1 cell array with nOccualignSummaryAggregated{iAlign}rrences x 1 vectors
             nvec = cellfun(@numel, as.intervalStartAgg);
         end
         
@@ -307,6 +307,28 @@ classdef AlignSummary
     
     % constructor methods and aggregation
     methods(Static)
+        function as = buildEmptyFromConditionAlignDescriptor(conditionDescriptor, alignDescriptor)
+            as = AlignSummary();
+            as.alignDescriptor = alignDescriptor;
+            as.conditionDescriptor = conditionDescriptor;
+            
+            as.nTrials = 0;
+            as.startAgg = EventAccumulator();
+            as.stopAgg = EventAccumulator();
+            as.markAgg = cell(alignDescriptor.nMarks);
+            as.intervalStartAgg = cell(alignDescriptor.nIntervals);
+            as.intervalStopAgg = cell(alignDescriptor.nIntervals);
+            
+            temp(conditionDescriptor.nConditions, 1) = EventAccumulator();
+            as.startAggC = temp;
+            as.stopAggC = temp;
+            
+            as.markAggC = cell(alignDescriptor.nMarks);
+            as.intervalStartAggC = cell(alignDescriptor.nIntervals);
+            as.intervalStopAggC = cell(alignDescriptor.nIntervals);
+            
+        end
+        
         % factory constructor method used by TDCA
         function as = buildFromConditionAlignInfo(conditionInfo, alignInfo)
             % build from a set of conditionInfo and alignInfo instances
@@ -938,7 +960,11 @@ classdef AlignSummary
                 intervalInfo = intervalInfo([intervalInfo.stopTime] >= tMin & [intervalInfo.startTime] <= tMax);
             end
             
-            indLabelZero = find([labelInfo.time] == 0, 1);
+            if ~isempty(labelInfo)
+                indLabelZero = find([labelInfo.time] == 0, 1);
+            else
+                indLabelZero = [];
+            end
             if any(indLabelZero)
                 zeroLabel = labelInfo(indLabelZero).name;
                 zeroLabelShort = labelInfo(indLabelZero).nameShort;

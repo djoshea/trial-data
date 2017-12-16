@@ -726,7 +726,12 @@ classdef ConditionDescriptor
                 'Value list fields must match axis attributes');
             ci.axisValueListsManual{idx} = valueList;
             ci.axisValueListsAsStringsManual{idx} = p.Results.asStrings;
-            ci.axisValueListsAsStringsShortManual{idx} = p.Results.asStringsShort;
+            % if strings short not specified, use asStrings instead
+            if isempty(p.Results.asStringsShort) && ~isempty(p.Results.asStrings)
+                ci.axisValueListsAsStringsShortManual{idx} = p.Results.asStrings;
+            else
+                ci.axisValueListsAsStringsShortManual{idx} = p.Results.asStringsShort;
+            end
             
             ci = ci.notifyConditionsChanged();
         end
@@ -1285,7 +1290,13 @@ classdef ConditionDescriptor
                 % for single attribute axes, convert to a match struct to
                 % make the search the same as for multi-attribute axes
                 if ~iscell(match)
-                    match = num2cell(match);
+                    if ischar(match)
+                        match = {match};
+                    elseif isnumeric(match)
+                        match = num2cell(match);
+                    else
+                        error('Unknown match class');
+                    end
                 end
                 match = struct(ci.axisAttributes{aIdx}{1}, match);
             end

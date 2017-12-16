@@ -30,6 +30,7 @@ classdef PopulationTrajectorySetBuilder
         
         basisValidManual
         basisInvalidCauseManual
+        
         basisValidTemporary
         basisInvalidCauseTemporary
                

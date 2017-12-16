@@ -3281,7 +3281,11 @@ classdef PopulationTrajectorySet
             prog = ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
             for iAlign = 1:pset.nAlign
                 prog.update(iAlign);
-                alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(dsMask, iAlign));
+                if ~any(dsMask)
+                    alignSummaryAggregated{iAlign} = AlignSummary.buildEmptyFromConditionAlignDescriptor(pset.conditionDescriptor, pset.alignDescriptorSet{iAlign});
+                else
+                    alignSummaryAggregated{iAlign} = AlignSummary.buildByAggregation(alignSummaryData(dsMask, iAlign));
+                end
             end
             prog.finish();
             
