@@ -19,6 +19,8 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         tMaxByTrial
         alignValidByTrial
         
+        dataByTrialCommonTimeGrouped
+        
         % time windows for trial averaged data
         tMinValidByAlignBasisCondition
         tMaxValidByAlignBasisCondition
@@ -70,6 +72,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         end
         
         function flushTrialAveragedData(odc) % built by buildDataMean
+            odc.dataByTrialCommonTimeGrouped = {}; % this is here as it depends on the grouping
             odc.dataMean = {};
             odc.dataSem = {};
             odc.tMinForDataMean = [];
