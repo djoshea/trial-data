@@ -5505,7 +5505,7 @@ classdef TrialDataConditionAlign < TrialData
             
             if ~p.Results.quick
                 % only include conditions with at least 1 trial
-                mask = trialCounts(conditionIdx) > 0;
+                mask = trialCounts(conditionIdx(2:end)) > 0;
                 au = AutoAxis(axh);
                 au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
                     conditionNames(mask), 'color', colors(mask, :));
@@ -6997,7 +6997,7 @@ classdef TrialDataConditionAlign < TrialData
                         elseif strcmp(p.Results.style, 'stairs')
                             % offset the plot so as to resemble the binning
                             % mode used
-                            xBinOffset = -p.Results.binAlignmentMode.getBinStartOffsetForBinWidth(p.Results.binWidth);
+                            xBinOffset = p.Results.binAlignmentMode.getBinStartOffsetForBinWidth(p.Results.binWidth);
                             
                             if plotErrorY
                                  [hData(iCond, iAlign), hShade] = TrialDataUtilities.Plotting.stairsError(...

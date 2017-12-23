@@ -5181,7 +5181,7 @@ classdef PopulationTrajectorySet
                     dataSem = flipud(dataSem);
                 end
                 
-                stairsXOffset = -pset.spikeFilter.binAlignmentMode.getBinStartOffsetForBinWidth(pset.timeDelta); % for stairs plotting only
+                stairsXOffset = pset.spikeFilter.binAlignmentMode.getBinStartOffsetForBinWidth(pset.timeDelta); % for stairs plotting only
                 
                 % draw error bars
                 if p.Results.showSem
