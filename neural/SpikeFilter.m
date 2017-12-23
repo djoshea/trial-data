@@ -3,10 +3,44 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
 
-    properties
+    properties % these write to and read from the underlying _I properties below
         timeDelta = 1; % sampling interval for the filtered output
-        binAlignmentMode = BinAlignmentMode.Centered;
-        resampleMethod = 'filter';
+        binAlignmentMode BinAlignmentMode = BinAlignmentMode.Centered;
+        resampleMethod char = 'filter';
+    end
+    
+    methods % Get methods that allow subclasses to provide their own value overwriting
+        % these allow subclasses to override the values
+        function v = get.timeDelta(sf)
+            v = sf.getTimeDelta(sf.timeDelta);
+        end
+        
+        function v = getTimeDelta(sf, v)
+            
+        end
+        
+        function v = get.binAlignmentMode(sf)
+            v = sf.getBinAlignmentMode(sf.binAlignmentMode);
+        end
+        
+        function v = getBinAlignmentMode(sf, v)
+            
+        end
+        
+        function v = get.resampleMethod(v)
+            v = sf.getResampleMethod(sf.getBinAlignmentMode);
+        end
+        
+        function v = getResampleMethod(sf, v)
+            
+        end
+        
+        function sf = set.resampleMethod(sf, v)
+            validList = {'filter', 'repeat', 'average', 'interp'};
+            assert(ismember(v, validList), 'Resample method must be one of filter, repeat, average, interp');
+    
+            sf.resampleMethod = v;
+        end
     end
     
     % Dependent properties are provided as a convenience, override the underlying methods
@@ -83,36 +117,6 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
                          
         function tf = get.isCausal(sf)
             tf = sf.getIsCausal();
-        end
-        
-        % these allow subclasses to override the behavior
-        function sf = set.timeDelta(sf, v)
-            sf.timeDelta = v;
-            sf = sf.postSetTimeDelta();
-        end
-        
-        function sf = postSetTimeDelta(sf)
-        end
-        
-        % these allow subclasses to override the behavior
-        function sf = set.binAlignmentMode(sf, v)
-            sf.binAlignmentMode = v;
-            sf = sf.postSetBinAlignmentMode();
-        end
-        
-        function sf = postSetBinAlignmentMode(sf)
-        end
-        
-        function sf = set.resampleMethod(sf, v)
-            validList = {'filter', 'repeat', 'average', 'interp'};
-            assert(ismember(v, validList), 'Resample method must be one of filter, repeat, average, interp');
-    
-            sf.resampleMethod = v;
-            sf = sf.postSetResampleMethod();
-        end
-        
-        function sf = postSetResampleMethod(sf)
-            
         end
         
         function str = getDescription(sf)

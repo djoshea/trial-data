@@ -1,6 +1,6 @@
 classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter 
-% when using this class, be sure to set .timeDelta == .binWidthMs so that
-% the time windows are sampled evenly. Otherwise an error will be thrown.
+% when using this class, timeDelta will automatically return  binWidthMs so that
+% the time windows are sampled evenly.
 
     methods(Access=protected)
         function str = subclassGetDescription(sf)
@@ -26,6 +26,10 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
             sf = sf@ConvolutionSpikeFilter('binWidthMs', bin, 'timeDelta', bin, p.Unmatched);
         end
         
+        function v = getTimeDelta(sf, v)
+            v = sf.binWidthMs;
+        end
+            
         % filter used for convolution, as an impulse response which may 
         % have acausal elements if indZero > 1
         function [filt, indZero] = getFilter(sf)
@@ -33,8 +37,13 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
             indZero = 1;
         end
         
-        function sf = postSetTimeDelta(sf)
-            sf.binWidthMs = sf.timeDelta;
+        % keep binWidthMs == timeDelta
+        function sf = postSetBinWidthMs(sf)
+            % this would trigger a infinte loop if AbortSet were false,
+            % so just in case
+            if sf.timeDelta ~= sf.binWidthMs
+                sf.timeDelta = sf.binWidthMs;
+            end
         end
         
         function checkOkay(sf) % superclass overrides

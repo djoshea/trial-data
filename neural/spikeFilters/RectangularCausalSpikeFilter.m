@@ -1,7 +1,7 @@
 classdef RectangularCausalSpikeFilter < ConvolutionSpikeFilter 
 
     properties
-        widthMs
+        widthMs % width of the rectangular filter. This may differ from the raw bin width which will be convolved over
     end
 
     methods(Access=protected)
@@ -26,7 +26,11 @@ classdef RectangularCausalSpikeFilter < ConvolutionSpikeFilter
         % have acausal elements if indZero > 1
         function [filt, indZero] = getFilter(sf)
             filt = onesvec(floor(sf.widthMs / sf.binWidthMs));
-            indZero = numel(filt); % this makes it causal
+            indZero = 1; % this makes it causal
+        end
+        
+        function v = getBinAlignmentMode(sf, v)
+            v = BinAlignmentMode.Causal;
         end
     end
 

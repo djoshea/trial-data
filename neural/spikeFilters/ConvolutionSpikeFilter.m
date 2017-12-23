@@ -3,13 +3,29 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
 
-    properties
+    properties(AbortSet)
         % bin width that spikes may be binned into before filtering.
         % this is different from the sampling rate of the filtered firing
         % rate, which is determined by timeDelta.
         % This setting also determines the width of the bins specified by
         % the convolution filter
         binWidthMs = 1;
+    end
+    
+    methods
+%         function v = get.binWidthMs(sf)
+%             v = sf.binWidthMs_I;
+%             if isempty(v), v = sf.binWidthMs; end
+%             if isempty(v), v = 1; end
+%         end
+
+        function v = get.binWidthMs(sf)
+            v = sf.getBinWidthMs(sf.binWidthMs);
+        end
+
+        function v = getBinWidthMs(sf, v)
+            
+        end
     end
 
     properties(Dependent)
@@ -28,7 +44,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     end
 
     methods(Abstract)
-        % filter used for convolution, as an impulse response which may 
+        % filter used for convolution, specified AS AN IMPULSE RESPONSE.
+        % Causal taps proceed to the right of zero. which may 
         % have acausal elements if indZero > 0
         % doesn't need to be normalized, we'll take care of that
         [filt, indZero] = getFilter(sf);
@@ -72,6 +89,9 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             
             del = max(filt) - min(filt);
             yl = [min(filt) - del*0.05, max(filt) + del*0.05];
+            yl(1) = min(0, yl(1));
+            yl(2) = max(0, yl(2));
+            
             ylim(yl);
             ax = AutoAxis.replace();
             
@@ -130,9 +150,9 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             t = (sf.indZero - 1)*sf.binWidthMs;
         end
         
-        function tf = getIsCausal(sf) % allows subclasses to override
-            tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
-        end
+%         function tf = getIsCausal(sf) % allows subclasses to override
+%             tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
+%         end
 
         % spikeCell is nTrains x 1 cell array of time points which will include 
         % times in the preceding and postceding padding window.
@@ -157,7 +177,9 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             end
             
             filt = sf.filter;
-            % normalization is critical
+            
+            % normalization is critical to maintain filtered signal as a
+            % spike rate
             filt = filt ./ sum(filt);
             
              % get time vector for bins including pre and post padding to accomodate filter
@@ -186,8 +208,6 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % needed for the convolution, but WTIH the potential extra
             % samples needed for the input to resampling from binWidthMs to
             % timeDelta.
-            
-            
             if timeDelta > sf.binWidthMs
                 % we need to set the bin limits wider to facilitate
                 % resampling, as per the first example above.
