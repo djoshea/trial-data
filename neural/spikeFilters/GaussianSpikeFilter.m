@@ -15,10 +15,12 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
         % future
         delayPeak 
         
-        % truncate the filter from looking further into the future at (ms in the future):
+        % truncate the filter from looking further into the future at (ms
+        % in the future), acausal taps
         truncateFuture
 
-        % truncate the filter from looking further into the past (ms in the past) 
+        % truncate the filter from looking further into the past (ms in the
+        % past), causal taps
         truncatePast
     end
 
@@ -52,11 +54,11 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
             % regardless we must overlap with 0
             tMin = min(0, max(ceil(-sigmaMultiple*sf.sigma) + sf.delayPeak, -sf.truncatePast));
 
-            % past is positive time
+            % past is positive time (causal taps)
             % we care about 3 sigma in the past from the delayPeak
             % unless we're truncating beyond a certain point in the past
             % regardless we must overlap with 0
-            tMax = max(0, min(floor(sigmaMultiple*sf.sigma) + sf.delayPeak, sf.truncateFuture));
+            tMax = max(0, min(floor(sigmaMultiple*sf.sigma) + sf.delayPeak, sf.truncatePast));
 
             % compute the gaussian
             t = TrialDataUtilities.Data.linspaceIntercept(tMin, sf.binWidthMs, tMax, 0);
@@ -64,7 +66,7 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
             
             % unnecessary unless our distribution doesn't have support over
             % zero, which is inadvisable
-            filt(t < -sf.truncatePast | t > sf.truncateFuture) = 0;
+            filt(t < -sf.truncateFuture | t > sf.truncatePast) = 0;
 
             indZero = find(t == 0);
         end

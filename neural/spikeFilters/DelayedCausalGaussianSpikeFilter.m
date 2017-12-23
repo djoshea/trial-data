@@ -7,6 +7,10 @@ classdef DelayedCausalGaussianSpikeFilter < GaussianSpikeFilter
             sf.delayPeak = sf.halfWidthSigmas * sf.sigma;
             sf.truncateFuture = 0;
         end
+        
+        function v = getBinAlignmentMode(sf, v)
+            v = BinAlignmentMode.Causal;
+        end
     end
     
     methods(Access=protected)
