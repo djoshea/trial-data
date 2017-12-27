@@ -2872,54 +2872,6 @@ classdef PopulationTrajectorySet
             end
             prog.finish();
             
-            %             prog = ProgressBar(pset.nBases, 'Resampling, filtering data by basis');
-            %
-            %             showProgressInner = false;
-            %             for iBasis = 1:nBases
-            %                 prog.update(iBasis);
-            %                 for iAlign = 1:nAlign
-            %                     if ~isSpikeChannel(iBasis)
-            %                         % from TDCA.getAnalogAsMatrix
-            %                         [dataByTrial{iBasis, iAlign}, tvec] = ...
-            %                             TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell{iBasis, iAlign}, timeCell{iBasis, iAlign}, ...
-            %                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
-            %                             'showProgress', showProgressInner);
-            %                     else
-            %                         % from TDCA.getSpikeRateFilteredAsMatrix
-            %
-            %                         % convert to .zero relative times since that's what spikeCell
-            %                         % will be in (when called in this class)
-            %                         timeInfo = timeInfoCell{iBasis, iAlign};
-            %
-            %                         [dataByTrial{iBasis, iAlign}, tvec] = ...
-            %                             spikeFilter.filterSpikeTrainsWindowByTrialAsMatrix(dataCell{iBasis, iAlign}, ...
-            %                             timeInfo.start - timeInfo.zero, timeInfo.stop - timeInfo.zero, ...
-            %                             unitsPerSecondCell{iBasis, iAlign}, ...
-            %                             'timeDelta', timeDelta, 'timeReference', 0, 'interpolateMethod', 'linear', ...
-            %                              'showProgress', showProgressInner);
-            %                     end
-            %
-            %                     % store the time limits used in the time vector for
-            %                     % the dataByTrial{..} matrix
-            %                     if ~isempty(tvec)
-            %                         tMinForDataByTrial(iBasis, iAlign) = min(tvec);
-            %                         tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
-            %                     end
-            %
-            %                     % bring trial start stop in within the limits of tvec,
-            %                     % to deal with any rounding issues
-            %                     tMinByTrial{iBasis, iAlign}(tMinByTrial{iBasis, iAlign} < ...
-            %                         tMinForDataByTrial(iBasis, iAlign)) = tMinForDataByTrial(iBasis, iAlign);
-            %                     tMaxByTrial{iBasis, iAlign}(tMaxByTrial{iBasis, iAlign} > ...
-            %                         tMaxForDataByTrial(iBasis, iAlign)) = tMaxForDataByTrial(iBasis, iAlign);
-            %
-            % %                     assert(min(tvec) == nanmin(tMinByTrial{iBasis, iAlign}) && ...
-            % %                            max(tvec) == nanmax(tMaxByTrial{iBasis, iAlign}), ...
-            % %                         'Time vector returned by TrialData has invalid limits');
-            %                 end
-            %             end
-            %             prog.finish();
-            
             % apply translation / normalization to data
             if ~isempty(pset.translationNormalization)
                 dataByTrial = pset.translationNormalization.applyTranslationNormalizationToData(dataByTrial);
@@ -3952,7 +3904,7 @@ classdef PopulationTrajectorySet
             % takes same parameters as arrangeNbyTAbyCbyTrials, in particular,
             % 'maxTrials'
             pset.warnIfNoArgOut(nargout);
-            [pset.dataCachedSampledTrialsTensor, pset.dataCachedSampledTrialCounts] = pset.arrangeNbyTAbyCbyTrials(...
+            [pset.dataCachedSampledTrialsTensor, pset.dataCachedSampledTrialCounts] = pset.arrangeNbyTAbyCbyR(...
                 'message', 'Building individual trials tensor for dataCachedSampledTrialsTensor', varargin{:});
             
             % now compute means without those trials. we use a simplifying
@@ -6037,6 +5989,7 @@ classdef PopulationTrajectorySet
             p.addParameter('sameTrialsEachBasis', pset.simultaneous, @islogical);
             p.addParameter('samplingMode', 'takeFirstValid', @(x) any(validatestring(x, {'takeFirstValid', 'takeFirst', 'fixedOrder', 'randomWithoutReplacement', 'randomWithReplacement'}, 'arrangeNbyRbyTA', 'samplingMode'))); % see above.            
             p.addParameter('numTrials', NaN, @isscalar); % the exact number of trials to sample, must be specified manually if not simultaneous
+            p.addParameter('truncateNumTrialsToMaxOverBases', false, @islogical); % if no basis has enough trials, lower numTrials to the max across bases
             p.addParameter('trialIdx', [], @(x) isempty(x) || isvector(x)); % when fixedOrder is the sampling mode
             p.addParameter('randomSeed', 1, @isscalar);
             p.addParameter('byCondition', false, @islogical); % select numTrials PER condition instead of total
@@ -6193,6 +6146,7 @@ classdef PopulationTrajectorySet
                 trialIdx = makecol(trialIdx);
             end
             
+            alignValid = pset.alignValid;
             if ~byCondition
                 dataByTrialSubset = cell(nBases, nAlign); 
                 trialIdxInfo = cell(nBases, 1);
@@ -6204,9 +6158,15 @@ classdef PopulationTrajectorySet
 
                 for iBasis = 1:nBases
                     idxBasis = basisIdx(iBasis);
-                    if ~basisValid(idxBasis), continue; end
-
-                    if ~sameTrialsEachBasis
+                    
+                    % trialIdxCommon is used when sameTrialsEachBasis == true
+                    % trialIdx is the original picked trials
+                    % trialIdxSelect are the valid trials we pick from dataByTrial
+    
+                    if ~basisValid(idxBasis)
+                        trialIdxSelect = [];
+                        trialIdx = [];
+                    elseif ~sameTrialsEachBasis
                         % pick a new set of trials each basis
                         [trialIdx, validTrialMask] = pickTrialsForBasis(idxBasis);    
                         trialIdxSelect = trialIdx;
@@ -6222,9 +6182,10 @@ classdef PopulationTrajectorySet
                             trialIdxSelect = trialIdxCommon;
                         end
                     end
-
+                        
                     for iAlign = 1:nAlign
                         idxAlign = alignIdx(iAlign);
+                        if ~alignValid(idxAlign), continue; end
                         dataByTrialSubset{iBasis, iAlign} = dataByTrial{idxBasis, idxAlign}(trialIdxSelect, :);
                         markInvalid = ~validTrialMask(trialIdxSelect);
                         dataByTrialSubset{iBasis, iAlign}(markInvalid, :) = NaN;
@@ -6243,26 +6204,38 @@ classdef PopulationTrajectorySet
                 if sameTrialsEachBasis
                     assert(pset.simultaneous); % should have already been checked above
                     firstValidBasis = find(basisValid, 1);
-                    trialIdx = pickTrialsForBasisByCondition(firstValidBasis);                
+                    trialIdxCommon = pickTrialsForBasisByCondition(firstValidBasis);                
                 end
 
                 for iBasis = 1:nBases
                     idxBasis = basisIdx(iBasis);
-                    if ~basisValid(idxBasis), continue; end
-
-                    if ~sameTrialsEachBasis
-                        % pick a new set of trials each basis
-                        trialIdx = pickTrialsForBasisByCondition(idxBasis);    
+                    if ~basisValid(idxBasis)
+                        trialIdx = [];
+                    elseif ~sameTrialsEachBasis
+                            % pick a new set of trials each basis
+                            trialIdx = pickTrialsForBasisByCondition(idxBasis);
+                    else
+                        trialIdx = trialIdxCommon;
                     end
 
                     for iAlign = 1:nAlign
                         idxAlign = alignIdx(iAlign);
+                        if ~alignValid(idxAlign), continue; end
                         for iCondition = 1:nConditions
                             dataByTrialSubset{iBasis, iAlign,iCondition} = dataByTrial{idxBasis, idxAlign}(trialIdx{iCondition}, :);
                         end
                     end
                     trialIdxInfo(iBasis, :) = trialIdx;
                 end
+            end
+            
+            numTrialsActual = nan(size(trialIdxInfo);
+            for i = 1:numel(trialIdxInfo)
+                numTrialsActual(i) = numel(trialIdxInfo{i});
+            end
+            
+            if p.Results.truncateNumTrialsToMaxOverBases
+                numTrials = min(numTrials, max(numTrialsActual(:)));
             end
             
             if p.Results.fillNanToNumTrials
@@ -6278,136 +6251,106 @@ classdef PopulationTrajectorySet
             end
             
             indexInfo.numTrials = numTrials;
+            indexInfo.numTrialsActual = numTrialsActual;
             indexInfo.basis = basisIdx;
+            indexInfo.basisValidMask = pset.basisValid(basisIdx);
             indexInfo.align = alignIdx;
             indexInfo.condition = conditionIdx;
+            
             indexInfo.trial = trialIdxInfo;
+            if sameTrialsEachBasis
+                if byCondition
+                    indexInfo.trialShared = trialIdxInfo{1, :}';
+                else
+                    indexInfo.trialShared = trialIdxInfo{1};
+                end
+            else
+                if byCondition
+                    indexInfo.trialShared = cell(pset.nConditions, 1);
+                    indexInfo.trialShared(:) = deal({nan(numTrials, 1)});
+                else
+                    indexInfo.trialShared = nan(numTrials, 1);
+                end
+            end
         end
         
-        function [NbyRbyTA, indexInfo, tvec, avec] = arrangeNbyRbyTA(pset, varargin)
+        function [eachAlign_NbyRbyT, indexInfo, tvecCell] = arrangeEachAlign_NbyRbyT(pset, varargin)
+            % eachAlign_NbyRbyT will be nAlign x 1 cell of nBases x numTrials x nTimeDataMean(iAlign) tensors
+            % tvecCell will be tvecDataMean by default, unless timeDelta is specified
             p = inputParser();
-            p.addParameter('splitByAlign', false, @islogical); % keep as nAlign x 1 cell of N x R x T
-            p.addParameter('validTimepointsAllConditionsBasesOnly', false, @islogical); % keep only timepoints where all valid bases have data
-
-            % splicing and resampling
-            p.addParameter('spliceAlignments', false, @islogical);
-            p.addParameter('spliceOptions', struct(), @isstruct);
+            p.addParameter('validTimepointsAllBasesOnly', false, @islogical); % keep only timepoints where all valid bases have data
             p.addParameter('timeDelta', pset.timeDelta, @isscalar); % allow for data to be resampled in time
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [dataByTrialSubset, indexInfo] = pset.computeDataByTrialSubset(pset, 'commonTime', true, p.Unmatched);
+            [dataByTrial, indexInfo] = pset.computeDataByTrialSubset(p.Unmatched, ...
+                'byCondition', false, ...
+                'commonTime', true, ...
+                'filNanToNumTrials', true);
             
-            % use dataByTrial reshaped to match dataMean
-            dataByTrial = pset.computeDataByTrialCommonTime();
             tvecCell = pset.tvecDataMean;
             
             % dataByTrial is nBases x nAlign cell of R x T_a
             % data will be nAlign x 1 cell of N x R x T_a
-            data = cellvec(nAlign);
+            eachAlign_NbyRbyT = cellvec(indexInfo.nAlign);
             for iAlign = 1:numel(alignIdx)
                 idxAlign = alignIdx(iAlign);
+                if ~pset.alignValid(idxAlign), continue, end;
                 
                 % R x T x N --> N x R x T
-                data{iAlign} = permute(cat(3, dataByTrial{:, idxAlign}), [3 1 2]);
+                eachAlign_NbyRbyT{iAlign} = permute(cat(3, dataByTrial{:, idxAlign}), [3 1 2]);
                 
-                % NaN invalid bases but DONT SLICE YET
-                data{iAlign}(~pset.basisValid, :, :) = NaN;
-                
-                % select trials
-                data{iAlign} = data{iAlign}(:, rmask, :);
-            end
-                        
-            if p.Results.spliceAlignments
-                % data is N x R x T --> N x T x R
-                data = cellfun(@(d) permute(d, [1 3 2]), data, 'UniformOutput', false);
-                data = TrialDataUtilities.Data.spliceTrajectories(data, 'basisMask', pset.basisValid, p.Results.spliceOptions);
-                data = ipermute(data, [1 3 2]);
-                
-                % reslice into cell
-                data = squeeze(TensorUtils.splitAlongDimension(data, 3, pset.nTimeDataMean));
+                if p.Results.validTimepointsAllBasesOnly
+                    % determine timepoints where all valid bases have data for all actual trials in the cell
+                    rMaskSomeNonNaN = any(eachAlign_NbyRbyT{iAlign}, 2);
+                    Tmask = all(all(~isnan(eachAlign_NbyRbyT{iAlign}(indexInfo.basisValidMask, rMaskSomeNonNaN, :)), 1), 2);
+                    eachAlign_NbyRbyT{iA} = eachAlign_NbyRbyT{iA}(:, :, Tmask);
+                end
             end
             
             if p.Results.timeDelta ~= pset.timeDelta
                 % interp to new time delta
-                for iA = 1:nAlign
-                    [data{iA}, tvecCell{iA}] = TrialDataUtilities.Data.resampleTensorInTime(data{iA}, 3 ,...
+                for iA = 1:indexInfo.nAlign
+                    [eachAlign_NbyRbyT{iA}, tvecCell{iA}] = TrialDataUtilities.Data.resampleTensorInTime(eachAlign_NbyRbyT{iA}, 3 ,...
                         tvecCell{iA}, 'timeDelta', p.Results.timeDelta);
                 end
             end
-            
-            % figure out which bases we're keeping and select them in the
-            % order specified
-            bidx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
-            basisValidMask = pset.basisValid;
-            if p.Results.validBasesOnly
-                bidx = bidx(basisValidMask(bidx));
-            end
-            basisIdx = bidx;
-            
-            if p.Results.splitByAlign
-                for iA = 1:nAlign
-                    data{iA}(~basisValidMask, :, :) = NaN;
-                    if p.Results.validTimepointsAllConditionsBasesOnly
-                        Tmask = all(all(~isnan(data{iA}(basisValidMask, :, :)), 1), 2);
-                        data{iA} = data{iA}(:, :, Tmask);
-                    end
-                    data{iA} = data{iA}(bidx, :, :);
-                end
-
-                NbyRbyTA = data;
-                tvec = tvecCell;
-                avec = [];
-            else
-                [NbyRbyTA, avecRaw] = TensorUtils.catWhich(3, data{:});
-                avec = makecol(alignIdx(avecRaw));
-                tvec = cat(1, tvecCell{:});
-                % nan out invalid bases
-                NbyRbyTA(~basisValidMask, :, :) = NaN;
-                
-                if p.Results.validTimepointsAllConditionsBasesOnly
-                    TAmask = all(all(~isnan(NbyRbyTA(basisValidMask, :, :)), 1), 2);
-                    NbyRbyTA = NbyRbyTA(:, :, TAmask);
-                end
-                
-                NbyRbyTA = NbyRbyTA(bidx, :, :);
-            end
-            
-            indexInfo.align = alignIdx;
-            indexInfo.condition = conditionIdx;
-            indexInfo.basis = basisIdx;
-            indexInfo.trial = find(rmask);
         end
         
-        function [NbyTAbyR, indexInfo, tvec, avec, basisIdx] = arrangeNbyTAbyR(pset, varargin)
-            pset.assertSimultaneous();
+        function [NbyRbyTA, indexInfo, tvec, avec] = arrangeNbyRbyTA(pset, varargin)
+            p = inputParser(); 
+            % splicing and resampling
+            p.addParameter('spliceAlignments', false, @islogical);
+            p.addParameter('spliceOptions', struct(), @isstruct);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
             
-            [NbyRbyTA, indexInfo, tvec, avec, basisIdx] = pset.arrangeNbyRbyTA(pset, varargin{:}, 'splitByAlign', false);
+            [data, indexInfo, tvecCell] = pset.arrangeEachAlign_NbyRbyT(p.Unmatched);
+                
+            if p.Results.spliceAlignments
+                % data is N x R x T --> N x T x R
+                data = cellfun(@(d) permute(d, [1 3 2]), data, 'UniformOutput', false);
+                data = TrialDataUtilities.Data.spliceTrajectories(data, 'basisMask', pset.basisValid(indexInfo.basis), p.Results.spliceOptions);
+                NbyRbyTA = ipermute(data, [1 3 2]);
+            else
+                NbyRbyTA = TensorUtils.catWhich(3, data{:});
+            end
+            
+            [tvec, avec] = TensorUtils.catWhich(1, tvecCell{:});
+            avec = indexInfo.align(avec);
+        end
+        
+        function [NbyTAbyR, indexInfo, tvec, avec] = arrangeNbyTAbyR(pset, varargin)
+            [NbyRbyTA, indexInfo, tvec, avec] = pset.arrangeNbyRbyTA(pset, varargin{:});
             NbyTAbyR = permute(NbyRbyTA, [1 3 2]);
         end
         
         function [RTAbyN, indexInfo, rvec, tvec, avec, nvec] = arrangeRTAbyN(pset, varargin)
-            % out is C*T*A x N concatenated matrix
-            pset.assertSimultaneous();
-            
-            p = inputParser();
-            p.addParameter('validTimepointsAllBasesOnly', false, @islogical); % keep only timepoints where all bases have data
-            p.KeepUnmatched = true;
-            p.parse(varargin{:});
-            
+            % out is R*T*A x N concatenated matrix
             [NbyRbyTA, indexInfo, tvec, avec] = pset.arrangeNbyRbyTA(p.Unmatched);
-            labels = {indexInfo.basis, indexInfo.trial, [tvec, avec]};
+            labels = {indexInfo.basis, indexInfo.trialShared, [tvec, avec]};
             % we include dim 4 as this would hold randomized samples
             [RTAbyN, labelsOut] = TensorUtils.reshapeByConcatenatingDims(NbyRbyTA, {[3 2], 1}, labels);
-            
-            if p.Results.validTimepointsAllBasesOnly
-                if p.Results.validBasesOnly
-                    RTAmask = all(~isnan(RTAbyN), 2);
-                else
-                    RTAmask = all(~isnan(RTAbyN(:, pset.basisValid)), 2);
-                end
-                RTAbyN = RTAbyN(RTAmask, :);
-            end
             
             rvec = labelsOut{1}(:, 1);
             tvec = labelsOut{1}(:, 2);
@@ -6418,8 +6361,6 @@ classdef PopulationTrajectorySet
         % added primarily for dpca-type noise floor
         function [NbyTAbyCbyR, nTrials_NbyC, tvec, avec, whichTrials] = arrangeNbyTAbyCbyR(pset, varargin)
             p = inputParser();
-            p.addParameter('maxTrials', Inf, @isscalar);
-            p.addParameter('chooseRandom', false, @islogical);
             
             % if the dataMean for a given basis, align, condition has S
             % samples, then ignore individual trials with fewer than
