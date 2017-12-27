@@ -555,7 +555,6 @@ classdef StateSpaceProjection
                 
                 b.tMinForDataByTrial = pset.tMinForDataByTrial;
                 b.tMaxForDataByTrial = pset.tMaxForDataByTrial;
-                b.alignValidByTrial = pset.alignValidByTrial;
                 
                 % preserve the trial lists
                 % nBases x nConditions --> nBasesProj x nConditions

@@ -43,7 +43,6 @@ classdef PopulationTrajectorySetBuilder
         dataByTrial
         tMinForDataByTrial
         tMaxForDataByTrial
-        alignValidByTrial
         tMinByTrial
         tMaxByTrial
         dataByTrialCommonTimeGrouped
@@ -94,7 +93,7 @@ classdef PopulationTrajectorySetBuilder
         fDataSourceInfo = {'dataSources', 'basisDataSourceIdx', 'basisDataSourceChannelNames'};
         
         fSingleTrial = {'dataSources', 'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
-            'alignValidByTrial', 'tMinByTrial', 'tMaxByTrial', 'dataByTrialCommonTimeGrouped'};
+            'tMinByTrial', 'tMaxByTrial', 'dataByTrialCommonTimeGrouped'};
         
         fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
                 'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
