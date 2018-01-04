@@ -29,17 +29,17 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         dataMean
         dataSem
         dataValid
-        dataNTrials
+        dataNumTrialsRaw
         trialLists
         tMinForDataMean
         tMaxForDataMean
-        
-        % noise estimates from scaled differences of trials
-        dataDifferenceOfTrialsScaledNoiseEstimate
-        
-        % data mean randomized via resampling and high/low intervals
-        dataIntervalHigh
-        dataIntervalLow
+
+%         % noise estimates from scaled differences of trials
+%         dataDifferenceOfTrialsScaledNoiseEstimate
+%         
+%         % data mean randomized via resampling and high/low intervals
+%         dataIntervalHigh
+%         dataIntervalLow
     end
 
     methods
@@ -77,16 +77,17 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.dataSem = {};
             odc.tMinForDataMean = [];
             odc.tMaxForDataMean = [];
-            odc.flushDataNTrials();
+            odc.flushValid();
+            odc.flushDataNumTrials();
             odc.flushTimeWindowsByAlignBasisCondition();
             odc.flushRandomizedTrialAveragedData();
-            odc.flushDifferenceOfTrialsNoiseEstimate();
+%             odc.flushDifferenceOfTrialsNoiseEstimate();
             odc.flushAlignSummaryData();
         end
         
-        function flushDataNTrials(odc) % built by buildDataNTrials
+        function flushDataNumTrials(odc) % built by builddataNumTrials
             odc.dataValid = {};
-            odc.dataNTrials = {};
+            odc.dataNumTrialsRaw = {};
             odc.trialLists = {};
         end
         
@@ -101,14 +102,14 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.alignSummaryAggregated = {};
         end
 
-        function flushRandomizedTrialAveragedData(odc)
-            odc.dataIntervalHigh = {};
-            odc.dataIntervalLow = {};
-        end
+%         function flushRandomizedTrialAveragedData(odc)
+%             odc.dataIntervalHigh = {};
+%             odc.dataIntervalLow = {};
+%         end
         
-        function flushDifferenceOfTrialsNoiseEstimate(odc)
-            odc.dataDifferenceOfTrialsScaledNoiseEstimate = [];
-        end
+%         function flushDifferenceOfTrialsNoiseEstimate(odc)
+%             odc.dataDifferenceOfTrialsScaledNoiseEstimate = [];
+%         end
     end
 
 end

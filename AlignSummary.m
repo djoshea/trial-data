@@ -19,6 +19,8 @@ classdef AlignSummary
     end
     
     properties(Dependent, SetAccess=protected)
+        minTimeDelta
+        
         nConditions
         
         nMarks
@@ -140,6 +142,10 @@ classdef AlignSummary
     methods % Simple dependent properties
         function n = get.nConditions(as)
             n = numel(as.nTrialsByCondition);
+        end
+        
+        function v = get.minTimeDelta(as)
+            v = as.alignDescriptor.minTimeDelta;
         end
         
         function n = get.nMarks(as)
@@ -312,14 +318,19 @@ classdef AlignSummary
             as.alignDescriptor = alignDescriptor;
             as.conditionDescriptor = conditionDescriptor;
             
+            delta = alignDescriptor.minTimeDelta;
+            
             as.nTrials = 0;
-            as.startAgg = EventAccumulator();
-            as.stopAgg = EventAccumulator();
+            as.startAgg = EventAccumulator([], delta);
+            as.stopAgg = EventAccumulator([], delta);
             as.markAgg = cell(alignDescriptor.nMarks);
             as.intervalStartAgg = cell(alignDescriptor.nIntervals);
             as.intervalStopAgg = cell(alignDescriptor.nIntervals);
             
             temp(conditionDescriptor.nConditions, 1) = EventAccumulator();
+            for i = 1:numel(temp)
+                temp(i).delta = delta;
+            end
             as.startAggC = temp;
             as.stopAggC = temp;
             
@@ -349,14 +360,14 @@ classdef AlignSummary
             as.nTrials = nnz(alignInfo.valid);
             
              % compute summary statistics for all trials
-            as.startAgg = EventAccumulator(startData);
-            as.stopAgg = EventAccumulator(stopData);
+            as.startAgg = EventAccumulator(startData, as.minTimeDelta);
+            as.stopAgg = EventAccumulator(stopData, as.minTimeDelta);
             
             % compute summary statistics for EACH occurrence of EACH
             % mark and interval event.
-            as.markAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d), markData, 'UniformOutput', false);
-            as.intervalStartAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d), intervalStartData, 'UniformOutput', false);
-            as.intervalStopAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d), intervalStopData, 'UniformOutput', false);
+            as.markAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), markData, 'UniformOutput', false);
+            as.intervalStartAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), intervalStartData, 'UniformOutput', false);
+            as.intervalStopAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), intervalStopData, 'UniformOutput', false);
                         
             % group the data by condition into a flattened nConditions x 1
             % array
@@ -364,9 +375,9 @@ classdef AlignSummary
             [startGrouped, stopGrouped] = conditionInfo.groupElementsFlattened(startData, stopData);
  
             % compute summary statistics for each condition separately
-            temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d), startGrouped, 'UniformOutput', false);
+            temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), startGrouped, 'UniformOutput', false);
             as.startAggC = cat(1, temp{:}); % only new versions of Matlab support cellfun uniform output with objects
-            temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d), stopGrouped, 'UniformOutput', false);
+            temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), stopGrouped, 'UniformOutput', false);
             as.stopAggC = cat(1, temp{:});
             
             as.markAggC = aggMultipleEventByCondition(markData, conditionInfo);
@@ -390,7 +401,7 @@ classdef AlignSummary
                 
                 for iE = 1:nEvents
                     dataGrouped = ci.groupElementsFlattened(dataCell{iE});          
-                    out = cellfun(@(d) EventAccumulator.constructForEachColumn(d)', dataGrouped, 'UniformOutput', false); % nConditions x 1 cell of 1 x nOccurrences arrays
+                    out = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta)', dataGrouped, 'UniformOutput', false); % nConditions x 1 cell of 1 x nOccurrences arrays
                     agg{iE} = cat(1, out{:}); % nConditions x nOccurrences
                 end
             end
@@ -501,6 +512,7 @@ classdef AlignSummary
             
             % let aggregation handle the non-condition specific values
             as = AlignSummary.buildByAggregation(alignSummarySet, p.Results);
+            minTimeDelta = max(cellfun(@(as) as.minTimeDelta, alignSummarySet));
             
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
@@ -534,8 +546,8 @@ classdef AlignSummary
             function out = vertcatPadCols(varargin)
                 nC = cellfun(@(x) size(x, 2), varargin);
                 newC = max(nC);
-                for i = 1:numel(varargin)
-                    varargin{i} = cat(2, varargin{i}, repmat(EventAccumulator(), size(varargin{i}, 1), newC - nC(i)));
+                for j = 1:numel(varargin)
+                    varargin{j} = cat(2, varargin{j}, repmat(EventAccumulator([], minTimeDelta), size(varargin{j}, 1), newC - nC(i)));
                 end
                 
                 out = cat(1, varargin{:});

@@ -54,15 +54,15 @@ classdef PopulationTrajectorySetBuilder
         tMaxForDataMean
         dataMean
         dataSem
-        dataNTrials
+        dataNumTrialsRaw
         trialLists
         dataValid
         alignSummaryData
         basisAlignSummaryLookup
         
         % fTrialAvgCrossValidation
-        dataCachedSampledTrialsTensor
-        dataCachedMeanExcludingSampledTrialsTensor
+        dataCachedSampledTrials
+        dataCachedMeanExcludingSampledTrials
         dataCachedSampledTrialCounts
         
         %% fDiffTrialsNoise
@@ -72,7 +72,7 @@ classdef PopulationTrajectorySetBuilder
         dataMeanRandomized
         dataSemRandomized
         dataDifferenceOfTrialsScaledNoiseEstimateRandomized
-        dataNTrialsRandomized
+        dataNumTrialsRawRandomized
 %         dataIntervalHigh
 %         dataIntervalLow
     end
@@ -97,16 +97,16 @@ classdef PopulationTrajectorySetBuilder
         
         fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
                 'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
-                'dataNTrials', 'dataValid', ...
+                'dataNumTrialsRaw', 'dataValid', ...
                 'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists'};
             
-        fTrialAvgCrossValidation = {'dataCachedSampledTrialsTensor', 'dataCachedMeanExcludingSampledTrialsTensor', ...
+        fTrialAvgCrossValidation = {'dataCachedSampledTrials', 'dataCachedMeanExcludingSampledTrials', ...
                 'dataCachedSampledTrialCounts'};
             
         fDiffTrialsNoise = {'dataDifferenceOfTrialsScaledNoiseEstimate'};
         
         fTrialAvgRandomized = {'dataMeanRandomized', 'dataSemRandomized', ...
-            'dataDifferenceOfTrialsScaledNoiseEstimateRandomized', 'dataNTrialsRandomized'};
+            'dataDifferenceOfTrialsScaledNoiseEstimateRandomized', 'dataNumTrialsRawRandomized'};
         
         fCanBeEmptyExceptions = {'translationNormalization', 'conditionDescriptorRandomized', ...
             'basisInvalidCauseTemporary', 'basisValidTemporary', ...

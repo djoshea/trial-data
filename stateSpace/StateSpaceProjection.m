@@ -544,13 +544,6 @@ classdef StateSpaceProjection
                     % simultaneous already, so we just keep the first.
                     b.tMinByTrial = repmat(pset.tMinByTrial(1), proj.nBasesProj, 1);
                     b.tMaxByTrial = repmat(pset.tMaxByTrial(1), proj.nBasesProj, 1);
-                    
-%                     b.tMinByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
-%                         TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
-%                             cat(2, pset.tMinByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmax), 2);
-%                     b.tMaxByTrial(:, iAlign) = TensorUtils.selectEachAlongDimension(...
-%                         TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
-%                             cat(2, pset.tMaxByTrial{:, iAlign}), 2, proj.decoderKbyN, @nanmin), 2);
                 end
                 
                 b.tMinForDataByTrial = pset.tMinForDataByTrial;
