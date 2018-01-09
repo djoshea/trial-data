@@ -61,13 +61,8 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     end
     [tMinRaw, tMaxRaw, indMin, indMax] = TrialDataUtilities.Data.getValidTimeExtents(timeCell, dataCell);
     
-    nTimes = cellfun(@numel, timeCell);
     if isempty(timeDelta)
-        if all(nTimes == 1)
-            timeDelta = 1;
-        else
-            timeDelta = min(origDelta);
-        end
+        timeDelta = min(origDelta);
     end
     
     % clean up small discrepancies

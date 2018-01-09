@@ -830,7 +830,7 @@ classdef StateSpaceProjectionStatistics
             if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
                 % grab difference of trials scaled estimate, and shape into
                 % tensor (N x TA x C --> N x TA x Attr)
-                scaledNoiseEstimate_NbyTAbyAttr = reshape(pset.dataDifferenceOfTrialsScaledNoiseEstimate, ...
+                scaledNoiseEstimate_NbyTAbyAttr = reshape(cat(2, pset.dataDifferenceOfTrialsScaledNoiseEstimate{:}), ...
                     [pset.nBases, sum(pset.nTimeDataMean), pset.conditionDescriptor.conditionsSize]);
                 scaledNoiseEstimate_NvbyTAbyAttr = TensorUtils.selectAlongDimension(scaledNoiseEstimate_NbyTAbyAttr, 1, proj.basisValid);
                 

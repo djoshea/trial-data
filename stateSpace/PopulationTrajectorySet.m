@@ -153,7 +153,8 @@ classdef PopulationTrajectorySet
     end
 
     % Properties whose values are computed dynamically and persist within odc
-    % or are specified manually and persist within manualData
+    % or are specified manually and persist within manualData. They also need to
+    % be accessed by PopulationTrajectorySetBuilder
     properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)
         % Alignment summary statistics by basis by align
 
@@ -210,18 +211,6 @@ classdef PopulationTrajectorySet
         tMinByTrial
         tMaxByTrial
 
-        %% FOR INDIVIDUAL TRIAL DATA, BUT LINKED TO THE CONDITIONS SINCE ONLY VALID TRIALS ARE INCLUDED
-        % these are computed from dataByTrial if dataSourceManual is false,
-        % else stored in the corresponding *Manual property
-
-        % nBases x nAlign cell each containing nTrials x nTime analog data
-        % for that bases for tha alignment in order by trial number. These
-        % will be guaranteed to share the same time vector across bases,
-        % unlike dataByTrial. This time vector will be given by pset.tvecDataMean
-        % Unlike dataByTrial, this will depend on the ConditionDescriptor
-        % as well for the grouping
-        dataByTrialCommonTimeGrouped
-
         %% BELOW ARE FOR TRIAL-AVERAGED DATA WITHIN CONDITION
         % these are computed from dataByTrial if dataSourceManual is false,
         % else stored in the corresponding *Manual property
@@ -244,6 +233,12 @@ classdef PopulationTrajectorySet
         % conditions and bases, but which differ across aligns. Invalid
         % portions of the bases with smaller windows will be filled with
         % NaNs.
+        
+        % containing the start and stop times for
+        % which sufficient trials exist to compute a trial-average for each
+        % align, basis, and conditions
+        tMinValidByAlignBasisCondition
+        tMaxValidByAlignBasisCondition
 
         % nAlign x 1 numeric vectors indicating the time window used for each
         % alignmnet for the dataMean and dataIntervalHigh/Low cells
@@ -278,7 +273,7 @@ classdef PopulationTrajectorySet
         % centered distribution of the estimation noise on the dataMean
         % traces. These are used by StateSpaceProjectionStatistics in
         % estimating a noise floor (buildDifferenceOfTrials)
-%         dataDifferenceOfTrialsScaledNoiseEstimate % built by buildDifferenceOfTrials
+        dataDifferenceOfTrialsScaledNoiseEstimate % built by buildDifferenceOfTrials
     end
     
     % randomized data we don't want to clear with the ODC because it's so
@@ -291,6 +286,18 @@ classdef PopulationTrajectorySet
         storedNDM
         
             % some things that may be stored within stored
+            % FOR INDIVIDUAL TRIAL DATA, BUT LINKED TO THE CONDITIONS SINCE ONLY VALID TRIALS ARE INCLUDED
+            % these are computed from dataByTrial if dataSourceManual is false,
+            % else stored in the corresponding *Manual property
+            
+            % nBases x nAlign cell each containing nTrials x nTime analog data
+            % for that bases for tha alignment in order by trial number. These
+            % will be guaranteed to share the same time vector across bases,
+            % unlike dataByTrial. This time vector will be given by pset.tvecDataMean
+            % Unlike dataByTrial, this will depend on the ConditionDescriptor
+            % as well for the grouping
+%             dataByTrialCommonTimeGrouped
+            
             % nAlign x 1 cell of N x T x C x R
             % for a pset with single trial data, this is of the same form that
             % is returned by arrangeNbyTAbyConditionAttributesbyTrials. The
@@ -367,12 +374,8 @@ classdef PopulationTrajectorySet
 
         % same as dataByTrial except masked by basisValid along first
         % dimension
-        dataByTrialValidOnly
-
-        % is dataCachedSampledTrials empty? use
-        % .cacheSampledTrialsTensor to populate it
-        hasCachedDataByTrial
-
+%         dataByTrialValidOnly
+        
         % nBases cell of nTrials x 1 logical masks
         trialHasSpikesMaskByBasis
 
@@ -403,12 +406,6 @@ classdef PopulationTrajectorySet
         % that condition, and the condition is messing up the time vector
         % limits
         conditionIncludeMask
-
-        % containing the start and stop times for
-        % which sufficient trials exist to compute a trial-average for each
-        % align, basis, and condition
-        tMinValidByAlignBasisCondition
-        tMaxValidByAlignBasisCondition
 
         % nAlign x nConditions matrix containing the start and stop times
         % for which sufficient trials exist to compute a trial-average for
@@ -443,7 +440,6 @@ classdef PopulationTrajectorySet
         dataByTrialManual
         tMinForDataByTrialManual
         tMaxForDataByTrialManual
-        dataByTrialCommonTimeGroupedManual
         tMinValidByAlignBasisConditionManual
         tMaxValidByAlignBasisConditionManual
         tMinByTrialManual
@@ -458,7 +454,7 @@ classdef PopulationTrajectorySet
         dataNumTrialsRawManual
         trialListsManual
         dataValidManual
-%         dataDifferenceOfTrialsScaledNoiseEstimateManual
+        dataDifferenceOfTrialsScaledNoiseEstimateManual
     end
 
     % Dependent properties which we compute on the fly rather than cache
@@ -548,31 +544,31 @@ classdef PopulationTrajectorySet
             'basisAlignSummaryLookup', NestedDimensionMeta({'N'}, 'odc', true), ...
             'basisNames', NestedDimensionMeta({'N'}, 'odc', true), ...
             'basisValid', NestedDimensionMeta({'N'}, 'odc', true), ...
-            'basisInvalidCause', NestedDimension({'N'}, 'odc', true), ...
+            'basisInvalidCause', NestedDimensionMeta({'N'}, 'odc', true), ...
             'basisValidPermanent', NestedDimensionMeta({'N'}), ...
             'basisInvalidCausePermanent', NestedDimensionMeta({'N'}), ...
             'basisValidTemporary', NestedDimensionMeta({'N'}), ...
             'basisInvalidCauseTemporary', NestedDimensionMeta({'N'}), ...
-            'dataByTrial', NestedDimensionMeta({'N', 'A'}, {'R', 'T'}, 'odc', true, 'translate', true, 'normalize', true), ...
+            'dataByTrial', NestedDimensionMeta({{'N', 'A'}, {'R', 'T'}}, 'odc', true, 'translate', true, 'normalize', true), ...
             'tMinForDataByTrial', NestedDimensionMeta({'N', 'A'}, 'odc', true), ...
             'tMaxForDataByTrial', NestedDimensionMeta({'N', 'A'}, 'odc', true), ...
-            'tMinForDataByTrial', NestedDimensionMeta({'N', 'A'}, {'R'}, 'odc', true), ...
-            'tMaxForDataByTrial', NestedDimensionMeta({'N', 'A'}, {'R'}, 'odc', true), ...
-            'dataByTrialCommonTimeGrouped', NestedDimensionMeta({'N', 'A'}, {'R', 'T'}, 'odc', true, 'translate', true, 'normalize', true), ...
-            'trialLists', NestedDimensionMeta({'N', 'C'}, {'Rc'}, 'odc', true), ...
+            'tMinByTrial', NestedDimensionMeta({{'N', 'A'}, {'R'}}, 'odc', true), ...
+            'tMaxByTrial', NestedDimensionMeta({{'N', 'A'}, {'R'}}, 'odc', true), ...
+            'trialLists', NestedDimensionMeta({{'N', 'C'}, {'Rc'}}, 'odc', true), ...
             'dataNumTrialsRaw', NestedDimensionMeta({'N', 'C'}, 'odc', true), ...
             'dataValid', NestedDimensionMeta({'A', 'N', 'C'}, 'odc', true), ...
             'tMinForDataMean', NestedDimensionMeta({'A'}, 'odc', true), ...
             'tMaxForDataMean', NestedDimensionMeta({'A'}, 'odc', true), ...
-            'dataMean', NestedDimensionMeta({'A'}, {'N', 'C', 'T'}, 'odc', true, 'translate', true, 'normalize', true), ...
-            'dataSem', NestedDimensionMeta({'A'}, {'N', 'C', 'T'}, 'odc', true, 'translate', false, 'normalize', true));
+            'dataMean', NestedDimensionMeta({{'A'}, {'N', 'C', 'T'}}, 'odc', true, 'translate', true, 'normalize', true), ...
+            'dataSem', NestedDimensionMeta({{'A'}, {'N', 'C', 'T'}}, 'odc', true, 'translate', false, 'normalize', true), ...
+            'dataDifferenceOfTrialsScaledNoiseEstimate', NestedDimensionMeta({{'A'}, {'N', 'T', 'C', 'R'}}, 'translate', true, 'normalize', true));
         
 %             'dataIntervalLow', NestedDimensionMeta({'A'}, {'N', 'C', 'T'}), ...
 %             'dataIntervalHigh', NestedDimensionMeta({'A'}, {'N', 'C', 'T'}), ...
 %             'dataCachedSampledTrials', NestedDimensionMeta({'A'}, {'N', 'T', 'C', 'R'}, 'translate', true, 'normalize', true), ...
 %             'dataCachedSampledTrialCounts', NestedDimensionMeta({'N', 'C'}), ...
 %             'dataCachedMeanExcludingSampledTrials', NestedDimensionMeta({'A'}, {'N', 'T', 'C', 'R'}, 'translate', true, 'normalize', true), ...
-%             'dataDifferenceOfTrialsScaledNoiseEstimate', NestedDimensionMeta({'A'}, {'N', 'T', 'C', 'R'}, 'translate', true, 'normalize', true), ...
+%             
 %             'dataMeanRandomized', NestedDimensionMeta({'A'}, {'N', 'C', 'T', 'nRandomSamples'}), ...
 %             'dataSemRandomized', NestedDimensionMeta({'A'}, {'N', 'C', 'T', 'nRandomSamples'}), ...
 %             'dataNumTrialsRawRandomized', NestedDimensionMeta({'N', 'C', 'nRandomSamples'}), ...x
@@ -611,7 +607,7 @@ classdef PopulationTrajectorySet
             pset.alignSummaryData;
             pset.alignSummaryAggregated;
             pset.dataNumTrialsRaw;
-%             pset.dataDifferenceOfTrialsScaledNoiseEstimate;
+            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
         end
 
         function saveFast(pset, location, varargin)
@@ -820,7 +816,7 @@ classdef PopulationTrajectorySet
 
         function pset = invalidateRandomizedTrialAveragedData(pset)
             pset.warnIfNoArgOut(nargout);
-            pset.randomizedData = [];
+%             pset.randomizedData = [];
         end
 
         function pset = invalidateAlignSummaryData(pset)
@@ -900,8 +896,8 @@ classdef PopulationTrajectorySet
             temp = pset.tMinForDataMean; %#ok<NASGU>
 
             hcprintf('%d / %d bases are valid\n  {999}[.basisValid, .nBasesValid, .nBases, .basisInvalidCause]\n', pset.nBasesValid, pset.nBases);
-            hcprintf('%d / %d bases are permanently invalid\n{999}[.getPermanentValid, .nBasesValidPermanentlyInvalid]\n', pset.nBasesPermanentlyInvalid, pset.nBases);
-            hcprintf('%d / %d bases are temporarily invalid\n{999}[.getTemporaryValid, .nBasesValidTemporarilyInvalid]\n', pset.nBasesTemporarilyInvalid, pset.nBases);
+            hcprintf('%d / %d bases are permanently invalid\n{999}[.basisValidPermanent, .nBasesValidPermanentlyInvalid]\n', pset.nBasesPermanentlyInvalid, pset.nBases);
+            hcprintf('%d / %d bases are temporarily invalid\n{999}[.basisValidTemporary, .nBasesValidTemporarilyInvalid]\n', pset.nBasesTemporarilyInvalid, pset.nBases);
             hcprintf('%d / %d conditions marked for inclusion\n  {999}[.conditionIncludeMask, .nConditions]\n', pset.nConditions, nnz(pset.conditionIncludeMask));
 
             hcprintf('\nExistence of valid trial averages:\n');
@@ -1207,14 +1203,14 @@ classdef PopulationTrajectorySet
             end
         end
 
-        function v = get.dataByTrialValidOnly(pset)
-            v = pset.dataByTrial;
-
-            % clear out data for invalid bases
-            if ~isempty(v)
-                v = TensorUtils.assignValueMaskedSelectionAlongDimension(v, 1, ~pset.basisValid, []);
-            end
-        end
+%         function v = get.dataByTrialValidOnly(pset)
+%             v = pset.dataByTrial;
+% 
+%             % clear out data for invalid bases
+%             if ~isempty(v)
+%                 v = TensorUtils.assignValueMaskedSelectionAlongDimension(v, 1, ~pset.basisValid, []);
+%             end
+%         end
 
         function pset = set.dataByTrial(pset, v)
             if ~pset.dataByTrialSourceManual
@@ -1297,27 +1293,6 @@ classdef PopulationTrajectorySet
             end
         end
 
-        function v = get.dataByTrialCommonTimeGrouped(pset)
-            if ~pset.dataSourceManual
-                v = pset.odc.dataByTrialCommonTimeGrouped;
-                if isempty(v)
-                    pset.buildDataByTrialCommonTimeGrouped();
-                    v = pset.odc.dataByTrial;
-                end
-            else
-                v = pset.dataByTrialCommonTimeGroupedManual;
-            end
-        end
-
-        function pset = set.dataByTrialCommonTimeGrouped(pset, v)
-            if ~pset.dataSourceManual
-                pset.odc = pset.odc.copy();
-                pset.odc.dataByTrialCommonTimeGrouped = v;
-            else
-                pset.dataByTrialCommonTimeGroupedManual = v;
-            end
-        end
-
         function v = get.basisNames(pset)
             if ~pset.dataSourceManual
                 v = pset.odc.basisNames;
@@ -1375,10 +1350,6 @@ classdef PopulationTrajectorySet
             else
                 pset.basisValidPermanent = v;
             end
-        end
-
-        function v = get.basisValidPermanent(pset)
-            v = pset.getPermanentValid();
         end
 
         function v = get.basisInvalidCause(pset)
@@ -1848,11 +1819,34 @@ classdef PopulationTrajectorySet
         % has one of the storeDataRandomized* methods been called to
         % populate dataMeanRandomized?
         function tf = get.hasDataRandomized(pset)
-            tf = ~isempty(pset.randomizedData) && numel(fieldnames(pset.randomizedData)) > 0;
+            tf = false;
+            % TODO
+%             tf = ~isempty(pset.randomizedData) && numel(fieldnames(pset.randomizedData)) > 0;
         end
 
         function c = get.conditionsWithTrialsAllBasesAligns(pset)
             c = squeeze(all(pset.dataNumTrialsRaw(pset.basisValid, :), 1));
+        end
+        
+        function v = get.dataDifferenceOfTrialsScaledNoiseEstimate(pset)
+            if ~pset.dataSourceManual
+                v = pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate;
+                if isempty(v)
+                    pset.buildDataNoiseEstimate();
+                    v = pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate;
+                end
+            else
+                v = pset.dataDifferenceOfTrialsScaledNoiseEstimateManual;
+            end
+        end
+
+        function pset = set.dataDifferenceOfTrialsScaledNoiseEstimate(pset, v)
+            if ~pset.dataSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate = v;
+            else
+                pset.dataDifferenceOfTrialsScaledNoiseEstimateManual = v;
+            end
         end
     end
 
@@ -1989,7 +1983,6 @@ classdef PopulationTrajectorySet
 
                 if pset.hasDataByTrial
                     pset.dataByTrial = pset.dataByTrial(:, idx);
-                    pset.dataByTrialCommonTimeGrouped = pset.dataByTrialCommonTimeGrouped(:, idx, :);
                     pset.tMinForDataByTrial = pset.tMinForDataByTrial(:, idx);
                     pset.tMaxForDataByTrial = pset.tMaxForDataByTrial(:, idx);
                     pset.tMinByTrial = pset.tMinByTrial(:, idx);
@@ -2309,14 +2302,19 @@ classdef PopulationTrajectorySet
         end
     end
 
-    methods % Translation / normalization
+    methods % Related to nested dimension meta properties along with custom stored
         function pset = processPropertiesBasedOnNDM(pset, fn)
             % fn should take fn(data, prop, attr, propType, varargin)
             % propType will be 'pset' or 'stored'
             
             pset.warnIfNoArgOut(nargout);
             pset = processStruct(pset, pset.ndm, 'pset');
-            pset.stored = processStruct(pset.stored, pset.storedNDM, 'stored');
+            if ~isempty(pset.stored)
+                pset.stored = processStruct(pset.stored, pset.storedNDM, 'stored');
+            end
+            if ~isempty(pset.randomized)
+                pset.randomized = processStruct(pset.randomized, pset.randomizedNDM, 'randomized');
+            end
             
             function dataRoot = processStruct(dataRoot, ndmRoot, propType)
                 props = fieldnames(ndmRoot);
@@ -2345,6 +2343,44 @@ classdef PopulationTrajectorySet
             end
         end
         
+        function pset = storeDataInStored(pset, name, data, ndm, varargin)
+            p = inputParser();
+            p.addParameter('ignoreOverwrite', false, @islogical);
+            p.parse(varargin{:});
+            
+            pset.warnIfNoArgOut(nargout);
+            
+            if isfield(pset.stored, name) && ~p.Results.ignoreOverwrite
+                warning('Overwriting existing stored custom data field %s', name);
+            end
+            pset.stored.(name) = data;
+            pset.storedNDM.(name) = ndm;
+        end
+        
+        function varargout = getDataInStored(pset, varargin)
+            varargout = cell(numel(varargin), 1);
+            for i = 1:numel(varargin)
+                name = varargin{i};
+                if isfield(pset.stored, name)
+                    varargout{i} = pset.stored.(name);
+                end
+            end
+        end
+        
+        function pset = clearDataInStored(pset, name)
+            pset.warnIfNoArgOut(nargout);
+            
+            if isfield(pset.stored, name)
+                pset.stored = rmfield(pset.stored, name);
+            end
+        end
+
+        function tf = hasDataInStored(pset, name)
+            tf = isfield(pset.stored, name); 
+        end
+    end
+        
+    methods % Translation / normalization
         function pset = applyTranslationNormalization(pset, trNorm)
             pset.warnIfNoArgOut(nargout);
 
@@ -2489,30 +2525,35 @@ classdef PopulationTrajectorySet
             assert(isscalar(iSrc));
             idxBases = find(pset.basisDataSourceIdx == iSrc);
         end
-
-        function [permValid, permCause] = getPermanentValid(pset)
+        
+        function permValid = get.basisValidPermanent(pset)
             permValid = pset.basisValidPermanent;
             if isempty(permValid)
                 permValid = truevec(pset.nBases);
             end
+        end
+        
+        function permCause = get.basisInvalidCausePermanent(pset)
+            permValid = pset.basisValidPermanent;
             permCause = pset.basisInvalidCausePermanent;
             if isempty(permCause)
                 permCause = cellstrvec(pset.nBases);
             end
-
             emptyMask = cellfun(@isempty, permCause);
             permCause(~permValid & emptyMask) = {'marked invalid permanently'};
             permCause(permValid) = {''};
         end
-
-        function [tempValid, tempCause] = getTemporaryValid(pset)
+        
+        function tempValid = get.basisValidTemporary(pset)
             tempValid = pset.basisValidTemporary;
             if isempty(tempValid)
                 tempValid = truevec(pset.nBases);
             end
-            permValid = pset.getPermanentValid();
-            tempValid(~permValid) = true; % don't count permanently invalid as temp invalid
-
+            
+            tempValid(~pset.basisValidPermanent) = true; % don't count permanently invalid as temp invalid
+        end
+        
+        function tempCause = get.basisInvalidCauseTemporary(pset)
             tempCause = pset.basisInvalidCauseTemporary;
             if isempty(tempCause)
                 tempCause = cellstrvec(pset.nBases);
@@ -2520,12 +2561,14 @@ classdef PopulationTrajectorySet
 
             % now mark additional bases temporarily invalid that have no
             % valid trial averages for any condition or align
+            tempValid = pset.basisValidTemporary;
+            permValid = pset.basisValidPermanent;
             basesEmpty = tempValid & permValid & ~makecol(any(any(pset.hasValidTrialAverageByAlignBasisCondition, 1), 3));
             tempValid(basesEmpty) = false;
             tempCause(basesEmpty) = {'basis has no valid trial averages for any align./ condition'};
 
             emptyMask = cellfun(@isempty, tempCause);
-            tempCause(~tempValid & emptyMask) = {'marked invalid permanently'};
+            tempCause(~tempValid & emptyMask) = {'marked invalid temporarily'};
             tempCause(tempValid) = {''};
         end
     end
@@ -2564,9 +2607,10 @@ classdef PopulationTrajectorySet
         end
 
         function buildBasisValid(pset)
-            [permValid, permCause] = pset.getPermanentValid();
-            [tempValid, tempCause] = pset.getTemporaryValid();
-
+            permValid = pset.basisValidPermanent;
+            permCause = pset.basisInvalidCausePermanent;
+            tempValid = pset.basisValidTemporary;
+            tempCause = pset.basisInvalidCauseTemporary;
             valid = permValid & tempValid;
 
             % take permanent cause first, then temporary cause if not
@@ -3088,29 +3132,24 @@ classdef PopulationTrajectorySet
             c = pset.odc;
             c.alignSummaryAggregated = alignSummaryAggregated;
         end
-
-        function buildDataNoiseEstimate(pset)
-            % builds .dataDifferenceOfTrialsScaledNoiseEstimate used for
-            % estimating signal vs. noise variance in StateSpaceProjections
-            % This involves taking differences of pairs of random trials
-            % and dividing by sqrt(2*numTrials) to give the difference
-            % trace the same variance as the estimation noise in the mean
-
-            % note, no need to worry about translation normalization here,
-            % since this is based on dataByTrial which is already
-            % normalized
-
+        
+        %% DATA NOISE ESTIMATE
+        function eachAlign_diff_NbyTbyC = computeDataNoiseEstimate(pset)
             if ~pset.hasDataByTrial
+                % TODO can implement based on cached trials here if needed
+                eachAlign_diff_NbyTbyC = [];
                 return;
+%                 error('Cannot store noise estimate without single trial data. You can pre-compute this using storeDataNoiseEstimate while single trial data is still present'); 
             end
 
             % grab random pair of trials for each basis, each condition,
             % concatenate aligns in time
+            debug( 'Building difference of trials noise estimate\n');
             eachAlign_NbyTbyCby2 = pset.arrangeEachAlign_NbyTbyCbyR('numTrials', 2, 'ignoreTrialsWithTooFewSamples', true, ...
-                'chooseRandom', true, 'message', 'Building difference of trials noise estimate');
+                'samplingMode', 'randomWithReplacement');
 
             % grab trial counts
-            nTrials_NbyC = pset.computeTrialCountsNbyC();
+            nTrials_NbyC = pset.dataNumTrials;
 
             % diff be N x T x C
             eachAlign_diff_NbyTAbyC = cellfun(@(t) diff(t, 1, 4), eachAlign_NbyTbyCby2, 'UniformOutput', false);
@@ -3124,11 +3163,33 @@ classdef PopulationTrajectorySet
             if ~isempty(pset.translationNormalization)
                 eachAlign_diff_NbyTbyC = cellfun(@(tensor) pset.translationNormalization.applyNormalizationToData(tensor), eachAlign_diff_NbyTAbyC, 'UniformOutput', false);
             end
-
-            c = pset.odc;
-            c.dataDifferenceOfTrialsScaledNoiseEstimate = eachAlign_diff_NbyTbyC;
         end
 
+        function buildDataNoiseEstimate(pset)
+            % builds .dataDifferenceOfTrialsScaledNoiseEstimate used for
+            % estimating signal vs. noise variance in StateSpaceProjections
+            % This involves taking differences of pairs of random trials
+            % and dividing by sqrt(2*numTrials) to give the difference
+            % trace the same variance as the estimation noise in the mean
+
+            % note, no need to worry about translation normalization here,
+            % since this is based on dataByTrial which is already
+            % normalized
+
+            c = pset.odc;
+            c.dataDifferenceOfTrialsScaledNoiseEstimate = pset.computeDataNoiseEstimate();            
+        end
+
+%         function eachAlign_diff_NbyTbyC = getDataNoiseEstimate(pset)
+%             % get if pre-computed or compute and store if not
+%             if ~pset.hasDataInStored('dataDifferenceOfTrialsScaledNoiseEstimate')
+%                 eachAlign_diff_NbyTbyC = pset.computeDataNoiseEstimate();
+%             else
+%                 eachAlign_diff_NbyTbyC = pset.getDataInStored('dataDifferenceOfTrialsScaledNoiseEstimate');
+%             end
+%         end
+        
+        %% DATA BY TRIAL COMMON TIME
         function dataByTrial = computeDataByTrialCommonTime(pset)
             % dataByTrial will nBases x nAlign cell containing ordered data by trial
             % each cell contains nTrials x nTime analog data for that
@@ -3190,19 +3251,8 @@ classdef PopulationTrajectorySet
                 prog.finish();
             end
         end
-
-        function buildDataByTrialCommonTimeGrouped(pset)
-            % dataByTrialGrouped will nBases x nAlign x nConditions cell containing ordered data by trial
-            % each cell contains nTrialsThisCondition x nTime analog data for that
-            % basis, where nTime is now set by .tvecDataMean instead of
-            % .tvecDataByTrial.
-            %
-            % nTrials will be nBases x nAlign x nConditions
-
-            % here we do the work of generating the dataByTrial for all
-            % trials first, since non-grouped all trial version of this function may be a useful function in the
-            % future to have. Then we group it here and store it in ODC as
-            % a property worth storing.
+        
+        function dataByTrialGrouped = computeDataByTrialCommonTimeGrouped(pset)
             dataByTrial = pset.computeDataByTrialCommonTime();
             trialLists = pset.trialLists;
             prog = ProgressBar(pset.nBases, 'Grouping dataByTrial into conditions');
@@ -3223,9 +3273,159 @@ classdef PopulationTrajectorySet
                 end
             end
             prog.finish();
+        end
+                
+        function dataByTrialGrouped = getDataByTrialCommonTimeGrouped(pset)
+            % get if pre-computed or compute and store if not
+            if ~pset.hasDataInStored('dataByTrialCommonTimeGrouped')
+                dataByTrialGrouped = pset.computeDataByTrialCommonTimeGrouped();
+            else
+                dataByTrialGrouped = pset.getDataInStored('dataByTrialCommonTimeGrouped');
+            end
+        end
+        
+        function pset = storeDataByTrialCommonTimeGrouped(pset)
+            % inserts into .stored
+            % dataByTrialGrouped will nBases x nAlign x nConditions cell containing ordered data by trial
+            % each cell contains nTrialsThisCondition x nTime analog data for that
+            % basis, where nTime is now set by .tvecDataMean instead of
+            % .tvecDataByTrial.
+            %
+            % nTrials will be nBases x nAlign x nConditions
 
-            c = pset.odc;
-            c.dataByTrialCommonTimeGrouped = dataByTrialGrouped;
+            % here we do the work of generating the dataByTrial for all
+            % trials first, since non-grouped all trial version of this function may be a useful function in the
+            % future to have. Then we group it here and store it in ODC as
+            % a property worth storing.
+            pset.warnIfNoArgOut(nargout);
+            
+            dataByTrialGrouped = pset.computeDataByTrialCommonTimeGrouped
+
+            ndm = NestedDimensionMeta({{'N', 'A'}, {'R', 'T'}}, 'odc', true, 'translate', true, 'normalize', true);
+            pset = pset.storeDataInStored('dataByTrialCommonTimeGrouped', dataByTrialGrouped, ndm);
+        end
+        
+        function [sampledTrials, sampledTrialCounts] = computeSampledTrials(pset, varargin)
+            % We suppress additional arguments like validBasesOnly
+            % because we want the size and shape of this to be reliable so that it can be sized
+            p = inputParser();
+            p.addRequired('numTrials', @isscalar);
+            p.KeepUnmatched = false;
+            p.parse(varargin{:});
+            
+            [sampledTrials, indexInfo] = pset.arrangeEachAlign_RbyTbyNbyC('sampleMethod', 'randomWithReplacement', ...
+                'numTrials', p.Results.numTrials, p.Unmatched);
+            sampledTrialCounts = indexInfo.numTrialsActual; % N x C
+        end
+        
+        % store cached single trials in dataSampledTrials as 
+        function pset = storeSampledTrials(pset, varargin)
+            % takes same parameters as arrangeEachAlign_RbyTbyNbyC, in particular,
+            % you must provide 'numTrials' argument. We suppress additional arguments like validBasesOnly
+            % because we want the size and shape of this to be reliable 
+            p = inputParser();
+            p.addRequired('numTrials', @isscalar);
+            p.addParameter('prefix', 'sampledTrials', @ischar);
+            p.KeepUnmatched = false;
+            p.parse(varargin{:});
+            
+            pset.warnIfNoArgOut(nargout); 
+            
+            [sampledTrials, sampledTrialCounts] = pset.computeSampledTrials('numTrials', p.Results.numTrials);
+            
+            ndm = NestedDimensionMeta({{'A'}, {'R', 'T', 'N', 'C'}}, 'translate', true, 'normalize', true);
+            pset = pset.storeDataInStored(sprintf('%s_data', p.Results.prefix), sampledTrials, ndm, 'ignoreOverwrite', true);
+            
+            ndm = NestedDimensionMeta({{'N', 'C'}}, 'translate', true, 'normalize', true);
+            pset = pset.storeDataInStored(sprintf('%s_trialCounts', p.Results.prefix), sampledTrialCounts, ndm, 'ignoreOverwrite', true);
+        end
+        
+        function tf  = hasSampledTrials(pset, varargin)
+            p = inputParser();
+            p.addParameter('prefix', 'sampledTrials', @ischar);
+            p.parse(varargin{:});
+            sampledTrialsField = sprintf('%s_data', p.Results.prefix);
+            sampledTrialCountsField = sprintf('%s_trialCounts', p.Results.prefix);
+            
+            tf = pset.hasDataInStored(sampledTrialsField) && ~pset.hasDataInStored(sampledTrialCountsField);
+        end
+
+        function [sampledTrials, sampledTrialCounts] = getSampledTrials(pset, varargin)
+            % fetches the sampled trials from stored
+            p = inputParser();
+            p.addParameter('prefix', 'sampledTrials', @ischar);
+            p.parse(varargin{:});
+            
+            sampledTrialsField = sprintf('%s_data', p.Results.prefix);
+            sampledTrialCountsField = sprintf('%s_trialCounts', p.Results.prefix);
+            if ~pset.hasDataInStored(sampledTrialsField) || ~pset.hasDataInStored(sampledTrialCountsField)
+                error('%s not found. Call pset = pset.storeSampledTrials() to store it', p.Results.prefix);
+            end
+            
+            [sampledTrials, sampledTrialCounts] = pset.getDataInStored(sampledTrialsField, sampledTrialCountsField);
+        end
+        
+        function [meansExcludingTrials_A_NbyCbyTbyR, sampledTrials_A_NbyCbyTbyR, nTrials_NbyC] = computeDataMeanExcludingSampledTrials(pset, varargin)  
+            % Used primarily for cross-validation with DPCA. This function can use one of two sources for data. 
+            % If the pset has cached trials already, we'll use those to generate the means excluding those trials. 
+            % If not, we'll use hasDataByTrial to sample trials directly. If ~hasDataByTrial and no cached single trials are present,
+            % an error is raised.
+            %
+            % We use a simplifying
+            % assumption here that every trial contributes to the mean,
+            % even though this is not necessarily true. Technically the
+            % number of trials contributing to the mean varies over time
+            % But we don't keep track of this information anywhere. So
+            % instead we use dataNumTrialsRaw as the number of trials
+            % contributing to the mean everywhere when computing the
+            % average without this trial
+            
+            p = inputParser();
+            p.addParameter('numTrialsDefault', 10, @isscalar); % used if there are no sampled trials already
+            p.addParameter('prefix', 'sampledTrials', @ischar);
+            p.addParameter('validBasesOnly', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            if pset.hasSampledTrials('prefix', p.Results.prefix)
+                % use the sampled trials
+                [sampledTrials, sampledTrialCounts] = pset.getSampledTrials(pset, 'prefix', p.Results.prefix);
+            else
+                % sample trials now but dont bother storing them
+                [sampledTrials, sampledTrialCounts] = pset.computeSampledTrials(pset, 'numTrials', p.Results.numTrialsDefault);
+            end
+            
+            % sampledTrials is A x 1 of R x T x N x C x numTrials
+            % sampledTrialCounts is N x C
+            
+            % dataMean is A x 1 of N x C x T
+            % output is going to be A x 1 of N x C x T x numTrials
+            
+            [meansExcludingTrials_A_NbyCbyTbyR, sampledTrials_A_NbyCbyTbyR] = deal(cell(pset.nAlign));
+            
+            % N x C --> N x 1 x C
+            nTrials_NbyC = sampledTrialCounts;
+            nTrials_N1C = permute(sampledTrialCounts, [1 3 2]);
+            
+            dataMean = pset.dataMean;
+            
+            for iA = 1:pset.nAlign
+                % R x T x N x C --> N x C x T x R
+                sampledTrials_A_NbyCbyTbyR{iA} = permute(sampledTrials{iA}, [3 4 2 1]);
+                
+                % N x C x T
+                dataSum = bsxfun(@times, dataMean{iA}, nTrials_N1C);
+
+                meansExcludingTrials_A_NbyCbyTbyR{iA} = bsxfun(@rdivide, bsxfun(@minus, dataSum, sampledTrials_A_NbyCbyTbyR{iA}), nTrials_N1C-1);
+                
+                if p.Results.validBasesOnly
+                    meansExcludingTrials_A_NbyCbyTbyR{iA} = meansExcludingTrials_A_NbyCbyTbyR{iA}(pset.basisValid, :, :, :, :, :);
+                    sampledTrials_A_NbyCbyTbyR{iA} = sampledTrials_A_NbyCbyTbyR{iA}(pset.basisValid, :, :, :, :, :);
+                end
+            end
+            if p.Results.validBasesOnly
+                nTrials_NbyC = nTrials_NbyC(pset.basisValid, :);
+            end
         end
     end
 
@@ -3644,39 +3844,6 @@ classdef PopulationTrajectorySet
             pset.odc.flushRandomizedTrialAveragedData();
         end
 
-        % store cached single trials in dataCachedSampledTrialsTensor
-        function pset = cacheSampledTrialsTensor(pset, varargin)
-            % takes same parameters as arrangeNbyTAbyCbyTrials, in particular,
-            pset.warnIfNoArgOut(nargout);
-            [pset.dataCachedSampledTrials, indexInfo] = pset.arrangeEachAlign_NbyTbyCbyR('sampleMethod', 'randomWithReplacement', varargin{:});
-            pset.dataCachedSampledTrialCounts = indexInfo.numTrialsActual;
-            
-            % now compute means without those trials. we use a simplifying
-            % assumption here that every trial contributes to the mean,
-            % even though this is not necessarily true. Technically the
-            % number of trials contributing to the mean varies over time
-            % But we don't keep track of this information anywhere. So
-            % instead we use dataNumTrialsRaw as the number of trials
-            % contributing to the mean everywhere when computing the
-            % average without this trial
-
-            % nAlign cellvec with N x C x T --> cellvec with N x T x C
-            dataMeanPermute = cellfun(@(tensor) permute(tensor, [1 3 2]), pset.dataMean, 'UniformOutput', false);
-
-            % N x C --> N x 1 x C
-            dataNumTrialsRawPermute = permute(indexInfo.numTrialsActual, [1 3 2]);
-
-            dataSumTensor = bsxfun(@times, dataMeanPermute, dataNumTrialsRawPermute);
-
-            % compute new mean by taking Sum - Sampled Trial / (Ntrials - 1)
-            pset.dataCachedMeanExcludingSampledTrials = bsxfun(@rdivide, bsxfun(@minus, dataSumTensor, pset.dataCachedSampledTrials), dataNumTrialsRawPermute-1);
-
-            if ~isempty(pset.translationNormalization)
-                pset.dataCachedSampledTrials = pset.translationNormalization.applyTranslationNormalizationToData(pset.dataCachedSampledTrials);
-                pset.dataCachedMeanExcludingSampledTrials = pset.translationNormalization.applyTranslationNormalizationToData(pset.dataCachedMeanExcludingSampledTrials);
-            end
-        end
-
         function pset = clearCachedSampledTrialsTensor(pset)
             pset.warnIfNoArgOut(nargout);
             pset.dataCachedSampledTrials = [];
@@ -3701,112 +3868,12 @@ classdef PopulationTrajectorySet
 
             idx = TensorUtils.vectorIndicesToMask(mask, pset.nBases);
             
-            function data = doFilter(data, prop, ndm, varargin) %#ok<INUSL>
+            function data = doFilterBases(data, prop, ndm, varargin) %#ok<INUSL>
                 data = ndm.filterDimByName(data, 'N', idx);
             end
             
-            pset = pset.processPropertiesBasedOnNDM(@doFilter);
+            pset = pset.processPropertiesBasedOnNDM(@doFilterBases);
             
-            
-%             maskDim1_odcOrManual = {'basisNames', 'basisUnits', 'basisValid', 'basisInvalidCause', 'trialLists', ...
-%                 'dataByTrial', 'dataByTrialCommonTimeGrouped', 'tMinForDataByTrial', ...
-%                 'tMaxForDataByTrial', 'tMinByTrial', 'tMaxByTrial'};
-%             maskDim1 = {'dataValid', 'dataNumTrialsRaw'};
-% 
-%             maskDim2_odcOrManual = {'dataNumTrialsRawRandomized', 'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition'};
-% 
-%             maskCellDim1_odcOrManual = {'dataMean', 'dataSem', ...
-%                 'dataIntervalHigh', 'dataIntervalLow', ...
-%                 'dataCachedSampledTrials', 'dataCachedSampledTrialCounts', 'dataCachedMeanExcludingSampledTrials', ...
-%                 'dataDifferenceOfTrialsScaledNoiseEstimate', 'dataDifferenceOfTrialsScaledNoiseEstimateRandomized'};
-%             maskCellDim1 = {'dataMeanRandomized', 'dataSemRandomized'};
-% 
-%             for i = 1:numel(maskDim1)
-%                 fld = maskDim1{i};
-%                 if ~isempty(pset.(fld))
-%                     % some have up to 4 dimensions, add a couple of extra
-%                     % colons just in case
-%                     pset.(fld) = pset.(fld)(mask, :, :, :, :, :);
-%                 end
-%             end
-% 
-%             % if dataSourceManual, mask the field Manual value.
-%             % else, mask the odc property if it's already been computed
-%             for i = 1:numel(maskDim1_odcOrManual)
-%                 fld = maskDim1_odcOrManual{i};
-%                 if pset.dataSourceManual || ~isempty(pset.odc.(fld))
-%                     % check whether it's already been computed
-%                     % then write to the property itself, which will
-%                     % copy the ODC on write. never write to the odc
-%                     % property directly
-%                     if ~isempty(pset.(fld))
-%                         pset.(fld) = pset.(fld)(mask, :, :, :, :, :);
-%                     end
-%                 end
-% 
-%                 % in the ODC case still may need to mask the manual field
-%                 fldManual = [fld 'Manual'];
-%                 if ~pset.dataSourceManual && ~isempty(pset.(fldManual))
-%                     pset.(fldManual) = pset.(fldManual)(mask, :, :, :, :, :);
-%                 end
-%             end
-% 
-%             for i = 1:numel(maskDim2_odcOrManual)
-%                 fld = maskDim2_odcOrManual{i};
-%                 if pset.dataSourceManual || ~isempty(pset.odc.(fld))
-%                     % check whether it's already been computed
-%                     % then write to the property itself, which will
-%                     % copy the ODC on write. never write to the odc
-%                     % property directly
-%                     if ~isempty(pset.(fld))
-%                         pset.(fld) = pset.(fld)(:, mask, :, :, :, :);
-%                     end
-%                 end
-%                 % in the ODC case still may need to mask the manual field
-%                 fldManual = [fld 'Manual'];
-%                 if ~pset.dataSourceManual && ~isempty(pset.(fldManual))
-%                     pset.(fldManual) = pset.(fldManual)(:, mask, :, :, :, :);
-%                 end
-%             end
-% 
-%             % we need to recompute the trial-averaged data again from
-%             % scratch, since the time windows will be shifted to reflect
-%             % the bases
-%             %             c.flushTrialAveragedData();
-%             for i = 1:numel(maskCellDim1_odcOrManual)
-%                 fld = maskCellDim1_odcOrManual{i};
-%                 if pset.dataSourceManual || ~isempty(pset.odc.(fld))
-%                     for j = 1:numel(pset.(fld))
-%                         % some have 4 dimensions
-%                         if ~isempty(pset.(fld){j})
-%                             pset.(fld){j} = pset.(fld){j}(mask, :, :, :);
-%                         end
-%                     end
-%                 end
-%                 % in the ODC case still may need to mask the manual field
-%                 fldManual = [fld 'Manual'];
-%                 if ~pset.dataSourceManual
-%                     for j = 1:numel(pset.(fldManual))
-%                         % some have 4 dimensions
-%                         if ~isempty(pset.(fldManual){j})
-%                             pset.(fldManual){j} = pset.(fldManual){j}(mask, :, :, :);
-%                         end
-%                     end
-%                 end
-%             end
-% 
-%             for i = 1:numel(maskCellDim1)
-%                 fld = maskCellDim1{i};
-%                 if ~isempty(pset.(fld))
-%                     for j = 1:numel(pset.(fld))
-%                         % some have 4 dimensions
-%                         if ~isempty(pset.(fld){j})
-%                             pset.(fld){j} = pset.(fld){j}(mask, :, :, :);
-%                         end
-%                     end
-%                 end
-%             end
-
             % filter alignSummaryData
             if pset.dataSourceManual || ~isempty(pset.odc.alignSummaryData)
                 cachedMaskedBasisAlignSummaryLookup = pset.basisAlignSummaryLookup(mask);
@@ -3842,13 +3909,6 @@ classdef PopulationTrajectorySet
             % filter translationNormalization
             if ~isempty(pset.translationNormalization)
                 pset.translationNormalization = pset.translationNormalization.filterBases(mask);
-            end
-
-            if pset.dataSourceManual || ~isempty(pset.odc.dataDifferenceOfTrialsScaledNoiseEstimate)
-                pset.dataDifferenceOfTrialsScaledNoiseEstimate = pset.dataDifferenceOfTrialsScaledNoiseEstimate(mask, :, :);
-                if pset.hasDataRandomized
-                    pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized(mask, :, :, :);
-                end
             end
 
             % force time windows to become updated
@@ -3984,7 +4044,8 @@ classdef PopulationTrajectorySet
         function pset = markBasesPermanentlyInvalid(pset, mask, cause)
             pset.warnIfNoArgOut(nargout);
 
-            [permValid, permCause] = pset.getPermanentValid();
+            permValid = pset.basisValidPermanent;
+            permCause = pset.basisInvalidCausePermanent;
 
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
             maskOrig = mask; % cache for later
@@ -4020,7 +4081,8 @@ classdef PopulationTrajectorySet
         function pset = markBasesTemporarilyInvalid(pset, mask, cause)
             pset.warnIfNoArgOut(nargout);
 
-            [tempValid, tempCause] = pset.getTemporaryValid();
+            tempValid = pset.basisValidTemporary;
+            tempCause = pset.basisInvalidCauseTemporary;
 
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, pset.nBases));
             mask = mask & tempValid;
@@ -4239,7 +4301,7 @@ classdef PopulationTrajectorySet
         end
 
         function n = get.nBasesTemporarilyInvalid(pset)
-            n = nnz(~pset.getTemporaryValid());
+            n = nnz(~pset.basisValidTemporary);
         end
 
         function n = get.nConditions(pset)
@@ -4332,7 +4394,7 @@ classdef PopulationTrajectorySet
         function c = get.alignConditionsWithTrials(pset)
             % dataNumTrialsRaw is nAlign x nBases x nConditions
             % c is nAlign x nConditions
-            c = TensorUtils.squeezeDims(any(pset.dataNumTrialsRaw(:, pset.basisValid, :), 2), 2);
+            c = TensorUtils.squeezeDims(any(pset.dataNumTrialsRaw(pset.basisValid, :), 1), 2);
         end
 
         function c = get.alignConditionsWithTrialAverage(pset)
@@ -5500,7 +5562,7 @@ classdef PopulationTrajectorySet
             p.addParameter('validBasesOnly', false, @islogical);
             p.addParameter('validTimepointsAllConditionsBasesOnly', false, @islogical); % keep only timepoints where all bases have data
             p.addParameter('type', 'mean', @ischar); % mean, sem, meanRandom
-            p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
+%             p.addParameter('dataRandomIndex', 1:pset.nRandomSamples, @isvector);
             p.addParameter('spliceAlignments', false, @islogical); % use sppline interpolation to splice
             p.addParameter('spliceOptions', struct(), @isstruct);
             p.addParameter('timeDelta', pset.timeDelta, @isscalar); % allow for data to be resampled in time
@@ -5512,9 +5574,9 @@ classdef PopulationTrajectorySet
             nAlign = numel(alignIdx);
             basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx);
             conditionIdx = TensorUtils.vectorMaskToIndices(p.Results.conditionIdx);
-            dataRandomIndex = TensorUtils.vectorMaskToIndices(p.Results.dataRandomIndex);
-            checkDataRandomIndex = @() assert(all(dataRandomIndex >= 1 & dataRandomIndex <= pset.nRandomSamples), ...
-                'dataRandomIndex must be in range 1:%d (nRandomSamples)', pset.nRandomSamples);
+%             dataRandomIndex = TensorUtils.vectorMaskToIndices(p.Results.dataRandomIndex);
+%             checkDataRandomIndex = @() assert(all(dataRandomIndex >= 1 & dataRandomIndex <= pset.nRandomSamples), ...
+%                 'dataRandomIndex must be in range 1:%d (nRandomSamples)', pset.nRandomSamples);
             if p.Results.validBasesOnly
                 mask = pset.basisValid(basisIdx);
                 basisIdx = basisIdx(mask);
@@ -5898,7 +5960,7 @@ classdef PopulationTrajectorySet
             end
 
             % compute the number of trials actually realized
-            numTrialsActual = nan(size(trialIdxInfo));
+            numTrialsActual = nan(size(trialIdxInfo, 1), 1);
             for i = 1:size(trialIdxInfo, 1)
                 numTrialsActual(i) = numel(trialIdxInfo{i, 1});
             end
@@ -5980,10 +6042,6 @@ classdef PopulationTrajectorySet
             % optionally including a third dimension with length nRepeats, so 
             % that slice of the trial lists will be used for the ith sample
             p.addParameter('trialLists', [], @iscell);
-
-            % if nRepeatedSamples is > 1, NbyTAbyCbyR will be
-            % NbyTAbyCbyRbyNsamples and whichTrials will be
-            p.addParameter('nRepeats', 1, @isscalar);
             
             % give preference for trials that aren't missing too many samples
             % when using samplingMode takeFirstValid, randomWithoutReplacement, or randomWithReplacement
@@ -6404,12 +6462,8 @@ classdef PopulationTrajectorySet
             whichTrials_NbyAttr = reshape(whichTrials, [N makerow(condSize)]);
         end
 
-        function nTrials_NbyC = computeTrialCountsNbyC(pset)
-            nTrials_NbyC = permute(min(pset.dataNumTrialsRaw, [], 1), [2 3 1]);
-        end
-
         function nTrials_NbyAttr = computeTrialCountsNbyConditionAttr(pset)
-            nTrials_NbyC = pset.computeTrialCountsNbyC();
+            nTrials_NbyC = pset.dataNumTrials;
             condSize = pset.conditionDescriptor.conditionsSize;
             nTrials_NbyAttr = reshape(nTrials_NbyC, [size(nTrials_NbyC, 1) makerow(condSize)]);
         end

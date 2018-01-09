@@ -22,14 +22,14 @@ classdef PopulationTrajectorySetBuilder
         alignDescriptorSet
         conditionDescriptor
         translationNormalization
-        conditionDescriptorRandomized
+%         conditionDescriptorRandomized
         
         %% fBasisInfo
         basisNames
         basisUnits
         
-        basisValidManual
-        basisInvalidCauseManual
+        basisValidPermanent
+        basisInvalidCausePermanent
         
         basisValidTemporary
         basisInvalidCauseTemporary
@@ -45,7 +45,6 @@ classdef PopulationTrajectorySetBuilder
         tMaxForDataByTrial
         tMinByTrial
         tMaxByTrial
-        dataByTrialCommonTimeGrouped
         
         %% fTrialAvg
         tMinValidByAlignBasisCondition
@@ -61,18 +60,25 @@ classdef PopulationTrajectorySetBuilder
         basisAlignSummaryLookup
         
         % fTrialAvgCrossValidation
-        dataCachedSampledTrials
-        dataCachedMeanExcludingSampledTrials
-        dataCachedSampledTrialCounts
+%         dataCachedSampledTrials
+%         dataCachedMeanExcludingSampledTrials
+%         dataCachedSampledTrialCounts
         
-        %% fDiffTrialsNoise
+        % fDiffTrialsNoise
         dataDifferenceOfTrialsScaledNoiseEstimate
         
-        %% fTrialAvgRandomized
-        dataMeanRandomized
-        dataSemRandomized
-        dataDifferenceOfTrialsScaledNoiseEstimateRandomized
-        dataNumTrialsRawRandomized
+        % fTrialAvgRandomized
+        randomized
+        randomizedNDM
+        
+        % fStored
+        stored
+        storedNDM
+        
+%         dataMeanRandomized
+%         dataSemRandomized
+%         dataDifferenceOfTrialsScaledNoiseEstimateRandomized
+%         dataNumTrialsRawRandomized
 %         dataIntervalHigh
 %         dataIntervalLow
     end
@@ -84,33 +90,33 @@ classdef PopulationTrajectorySetBuilder
             'minFractionTrialsForTrialAveraging', 'ignoreLeadingTrailingZeroSpikeTrials', ...
             'dataIntervalQuantileLow', 'dataIntervalQuantileHigh'};
 
-        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization', 'conditionDescriptorRandomized'};
+        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
         
         fBasisInfo = {'basisNames', 'basisUnits', ...
-            'basisValidManual', 'basisInvalidCauseManual', ...
+            'basisValidPermanent', 'basisInvalidCausePermanent', ...
             'basisValidTemporary', 'basisInvalidCauseTemporary'};
         
         fDataSourceInfo = {'dataSources', 'basisDataSourceIdx', 'basisDataSourceChannelNames'};
         
         fSingleTrial = {'dataSources', 'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
-            'tMinByTrial', 'tMaxByTrial', 'dataByTrialCommonTimeGrouped'};
+            'tMinByTrial', 'tMaxByTrial'};
         
         fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
                 'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
                 'dataNumTrialsRaw', 'dataValid', ...
                 'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists'};
             
-        fTrialAvgCrossValidation = {'dataCachedSampledTrials', 'dataCachedMeanExcludingSampledTrials', ...
-                'dataCachedSampledTrialCounts'};
+%         fTrialAvgCrossValidation = {'dataCachedSampledTrials', 'dataCachedMeanExcludingSampledTrials', ...
+%                 'dataCachedSampledTrialCounts'};
             
         fDiffTrialsNoise = {'dataDifferenceOfTrialsScaledNoiseEstimate'};
         
-        fTrialAvgRandomized = {'dataMeanRandomized', 'dataSemRandomized', ...
-            'dataDifferenceOfTrialsScaledNoiseEstimateRandomized', 'dataNumTrialsRawRandomized'};
+        fTrialAvgRandomized = {'randomized', 'randomizedNDM'};
         
-        fCanBeEmptyExceptions = {'translationNormalization', 'conditionDescriptorRandomized', ...
-            'basisInvalidCauseTemporary', 'basisValidTemporary', ...
-            'basisValidManual', 'basisInvalidCauseManual'};
+        fStored = {'stored', 'storedNDM'};
+%             'dataDifferenceOfTrialsScaledNoiseEstimateRandomized', 'dataNumTrialsRawRandomized'};
+        
+        fCanBeEmptyExceptions = {'translationNormalization', 'dataDifferenceOfTrialsScaledNoiseEstimate'};
     end
         
     methods(Static)
@@ -273,7 +279,7 @@ classdef PopulationTrajectorySetBuilder
                 PopulationTrajectorySetBuilder.fSingleTrial, ...
                 PopulationTrajectorySetBuilder.fTrialAvg, ...
                 PopulationTrajectorySetBuilder.fTrialAvgRandomized, ...
-                PopulationTrajectorySetBuilder.fTrialAvgCrossValidation];
+                PopulationTrajectorySetBuilder.fDiffTrialsNoise];
             
             toCheckNonEmpty = [PopulationTrajectorySetBuilder.fDescriptors, ...
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
@@ -298,13 +304,13 @@ classdef PopulationTrajectorySetBuilder
                 PopulationTrajectorySetBuilder.fBasisInfo, ...
                 PopulationTrajectorySetBuilder.fTrialAvg, ...
                 PopulationTrajectorySetBuilder.fTrialAvgRandomized, ...
-                PopulationTrajectorySetBuilder.fTrialAvgCrossValidation];
+                PopulationTrajectorySetBuilder.fDiffTrialsNoise];
             
             toCheckNonEmpty = {};
             
-            if p.Results.includeDiffTrialsNoise
-                toCopy = [toCopy, PopulationTrajectorySetBuilder.fDiffTrialsNoise];
-            end
+%             if p.Results.includeDiffTrialsNoise
+%                 toCopy = [toCopy, PopulationTrajectorySetBuilder.fDiffTrialsNoise];
+%             end
             
             if p.Results.includeDataSourceInfo
                 toCopy = [toCopy, PopulationTrajectorySetBuilder.fDataSourceInfo];

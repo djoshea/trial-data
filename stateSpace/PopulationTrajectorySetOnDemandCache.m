@@ -35,7 +35,7 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
         tMaxForDataMean
 
 %         % noise estimates from scaled differences of trials
-%         dataDifferenceOfTrialsScaledNoiseEstimate
+        dataDifferenceOfTrialsScaledNoiseEstimate
 %         
 %         % data mean randomized via resampling and high/low intervals
 %         dataIntervalHigh
@@ -80,8 +80,8 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
             odc.flushValid();
             odc.flushDataNumTrials();
             odc.flushTimeWindowsByAlignBasisCondition();
-            odc.flushRandomizedTrialAveragedData();
-%             odc.flushDifferenceOfTrialsNoiseEstimate();
+%             odc.flushRandomizedTrialAveragedData();
+            odc.flushDifferenceOfTrialsNoiseEstimate();
             odc.flushAlignSummaryData();
         end
         
@@ -107,9 +107,9 @@ classdef PopulationTrajectorySetOnDemandCache < handle & matlab.mixin.Copyable
 %             odc.dataIntervalLow = {};
 %         end
         
-%         function flushDifferenceOfTrialsNoiseEstimate(odc)
-%             odc.dataDifferenceOfTrialsScaledNoiseEstimate = [];
-%         end
+        function flushDifferenceOfTrialsNoiseEstimate(odc)
+            odc.dataDifferenceOfTrialsScaledNoiseEstimate = [];
+        end
     end
 
 end

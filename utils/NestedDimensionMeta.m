@@ -19,6 +19,10 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
             p.parse(varargin{:});
 
             assert(iscell(dimsByLevel) && isvector(dimsByLevel));
+            if iscellstr(dimsByLevel)
+                dimsByLevel = {dimsByLevel};
+            end
+            
             dimsByLevel = makecol(dimsByLevel);
             for i = 1:numel(dimsByLevel)
                 assert(iscellstr(dimsByLevel{i}) && isvector(dimsByLevel{i}));
@@ -194,10 +198,48 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
             if ~isscalar(ndm)
                 header = getHeader@matlab.mixin.CustomDisplay(ndm);
             else
-                header = sprintf('%s: %s\n', class(ndm), ndm.getDescription());
+                header = sprintf('%s: %s\n  attr: %s', class(ndm), ndm.getDescription(), structToString(ndm.attr, ' '));
+            end
+            
+            function str = structToString(s, separator)
+                % given a struct s with string or numeric vector values, convert to string
+                fields = fieldnames(s);
+                if isempty(fields)
+                    str = '';
+                    return;
+                end
+                vals = structfun(@convertToString, s);
+                
+                str = strjoin(cellfun(@(fld, val) [fld '=' val], fields, vals, 'UniformOutput', false), separator);
+                
+                return;
+                
+                function str = convertToString(v)
+                    if ischar(v)
+                        str = v;
+                    elseif isempty(v)
+                        str = '[]';
+                    elseif isnumeric(v) || islogical(v)
+                        str = mat2str(v);
+                    elseif iscellstr(v)
+                        str = ['{', strjoin(v, ','), '}'];
+                    elseif isobject(v)
+                        if ismethod(v, 'char')
+                            str = char(v);
+                        elseif ismethod(v, 'describe')
+                            str = describe(v);
+                        else
+                            str = class(v);
+                        end
+                    else
+                        error('Could not convert struct field value');
+                    end
+                    
+                    str = {str};
+                end
+                
             end
         end
-
     end
 
 end

@@ -806,7 +806,7 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
             
-            ci.axisValueListsManual(idx) = {[]};
+            ci.axisValueListsManual{idx} = {};
             ci.axisValueListsAsStringsManual{idx} = {};
             ci.axisValueListsAsStringsShortManual{idx} = {};
             ci.axisValueListsOccupiedOnly(idx) = false;
@@ -817,7 +817,7 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
             
-            ci.axisValueListsManual{idx} = {[]};
+            ci.axisValueListsManual{idx} = {};
             ci.axisValueListsAsStringsManual{idx} = {};
             ci.axisValueListsAsStringsShortManual{idx} = {};
             ci.axisValueListsOccupiedOnly(idx) = true;

@@ -369,7 +369,7 @@ classdef StateSpaceProjection
             % demand properties, so that they get computed before we
             % initiate a copy below
             PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
-            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
+%             pset.dataDifferenceOfTrialsScaledNoiseEstimate;
            
             % build the list of covariates and covariate interactions to marginalize along
             % in case the projection needs it for its own purposes
@@ -458,7 +458,7 @@ classdef StateSpaceProjection
             % demand properties, so that they get computed before we
             % initiate a copy below
             PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
-            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
+%             pset.dataDifferenceOfTrialsScaledNoiseEstimate;
             
             % replace translation normalization
             if p.Results.applyTranslationNormalization && ~isempty(proj.translationNormalization)
@@ -484,7 +484,7 @@ classdef StateSpaceProjection
             b.tMaxForDataMean = pset.tMaxForDataMean;
 
             % sum across bases for projection (dataNTrials is nAlign x nBases x nConditions)
-            b.dataNTrials = repmat(sum(pset.dataNTrials, 2), [1, proj.nBasesProj, 1]);
+            b.dataNumTrialsRaw = repmat(sum(pset.dataNumTrialsRaw, 2), [1, proj.nBasesProj, 1]);
             % all across bases for validity
             b.dataValid = repmat(all(pset.dataValid, 2), [1, proj.nBasesProj, 1]);
         
@@ -526,6 +526,7 @@ classdef StateSpaceProjection
             % project single trial data if any
             if pset.simultaneous && ~isempty(pset.dataByTrial) && p.Results.projectSingleTrialData
                 debug('Projecting single-trial data\n');
+                projectSingleTrial = true;
                 b.dataSources = pset.dataSources;
                 [b.dataByTrial, b.tMinByTrial, b.tMaxByTrial] = deal(cell(proj.nBasesProj, pset.nAlign));
                 
@@ -552,72 +553,74 @@ classdef StateSpaceProjection
                 % preserve the trial lists
                 % nBases x nConditions --> nBasesProj x nConditions
                 b.trialLists = repmat(pset.trialLists(1, :), proj.nBasesProj, 1);
+            else
+                projectSingleTrial = false;
             end
             
             % project cached single trial data if any
-            if ~isempty(pset.dataCachedSampledTrialsTensor)
-                tensor = pset.dataCachedSampledTrialsTensor;
-                tensor(~proj.basisValid, :) = 0;
-                b.dataCachedSampledTrialsTensor = TensorUtils.linearCombinationAlongDimension(...
-                    tensor, 1, proj.decoderKbyN, 'replaceNaNWithZero', true);
-                
-                tensor = pset.dataCachedMeanExcludingSampledTrialsTensor;
-                tensor(~proj.basisValid, :) = 0;
-                b.dataCachedMeanExcludingSampledTrialsTensor = TensorUtils.linearCombinationAlongDimension(...
-                    tensor, 1, proj.decoderKbyN, 'replaceNaNWithZero', true);
-                
-                % compute min over all trial counts included in each basis
-                b.dataCachedSampledTrialCounts = TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
-                    pset.dataCachedSampledTrialCounts, 1, proj.decoderKbyN, @min);
-            end
+%             if ~isempty(pset.dataCachedSampledTrialsTensor)
+%                 tensor = pset.dataCachedSampledTrialsTensor;
+%                 tensor(~proj.basisValid, :) = 0;
+%                 b.dataCachedSampledTrialsTensor = TensorUtils.linearCombinationAlongDimension(...
+%                     tensor, 1, proj.decoderKbyN, 'replaceNaNWithZero', true);
+%                 
+%                 tensor = pset.dataCachedMeanExcludingSampledTrialsTensor;
+%                 tensor(~proj.basisValid, :) = 0;
+%                 b.dataCachedMeanExcludingSampledTrialsTensor = TensorUtils.linearCombinationAlongDimension(...
+%                     tensor, 1, proj.decoderKbyN, 'replaceNaNWithZero', true);
+%                 
+%                 % compute min over all trial counts included in each basis
+%                 b.dataCachedSampledTrialCounts = TensorUtils.linearCombinationApplyScalarFnAlongDimension(...
+%                     pset.dataCachedSampledTrialCounts, 1, proj.decoderKbyN, @min);
+%             end
             
             % update difference of trials scaled noise estimates so that we
             % can compute noise variance floors when projecting. since the
             % noise estimates are already scaled by 1/sqrt(2*nTrials), we
             % simply add them together to get the new scaled estimate
             if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
-                b.dataDifferenceOfTrialsScaledNoiseEstimate = TensorUtils.linearCombinationAlongDimension(...
-                    pset.dataDifferenceOfTrialsScaledNoiseEstimate, 1, abs(proj.decoderKbyN), ...
+                b.dataDifferenceOfTrialsScaledNoiseEstimate = cellfun(@(tensor) TensorUtils.linearCombinationAlongDimension(...
+                    tensor, 1, abs(proj.decoderKbyN), ...
                     'replaceNaNWithZero', true, ...
                     'keepNaNIfAllNaNs', true, ...
-                    'normalizeCoefficientsByNumNonNaN', false);
+                    'normalizeCoefficientsByNumNonNaN', false), pset.dataDifferenceOfTrialsScaledNoiseEstimate, 'UniformOutput', false);
             end
           
             % project randomized data, recompute intervals
-            if ~isempty(pset.dataMeanRandomized)
-                [b.dataMeanRandomized] = deal(cell(pset.nAlign, 1));
-                for iAlign = 1:pset.nAlign
-                    % mat is N x CTS, coeff is N x K, where S is nRandomSamples 
-                    mat = reshape(pset.dataMeanRandomized{iAlign}, pset.nBases, ...
-                        pset.nConditions*pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
-                    mat(~proj.basisValid, :) = 0;
-                    projMat = proj.decoderKbyN * mat;
-                    b.dataMeanRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
-                        pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
-                    
-                    % use sqrt(sd1^2 / n1 + sd2^2 / n2 + ...) formula
-                    % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
-                    mat = reshape(pset.dataSemRandomized{iAlign}, pset.nBases, ...
-                        pset.nConditions * pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
-                    mat(~proj.basisValid, :) = 0;
-                    projMat = sqrt(abs(proj.decoderKbyN) * (mat.^2));
-                    b.dataSemRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
-                        pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
-
-%                     quantiles = quantile(b.dataMeanRandomized{iAlign}, ...
-%                         [pset.dataIntervalQuantileLow, pset.dataIntervalQuantileHigh], 4);
-%                     b.dataIntervalLow{iAlign} = quantiles(:, :, :, 1);
-%                     b.dataIntervalHigh{iAlign} = quantiles(:, :, :, 2);
-                end
-                
-                if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized)
-                    b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = TensorUtils.linearCombinationAlongDimension(...
-                        pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized, 1, abs(proj.decoderKbyN), ...
-                        'replaceNaNWithZero', true, ...
-                        'keepNaNIfAllNaNs', true, ...
-                        'normalizeCoefficientsByNumNonNaN', false);
-                end
-            end
+%             if ~isempty(pset.dataMeanRandomized)
+%                 [b.dataMeanRandomized] = deal(cell(pset.nAlign, 1));
+%                 for iAlign = 1:pset.nAlign
+%                     % mat is N x CTS, coeff is N x K, where S is nRandomSamples 
+%                     mat = reshape(pset.dataMeanRandomized{iAlign}, pset.nBases, ...
+%                         pset.nConditions*pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
+%                     mat(~proj.basisValid, :) = 0;
+%                     projMat = proj.decoderKbyN * mat;
+%                     b.dataMeanRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
+%                         pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
+%                     
+%                     % use sqrt(sd1^2 / n1 + sd2^2 / n2 + ...) formula
+%                     % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
+%                     mat = reshape(pset.dataSemRandomized{iAlign}, pset.nBases, ...
+%                         pset.nConditions * pset.nTimeDataMean(iAlign)*pset.nRandomSamples);
+%                     mat(~proj.basisValid, :) = 0;
+%                     projMat = sqrt(abs(proj.decoderKbyN) * (mat.^2));
+%                     b.dataSemRandomized{iAlign} = reshape(projMat, proj.nBasesProj, ...
+%                         pset.nConditions, pset.nTimeDataMean(iAlign), pset.nRandomSamples);
+% 
+% %                     quantiles = quantile(b.dataMeanRandomized{iAlign}, ...
+% %                         [pset.dataIntervalQuantileLow, pset.dataIntervalQuantileHigh], 4);
+% %                     b.dataIntervalLow{iAlign} = quantiles(:, :, :, 1);
+% %                     b.dataIntervalHigh{iAlign} = quantiles(:, :, :, 2);
+%                 end
+%                 
+%                 if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized)
+%                     b.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = TensorUtils.linearCombinationAlongDimension(...
+%                         pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized, 1, abs(proj.decoderKbyN), ...
+%                         'replaceNaNWithZero', true, ...
+%                         'keepNaNIfAllNaNs', true, ...
+%                         'normalizeCoefficientsByNumNonNaN', false);
+%                 end
+%             end
 
             % aggregate AlignSummary data. Each projected basis samples trials from all original
             % trials, so we aggregate all AlignSummary instances into one
@@ -627,10 +630,10 @@ classdef StateSpaceProjection
             % ensure there is no translation normalization by default
             b.translationNormalization = [];
             
-            b.basisValidManual = proj.basisValidProj;
-            b.basisInvalidCauseManual = proj.basisInvalidCauseProj;
+            b.basisValidPermanent = proj.basisValidProj;
+            b.basisInvalidCausePermanent = proj.basisInvalidCauseProj;
             
-            if pset.simultaneous && ~isempty(pset.dataByTrial)
+            if projectSingleTrial
                 psetProjected = b.buildManualWithSingleTrialData();
             else
                 psetProjected = b.buildManualWithTrialAveragedData();
