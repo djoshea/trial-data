@@ -3715,7 +3715,7 @@ classdef TrialData
                 c = cellfun(@(x) x(~isnan(x)), c, 'UniformOutput', false);
             end
         end
-        
+       
         function eventStruct = getRawEventStructArray(td)
             eventStruct = copyStructField(td.data, [], td.listEventChannels());
         end

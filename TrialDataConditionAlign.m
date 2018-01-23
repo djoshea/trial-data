@@ -196,31 +196,29 @@ classdef TrialDataConditionAlign < TrialData
         function buildEventData(td)
             % build a cached version of event times into a matrix for easy alignment
             % sets .eventData and .eventCounts
-            
-            evStruct = td.getRawEventFlatStruct();
-            evList = fieldnames(evStruct);
+            evList = td.listEventChannels();
             nEvents = numel(evList);
             eventCounts = struct(); %#ok<*PROP>
             eventData = struct();
             
             for iE = 1:nEvents
                 ev = evList{iE};
-                times = evStruct.(ev);
-                if iscell(times)
-                    % event may happen zero, one, or multiple times
-                    % convert to nTrials x nOccur matrix
-                    counts = cellfun(@(x) nnz(~isnan(x)), times); 
-                    maxCount = max(counts);
-                    timeMat = nan(td.nTrials, maxCount);
-                    for iT = 1:td.nTrials
-                        timeMat(iT, 1:counts(iT)) = times{iT};
-                    end
-                    eventCounts.(ev) = counts;
-                    eventData.(ev) = timeMat;
-                else
-                    eventCounts.(ev) = makecol(double(~isnan(times)));
-                    eventData.(ev) = makecol(times);
+                counts = nan(td.nTrials, 1);
+                for iT = 1:td.nTrials
+                    counts(iT) = nnz(~isnan(td.data(iT).(ev)));
                 end
+                
+                % event may happen zero, one, or multiple times
+                % convert to nTrials x nOccur matrix
+                maxCount = max(counts);
+                timeMat = nan(td.nTrials, maxCount);
+                for iT = 1:td.nTrials
+                    vals = td.data(iT).(ev);
+                    vals = sort(vals(~isnan(vals)));
+                    timeMat(iT, 1:counts(iT)) = vals;
+                end
+                eventCounts.(ev) = counts;
+                eventData.(ev) = timeMat;
             end
 
             c = td.odc;

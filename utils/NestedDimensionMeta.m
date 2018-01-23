@@ -18,8 +18,8 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            assert(iscell(dimsByLevel) && isvector(dimsByLevel));
-            if iscellstr(dimsByLevel)
+            assert(iscell(dimsByLevel) && (isvector(dimsByLevel) || isempty(dimsByLevel)));
+            if iscellstr(dimsByLevel) && ~isempty(dimsByLevel)
                 dimsByLevel = {dimsByLevel};
             end
             
@@ -35,16 +35,6 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
             assert(numel(dimNames) == numel(unique(dimNames)));
 
             ndm.attr = p.Unmatched;
-            
-%             if nargin > 2
-%                 fixedSize = p.Results.fixedSize;
-%                 assert(iscell(fixedSize) && isvector(fixedSize) && numel(fixedSize) == numel(ndm.dimsByLevel));
-%                 fixedSize = makecol(fixedSize);
-%                 for i = 1:numel(fixedSize)
-%                     assert(islogical(fixedSize{i}) && isvector(fixedSize{i}));
-%                     fixedSize{i} = makecol(fixedSize{i});
-%                 end
-%             end
         end
         
         function str = getDescription(ndm)
@@ -68,6 +58,11 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
 
         function v = get.flatDimNames(ndm)
             v = cat(1, ndm.dimsByLevel{:});
+        end
+        
+        function [tf, level, dim] = hasDimByName(ndm, dimName)
+            [level, dim] = ndm.findDimByName(dimName);
+            tf = ~isnan(level);
         end
 
        function [level, dim] = findDimByName(ndm, dimName)
@@ -126,6 +121,79 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                     end
                 end
                 t = t(maskByDim{:});
+            end
+        end
+        
+        function data = assignValueMaskedSelectionAlongDimByName(ndm, data, dimName, masks, value, clearCells)
+            [level, dim] = ndm.findDimByName(dimName);
+            data = ndm.assignValueMaskedSelectionAlongLevelDim(data, level, dim, masks, value, clearCells);
+        end
+        
+        function data = assignValueMaskedSelectionAlongLevelDim(ndm, data, level, dim, masks, value, clearCells)
+            % for a specific dimension at the specified level and dim, assign value into positions selected by mask
+            % if level is the last level, value will be used. If level is not the last level (i.e. this level is cells of a deeper level)
+            % clearCells==true will replace those cell elements contents with {}
+            % clearCells==false will replace those cell elements contents at the last level with value
+            
+            assert(isscalar(value));
+            if ~iscell(masks)
+                masks = {masks};
+            end
+            
+            data = assignInner(data, 1);
+            
+            function d = assignInner(d, levelThis)
+                % apply any filtering that needs to happen at this level, and then recurse on deeper levels
+                idx = find(level == levelThis);
+                
+                if levelThis < ndm.depth 
+                    % not the last level
+                    if any(idx)
+                        masksByDim = buildMasksByDim(d, dim(idx), masks(idx));
+                        if clearCells
+                            % we'll be setting these positions in the cell to empty
+                            [d{masksByDim{:}}] = deal({}); 
+                        else
+                            d(masksByDim{:}) = setFinalLevelToValue(d(masksByDim{:}), value);
+                        end
+                    end
+                    if any(level > levelThis)
+                        for iD = 1:numel(d)
+                            d{iD} = assignInner(d{iD}, levelThis+1);
+                        end
+                    end
+                else 
+                    if any(idx)
+                        masksByDim = buildMasksByDim(d, dim(idx), masks(idx));
+                        d(masksByDim{:}) = value;
+                    end
+                end
+            end
+            
+            function maskByDim = buildMasksByDim(t, dim, select)
+                sz = size(t);
+                if numel(sz) < numel(dim)
+                    sz = cat(2, sz, ones(1, numel(dim) - numel(sz)));
+                end
+                maskByDim = cell(numel(sz), 1);
+                for iD = 1:numel(sz)
+                    which = find(dim == iD, 1);
+                    if ~isempty(which)
+                        maskByDim{iD} = select{which};
+                    else
+                        maskByDim{iD} = true(sz(iD), 1);
+                    end
+                end
+            end
+            
+            function t = setFinalLevelToValue(t, value)
+                if iscell(t)
+                    for iT = 1:numel(t)
+                        t{iT} = setFinalLevelToValue(t{iT}, value);
+                    end
+                else
+                    t(:) = value;
+                end
             end
         end
         

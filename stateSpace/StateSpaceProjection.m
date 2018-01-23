@@ -405,7 +405,7 @@ classdef StateSpaceProjection
             proj.basisValid = pset.basisValid;
             proj.basisInvalidCause = pset.basisInvalidCause;
             proj.basisNamesSource = pset.basisNames;
-            proj.dataUnitsSource = pset.dataUnits;
+            proj.dataUnitsSource = pset.dataUnitsCommon;
             [proj.basisNamesProjStem, proj.basisNamesProjManual] = proj.generateBasisNameProjStem(pset);
             
             % set coeff to zero on invalid bases

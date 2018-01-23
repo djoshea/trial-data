@@ -7,118 +7,9 @@ classdef PopulationTrajectorySetBuilder
     % These properties hold temporary data for injecting into a PopulationTrajectorySet
     % when building 
     properties
-        %% fSettings
-        dataUnits
-        timeUnitName
-        timeUnitsPerSecond
-        spikeFilter
-        minTrialsForTrialAveraging
-        minFractionTrialsForTrialAveraging
-        ignoreLeadingTrailingZeroSpikeTrials
-        dataIntervalQuantileHigh
-        dataIntervalQuantileLow
-
-        %% fDescriptors
-        alignDescriptorSet
-        conditionDescriptor
-        translationNormalization
-%         conditionDescriptorRandomized
-        
-        %% fBasisInfo
-        basisNames
-        basisUnits
-        
-        basisValidPermanent
-        basisInvalidCausePermanent
-        
-        basisValidTemporary
-        basisInvalidCauseTemporary
-               
-        %% fDataSourceInfo
-        dataSources
-        basisDataSourceIdx
-        basisDataSourceChannelNames
-        
-        %% fSingleTrial
-        dataByTrial
-        tMinForDataByTrial
-        tMaxForDataByTrial
-        tMinByTrial
-        tMaxByTrial
-        
-        %% fTrialAvg
-        tMinValidByAlignBasisCondition
-        tMaxValidByAlignBasisCondition
-        tMinForDataMean
-        tMaxForDataMean
-        dataMean
-        dataSem
-        dataNumTrialsRaw
-        trialLists
-        dataValid
-        alignSummaryData
-        basisAlignSummaryLookup
-        
-        % fTrialAvgCrossValidation
-%         dataCachedSampledTrials
-%         dataCachedMeanExcludingSampledTrials
-%         dataCachedSampledTrialCounts
-        
-        % fDiffTrialsNoise
-        dataDifferenceOfTrialsScaledNoiseEstimate
-        
-        % fTrialAvgRandomized
-        randomized
-        randomizedNDM
-        
-        % fStored
-        stored
-        storedNDM
-        
-%         dataMeanRandomized
-%         dataSemRandomized
-%         dataDifferenceOfTrialsScaledNoiseEstimateRandomized
-%         dataNumTrialsRawRandomized
-%         dataIntervalHigh
-%         dataIntervalLow
+        data
     end
-    
-    % Lists of fields within PopulationTrajectorySet to simplify the
-    % copying and assert ~isempty checks below.
-    properties(Constant)
-        fSettings = {'dataUnits', 'timeUnitName', 'timeUnitsPerSecond', 'spikeFilter', 'minTrialsForTrialAveraging', ...
-            'minFractionTrialsForTrialAveraging', 'ignoreLeadingTrailingZeroSpikeTrials', ...
-            'dataIntervalQuantileLow', 'dataIntervalQuantileHigh'};
-
-        fDescriptors = {'alignDescriptorSet', 'conditionDescriptor', 'translationNormalization'};
-        
-        fBasisInfo = {'basisNames', 'basisUnits', ...
-            'basisValidPermanent', 'basisInvalidCausePermanent', ...
-            'basisValidTemporary', 'basisInvalidCauseTemporary'};
-        
-        fDataSourceInfo = {'dataSources', 'basisDataSourceIdx', 'basisDataSourceChannelNames'};
-        
-        fSingleTrial = {'dataSources', 'dataByTrial', 'tMinForDataByTrial', 'tMaxForDataByTrial', ...
-            'tMinByTrial', 'tMaxByTrial'};
-        
-        fTrialAvg = {'tMinValidByAlignBasisCondition', 'tMaxValidByAlignBasisCondition', ...
-                'tMinForDataMean', 'tMaxForDataMean', 'dataMean', 'dataSem', ...
-                'dataNumTrialsRaw', 'dataValid', ...
-                'alignSummaryData', 'basisAlignSummaryLookup', 'trialLists'};
-            
-%         fTrialAvgCrossValidation = {'dataCachedSampledTrials', 'dataCachedMeanExcludingSampledTrials', ...
-%                 'dataCachedSampledTrialCounts'};
-            
-        fDiffTrialsNoise = {'dataDifferenceOfTrialsScaledNoiseEstimate'};
-        
-        fTrialAvgRandomized = {'randomized', 'randomizedNDM'};
-        
-        fStored = {'stored', 'storedNDM'};
-%             'dataDifferenceOfTrialsScaledNoiseEstimateRandomized', 'dataNumTrialsRawRandomized'};
-        
-        fCanBeEmptyExceptions = {'translationNormalization', 'dataDifferenceOfTrialsScaledNoiseEstimate'};
-    end
-        
+   
     methods(Static)
         function pset = fromAllUnitsInTrialData(tdca)
             if ~isa(tdca, 'TrialDataConditionAlign')
@@ -272,24 +163,24 @@ classdef PopulationTrajectorySetBuilder
             p.addParameter('includeDataSourceInfo', false, @islogical); % used when construction psets with dataSourceManual == true
             p.parse(varargin{:});
             
-            toCopy = [PopulationTrajectorySetBuilder.fSettings, ...
-                PopulationTrajectorySetBuilder.fDescriptors, ...
-                PopulationTrajectorySetBuilder.fBasisInfo, ...
-                PopulationTrajectorySetBuilder.fDataSourceInfo, ...
-                PopulationTrajectorySetBuilder.fSingleTrial, ...
-                PopulationTrajectorySetBuilder.fTrialAvg, ...
-                PopulationTrajectorySetBuilder.fTrialAvgRandomized, ...
-                PopulationTrajectorySetBuilder.fDiffTrialsNoise];
+            toCopy = [PopulationTrajectorySet.fSettings, ...
+                PopulationTrajectorySet.fDescriptors, ...
+                PopulationTrajectorySet.fBasisInfo, ...
+                PopulationTrajectorySet.fDataSourceInfo, ...
+                PopulationTrajectorySet.fSingleTrial, ...
+                PopulationTrajectorySet.fTrialAvg, ...
+                PopulationTrajectorySet.fTrialAvgRandomized, ...
+                PopulationTrajectorySet.fDiffTrialsNoise];
             
-            toCheckNonEmpty = [PopulationTrajectorySetBuilder.fDescriptors, ...
-                PopulationTrajectorySetBuilder.fBasisInfo, ...
-                ... %PopulationTrajectorySetBuilder.fDataSourceInfo, ...
-                PopulationTrajectorySetBuilder.fSingleTrial, ...
-                PopulationTrajectorySetBuilder.fTrialAvg];
+            toCheckNonEmpty = [PopulationTrajectorySet.fDescriptors, ...
+                PopulationTrajectorySet.fBasisInfo, ...
+                ... %PopulationTrajectorySet.fDataSourceInfo, ...
+                PopulationTrajectorySet.fSingleTrial, ...
+                PopulationTrajectorySet.fTrialAvg];
             
             if p.Results.includeDataSourceInfo
-                toCopy = [toCopy, PopulationTrajectorySetBuilder.fDataSourceInfo];
-                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySetBuilder.fDataSourceInfo];
+                toCopy = [toCopy, PopulationTrajectorySet.fDataSourceInfo];
+                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.fDataSourceInfo];
             end
         end
         
@@ -299,22 +190,22 @@ classdef PopulationTrajectorySetBuilder
             p.addParameter('includeDataSourceInfo', false, @islogical); % used when construction psets with dataSourceManual == true
             p.parse(varargin{:});
             
-            toCopy = [PopulationTrajectorySetBuilder.fSettings, ...
-                PopulationTrajectorySetBuilder.fDescriptors, ...
-                PopulationTrajectorySetBuilder.fBasisInfo, ...
-                PopulationTrajectorySetBuilder.fTrialAvg, ...
-                PopulationTrajectorySetBuilder.fTrialAvgRandomized, ...
-                PopulationTrajectorySetBuilder.fDiffTrialsNoise];
+            toCopy = [PopulationTrajectorySet.fSettings, ...
+                PopulationTrajectorySet.fDescriptors, ...
+                PopulationTrajectorySet.fBasisInfo, ...
+                PopulationTrajectorySet.fTrialAvg, ...
+                PopulationTrajectorySet.fTrialAvgRandomized, ...
+                PopulationTrajectorySet.fDiffTrialsNoise];
             
             toCheckNonEmpty = {};
             
 %             if p.Results.includeDiffTrialsNoise
-%                 toCopy = [toCopy, PopulationTrajectorySetBuilder.fDiffTrialsNoise];
+%                 toCopy = [toCopy, PopulationTrajectorySet.fDiffTrialsNoise];
 %             end
             
             if p.Results.includeDataSourceInfo
-                toCopy = [toCopy, PopulationTrajectorySetBuilder.fDataSourceInfo];
-                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySetBuilder.fDataSourceInfo];
+                toCopy = [toCopy, PopulationTrajectorySet.fDataSourceInfo];
+                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.fDataSourceInfo];
             end
         end
     end
@@ -322,7 +213,7 @@ classdef PopulationTrajectorySetBuilder
     methods(Static)
         function bld = copyFromPopulationTrajectorySet(pset, fields)
             % copy values from population trajectory set, all fields by default
-            bld = PopulationTrajectorySetBuilder();
+            bld = PopulationTrajectorySet();
             
             if nargin < 2
                 fields = PopulationTrajectorySetBuilder.listFieldsSingleTrial();
@@ -337,7 +228,7 @@ classdef PopulationTrajectorySetBuilder
         function bld = copyTrialAveragedOnlyFromPopulationTrajectorySet(pset, fields)
             % copy values from population trajectory set, all fields except
             % single trial data
-            bld = PopulationTrajectorySetBuilder();
+            bld = PopulationTrajectorySet();
             
             if nargin < 2
                 fields = PopulationTrajectorySetBuilder.listFieldsTrialAverage();
@@ -350,17 +241,17 @@ classdef PopulationTrajectorySetBuilder
         end
         
         function bld = copySettingsDescriptorsBasisInfoFromPopulationTrajectorySet(pset)
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
-                [ PopulationTrajectorySetBuilder.fSettings, ...
-                  PopulationTrajectorySetBuilder.fDescriptors, ...
-                  PopulationTrajectorySetBuilder.fBasisInfo, ...
+            bld = PopulationTrajectorySet.copyFromPopulationTrajectorySet(pset, ...
+                [ PopulationTrajectorySet.fSettings, ...
+                  PopulationTrajectorySet.fDescriptors, ...
+                  PopulationTrajectorySet.fBasisInfo, ...
                   ]);
         end
         
         function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
-                [ PopulationTrajectorySetBuilder.fSettings, ...
-                  PopulationTrajectorySetBuilder.fDescriptors ]);
+            bld = PopulationTrajectorySet.copyFromPopulationTrajectorySet(pset, ...
+                [ PopulationTrajectorySet.fSettings, ...
+                  PopulationTrajectorySet.fDescriptors ]);
         end
         
         function psetManual = convertToManualWithSingleTrialData(pset, varargin)
