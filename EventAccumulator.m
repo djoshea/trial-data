@@ -30,6 +30,12 @@ classdef EventAccumulator
                 delta = 1;
             end
             
+            ea.delta = delta;
+            
+            if isequal(data, [])
+                return;
+            end
+            
 %             if isempty(data)
 %                 error('No data provided to EventAccumulator constructor');
 %             end
@@ -42,6 +48,7 @@ classdef EventAccumulator
             edges = (binlo:delta:binhi+delta)';
             
             for c = 1:C
+                ea(c).delta = delta;
                 ea(c).bins = bins;
                 counts = histc(data(:, c), edges)';
                 if size(counts, 2) > size(counts, 1)
@@ -173,10 +180,10 @@ classdef EventAccumulator
             end
         end
         
-        function ea = constructMatrixFromEventDataCell(dataCell, delta)
-            % dataCell is a cell vector of 
-            
-        end
+%         function ea = constructMatrixFromEventDataCell(dataCell, delta)
+%             % dataCell is a cell vector of 
+%             
+%         end
             
         function out = build_kde(bins, counts, bw)
             if numel(bins) < 2

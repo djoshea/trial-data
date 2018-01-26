@@ -6,7 +6,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
     properties % these write to and read from the underlying _I properties below
         timeDelta = 1; % sampling interval for the filtered output
         binAlignmentMode BinAlignmentMode = BinAlignmentMode.Centered;
-        resampleMethod char = 'filter';
+        resampleMethod char = 'interp';
     end
     
     methods % Get methods that allow subclasses to provide their own value overwriting
@@ -27,8 +27,8 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             
         end
         
-        function v = get.resampleMethod(v)
-            v = sf.getResampleMethod(sf.getBinAlignmentMode);
+        function v = get.resampleMethod(sf)
+            v = sf.getResampleMethod(sf.resampleMethod);
         end
         
         function v = getResampleMethod(sf, v)
@@ -185,6 +185,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
                 'assumeUniformSampling', true, ...
                 'fixNonmonotonicTimes', false, ...
                 'origDelta', sf.binWidthMs, ... % saves time if this is provided rather than inferred, requires 'useTimeDelta' false above
+                'timeDelta', sf.timeDelta, ...
                 'tMinExcludingPadding', p.Results.tMinByTrialExcludingPadding, ...
                 'tMaxExcludingPadding', p.Results.tMaxByTrialExcludingPadding); 
         end
