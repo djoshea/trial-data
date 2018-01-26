@@ -1217,14 +1217,23 @@ classdef TrialData
         end
         
         function vals = replaceInvalidMaskWithValue(td, vals, value)
+            vals = td.replaceMaskedValuesWithValue(vals, value, ~td.valid);
+        end
+        
+        function vals = replaceInvalidOrEmptyWithValue(td, vals, value)
+            empty = cellfun(@isempty, vals);
+            vals = td.replaceMaskedValuesWithValue(vals, value, ~td.valid | empty);
+        end
+        
+        function vals = replaceMaskedValuesWithValue(td, vals, value, mask) %#ok<INUSL>
             % (valid, :) notation is to allow vals to be high dimensional
             if iscell(vals)
-                [vals{~td.valid, :}] = deal(value);
+                [vals{mask, :}] = deal(value);
             else
                 if isempty(value)
                     value = NaN;
                 end
-                sel = TensorUtils.maskByDimCellSelectAlongDimension(size(vals), 1, ~td.valid);
+                sel = TensorUtils.maskByDimCellSelectAlongDimension(size(vals), 1, mask);
                 vals(sel{:}) = value;
             end
         end
@@ -1545,11 +1554,11 @@ classdef TrialData
             if any(isGroup)
                 td = td.dropAnalogChannelGroup(names(isGroup));
                 cds = cds(~isGroup);
-                inGroup = inGroup(~isGroup);
-                partialGroupNames = partialGroupNames(~isGroup);
+%                 inGroup = inGroup(~isGroup);
+%                 partialGroupNames = partialGroupNames(~isGroup);
             end
             
-            groupsAffected = unique(partialGroupNames(inGroup));
+%             groupsAffected = unique(partialGroupNames(inGroup));
             
             % remove the channel descriptors
             td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, names);
@@ -2347,8 +2356,8 @@ classdef TrialData
         % same as raw, except empty out invalid trials
         function [data, time] = getAnalog(td, name)
             [data, time] = td.getAnalogRaw(name);
-            data = td.replaceInvalidMaskWithValue(data, []);
-            time = td.replaceInvalidMaskWithValue(time, []);
+            data = td.replaceInvalidOrEmptyWithValue(data, nan(0, 1));
+            time = td.replaceInvalidOrEmptyWithValue(time, nan(0, 1));
         end
         
         function [dataVec, timeVec] = getAnalogSample(td, name, varargin)
@@ -2476,8 +2485,8 @@ classdef TrialData
                         % treat timeField as analog channel name
                         % share that existing channel's time field
                         cd = td.channelDescriptorsByName.(timeField);
-                        assert(isa(cd, 'AnalogChannelDescriptor'), ...
-                            'Channel %s is not an analog channel', timeField);
+                        assert(isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor'), ...
+                            'Channel %s is not an analog channel or channel group', timeField);
                         timeField = cd.timeField;
                         times = {td.data.(timeField)};
                         isAligned = false;
@@ -3161,8 +3170,17 @@ classdef TrialData
         
         function [data, time] = getAnalogChannelGroup(td, groupName, varargin)
             [data, time] = td.getAnalogChannelGroupRaw(groupName, varargin{:});
-            data = td.replaceInvalidMaskWithValue(data, []);
-            time = td.replaceInvalidMaskWithValue(time, []);
+            
+            emptySlice = [];
+            for i = 1:numel(data)
+                sz = size(data{i});
+                if sz(2) > 1
+                    emptySlice = nan([0 sz(2:end)]);
+                end
+            end     
+            
+            data = td.replaceInvalidOrEmptyWithValue(data, emptySlice);
+            time = td.replaceInvalidOrEmptyWithValue(time, nan(0, 1));
         end
         
         function td = setAnalogChannelGroup(td, groupName, values, varargin)
@@ -4933,6 +4951,7 @@ classdef TrialData
         function [counts, hasSpikes] = getSpikeCounts(td, unitName, varargin)
             counts = cellfun(@numel, td.getSpikeTimes(unitName, varargin{:}));
             counts = td.replaceInvalidMaskWithValue(counts, NaN);
+            hasSpikes = counts > 0;
         end
         
         function [rates, durations, containsBlanked] = getSpikeMeanRate(td, unitName, varargin)

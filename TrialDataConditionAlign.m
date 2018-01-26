@@ -1844,6 +1844,11 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('includeEdgeBins', false, @islogical);
             
+            % if this is specified, the data for each trial will be sampled
+            % at specific times, per-trial
+            p.addParameter('sampleAtTimes', [], @(x) isvector(x) || iscell(x));
+            p.addParameter('extrapolate', true, @islogical);
+            
             % if these are specified, the data for each trial will be resampled
             p.addParameter('ensureUniformSampling', false, @islogical);
             p.addParameter('timeDelta', []);
@@ -1861,7 +1866,20 @@ classdef TrialDataConditionAlign < TrialData
             % resample if requested, don't use this when embedding in a
             % common matrix, better to figure out the common time vector
             % first
-            if ~isempty(p.Results.timeDelta) || p.Results.ensureUniformSampling
+            if ~isempty(p.Results.sampleAtTimes)
+                if p.Results.includePadding 
+                    [tMin, tMax] = td.getTimeStartStopEachTrialWithPadding();
+                else
+                    [tMin, tMax] = td.getTimeStartStopEachTrial();
+                end
+                
+                [data, time] = TrialDataUtilities.Data.resampleDataCellAtSpecificTimes(data, time, p.Results.sampleAtTimes, ...
+                    'interpolateMethod', p.Results.interpolateMethod, ...
+                    'extrapolate', p.Results.extrapolate, ...
+                    'binAlignmentMode', p.Results.binAlignmentMode, ...
+                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax);
+                
+            elseif ~isempty(p.Results.timeDelta) || p.Results.ensureUniformSampling
                 timeDelta = p.Results.timeDelta;
                 if isempty(timeDelta)
                     timeDelta = td.getAnalogTimeDelta(name);
@@ -2382,7 +2400,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('delta', [], @isscalar);
             p.addParameter('interpolationMethod', 'pchip', @ischar);
             p.addParameter('smoothing', NaN, @(x) isnan(x) || (isscalar(x) && mod(x, 2) == 1));
-            p.addParameter('smoothingMs', 7, @isscalar); % 
+            p.addParameter('smoothingMs', NaN, @isscalar); % 
             p.addParameter('differentiationOrder', 1, @isscalar);
             p.addParameter('polynomialOrder', 2, @isscalar);
             p.parse(varargin{:});
@@ -2391,17 +2409,28 @@ classdef TrialDataConditionAlign < TrialData
                 'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
             diffData = cellvec(td.nTrials);
             
+            deltaMs = delta / td.timeUnitsPerMs;
+            minSmoothingSamples = p.Results.polynomialOrder + 1;
+            minSmoothingMs = minSmoothingSamples * deltaMs;
+            
             % figure out smoothing in samples if specified in ms
             if ~isnan(p.Results.smoothing)
                 smoothing = p.Results.smoothing;
-            else
+            elseif ~isnan(p.Results.smoothingMs)
                 smoothingMs = p.Results.smoothingMs;
                 % convert from ms to samples using ms * samples/ms
-                smoothing = round(smoothingMs * delta / td.timeUnitsPerMs);
+                smoothing = round(smoothingMs / deltaMs);
                 if mod(smoothing, 2) == 0 
                     smoothing = smoothing + 1;
                 end
+            else
+                % default to minimum allowed
+                smoothing = minSmoothingSamples;
             end
+            
+            % check smoothing is large enough for sampling rate
+            assert(smoothing >= minSmoothingSamples, 'Smoothing width is too small, must be at least %d samples or %g ms', ...
+                minSmoothingSamples, minSmoothingMs);
             
 %             w = -1 / (delta / td.timeUnitsPerSecond) ^ p.Results.order;
             prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', name);
@@ -2417,7 +2446,7 @@ classdef TrialDataConditionAlign < TrialData
                 else
                     diffData{iT} = TrialDataUtilities.Data.savitzkyGolayFilt( ...
                         data{iT}, 'polynomialOrder', p.Results.polynomialOrder, 'differentiationOrder', p.Results.differentiationOrder, ...
-                        'frameSize', smoothing, 'samplingIntervalMs', delta / td.timeUnitsPerMs)'; 
+                        'frameSize', smoothing, 'samplingIntervalMs', delta / td.timeUnitsPerMs); 
                 end
             end
             prog.finish();
@@ -2441,6 +2470,14 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.copyChannel(oldName, newName);
             td = td.setAnalog(newName, data, 'updateValidOnly', true, 'clearForInvalid', true);
+        end
+        
+        function td = addScaledAnalogChannel(td, name, scaledName, multiplyBy, scaledUnits)
+            td.warnIfNoArgOut(nargout);
+            
+            [data, time] = td.getAnalogRaw(name);
+            data = cellfun(@(d) d*multiplyBy, data, 'UniformOutput', false);
+            td = td.addAnalog(scaledName, data, time, 'units', scaledUnits, 'isAligned', false);
         end
         
         function [data, time] = getAnalogFiltered(td, name, B, A, varargin)
@@ -3095,12 +3132,38 @@ classdef TrialDataConditionAlign < TrialData
         
         function [means, tvec] = getAnalogChannelGroupMeanOverTimeEachTrial(td, name, varargin)
             [data, tvec] = td.getAnalogChannelGroup(name, varargin{:});
-            means = TensorUtils.inflateMaskedTensor(cellfun(@(x) nanmean(x, 1), data(td.valid)), 1, td.valid);
+            means = TensorUtils.inflateMaskedTensor(cellfun(@(x) nanmean(x, 1), data(td.valid), 'UniformOutput', false), 1, td.valid);
         end
         
         function [meansCell, tvec] = getAnalogChannelGroupMeanOverTimeEachTrialGrouped(td, name, varargin)
             [means, tvec] = td.getAnalogChannelGroupMeanOverTimeEachTrial(name, varargin{:});
             meansCell = td.groupElements(means);
+        end
+        
+        function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogChannelGroupMeanOverTimeEachTrialGroupMeans(td, name, varargin) 
+            % *Mat will be nConditions x T x ... matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+            
+            [meansGrouped, tvec] = td.getAnalogChannelGroupMeanOverTimeEachTrialGrouped(name, p.Unmatched);
+           
+            ne = find(~cellfun(@isempty, meansGrouped), 1);
+            sampleSize = size(meansGrouped{ne});
+            sampleSize = sampleSize(3:end);
+            
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.nConditions, numel(tvec), sampleSize]));
+            for iC = 1:td.nConditions
+                if ~isempty(meansGrouped{iC})
+                    [meanMat(iC, :, :, :, :, :, :), semMat(iC, :, :, :, :, :, :), ...
+                        nTrialsMat(iC, :, :, :, :, :, :), stdMat(iC, :, :, :, :, :, :)] = ...
+                        nanMeanSemMinCount(meansGrouped{iC}, 1, minTrials, p.Results.minTrialFraction);
+                end
+            end
         end
         
         function td = setAnalogChannelGroupWithinAlignWindow(td, groupName, values, varargin)
@@ -6184,8 +6247,10 @@ classdef TrialDataConditionAlign < TrialData
             elseif td.hasSpikeChannel(name)
                 [dataByGroup, timeByGroup] = td.getSpikeRateFilteredGrouped(name);
                 cd = td.channelDescriptorsByName.(name);
-            else
+            elseif td.hasChannel(name)
                 error('Unknown channel type');
+            else
+                error('Channel %s not found', name);
             end
             
             td.plotProvidedAnalogDataGroupedEachTrial(1, 'time', timeByGroup, ...
