@@ -79,14 +79,22 @@ classdef ProjJPCA < StateSpaceProjection
             % run pca on valid bases
             NvalidbyCbyTA = pset.arrangeNbyCbyTA('validBasesOnly', true);
             
-            idx = find(all(isnan(NvalidbyCbyTA), 1));
-            if ~isempty(idx)
-                error('No valid trial average timepoints found for %d bases', numel(idx));
+            % we can only use timepoints and conditions where all valid bases have data
+            
+            % conditions where all bases have at least one timepoint
+            cMask = any(all(~isnan(NvalidbyCbyTA), 1), 3);
+            if ~any(cMask)
+                error('No condition have valid data for all bases for at least one timepoint');
             end
+            NvalidbyCbyTA = NvalidbyCbyTA(:, cMask, :);
             
             taKeep = TensorUtils.allMultiDim(~isnan(NvalidbyCbyTA), [1 2]);
+            if ~any(taKeep)
+                error('No valid trial average timepoints found for %d bases', numel(idx));
+            end
             NvalidbyCbyTA = NvalidbyCbyTA(:, :, taKeep);
-            NvalidbyCbyTA = bsxfun(@minus, NvalidbyCbyTA, mean(NvalidbyCbyTA, 3));
+            
+%             NvalidbyCbyTA = bsxfun(@minus, NvalidbyCbyTA, mean(NvalidbyCbyTA, 3));
             
             decoderKbyNvalid = TrialDataUtilities.jPCA.jPCA(NvalidbyCbyTA, K, ...
                 'suppressBWrosettes', proj.suppressBWrosettes, ...

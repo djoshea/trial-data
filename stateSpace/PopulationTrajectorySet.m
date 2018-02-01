@@ -253,6 +253,12 @@ classdef PopulationTrajectorySet
         % timepoints for each trial in dataByTrial
         tMinByTrial
         tMaxByTrial
+        
+        % containing the start and stop times for
+        % which sufficient trials exist to compute a trial-average for each
+        % align, basis, and condition
+        tMinValidByAlignBasisCondition
+        tMaxValidByAlignBasisCondition
 
         %% FOR INDIVIDUAL TRIAL DATA, BUT LINKED TO THE CONDITIONS SINCE ONLY VALID TRIALS ARE INCLUDED
         % these are computed from dataByTrial if dataSourceManual is false,
@@ -397,12 +403,6 @@ classdef PopulationTrajectorySet
         % that condition, and the condition is messing up the time vector
         % limits
         conditionIncludeMask
-
-        % containing the start and stop times for
-        % which sufficient trials exist to compute a trial-average for each
-        % align, basis, and condition
-        tMinValidByAlignBasisCondition
-        tMaxValidByAlignBasisCondition
 
         % nAlign x nConditions matrix containing the start and stop times
         % for which sufficient trials exist to compute a trial-average for
@@ -5113,7 +5113,7 @@ classdef PopulationTrajectorySet
                 norms = onesvec(nBasesPlot);
             end
 
-            app = pset.conditionDescriptor.appearances;
+            appearances = pset.conditionDescriptor.appearances;
 
             nConditionsPlot = numel(indexInfo.condition);
             conditionIdx = indexInfo.condition;
@@ -5199,21 +5199,15 @@ classdef PopulationTrajectorySet
                 for iCond = 1:nConditionsPlot
                     idxCondition = conditionIdx(iCond);
                     dataC = TensorUtils.squeezeDims(data(:, iCond, :), 2);
+                    app = appearances(idxCondition);
+                    plotArgsC = app.getPlotArgsCombinedWithDefaults('LineWidth', p.Results.lineWidth, 'Color', [0 0 0], 'Alpha', p.Results.alpha);
                     if strcmp(p.Results.style, 'stairs')
                         hData{iCond, iAlign} = TrialDataUtilities.Plotting.stairs(...
                                  tvecPlot + stairsXOffset, dataC', ...
-                                 'axh', axh, 'color', app(idxCondition).Color, 'alpha', p.Results.alpha, ...
-                                 'lineWidth', p.Results.lineWidth * app(idxCondition).LineWidth);
+                                 'axh', axh, plotArgsC{:});
                     else
-                        if p.Results.alpha < 1
-                            hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvecPlot, dataC', ...
-                                'EdgeColor', app(idxCondition).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, 'Parent', axh);
-                        else
-                            hData{iCond, iAlign} = plot(tvecPlot, dataC', '-', ...
-                                'Parent', axh, 'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, ...
-                                'Color', app(idxCondition).Color);
-                        end
+                        hData{iCond, iAlign} = plot(tvecPlot, dataC', '-', ...
+                            'Parent', axh, plotArgsC{:});
                     end
 
                     if iAlign==1
@@ -5484,23 +5478,23 @@ classdef PopulationTrajectorySet
                     for iCondition = 1:nConditions
                         idxCondition = conditionIdx(iCondition);
                         app = pset.conditionDescriptor.appearances(idxCondition);
-                        plotArgsC = {}; %appear.getPlotArgs();
+                        plotArgsC = app.getPlotArgsCombinedWithDefaults('Color', [0 0 0], 'LineWidth', p.Results.lineWidth, 'Alpha', p.Results.alpha);
                         dataMat = squeeze(data(:, iCondition, :));
 
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                '-', 'LineWidth', p.Results.lineWidth * app.LineWidth, 'Clipping', p.Results.clipping, ...
-                                plotArgsC{:}, plotArgs{:});
+                                '-', plotArgsC{:}, 'Clipping', p.Results.clipping, ...
+                                plotArgs{:});
                         else
                             %                             dataMat = [dataVec1 dataVec2];
                             h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
-                                'LineWidth', p.Results.lineWidth * app.LineWidth, ...
+                                plotArgsC{:}, ...
                                 'Clipping', p.Results.clipping, ...
-                                plotArgsC{:}, plotArgs{:});
+                                plotArgs{:});
                         end
-                        if p.Results.alpha < 1
-                            TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
-                        end
+%                         if p.Results.alpha < 1
+%                             TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
+%                         end
 
                         if iAlign == 1
                             TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{idxCondition});
@@ -5899,8 +5893,7 @@ classdef PopulationTrajectorySet
             p.addParameter('validTimepointsAllBasesOnly', false, @islogical); % keep only timepoints where all bases have data
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            basisIdx = TensorUtils.vectorMaskToIndices(p.Results.basisIdx); %#ok<NASGU>
-
+           
             [NbyCbyTA, indexInfo, tvec, avec] = pset.arrangeNbyCbyTA('validBasesOnly', p.Results.validBasesOnly, p.Unmatched);
             labels = {indexInfo.basis, indexInfo.condition, [tvec, avec]};
             % we include dim 4 as this would hold randomized samples

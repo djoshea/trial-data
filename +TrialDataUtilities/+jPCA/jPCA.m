@@ -90,9 +90,10 @@ dataCTbyN = TensorUtils.reshapeByConcatenatingDims(dataNbyCbyT, {[3 2], 1});
 [pcaMat, pcScores] = pca(dataCTbyN, 'NumComponents', numPCs, 'Economy', true, 'Centered', true);  % apply PCA to the analyzed times
 
 % reshape back into c by t by n so we can diff
-pcScoresUnpacked = reshape(pcScores, [C T numPCs]);
-diffTensor = diff(pcScoresUnpacked, 1, 2);
-preTensor = pcScoresUnpacked(:, 1:end-1, :);
+pcScoresUnpacked = reshape(pcScores, [T C numPCs]);
+pcScoresFirst = reshape(pcScoresUnpacked(1, :, :), [C numPCs]);
+diffTensor = diff(pcScoresUnpacked, 1, 1);
+preTensor = pcScoresUnpacked(1:end-1, :, :);
 
 % and back into CT by N
 dState = reshape(diffTensor, [C*(T-1) numPCs]);
@@ -152,7 +153,7 @@ for pair = 1:numPCs/2
     
     VconjPair = V(:,[vi1,vi2]);  % a conjugate pair of eigenvectors
     evConjPair = evals([vi1,vi2]); % and their eigenvalues
-    VconjPair = getRealVs(VconjPair,evConjPair, pcScores);
+    VconjPair = getRealVs(VconjPair,evConjPair, pcScoresFirst, pcScores);
     
     jPCs(:,[vi1,vi2]) = VconjPair;
 end
@@ -288,7 +289,7 @@ end
 % 
 % 
 % %% Inline function that gets the real analogue of the eigenvectors
-function Vr = getRealVs(V,evals, pcScores)
+function Vr = getRealVs(V, evals, pcScoresFirst, pcScores)
 
     % get real vectors made from the eigenvectors
     
@@ -301,7 +302,7 @@ function Vr = getRealVs(V,evals, pcScores)
     Vr = Vr / sqrt(2);
 
     % now get axes aligned so that plan is spread mostly along the horizontal axis
-    testProj = (Vr'*pcScores')'; % just picks out the plan times
+    testProj = (Vr'*pcScoresFirst')'; % just picks out the plan times
     rotV = pca(testProj);
     crossProd = cross([rotV(:,1);0], [rotV(:,2);0]);
     if crossProd(3) < 0, rotV(:,2) = -rotV(:,2); end   % make sure the second vector is 90 degrees clockwise from the first

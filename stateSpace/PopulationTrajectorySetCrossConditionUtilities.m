@@ -882,13 +882,18 @@ classdef PopulationTrajectorySetCrossConditionUtilities
                 
                 % concatenate along the condition axis
                 catAxis = conditionDim + catAlongAxis - 1;
-                catTensor = cat(catAxis, tensorCell{:});
+                catTensor = cat(catAxis, tensorCell{:}); 
                 
-                % reshape the result to be flat again
-                szMat = cat(1, conditionsSizeCell{:});
-                catSz = newSz;
-                catSz(catAxis) = sum(szMat(:, catAlongAxis));
-                res = reshape(catTensor, catSz);
+                % catTensor % will have unrolled condition axes
+                % then reshape the result to be flat again
+                nConditionAxes = numel(conditionsSizeCell{1});
+                unrolledConditionDims = conditionDim-1 + (1:nConditionAxes);
+                
+                catSzUnrolled = size(catTensor);
+                flatCatSz = [catSzUnrolled(1:conditionDim-1) prod(catSzUnrolled(unrolledConditionDims)) catSzUnrolled(conditionDim+nConditionAxes:end)];
+                
+                % take the size of the last tensor, and replace the size along the concatenation axis with the combined size
+                res = reshape(catTensor, flatCatSz);
             end
         end
     end

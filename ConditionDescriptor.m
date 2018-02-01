@@ -2861,10 +2861,13 @@ classdef ConditionDescriptor
             if nConditions == 1
                 cmap = [0.2 0.2 0.2];
             else
-                if nConditions > 256
+                if nConditions > 37
                     cmap = jet(nConditions);
                 else
-                    cmap = distinguishable_colors(nConditions);
+                    cmap = cat(1, TrialDataUtilities.Color.cbrewer('qual', 'Set1'), ...
+                        TrialDataUtilities.Color.cbrewer('qual', 'Paired'), ...
+                        TrialDataUtilities.Color.cbrewer('qual', 'Accent'), ...
+                        TrialDataUtilities.Color.cbrewer('qual', 'Dark2'));
                 end
             end
 

@@ -261,8 +261,10 @@ classdef PopulationTrajectorySetBuilder
         
         function pset = fromDataMeanTensor(dataMean_NbyCbyT, varargin)
             p = inputParser();
+            
             p.addOptional('time', [], @(x) isempty(x) || iscell(x) || isvector(x));
             p.addParameter('basisNames', {}, @iscellstr);
+            p.addParameter('zeroEventNames', {}, @iscellstr);
             p.addParameter('conditionsSize', [], @(x) isempty(x) || isvector(x));
             p.addParameter('axisNames', {}, @iscellstr);
             p.addParameter('valuesAlongAxes', {}, @iscell);
@@ -304,8 +306,17 @@ classdef PopulationTrajectorySetBuilder
             timeDelta = time{1}(2) - time{1}(1);
             tMinDataMean = cellfun(@min, time);
             tMaxDataMean = cellfun(@max, time);
-            
             A = numel(dataMean_NbyCbyT);
+            
+            if isempty(p.Results.zeroEventNames)
+                zeroEventNames = arrayfun(@(i) sprintf('Align%d', i), (1:A)', 'UniformOutput', false);
+            end
+            alignDescriptorSet = cell(A, 1);
+            for iA = 1:A
+                ev = zeroEventNames{iA};
+                alignDescriptorSet{iA} = AlignDescriptor().zero(ev).start(ev, tMinDataMean(iA)).stop(ev, tMaxDataMean(iA));
+            end
+            
             [tMinValidByAlignBasisCondition, tMaxValidByAlignBasisCondition] = deal(nan(A, N, C));
             dataValid = false(A, N, C);
             for iA = 1:A
@@ -322,7 +333,7 @@ classdef PopulationTrajectorySetBuilder
             
             pset = PopulationTrajectorySet();
             pset.dataSourceManual = true;
-            
+            pset.alignDescriptorSet = alignDescriptorSet;
             pset.basisNames = basisNames;
             pset.timeUnitName = p.Results.timeUnitName;
             pset.timeUnitsPerSecond = p.Results.timeUnitsPerSecond;
