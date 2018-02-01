@@ -1,9 +1,10 @@
-classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
+classdef PropertyShapeMeta < matlab.mixin.CustomDisplay
     % a lightweight metadata class for describing the meaning of each dimension in a nested
     % array, i.e. one in which the top levels are cell arrays and the bottom level is a matrix,
     % For example, an A x B x C cell array of D x E matrices would be
     properties
         dimsByLevel cell = {} % will be cell of cellstr, each top level corresponds to a dim
+        leafClass char = 'float';
         attr struct = struct(); % contains any additional metadata applying to the whole array
     end
 
@@ -13,7 +14,7 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
     end
 
     methods
-        function ndm = NestedDimensionMeta(dimsByLevel, varargin)
+        function meta = PropertyShapeMeta(dimsByLevel, leafClass, varargin)
             p = inputParser();
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -22,90 +23,102 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
             if iscellstr(dimsByLevel) && ~isempty(dimsByLevel)
                 dimsByLevel = {dimsByLevel};
             end
-            
+
             dimsByLevel = makecol(dimsByLevel);
             for i = 1:numel(dimsByLevel)
                 assert(iscellstr(dimsByLevel{i}) && isvector(dimsByLevel{i}));
                 dimsByLevel{i} = makecol(dimsByLevel{i});
             end
-            ndm.dimsByLevel = dimsByLevel;
+            meta.dimsByLevel = dimsByLevel;
 
             % check for dim name uniqueness
-            dimNames = cat(1, ndm.dimsByLevel{:});
+            dimNames = cat(1, meta.dimsByLevel{:});
             assert(numel(dimNames) == numel(unique(dimNames)));
 
-            ndm.attr = p.Unmatched;
+            meta.leafClass = leafClass;
+
+            meta.attr = p.Unmatched;
         end
-        
-        function str = getDescription(ndm)
-            strCell = cell(1, ndm.depth);
-            for iL = 1:ndm.depth
-                if iL < ndm.depth
+
+        function str = getDescription(meta)
+            strCell = cell(1, meta.depth);
+            for iL = 1:meta.depth
+                if iL < meta.depth
                     type = 'cell of ';
-                elseif ndm.depth > 1
+                elseif meta.depth > 1
                     type = 'arrays';
                 else
                     type = 'array';
                 end
-                strCell{iL} = sprintf('%s %s', strjoin(ndm.dimsByLevel{iL}, ' x '), type);
+                strCell{iL} = sprintf('%s %s', strjoin(meta.dimsByLevel{iL}, ' x '), type);
             end
             str = strjoin(strCell, '');
         end
 
-        function v = get.depth(ndm)
-            v = numel(ndm.dimsByLevel);
+        function v = get.depth(meta)
+            v = numel(meta.dimsByLevel);
         end
 
-        function v = get.flatDimNames(ndm)
-            v = cat(1, ndm.dimsByLevel{:});
+        function v = get.flatDimNames(meta)
+            v = cat(1, meta.dimsByLevel{:});
         end
-        
-        function [tf, level, dim] = hasDimByName(ndm, dimName)
-            [level, dim] = ndm.findDimByName(dimName);
+
+        function [tf, level, dim] = hasDimByName(meta, dimName)
+            [level, dim] = meta.findDimByName(dimName);
             tf = ~isnan(level);
         end
 
-       function [level, dim] = findDimByName(ndm, dimName)
+       function [level, dim] = findDimByName(meta, dimName)
             if ischar(dimName)
                 dimName = {dimName};
             end
             N = numel(dimName);
             [level, dim] = deal(nan(N, 1));
-            
-            for iL = 1:ndm.depth
-                [tf, which] = ismember(dimName, ndm.dimsByLevel{iL});
+
+            for iL = 1:meta.depth
+                [tf, which] = ismember(dimName, meta.dimsByLevel{iL});
                 level(tf) = iL;
                 dim(tf) = which(tf);
             end
         end
 
-        function data = filterDimByName(ndm, data, dimName, masks)
+        function value = getAttrWithDefault(meta, fld, default)
+            if isfield(meta.attr, fld)
+                value = meta.attr.(fld);
+            else
+                value = default;
+            end
+        end
+    end
+
+    methods % Data transformation methods
+        function data = filterDimByName(meta, data, dimName, masks)
             % selects along dimension dimName with mask
             % if dimName is char, mask is a logical or numerical vector
             % if dimName is vector, mask is a cell of mask vectors for each dimName
-            [level, dim] = ndm.findDimByName(dimName);
-            data = ndm.filterLevelDim(data, level, dim, masks);
+            [level, dim] = meta.findDimByName(dimName);
+            data = meta.filterLevelDim(data, level, dim, masks);
         end
-        
-        function data = filterLevelDim(ndm, data, level, dim, masks)
+
+        function data = filterLevelDim(meta, data, level, dim, masks)
             if ~iscell(masks)
                 masks = {masks};
             end
             data = filterInner(data, 1);
-            
+
             function d = filterInner(d, levelThis)
                 % apply any filtering that needs to happen at this level, and then recurse on deeper levels
                 idx = find(level == levelThis);
                 if any(idx)
                     d = selectAlongDimension(d, dim(idx), masks(idx));
                 end
-                if levelThis < ndm.depth && any(level > levelThis)
+                if levelThis < meta.depth && any(level > levelThis)
                     for iD = 1:numel(d)
                         d{iD} = filterInner(d{iD}, levelThis+1);
                     end
                 end
             end
-            
+
             function t = selectAlongDimension(t, dim, select)
                 sz = size(t);
                 if numel(sz) < numel(dim)
@@ -123,36 +136,36 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                 t = t(maskByDim{:});
             end
         end
-        
-        function data = assignValueMaskedSelectionAlongDimByName(ndm, data, dimName, masks, value, clearCells)
-            [level, dim] = ndm.findDimByName(dimName);
-            data = ndm.assignValueMaskedSelectionAlongLevelDim(data, level, dim, masks, value, clearCells);
+
+        function data = assignValueMaskedSelectionAlongDimByName(meta, data, dimName, masks, value, clearCells)
+            [level, dim] = meta.findDimByName(dimName);
+            data = meta.assignValueMaskedSelectionAlongLevelDim(data, level, dim, masks, value, clearCells);
         end
-        
-        function data = assignValueMaskedSelectionAlongLevelDim(ndm, data, level, dim, masks, value, clearCells)
+
+        function data = assignValueMaskedSelectionAlongLevelDim(meta, data, level, dim, masks, value, clearCells)
             % for a specific dimension at the specified level and dim, assign value into positions selected by mask
             % if level is the last level, value will be used. If level is not the last level (i.e. this level is cells of a deeper level)
             % clearCells==true will replace those cell elements contents with {}
             % clearCells==false will replace those cell elements contents at the last level with value
-            
+
             assert(isscalar(value));
             if ~iscell(masks)
                 masks = {masks};
             end
-            
+
             data = assignInner(data, 1);
-            
+
             function d = assignInner(d, levelThis)
                 % apply any filtering that needs to happen at this level, and then recurse on deeper levels
                 idx = find(level == levelThis);
-                
-                if levelThis < ndm.depth 
+
+                if levelThis < meta.depth
                     % not the last level
                     if any(idx)
                         masksByDim = buildMasksByDim(d, dim(idx), masks(idx));
                         if clearCells
                             % we'll be setting these positions in the cell to empty
-                            [d{masksByDim{:}}] = deal({}); 
+                            [d{masksByDim{:}}] = deal({});
                         else
                             d(masksByDim{:}) = setFinalLevelToValue(d(masksByDim{:}), value);
                         end
@@ -162,14 +175,14 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                             d{iD} = assignInner(d{iD}, levelThis+1);
                         end
                     end
-                else 
+                else
                     if any(idx)
                         masksByDim = buildMasksByDim(d, dim(idx), masks(idx));
                         d(masksByDim{:}) = value;
                     end
                 end
             end
-            
+
             function maskByDim = buildMasksByDim(t, dim, select)
                 sz = size(t);
                 if numel(sz) < numel(dim)
@@ -185,7 +198,7 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                     end
                 end
             end
-            
+
             function t = setFinalLevelToValue(t, value)
                 if iscell(t)
                     for iT = 1:numel(t)
@@ -196,26 +209,26 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                 end
             end
         end
-        
-        function data = applyFnToLastLevel(ndm, data, fn)
+
+        function data = applyFnToLastLevel(meta, data, fn)
             data = inner(data, 1);
-            
+
             function d = inner(d, levelThis)
-                if levelThis == ndm.depth
+                if levelThis == meta.depth
                     d = fn(d);
                 else
                     for i = 1:numel(d)
                         d{i} = inner(d{i}, levelThis+1);
                     end
                 end
-            end 
+            end
         end
 
-        function out = emptyFromSizes(ndm, sizeStruct, fill)
+        function out = emptyFromSizes(meta, sizeStruct, fill)
             if nargin < 3
                 fill = NaN;
             end
-            
+
             function sz = sizesFromDimNames(dimNames)
                 sz = nan(numel(dimNames), 1);
                 for iD = 1:numel(sz)
@@ -225,50 +238,50 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                     sz(2) = 1;
                 end
             end
-            
-            prev = repmat(fill, sizesFromDimNames(ndm.dimsByLevel{ndm.depth})');
-            for iL = ndm.depth-1:-1:1
-                this = cell(sizesFromDimNames(ndm.dimsByLevel{iL})');
+
+            prev = repmat(fill, sizesFromDimNames(meta.dimsByLevel{meta.depth})');
+            for iL = meta.depth-1:-1:1
+                this = cell(sizesFromDimNames(meta.dimsByLevel{iL})');
                 this(:) = {prev};
                 prev = this;
             end
-            
+
             out = prev;
         end
-        
-        function vals = sizeValuesFromData(ndm, data)
+
+        function vals = sizeValuesFromData(meta, data)
             vals = struct();
             vals = inner(vals, data, 1);
-            
+
             function vals = inner(vals, d, level)
-                for iD = 1:numel(ndm.dimsByLevel{level})
-                    vals.(ndm.dimsByLevel{level}{iD}) = size(d, iD);
+                for iD = 1:numel(meta.dimsByLevel{level})
+                    vals.(meta.dimsByLevel{level}{iD}) = size(d, iD);
                 end
-                if level < ndm.depth
+                if level < meta.depth
                     vals = inner(vals, d{1}, level+1);
                 end
             end
         end
     end
-    
+
     methods(Static)
         function sizes = deepSize(data)
             if iscell(data)
-                sizes = cat(1, {size(data)}, NestedDimensionMeta.deepSize(data{1}));
+                sizes = cat(1, {size(data)}, PropertyShapeMeta.deepSize(data{1}));
             else
                 sizes = {size(data)};
             end
         end
     end
-    
+
     methods(Access=protected)
-        function header = getHeader(ndm)
-            if ~isscalar(ndm)
-                header = getHeader@matlab.mixin.CustomDisplay(ndm);
+        function header = getHeader(meta)
+            if ~isscalar(meta)
+                header = getHeader@matlab.mixin.CustomDisplay(meta);
             else
-                header = sprintf('%s: %s\n  attr: %s', class(ndm), ndm.getDescription(), structToString(ndm.attr, ' '));
+                header = sprintf('%s: %s\n  attr: %s', class(meta), meta.getDescription(), structToString(meta.attr, ' '));
             end
-            
+
             function str = structToString(s, separator)
                 % given a struct s with string or numeric vector values, convert to string
                 fields = fieldnames(s);
@@ -277,11 +290,11 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                     return;
                 end
                 vals = structfun(@convertToString, s);
-                
+
                 str = strjoin(cellfun(@(fld, val) [fld '=' val], fields, vals, 'UniformOutput', false), separator);
-                
+
                 return;
-                
+
                 function str = convertToString(v)
                     if ischar(v)
                         str = v;
@@ -302,10 +315,10 @@ classdef NestedDimensionMeta < matlab.mixin.CustomDisplay
                     else
                         error('Could not convert struct field value');
                     end
-                    
+
                     str = {str};
                 end
-                
+
             end
         end
     end

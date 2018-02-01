@@ -1831,6 +1831,7 @@ classdef TensorUtils
             p = inputParser();
             p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
             p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
+            
             % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis
             % this enables nanmean like computations
             p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); 
