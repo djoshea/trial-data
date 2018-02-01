@@ -502,6 +502,31 @@ classdef AlignDescriptor
 
     end
 
+    methods % Auto-generated appearances if missing
+        function app = get.zeroAppear(ad)
+            app = ad.zeroAppear;
+            if isempty(app)
+                app = AppearanceSpec('Color', [0 0 0]);
+            end
+        end
+        
+        function app = get.startAppear(ad)
+            app = ad.startAppear;
+            if isempty(app)
+                % default to green
+                app = AppearanceSpec('Color', [82 157 82] / 255);
+            end
+        end
+        
+        function app = get.stopAppear(ad)
+            app = ad.stopAppear;
+            if isempty(app)
+                % default to redra 
+                app = AppearanceSpec('Color', [212 92 92] / 255);
+            end
+        end
+    end
+    
     methods % constructor, manual event specification
         function ad = AlignDescriptor(varargin)
             ad.eventAbbrevLookup = struct();
@@ -556,7 +581,7 @@ classdef AlignDescriptor
             p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
             p.addParameter('as', '', @ischar);
             p.addParameter('mark', false, @islogical);
-            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
             p.parse(varargin{:});
             offset = p.Results.offset;
@@ -594,7 +619,7 @@ classdef AlignDescriptor
             p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
             p.addParameter('as', '', @ischar);
             p.addParameter('mark', false, @islogical);
-            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
             p.parse(varargin{:});
             offset = p.Results.offset;
@@ -645,8 +670,7 @@ classdef AlignDescriptor
             p.addOptional('offset', 0, @isscalar);
             p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
             p.addParameter('as', '', @ischar);
-            %p.addParameter('mark', true, @islogical);
-            p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
+            p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
             p.parse(varargin{:});
             offset = p.Results.offset;
@@ -1166,8 +1190,6 @@ classdef AlignDescriptor
             if nargOut == 0 && ~ishandle(obj)
                 warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.', ...
                     class(obj));
-%                 expr = sprintf('debug(''%s'')', message);
-%                 evalin('caller', expr); 
             end
         end
     end

@@ -106,6 +106,8 @@ classdef StateSpaceProjection
         
         decoderKbyNZeroInvalid
         encoderNbyKZeroInvalid
+        
+        translationNormalizationPostProjectProvideDefault
     end
     
     methods(Abstract, Static)
@@ -314,6 +316,14 @@ classdef StateSpaceProjection
             end
         end
         
+        function tr = get.translationNormalizationPostProjectProvideDefault(proj)
+            if ~isempty(proj.translationNormalizationPostProject)
+                tr = proj.translationNormalizationPostProject;
+            else
+                tr = StateSpaceTranslationNormalization.buildIdentityManual(proj.nBasesProj);
+            end
+        end
+        
         function norms = calculateDecoderNorms(proj)
             norms = rownorms(proj.decoderKbyN);
         end
@@ -430,15 +440,11 @@ classdef StateSpaceProjection
 
             proj.initialized = true;
         end
-
-        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, varargin)
+        
+        function pset = preparePsetForProjection(proj, pset, varargin)
             p = inputParser();
-            p.addParameter('projectSingleTrialData', true, @islogical);
             p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical); % clear existing pset trnorm first
             p.addParameter('applyTranslationNormalization', true, @islogical); % apply proj.trNorm to pset before projecting
-            p.addParameter('applyTranslationNormalizationPostProject', true, @islogical); % apply the post projection trNorm, mainly used for inverse projections
-            p.addParameter('meanSubtractForStatistics', true, @islogical); % mean subtract data when computing statistics, this makes sense to turn off if the data is already measured relative to some meaningful baseline
-            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             assert(pset.nBases == proj.nBasesSource, ...
@@ -453,13 +459,7 @@ classdef StateSpaceProjection
             if any(proj.basisValid & ~pset.basisValid)
                 error('PopulationTrajectorySet has invalid bases not marked invalid in StateSpaceProjection. You should equalize the bases invalid to get consistent results');
             end
-            
-            % we do this here simply to force calculation of all compute on
-            % demand properties, so that they get computed before we
-            % initiate a copy below
-            PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
-            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
-            
+             
             % replace translation normalization
             if p.Results.applyTranslationNormalization && ~isempty(proj.translationNormalization)
                 debug('Applying translation/normalization associated with projection to data\n');
@@ -468,6 +468,31 @@ classdef StateSpaceProjection
                 end
                 pset = pset.applyTranslationNormalization(proj.translationNormalization);
             end
+        end
+
+        function [psetProjected, stats] = projectPopulationTrajectorySet(proj, pset, varargin)
+            p = inputParser();
+            p.addParameter('projectSingleTrialData', true, @islogical);
+            p.addParameter('clearBeforeApplyingTranslationNormalization', true, @islogical); % clear existing pset trnorm first
+            p.addParameter('applyTranslationNormalization', true, @islogical); % apply proj.trNorm to pset before projecting
+            p.addParameter('applyTranslationNormalizationPostProject', true, @islogical); % apply the post projection trNorm, mainly used for inverse projections
+            p.addParameter('meanSubtractForStatistics', true, @islogical); % mean subtract data when computing statistics, this makes sense to turn off if the data is already measured relative to some meaningful baseline
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            assert(pset.nBases == proj.nBasesSource, ...
+                'Number of bases must match in order to project');
+
+            % this should equalize basis validity and apply
+            % proj.translationNormalization
+            pset = proj.preparePsetForProjection(pset, 'applyTranslationNormalization', p.Results.applyTranslationNormalization, ...
+                'clearBeforeApplyingTranslationNormalization', p.Results.clearBeforeApplyingTranslationNormalization);
+            
+            % we do this here simply to force calculation of all compute on
+            % demand properties, so that they get computed before we
+            % initiate a copy below
+            PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
+            pset.dataDifferenceOfTrialsScaledNoiseEstimate;
             
             % copy basic settings from pset 
             b = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(pset);
@@ -883,10 +908,13 @@ classdef StateSpaceProjection
             basisNamesProj = cat(1, basisNamesProjCell{:});
             
             trNormPreCell = cellfun(@(p) p.translationNormalization, projCell, 'UniformOutput', false);
-            trNormPostCell = cellfun(@(p) p.translationNormalizationPostProject, projCell, 'UniformOutput', false);
+            if ~StateSpaceTranslationNormalization.checkEqual(trNormPreCell{:})
+                warning('Translation/Normalization differs among StateSpaceProjections being concatenated, using first');
+            end
+            trNormPostCell = cellfun(@(p) p.translationNormalizationPostProjectProvideDefault, projCell, 'UniformOutput', false);
             
             proj = ProjManual.buildFromEncoderDecoder(projCell{1}, encoderNbyK, decoderKbyN);
-            proj.translationNormalization = StateSpaceTranslationNormalization.concatenate(trNormPreCell);
+            proj.translationNormalization = trNormPreCell{1};
             proj.translationNormalizationPostProject = StateSpaceTranslationNormalization.concatenate(trNormPostCell);
             proj.basisValidProj = basisValidProj;
             proj.basisInvalidCauseProj = basisInvalidCauseProj;

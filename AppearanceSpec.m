@@ -154,7 +154,7 @@ classdef AppearanceSpec
             end
         end
        
-       function args = getPlotArgs(app)
+       function args = getPlotArgs(app, varargin)
            args = app.getNonEmptyArgsByName({'Color', 'LineWidth', 'LineStyle'});
        end
        

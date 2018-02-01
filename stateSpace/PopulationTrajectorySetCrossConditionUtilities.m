@@ -181,7 +181,7 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             wNbyO = ones(1, nAlongAxis);
             
             psetMean = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, ...
-                axisName, wNbyO, 'removeAxis', p.Results.removeAxis, 'newValueListAlongAxis', newValueList, ...
+                aIdx, wNbyO, 'removeAxis', p.Results.removeAxis, 'newValueListAlongAxis', newValueList, ...
                 'newNamesAlongAxis', newNamesAlongAxis, 'newNamesShortAlongAxis', newNamesShortAlongAxis, ...
                 'replaceNaNWithZero', true, 'normalizeCoefficientsByNumNonNaN', true, p.Unmatched);
         end
@@ -196,17 +196,18 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             p.parse(varargin{:});
             
             aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
+            axisName = pset.conditionDescriptor.axisNames{aIdx};
             nAlongAxis = pset.conditionsSize(aIdx);
             
             % generate new names from differences
             if p.Results.autoNamesAlongAxis
                 stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', false);
                 stringList = stringLists{aIdx};
-                newNamesAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted', s), stringList, 'UniformOutput', false); 
+                newNamesAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted across %s', s, axisName), stringList, 'UniformOutput', false); 
                 
                 stringLists = pset.conditionDescriptor.generateAxisValueListsAsStrings('short', true);
                 stringList = stringLists{aIdx};
-                newNamesShortAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted', s), stringList, 'UniformOutput', false); 
+                newNamesShortAlongAxis = cellfun(@(s) sprintf('%s mean-subtracted across %s', s, axisName), stringList, 'UniformOutput', false); 
                 
             else
                 if isempty(p.Results.newNamesAlongAxis)
@@ -380,16 +381,18 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % can compute noise variance floors when projecting. since the
             % noise estimates are already scaled by 1/sqrt(2*nTrials), we
             % simply add them together to get the new scaled estimate
-            scaledNoiseEstimate_NbyTAbyC = pset.dataDifferenceOfTrialsScaledNoiseEstimate;
-            scaledNoiseEstimate_NbyTAbyAttr = reshape(scaledNoiseEstimate_NbyTAbyC, [pset.nBases, sum(pset.nTimeDataMean), makerow(pset.conditionsSize)]);
-            newScaledNoiseEstimate_NbyTAbyAttr = TensorUtils.linearCombinationAlongDimension(...
-                scaledNoiseEstimate_NbyTAbyAttr, aIdx+2, abs(wNbyO), ...
-                'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-                'keepNaNIfAllNaNs', true, ...
-                'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
-                'addToOriginal', p.Results.addToOriginal);
-            b.dataDifferenceOfTrialsScaledNoiseEstimate = reshape(newScaledNoiseEstimate_NbyTAbyAttr, ...
-                [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew]);
+            if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
+                scaledNoiseEstimate_NbyTAbyC = pset.dataDifferenceOfTrialsScaledNoiseEstimate;
+                scaledNoiseEstimate_NbyTAbyAttr = reshape(scaledNoiseEstimate_NbyTAbyC, [pset.nBases, sum(pset.nTimeDataMean), makerow(pset.conditionsSize)]);
+                newScaledNoiseEstimate_NbyTAbyAttr = TensorUtils.linearCombinationAlongDimension(...
+                    scaledNoiseEstimate_NbyTAbyAttr, aIdx+2, abs(wNbyO), ...
+                    'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                    'keepNaNIfAllNaNs', true, ...
+                    'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                    'addToOriginal', p.Results.addToOriginal);
+                b.dataDifferenceOfTrialsScaledNoiseEstimate = reshape(newScaledNoiseEstimate_NbyTAbyAttr, ...
+                    [pset.nBases, sum(pset.nTimeDataMean), nConditionsNew]);
+            end
             
             % diff randomized data if present, recompute intervals
             if ~isempty(pset.dataMeanRandomized)
@@ -521,7 +524,6 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             
             psetReweighted = b.buildManualWithTrialAveragedData();
         end
-        
     end
     
     % concatenating along a condition axis
@@ -729,6 +731,237 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             end
             
         end
+        
+        function psetCat = concatenateAlongExistingConditionAxis(psetCell, axisName, varargin)
+            p = inputParser();
+            p.addParameter('aggregateMarks', true, @islogical);
+            p.addParameter('aggregateIntervals', true, @islogical);
+            p.addParameter('conditionAppearanceFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            p.addParameter('equalizeTimeVectors', false, @islogical); % takes time but necessary if time vectors (min to max) are not matched exactly 
+            p.parse(varargin{:});
+            
+            if p.Results.equalizeTimeVectors
+                psetCell = PopulationTrajectorySetCrossConditionUtilities.equalizeTimeVectors(psetCell);
+            end
+            pset = psetCell{1};
+            
+            aIdx = pset.conditionDescriptor.axisLookupByAttributes(axisName);
+            
+            % check for equal conditions size
+            sz = psetCell{1}.conditionsSize;
+            sz(aIdx) = 1;
+            for i = 2:numel(psetCell)
+                szThis = psetCell{i}.conditionsSize;
+                szThis(aIdx) = 1;
+                assert(isequal(sz, szThis), 'Condition Size for psetCell{%d} does not match psetCell{1}', i);
+            end
+
+            b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
+            
+            % take union of valid bases and make this the new basis valid
+            basisValid = psetCell{1}.basisValid;
+            for i = 2:numel(psetCell)
+                basisValid = basisValid | psetCell{i}.basisValid;
+            end
+            b.basisValidManual = basisValid;
+            if isempty(b.basisInvalidCauseManual)
+                b.basisInvalidCauseManual = cell(numel(basisValid), 1);
+                b.basisInvalidCauseManual(:) = {''};
+            else
+                b.basisInvalidCauseManual(~basisValid) = {''};
+            end
+            
+            % update condition descriptor
+            cdCell = cellfun(@(pset) pset.conditionDescriptor, psetCell, 'UniformOutput', false);
+            cd = ConditionDescriptor.concatenateAlongAxis(cdCell, aIdx);
+            b.conditionDescriptor = cd;
+            
+            cAxis = aIdx;
+            cSize = cellfun(@(pset) pset.conditionsSizeNoExpand, psetCell, 'UniformOutput', false);
+            
+            if ~p.Results.aggregateMarks
+                b.alignDescriptorSet = cellfun(@(ad) ad.clearMarks(), b.alignDescriptorSet, 'UniformOutput', false);
+            end
+            if ~p.Results.aggregateIntervals
+                b.alignDescriptorSet = cellfun(@(ad) ad.clearIntervals(), b.alignDescriptorSet, 'UniformOutput', false);
+            end
+            
+            % pre touch all the data means to ensure that buildDataMean
+            % has run on each pset. this is time consuming and best done up
+            % front so we get a nice progress bar
+            prog = ProgressBar(numel(psetCell), 'Generating trial-averaged data');
+            for i = 1:numel(psetCell)
+                prog.update(i);
+                temp = psetCell{i}.dataMean; %#ok<NASGU>
+                temp = psetCell{i}.dataDifferenceOfTrialsScaledNoiseEstimate; %#ok<NASGU>
+                temp = psetCell{i}.dataCachedSampledTrialsTensor; %#ok<NASGU>
+            end
+            prog.finish();
+
+            debug('Concatenating trial-averaged data\n');
+            for iAlign = 1:pset.nAlign
+                % N x C x T
+                b.dataMean{iAlign} = catConditions(psetCell, @(p) p.dataMean{iAlign}, 2, cSize, cAxis);
+                b.dataSem{iAlign} = catConditions(psetCell, @(p) p.dataSem{iAlign}, 2, cSize, cAxis);
+            end
+            
+            % A x N x C
+            b.tMinValidByAlignBasisCondition = catConditions(psetCell, @(p) p.tMinValidByAlignBasisCondition, 3, cSize, cAxis);
+            b.tMaxValidByAlignBasisCondition = catConditions(psetCell, @(p) p.tMaxValidByAlignBasisCondition, 3, cSize, cAxis);
+            b.dataNTrials = catConditions(psetCell, @(p) p.dataNTrials, 3, cSize, cAxis);
+            b.dataValid = catConditions(psetCell, @(p) p.dataValid, 3, cSize, cAxis);
+            
+            % N x C
+            b.trialLists = catConditions(psetCell, @(p) p.trialLists, 2, cSize, cAxis, true);
+            
+            % N x TA x C
+            b.dataDifferenceOfTrialsScaledNoiseEstimate = catConditions(psetCell, @(p) p.dataDifferenceOfTrialsScaledNoiseEstimate, 3, cSize, cAxis, true);
+        
+            % N x TA x C x Trials
+            b.dataCachedSampledTrialsTensor = catConditions(psetCell, @(p) p.dataCachedSampledTrialsTensor, 3, cSize, cAxis, true);
+            b.dataCachedMeanExcludingSampledTrialsTensor = catConditions(psetCell, @(p) p.dataCachedMeanExcludingSampledTrialsTensor, 3, cSize, cAxis, true);
+            
+            % N x C 
+            b.dataCachedSampledTrialCounts = catConditions(psetCell, @(p) p.dataCachedSampledTrialCounts, 2, cSize, cAxis, true);
+
+            % adjust alignSummaryData
+            % N x A
+            temp = pset.alignSummaryData; %#ok<NASGU> % request up front to trigger computation before progress bar
+            prog = ProgressBar(pset.nBases, 'Aggregating AlignSummary data');
+            for iSource = 1:pset.nAlignSummaryData
+                prog.update(iSource);
+                for iAlign = 1:pset.nAlign
+                    emptyMask = cellfun(@(pset) isempty(pset.alignSummaryData{iSource, iAlign}), psetCell);
+                    if all(emptyMask) || ~pset.basisValid(iSource)
+                        % missing entirely, that's okay
+                        b.alignSummaryData{iSource, iAlign} = [];
+                        
+                    elseif ~any(emptyMask)
+                        % all found, combine
+                        clear alignSummarySet;
+                        for iP = numel(psetCell):-1:1
+                            alignSummarySet(iP) = psetCell{iP}.alignSummaryData{iSource, iAlign};
+                        end
+                        b.alignSummaryData{iSource, iAlign} = ...
+                            AlignSummary.aggregateByConcatenatingConditionsAlongExistingAxis(alignSummarySet, cd, cAxis, ...
+                            'aggregateMarks', p.Results.aggregateMarks, 'aggregateIntervals', p.Results.aggregateIntervals);
+                    else
+                        % missing for some, that's a problem
+                        error('AlignSummary missing for %d PopTrajSets for source %d align %d', nnz(emptyMask), iSource, iAlign);
+                    end
+                    
+                end
+            end
+            prog.finish();
+
+           
+            psetCat = b.buildManualWithTrialAveragedData();
+
+            function res = catConditions(objCell, accessFn, conditionDim, conditionsSizeCell, catAlongAxis, emptyOkay)
+                if nargin < 6
+                    emptyOkay = false;
+                end
+                % grab from each obj in cell
+                tensorCell = cellfun(accessFn, objCell, 'UniformOutput', false);
+                
+                if any(cellfun(@isempty, tensorCell))
+                    if emptyOkay
+                        res = {};
+                        return;
+                    else
+                        error('Some values were empty');
+                    end
+                end
+                
+                % reshape to make conditions a tensor rather than flat
+                for iO = 1:numel(tensorCell)
+                    szt = TensorUtils.expandSizeToNDims(size(tensorCell{iO}), catAlongAxis);
+                    newSz = [szt(1:conditionDim-1), conditionsSizeCell{iO}, szt(conditionDim+1:end)];
+                    tensorCell{iO} = reshape(tensorCell{iO}, newSz);
+                end
+                
+                % concatenate along the condition axis
+                catAxis = conditionDim + catAlongAxis - 1;
+                catTensor = cat(catAxis, tensorCell{:});
+                
+                % reshape the result to be flat again
+                szMat = cat(1, conditionsSizeCell{:});
+                catSz = newSz;
+                catSz(catAxis) = sum(szMat(:, catAlongAxis));
+                res = reshape(catTensor, catSz);
+            end
+        end
     end
    
+    methods(Static)
+       function psetSum = addToDataMean(pset, addToDataMean, varargin)
+            p = inputParser();
+            p.addParameter('gain1', 1, @isscalar);
+            p.addParameter('gain2', 1, @isscalar);
+            p.addParameter('sem', [], @(x) isempty(x) || iscell(x)); % will be treated as the S.E.M. of the quantity addToDataMean, and added to dataSem in the RMS sense
+            p.addParameter('applyToSingleTrial', false, @islogical);
+            p.parse(varargin{:});
+            
+            assert(~p.Results.applyToSingleTrial, 'Not yet supported');
+            addSem = p.Results.sem;
+            gain1 = p.Results.gain1;
+            gain2 = p.Results.gain2;
+            b = PopulationTrajectorySetBuilder.copyTrialAveragedOnlyFromPopulationTrajectorySet(pset);
+            
+            % adjust mean and sem to reflect difference between conditions
+            [b.dataMean, b.dataSem] = cellvec(pset.nAlign);
+            for iAlign = 1:pset.nAlign
+                b.dataMean{iAlign} = gain1 .* pset.dataMean{iAlign} + gain2 .* addToDataMean{iAlign};
+                
+                % build N x TA x C1 x C2 x ...
+                % use sd1+2 = sqrt(sd1^2 / n1 + sd2^2 / n2) formula
+                % which here means semNew = sqrt(|coeff1| * sem1^2 + |coeff2| * sem2^2 + ...)
+                if ~isempty(addSem)
+                    b.dataSem{iAlign} = sqrt((gain1.*pset.dataSem{iAlign}).^2 + (gain2.*addSem{iAlign}).^2);
+                end
+            end
+            
+            b.trialLists = {}; % no longer relevant
+            
+            psetSum = b.buildManualWithTrialAveragedData();
+       end 
+        
+       function psetCCM = crossConditionMean(pset, varargin)
+            % similar in spirit to subtractMeanAlongAxis except subtracts
+            % the global condition mean across all axes
+            % more parameters available in applyLinearCombinationAlongConditionAxis
+            p = inputParser();
+            p.addParameter('conditionName', 'ccm', @ischar);
+            p.parse(varargin{:});
+           
+            psetCCM = PopulationTrajectorySetCrossConditionUtilities.computeMeanAlongAxis(pset.flattenConditionAxes(), 1, 'removeAxis', true);
+            if ~isempty(p.Results.conditionName)
+                psetCCM = psetCCM.setConditionNames({p.Results.conditionName});
+            end
+       end
+        
+       function psetSum = addPset(pset, psetAdd, varargin)
+           psetSum = PopulationTrajectorySetCrossConditionUtilities.addToDataMean(pset, psetAdd.dataMean, 'sem', psetAdd.dataSem, varargin{:});
+       end
+       
+       function psetMinusCCM = subtractCrossConditionMean(pset, varargin)
+           psetCCM = PopulationTrajectorySetCrossConditionUtilities.crossConditionMean(pset, varargin{:});
+           psetMinusCCM = PopulationTrajectorySetCrossConditionUtilities.addPset(pset, psetCCM, 'gain2', -1);
+       end
+    end
+    
+    methods(Static) % Utilities
+        function psetCell = equalizeTimeVectors(psetCell)
+        % expand the time vectors of each pset to the full common
+            tMinByAlign = min(cell2mat(cellfun(@(p) p.tMinForDataMean, makerow(psetCell), 'UniformOutput', false)), [], 2);
+            tMaxByAlign = max(cell2mat(cellfun(@(p) p.tMaxForDataMean, makerow(psetCell), 'UniformOutput', false)), [], 2);
+            
+            prog = ProgressBar(numel(psetCell), 'Equalizing time vectors across psets');
+            for iP = 1:numel(psetCell)
+                prog.update(iP);
+                psetCell{iP} = psetCell{iP}.manualSliceOrExpandTimeWindow(tMinByAlign, tMaxByAlign);
+            end
+            prog.finish();
+        end
+    end
 end
