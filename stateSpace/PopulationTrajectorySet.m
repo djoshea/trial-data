@@ -1929,9 +1929,13 @@ classdef PopulationTrajectorySet
     
     % methods which set and apply the conditionDescriptor
     methods
-        function pset = setConditionDescriptor(pset, cd)
+        function pset = setConditionDescriptor(pset, cd, varargin)
             % update the conditionDescriptor for all bases within
             % and clear any generated condition average data
+            p = inputParser();
+            p.addParameter('suppressWarning', false, @islogical);
+            p.parse(varargin{:});
+            
             pset.warnIfNoArgOut(nargout);
             assert(ismember(class(cd), {'ConditionDescriptor', 'ConditionInfo'}), ...
                 'Must be ConditionDescriptor instance');
@@ -1945,7 +1949,15 @@ classdef PopulationTrajectorySet
             if pset.dataSourceManual
                 assert(pset.conditionDescriptor.nConditions == cd.nConditions, ...
                     'Pset has manual data source, conditionDescriptor can only be replaced so as to preserve nConditions');
-                warning('Replacing ConditionDescriptor for PopulationTrajectorySet with manual data source. This will only change the labeling of conditions, not the extracted data');
+                if ~p.Results.suppressWarning
+                    warning('Replacing ConditionDescriptor for PopulationTrajectorySet with manual data source. This will only change the labeling of conditions, not the extracted data');
+                end
+                
+                % need to replace condition descriptor in alignsummaryData
+                % too
+                for i = 1:numel(pset.alignSummaryData)
+                    pset.alignSummaryData{i} = pset.alignSummaryData{i}.setConditionDescriptor(cd);
+                end
             end
             
             pset.conditionDescriptor = cd.getConditionDescriptor();
@@ -1969,6 +1981,17 @@ classdef PopulationTrajectorySet
             % only trial averaging and align summary needs to be done again
             pset = pset.invalidateTrialAveragedData();
             pset = pset.invalidateAlignSummaryData();
+        end
+        
+        function pset = flattenConditionAxes(pset)
+            pset.warnIfNoArgOut(nargout);
+            pset = pset.setConditionDescriptor(pset.conditionDescriptor.flattenAxes(), 'suppressWarning', true);
+        end
+        
+        function pset = setConditionNames(pset, varargin)
+            % setConditionNames(names, [namesShort])
+            pset.warnIfNoArgOut(nargout);
+            pset.conditionDescriptor = pset.conditionDescriptor.setConditionNames(varargin{:});
         end
     end
     
@@ -3146,6 +3169,11 @@ classdef PopulationTrajectorySet
             
             tMinForDataMean = pset.tMinForDataMean;
             tMaxForDataMean = pset.tMaxForDataMean;
+            
+            nTimeByAlign = cellfun(@numel, pset.tvecDataMean);
+            alignInvalid = false(pset.nAlign, 1);
+            basisMask = pset.basisValid;
+            cMask = pset.conditionIncludeMask;
             
             % now that we've determined the time window, we can compute the
             % trial average using data from these windows
@@ -5196,7 +5224,7 @@ classdef PopulationTrajectorySet
                                 [~, hShade] = TrialDataUtilities.Plotting.stairsError(...
                                      tvecPlot + stairsXOffset, dataC(iBasis, :), dataSemC(iBasis, :), ...
                                      'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(idxCondition).Color, 'alpha', p.Results.alpha, ...
-                                     'errorStyle', 'fill', 'errorColor', app(idxCondition).Color, 'lineWidth', p.Results.lineWidth, 'showLine', false);
+                                     'errorStyle', 'fill', 'errorColor', app(idxCondition).Color, 'lineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, 'showLine', false);
                             else
                                 hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...
                                     dataSemC(iBasis, :), app(idxCondition).Color, 'axh', axh, ...
@@ -5215,15 +5243,15 @@ classdef PopulationTrajectorySet
                         hData{iCond, iAlign} = TrialDataUtilities.Plotting.stairs(...
                                  tvecPlot + stairsXOffset, dataC', ...
                                  'axh', axh, 'color', app(idxCondition).Color, 'alpha', p.Results.alpha, ...
-                                 'lineWidth', p.Results.lineWidth);
+                                 'lineWidth', p.Results.lineWidth * app(idxCondition).LineWidth);
                     else
                         if p.Results.alpha < 1
                             hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(tvecPlot, dataC', ...
                                 'EdgeColor', app(idxCondition).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                'LineWidth', p.Results.lineWidth, 'Parent', axh);
+                                'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, 'Parent', axh);
                         else
                             hData{iCond, iAlign} = plot(tvecPlot, dataC', '-', ...
-                                'Parent', axh, 'LineWidth', p.Results.lineWidth, ...
+                                'Parent', axh, 'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, ...
                                 'Color', app(idxCondition).Color);
                         end
                     end
@@ -5390,15 +5418,20 @@ classdef PopulationTrajectorySet
             p.addParameter('alignIdx', [], @isnumeric);
             p.addParameter('timeDelta', pset.timeDelta, @isscalar); % allow for data to be resampled in time
             
-            p.addParameter('plotOptions', {}, @(x) iscell(x));
-            p.addParameter('lineWidth', 2, @isscalar);
             p.addParameter('alpha', 1, @isscalar);
+            p.addParameter('plotOptions', {}, @(x) iscell(x));
+            p.addParameter('lineWidth', 1, @isscalar);
+            
             p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markOutline', true, @islogical);
             p.addParameter('markSize', 10, @isscalar);
-            p.addParameter('useThreeVector', true, @islogical);
+            p.addParameter('useThreeVector', false, @islogical);
             p.addParameter('threeVectorLength', 1, @isscalar);
             p.addParameter('useTranslucentMark3d', true, @islogical);
             p.addParameter('markShowOnData', false, @islogical);
+            p.addParameter('zeroShowOnData', false, @islogical);
+            p.addParameter('startShowOnData', false, @islogical);
+            p.addParameter('stopShowOnData', false, @islogical);
             p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
             p.addParameter('clipping', 'off', @ischar);
@@ -5453,8 +5486,9 @@ classdef PopulationTrajectorySet
                 
                 for iCondition = 1:nConditions
                     c = conditionIdx(iCondition);
-                    appear = pset.conditionDescriptor.appearances(c);
-                    plotArgsC = appear.getPlotArgs();
+                    app = pset.conditionDescriptor.appearances(c);
+%                     plotArgsC = appear.getPlotArgs();
+                    plotArgsC = {};
                     
                     dataMat = squeeze(data(basisIdx, c, :));
                     
@@ -5464,11 +5498,11 @@ classdef PopulationTrajectorySet
                     else
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
+                                '-', 'LineWidth', p.Results.lineWidth * app.LineWidth, 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         else
                             h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
-                                'LineWidth', p.Results.lineWidth, ...
+                                'LineWidth', p.Results.lineWidth * app.LineWidth, ...
                                 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         end
@@ -5489,19 +5523,19 @@ classdef PopulationTrajectorySet
                     data = dataMean{idxAlign};
                     for iCondition = 1:nConditions
                         idxCondition = conditionIdx(iCondition);
-                        appear = pset.conditionDescriptor.appearances(idxCondition);
-                        plotArgsC = appear.getPlotArgs();
+                        app = pset.conditionDescriptor.appearances(idxCondition);
+                        plotArgsC = {}; %appear.getPlotArgs();
                         
                         dataMat = squeeze(data(:, iCondition, :));
                         
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
+                                '-', 'LineWidth', p.Results.lineWidth * app.LineWidth, 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         else
                             %                             dataMat = [dataVec1 dataVec2];
                             h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
-                                'LineWidth', p.Results.lineWidth, ...
+                                'LineWidth', p.Results.lineWidth * app.LineWidth, ...
                                 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         end
@@ -5524,22 +5558,21 @@ classdef PopulationTrajectorySet
                 tvec = tvecCell{iAlign};
                 data = dataMean{iAlign};
                 
-                for iCondition = 1:nConditions
-                    c = conditionIdx(iCondition);
-                    
-                    % draw marks and intervals on the data traces
-                    as = pset.alignSummaryAggregated{idxAlign};
-                    % data is nBases x C x T; drawOnDataByConditions needs T x nBasesPlot x C
-                    dataForDraw = permute(data(:, c, :), [3 1 2]);
-                    as.drawOnDataByCondition(tvec, dataForDraw, ...
-                        'conditionIdx', c, 'markAlpha', p.Results.markAlpha, ...
-                        'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
-                        'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
-                        'alpha', p.Results.alpha, ...
-                        'intervalAlpha', p.Results.intervalAlpha, ...
-                        'showRanges', p.Results.showRangesOnData, ...
-                        'markSize', p.Results.markSize, 'clipping', p.Results.clipping);
-                end
+                % draw marks and intervals on the data traces
+                as = pset.alignSummaryAggregated{idxAlign};
+                % data is nBases x C x T; drawOnDataByConditions needs T x nBasesPlot x C
+                dataForDraw = permute(data(:, conditionIdx, :), [3 1 2]);
+                as.drawOnDataByCondition(tvec, dataForDraw, ...
+                    'conditionIdx', conditionIdx, 'markAlpha', p.Results.markAlpha, ...
+                    'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
+                    'showZero', p.Results.zeroShowOnData, ...
+                    'showStart', p.Results.startShowOnData, ...
+                    'showStop', p.Results.stopShowOnData, ...
+                    'markAlpha', p.Results.markAlpha, ...
+                    'markOutline', p.Results.markOutline, ...
+                    'intervalAlpha', p.Results.intervalAlpha, ...
+                    'showRanges', p.Results.showRangesOnData, ...
+                    'markSize', p.Results.markSize, 'clipping', p.Results.clipping);
             end
             
             box(axh, 'off')
@@ -5651,11 +5684,11 @@ classdef PopulationTrajectorySet
                     else
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
+                                '-', 'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         else
                             h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
-                                'LineWidth', p.Results.lineWidth, ...
+                                'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, ...
                                 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         end
@@ -5684,12 +5717,12 @@ classdef PopulationTrajectorySet
                         
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
-                                '-', 'LineWidth', p.Results.lineWidth, 'Clipping', p.Results.clipping, ...
+                                '-', 'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         else
                             %                             dataMat = [dataVec1 dataVec2];
                             h = plot(axh, dataMat(1, :), dataMat(2, :), '-', ...
-                                'LineWidth', p.Results.lineWidth, ...
+                                'LineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, ...
                                 'Clipping', p.Results.clipping, ...
                                 plotArgsC{:}, plotArgs{:});
                         end

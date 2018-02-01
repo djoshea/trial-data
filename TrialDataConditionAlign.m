@@ -1165,6 +1165,14 @@ classdef TrialDataConditionAlign < TrialData
             % validity won't change
         end
         
+        function td = setConditionNames(td, varargin)
+            % setConditionNames(names, [namesShort]);
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.setConditionNames(varargin{:});
+            % no need to update condition info since the conditions and
+            % validity won't change
+        end
+        
         function td = postUpdateConditionInfo(td, clearRandomized)
             if nargin < 2
                 clearRandomized = true; % sometimes don't want to clear conditionInfoRandomized when using .withRandomized( ) to access a specific set of data
@@ -1867,17 +1875,36 @@ classdef TrialDataConditionAlign < TrialData
             % common matrix, better to figure out the common time vector
             % first
             if ~isempty(p.Results.sampleAtTimes)
-                if p.Results.includePadding 
-                    [tMin, tMax] = td.getTimeStartStopEachTrialWithPadding();
-                else
-                    [tMin, tMax] = td.getTimeStartStopEachTrial();
-                end
                 
-                [data, time] = TrialDataUtilities.Data.resampleDataCellAtSpecificTimes(data, time, p.Results.sampleAtTimes, ...
+                % do the sampling in the unaligned raw data to ensure good
+                % resampling at the edges
+                
+%                 if p.Results.includePadding 
+%                     [tMin, tMax] = td.getTimeStartStopEachTrialWithPadding();
+%                 else
+%                     [tMin, tMax] = td.getTimeStartStopEachTrial();
+%                 end
+                
+                sampleAt = p.Results.sampleAtTimes;
+                if ~iscell(sampleAt)
+                    sampleAt = repmat({sampleAt}, td.nTrials, 1);
+                end
+                % shift sampleAt so that it is unaligned
+                zeroOffsets = td.getTimeOffsetsFromZeroEachTrial();
+                sampleAtUnaligned = cellfun(@plus, sampleAt, num2cell(zeroOffsets), 'UniformOutput', false);
+                
+                % shift tMin and tMax as well
+%                 tMin = tMin + zeroOffsets;
+%                 tMax = tMax + zeroOffsets;
+                
+                [data, time] = TrialDataUtilities.Data.resampleDataCellAtSpecificTimes(data, time, sampleAtUnaligned, ...
                     'interpolateMethod', p.Results.interpolateMethod, ...
                     'extrapolate', p.Results.extrapolate, ...
-                    'binAlignmentMode', p.Results.binAlignmentMode, ...
-                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax);
+                    'binAlignmentMode', p.Results.binAlignmentMode);
+                
+                % and then finally align everything to zero
+                [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, includePadding, ...
+                    'singleTimepointTolerance', p.Results.singleTimepointTolerance);
                 
             elseif ~isempty(p.Results.timeDelta) || p.Results.ensureUniformSampling
                 timeDelta = p.Results.timeDelta;
@@ -2005,7 +2032,7 @@ classdef TrialDataConditionAlign < TrialData
             for iA = 1:td.nAlign
                 [dCell(:, iA), tCell(:, iA)] = td.useAlign(iA).groupElementsFlat(dataCell(:, iA), timeCell(:, iA));
             end
-        end
+        end    
         
         function [means, tvec] = getAnalogMeanOverTimeEachTrial(td, name, varargin)
             [data, tvec] = td.getAnalog(name, varargin{:});
@@ -2746,9 +2773,22 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('slice', [], @(x) true); % subscript args to slice the data from each sample
             p.addParameter('averageOverSlice', false, @islogical); % average within each slice
+            
+            p.addParameter('linearCombinationWeights', [], @(x) true); % alternatively, take a weighted combination over samples in the slice, size should be [size of analog channel, number of weighted combinations]
+
+			% these apply to the weighted combination
+			p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
+            p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
+            p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis this enables nanmean like computations
+            
             p.parse(varargin{:});
            
-            [data, time] = getAnalogChannelGroup@TrialData(td, groupName, 'slice', p.Results.slice, 'averageOverSlice', p.Results.averageOverSlice);
+            [data, time] = getAnalogChannelGroup@TrialData(td, groupName, ...
+                'slice', p.Results.slice, 'averageOverSlice', p.Results.averageOverSlice, ...
+                'linearCombinationWeights', p.Results.linearCombinationWeights, ...
+                'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                'keepNaNIfAllNaNs', p.Results.keepNaNIfAllNaNs, ...
+                'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN);
             
             includePadding = p.Results.includePadding;
             
@@ -2862,6 +2902,14 @@ classdef TrialDataConditionAlign < TrialData
             rms = TensorUtils.inflateMaskedTensor(rms, 1, td.valid, NaN);
             ssqByTrial = TensorUtils.inflateMaskedTensor(ssqByTrial, 1, td.valid, NaN);
             countByTrial = TensorUtils.inflateMaskedTensor(countByTrial, 1, td.valid, NaN);
+        end
+          
+        function meanVal = getAnalogChannelGroupGlobalMeanOverTime(td, name, varargin)
+            data = td.getAnalogChannelGroup(name, varargin{:});
+            sums = cellfun(@(x) nansum(x, 1), data, 'UniformOutput', false);
+            totals = cellfun(@(x) sum(~isnan(x), 1), data, 'UniformOutput', false);
+            
+            meanVal = sum(cat(1, sums{:}), 1) ./ sum(cat(1, totals{:}), 1);
         end
         
         function rms = getAnalogChannelGroupRMS(td, name, varargin)
@@ -4256,7 +4304,8 @@ classdef TrialDataConditionAlign < TrialData
             
             % critical to include the spike times in the padded window
             spikeCell = td.getSpikeTimes(unitNames, 'includePadding', true, 'combine', p.Results.combine);
-            [tMinByTrial, tMaxByTrial] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
+            [tMinByTrialExcludingPadding, tMaxByTrialExcludingPadding] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
+            [tMinByTrialWithPadding, tMaxByTrialWithPadding] = td.alignInfoActive.getStartStopRelativeToZeroByTrialWithPadding();
             
             % provide an indication as to which trials have spikes
             hasSpikes = ~cellfun(@isempty, spikeCell);
@@ -4264,8 +4313,10 @@ classdef TrialDataConditionAlign < TrialData
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
             [rates, tvec] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
-                tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond, ...
-                'showProgress', p.Results.showProgress);
+                tMinByTrialWithPadding, tMaxByTrialWithPadding, td.timeUnitsPerSecond, ...
+                'showProgress', p.Results.showProgress, ...
+                'tMinByTrialExcludingPadding', tMinByTrialExcludingPadding, ...
+                'tMaxByTrialExcludingPadding', tMaxByTrialExcludingPadding);
             tvec = makecol(tvec);
             
             % now we need to nan out the regions affected by blanking

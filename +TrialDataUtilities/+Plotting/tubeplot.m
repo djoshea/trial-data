@@ -13,7 +13,7 @@ function [h, x,y,z]=tubeplot(curve,r, varargin)
 %
 % Arguments:
 % curve: [3,N] vector of curve data
-% r      the radius of the tube
+% r      scalar or [3 x N] the radius of the tube (vs time)
 % n      number of points to use on circumference. Defaults to 8
 % ct     threshold for collapsing points. Defaults to r/2
 %

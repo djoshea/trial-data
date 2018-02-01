@@ -681,10 +681,15 @@ classdef TrialData
         end
         
         function td = buildForAnalogChannelGroupTensor(groupName, chNames, data, time, varargin)
+            % data is nTrials x T x C, time is T x 1
             p = inputParser();
             p.addParameter('timeUnitName', 'ms', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            
+            if nargin < 4
+                time = (0:size(data, 2)-1)';
+            end
             
             % args are name, tensor (nTrials x nTime x nChannels)
             assert(isvector(time) && isnumeric(data));
@@ -1561,7 +1566,10 @@ classdef TrialData
 %             groupsAffected = unique(partialGroupNames(inGroup));
             
             % remove the channel descriptors
-            td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, names);
+            cdFieldsRemove = intersect(names, fieldnames(td.channelDescriptorsByName));
+            if ~isempty(cdFieldsRemove)
+                td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, cdFieldsRemove);
+            end
             
             % for the removed data channels' fields, figure out which ones
             % aren't referenced by any other channels
@@ -1573,7 +1581,9 @@ classdef TrialData
             maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
             fieldsRemove = fieldsRemove(maskRemove);
             
-            td.data = rmfield(td.data, fieldsRemove);
+            if ~isempty(fieldsRemove)
+                td.data = rmfield(td.data, fieldsRemove);
+            end
             
             % don't do this anymore - not all unnamed columns should be
             % removed
@@ -2474,6 +2484,11 @@ classdef TrialData
                 timeField = p.Results.timeField;
             end
             
+            if td.hasChannel(groupName)
+                warning('Overwriting existing analog channel group %s', groupName);
+                td = td.dropChannel(groupName);
+            end
+            
             % times can either be a field/channel name, or it can be raw
             % time values
             if isempty(times)
@@ -3035,7 +3050,19 @@ classdef TrialData
         function [data, time] = getAnalogChannelGroupRaw(td, groupName, varargin)
             p = inputParser();
             p.addParameter('applyScaling', true, @islogical);
-            p.addParameter('slice', [], @(x) true);
+            
+            % the order of operations here is:
+            % slice args get processed first to select into the samples
+            % then the weightedCombination is used
+            % then the averaging is performed
+            p.addParameter('slice', [], @(x) true); % this is used to index specifically into each sample
+            p.addParameter('linearCombinationWeights', [], @(x) true); % alternatively, take a weighted combination over samples in the slice, size should be [size of analog channel, number of weighted combinations]
+
+			% these apply to the weighted combination
+			p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
+            p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
+            p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis this enables nanmean like computations
+            
             p.addParameter('averageOverSlice', false, @islogical); % average within each slice
             p.parse(varargin{:});
             
@@ -3048,9 +3075,22 @@ classdef TrialData
             data = {td.data.(groupName)}';
             time = {td.data.(timeField)}';
             
+            emptySlice = [];
+            for i = 1:numel(data)
+                sz = size(data{i});
+                if sz(2) > 1
+                    emptySlice = nan([0 sz(2:end)]);
+                end
+            end
+            
             for i = 1:numel(data)
                 time{i} = makecol(time{i});
-                if isempty(data{i}), time{i} = []; continue; end
+                if isempty(data{i}), time{i} = nan(0, 1); continue; end
+                
+                % this situation can happen if a channel sharing the time
+                % vector with this channel is set and this trial was
+                % invalid when it was set.
+                if isempty(time{i}), data{i} = emptySlice; continue; end
                 assert(size(data{i}, 1) == numel(time{i}), 'Number of timepoints in data on trial %d does not match time', i);
                 assert(isempty(chList) || size(data{i}, 2) == numel(chList), 'Number of channels on trial %d does not match channel count', i);
             end
@@ -3058,6 +3098,7 @@ classdef TrialData
             % do scaling and convert to double
             if p.Results.applyScaling
                 data = cd.convertDataCellOnAccess(1, data);
+                emptySlice = cd.convertDataCellOnAccess(1, emptySlice);
             end
             
             if ~isempty(p.Results.slice)
@@ -3071,7 +3112,37 @@ classdef TrialData
                         data{i} = data{i}(:, args{:});
                     end
                 end
+				emptySlice = emptySlice(:, args{:});
             end
+        
+            if ~isempty(p.Results.linearCombinationWeights)
+				sliceSize = size(emptySlice);
+				sliceSize = sliceSize(2:end);
+				% linearCombinationWeights  is size(slice) by nCombinations
+				weights = p.Results.linearCombinationWeights;
+				szWeights = TensorUtils.sizeNDims(weights, numel(sliceSize) + 1);
+				assert(szWeights(1:numel(sliceSize)) == sliceSize, 'Size of linearCombination weights must be [%s nCombinations]', vec2str(sliceSize));
+				nCombinations = szWeights(numel(sliceSize) + 1);
+
+				weightsNewByOld = reshape(weights, [prod(sliceSize) nCombinations])';
+				
+				prog = ProgressBar(numel(data), 'Computing weighted combinations of analog channel group');
+				for i = 1:numel(data)
+                    if ~isempty(data{i})
+						prog.update(i);
+						nSamplesThis = size(data{i}, 1);
+						thisSize = [nSamplesThis, sliceSize];
+
+						thisFlat = reshape(data{i}, [nSamples, prod(sliceSize)]);
+						data{i} = TensorUtils.linearCombinationAlongDimension(thisFlat, 2, weightsNewByOld, ...
+							'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+							'keepNaNIfAllNaNs', p.Results.keepNaNIfAllNaNs, ...
+							'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN);
+                    end
+                end
+				prog.finish();
+            end
+
             if p.Results.averageOverSlice
                 % average the whole slice down to a single timeseries
                 for i = 1:numel(data)

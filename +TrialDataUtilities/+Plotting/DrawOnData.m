@@ -1,6 +1,6 @@
 classdef DrawOnData
     methods(Static)
-        function h = plotMark(axh, dMark, app, alpha, markerSize, varargin)
+        function h = plotMark(axh, dMark, app, markerSize, varargin)
             % plot a set of mark points onto data
             % dMark is ? x D x ? where D is the dimensionality (2 or 3)
            % import TrialDataUtilities.Plotting.patchcircle;
@@ -12,7 +12,10 @@ classdef DrawOnData
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
             p.addParameter('clipping', 'on', @ischar);
-            p.addParameter('frontLayer', true, @islogical);
+            p.addParameter('frontLayer', [], @(x) isempty(x) || islogical(x));
+            p.addParameter('outline', true, @islogical);
+            p.addParameter('alpha', 1, @isscalar);
+            p.addParameter('outlineAlpha', [], @(x) isempty(x) || isscalar(x));
             p.CaseSensitive = false;
             p.parse(varargin{:});
             xOffset = p.Results.xOffset;
@@ -23,15 +26,33 @@ classdef DrawOnData
             D = size(dMark, 2);
             
             flatten = @(x) x(:);
-            
-            if D == 1 || D == 2
-                zvals = 1 * ones(size(flatten(dMark(:, 1, :))));
-                h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, zvals, ...
-                    'o', 'MarkerEdgeColor', 'none',  'MarkerFaceColor', app.Color, ...
-                    'MarkerSize', markerSize, 'Parent', axh, 'Clipping', p.Results.clipping);
-                if alpha < 1
-                    TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
+            alpha = p.Results.alpha;
+            if p.Results.outline
+                edge = 'w';
+                lineWidth = 0.5;
+                edgeAlpha = p.Results.outlineAlpha;
+                if isempty(edgeAlpha)
+                    edgeAlpha = alpha;
                 end
+            else
+                edge = 'none';
+                edgeAlpha = 0;
+                lineWidth = 0;
+            end
+       
+            if D == 1 || D == 2
+                h = scatter(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, markerSize, ...
+                    'filled', 'MarkerEdgeColor', edge, 'MarkerEdgeAlpha', edgeAlpha, 'LineWidth', lineWidth, ...
+                    'MarkerFaceColor', app.Color, 'MarkerFaceAlpha', alpha, ...
+                    'Parent', axh, 'MarkerFaceAlpha', alpha, 'Clipping', p.Results.clipping);
+                
+%                 zvals = 1 * ones(size(flatten(dMark(:, 1, :))));
+%                 h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, zvals, ...
+%                     'o', 'MarkerEdgeColor', 'w',  'MarkerFaceColor', app.Color, ...
+%                     'MarkerSize', markerSize, 'Parent', axh, 'Clipping', p.Results.clipping);
+%                 if alpha < 1
+%                     TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
+%                 end
                 
             elseif D == 3
 %                 if alpha < 1 && p.Results.useTranslucentMark3d
@@ -43,19 +64,21 @@ classdef DrawOnData
 %                 h  = plot3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, flatten(dMark(:, 3, :)) + zOffset, ...
 %                     'o', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
 %                     'Parent', axh, 'MarkerSize', markerSize, 'Clipping', p.Results.clipping);
-                
+
                 h = scatter3(flatten(dMark(:, 1, :)) + xOffset, flatten(dMark(:, 2, :)) + yOffset, flatten(dMark(:, 3, :)) + zOffset, markerSize, ...
-                    'filled', 'MarkerEdgeColor', 'none', 'MarkerFaceColor', app.Color, ...
+                    'filled', 'MarkerEdgeColor', edge, 'MarkerEdgeAlpha', edgeAlpha, 'LineWidth', lineWidth, ...
+                    'MarkerFaceColor', app.Color, 'MarkerFaceAlpha', alpha, ...
                     'Parent', axh, 'MarkerFaceAlpha', alpha, 'Clipping', p.Results.clipping);
                 
-%                 if alpha < 1 && p.Results.useTranslucentMark3d
-%                     TrialDataUtilities.Plotting.setMarkerOpacity(h, alpha, 0);
-%                 end
             else
                 error('Invalid Dimensionality of data');
             end
             
-            if p.Results.frontLayer
+            frontLayer = p.Results.frontLayer;
+            if isempty(frontLayer)
+                frontLayer = D < 3;
+            end
+            if frontLayer
                 TrialDataUtilities.Plotting.setMarkerLayerFront(h);
             end
         end
