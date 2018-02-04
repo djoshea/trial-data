@@ -421,7 +421,7 @@ classdef AlignSummary
             p = inputParser();
             p.addParameter('aggregateMarks', true, @islogical);
             p.addParameter('aggregateIntervals', true, @islogical);
-            p.addParameter('skipConditions', true, @islogical); % for internal use only, will not call initialize
+            p.addParameter('skipConditions', false, @islogical); % for internal use only, will not call initialize
             p.parse(varargin{:});
             
             if isempty(alignSummarySet)
@@ -1318,6 +1318,7 @@ classdef AlignSummary
             
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markOutline', true, @islogical);
+            p.addParameter('markOutlineAlpha', 0.6, @isscalar)
             p.addParameter('markSize', 8, @isscalar);
             p.addParameter('intervalAlpha', 1, @isscalar);
             p.addParameter('showInLegend', true, @islogical);
@@ -1542,7 +1543,7 @@ classdef AlignSummary
 
                     % plot mark and provide legend hint
                     h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
-                        p.Results.markSize, 'alpha', p.Results.markAlpha, 'outline', p.Results.markOutline, ...
+                        p.Results.markSize, 'alpha', p.Results.markAlpha, 'outline', p.Results.markOutline, 'outlineAlpha', p.Results.markOutlineAlpha, ...
                         'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'clipping', p.Results.clipping);
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});

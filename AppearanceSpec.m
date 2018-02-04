@@ -201,7 +201,7 @@ classdef AppearanceSpec
                    case 'Color'
                        s.Color = [app.Color 1];
                        % need to handle alpha here as well
-                       if isfield('Alpha', def)
+                       if isfield(def, 'Alpha')
                            s.Color(4) = def.Alpha * app.Alpha;
                        else
                            s.Color(4) = app.Alpha;

@@ -32,7 +32,7 @@ classdef DrawOnData
                 lineWidth = 0.5;
                 edgeAlpha = p.Results.outlineAlpha;
                 if isempty(edgeAlpha)
-                    edgeAlpha = alpha;
+                    edgeAlpha = alpha * 0.75;
                 end
             else
                 edge = 'none';
