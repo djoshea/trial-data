@@ -99,7 +99,7 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
         % then we find the alignment between tyRaw and ty to grab the right
         % window
         [delta, idxFirst] = min(abs(tyRaw - ty(1)));
-        assert(delta < timeDeltaY / 4);
+%         assert(delta < timeDeltaY / 4);
         y = y(idxFirst:idxFirst+numel(ty)-1, :);
     end
     
