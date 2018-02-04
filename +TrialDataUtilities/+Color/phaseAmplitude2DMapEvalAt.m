@@ -6,6 +6,8 @@ p = inputParser();
 p.addParameter('degrees', false, @islogical);
 p.addParameter('phaseShift', 0, @isscalar);
 p.addParameter('amplitudeLimits', [0 1], @isvector);
+p.addParameter('chromaGains', [0 1], @isvector); % either limits for linspace or nAmplitude x 1 vector
+p.addParameter('luminanceGains', [0 1], @isvector); % either limits for linspace or nAmplitude x 1 vector
 p.KeepUnmatched = true;
 p.parse(varargin{:});
 
@@ -16,7 +18,7 @@ if p.Results.degrees
 end
 
 % uses Chad Green's cmocean's phase map, originally developed by created by Kristen Thyng
-mapImg = TrialDataUtilities.Color.phaseAmplitude2DMap(360, 100, p.Unmatched, 'keepInLCH', false);
+mapImg = TrialDataUtilities.Color.phaseAmplitude2DMap(360, 100, p.Unmatched, 'keepInLCH', false, 'chromaGains', p.Results.chromaGains, 'luminanceGains', p.Results.luminanceGains);
 phaseLims = [0 2*pi];
 evalPhaseAt = mod(phaseValues + phaseShift, 2*pi);
 

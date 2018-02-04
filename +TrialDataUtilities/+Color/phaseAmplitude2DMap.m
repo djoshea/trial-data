@@ -36,7 +36,6 @@ else
     assert(numel(luminanceGains) == nAmplitude);
 end
 
-gain = linspace(0, 1, nAmplitude);
 for iA = 1:nAmplitude
     offset = (iA-1)*nPhase;
     if p.Results.varyLuminance
