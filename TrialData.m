@@ -823,7 +823,7 @@ classdef TrialData
             continuousCh = td.listContinuousNeuralChannels();
             [contGroups, contGroupChannels] = td.listContinuousNeuralChannelGroups();
             [groups, groupChannels] = td.listAnalogChannelGroups();
-            imgChannels = td.listImageChannels();
+            [imgChannels, imgGroupChannels] = td.listImageChannels();
             allGroupChannels = cat(1, groupChannels{:});
             
             % then remove cont neural groups from analog groups
@@ -859,7 +859,7 @@ classdef TrialData
             printGroups(contGroups, contGroupChannels);
             
             tcprintf('inline', '{yellow}Image: {none}\n');
-            printGroups(imgChannels, {});
+            printGroups(imgChannels, imgGroupChannels);
             
             
             function printGroups(groups, groupChannels)
@@ -2608,6 +2608,25 @@ classdef TrialData
                 'keepScaling', true, 'dataInMemoryScale', p.Results.dataInMemoryScale);
         end
         
+        function td = setAnalogChannelGroupSubChannelNames(td, groupName, chNames, chIdx)
+            td.warnIfNoArgOut(nargout);
+            
+            assert(td.hasAnalogChannelGroup(groupName));
+            cdGroup = td.channelDescriptorsByName.(groupName);
+            if ischar(chNames)
+                chNames = {chNames};
+            end
+            if nargin < 4
+                chIdx = 1:numel(chNames);
+            end
+            
+            for iCh = 1:numel(chNames)
+                % build a channel descriptor for the data
+                cd = cdGroup.buildIndividualSubChannel(chNames{iCh}, chIdx(iCh));
+                td = td.addChannel(cd, {}, 'ignoreDataFields', true);
+            end
+        end
+        
         function td = addContinuousNeuralChannelGroup(td, groupName, chNames, varargin)
             % see addAnalogChannelGroup, same signature
             td.warnIfNoArgOut(nargout);
@@ -3116,33 +3135,33 @@ classdef TrialData
             end
         
             if ~isempty(p.Results.linearCombinationWeights)
-				sliceSize = size(emptySlice);
-				sliceSize = sliceSize(2:end);
-				% linearCombinationWeights  is size(slice) by nCombinations
-				weights = p.Results.linearCombinationWeights;
-				szWeights = TensorUtils.sizeNDims(weights, numel(sliceSize) + 1);
-				assert(szWeights(1:numel(sliceSize)) == sliceSize, 'Size of linearCombination weights must be [%s nCombinations]', vec2str(sliceSize));
-				nCombinations = szWeights(numel(sliceSize) + 1);
-
-				weightsNewByOld = reshape(weights, [prod(sliceSize) nCombinations])';
-				
-				prog = ProgressBar(numel(data), 'Computing weighted combinations of analog channel group');
-				for i = 1:numel(data)
+                sliceSize = size(emptySlice);
+                sliceSize = sliceSize(2:end);
+                % linearCombinationWeights  is size(slice) by nCombinations
+                weights = p.Results.linearCombinationWeights;
+                szWeights = TensorUtils.sizeNDims(weights, numel(sliceSize) + 1);
+                assert(TensorUtils.compareSizeVectors(szWeights(1:numel(sliceSize)), sliceSize), 'Size of linearCombination weights must be [%s nCombinations]', vec2str(sliceSize));
+                nCombinations = szWeights(numel(sliceSize) + 1);
+                
+                weightsNewByOld = reshape(weights, [prod(sliceSize) nCombinations])';
+                
+                prog = ProgressBar(numel(data), 'Computing weighted combinations of analog channel group');
+                for i = 1:numel(data)
                     if ~isempty(data{i})
-						prog.update(i);
-						nSamplesThis = size(data{i}, 1);
-						thisSize = [nSamplesThis, sliceSize];
-
-						thisFlat = reshape(data{i}, [nSamples, prod(sliceSize)]);
-						data{i} = TensorUtils.linearCombinationAlongDimension(thisFlat, 2, weightsNewByOld, ...
-							'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
-							'keepNaNIfAllNaNs', p.Results.keepNaNIfAllNaNs, ...
-							'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN);
+                        prog.update(i);
+                        nSamplesThis = size(data{i}, 1);
+                        % 						thisSize = [nSamplesThis, sliceSize];
+                        
+                        thisFlat = reshape(data{i}, [nSamplesThis, prod(sliceSize)]);
+                        data{i} = TensorUtils.linearCombinationAlongDimension(thisFlat, 2, weightsNewByOld, ...
+                            'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                            'keepNaNIfAllNaNs', p.Results.keepNaNIfAllNaNs, ...
+                            'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN);
                     end
                 end
-				prog.finish();
+                prog.finish();
             end
-
+            
             if p.Results.averageOverSlice
                 % average the whole slice down to a single timeseries
                 for i = 1:numel(data)
@@ -3610,7 +3629,7 @@ classdef TrialData
     end
     
     methods % Image channel methods - mostly defer to AnalogChannelGroupMethods
-        function groupNames = listImageChannels(td)
+        function [groupNames, channelsByGroup] = listImageChannels(td)
             channelDescriptors = td.getChannelDescriptorArray();
             if isempty(channelDescriptors)
                 groupNames = {};
@@ -3618,6 +3637,33 @@ classdef TrialData
             end
             mask = arrayfun(@(cd) isa(cd, 'ImageChannelDescriptor'), channelDescriptors);
             groupNames = {channelDescriptors(mask).name}';
+            
+            if nargout > 1
+                % go in and get channelsByGroup
+                chList = td.listAnalogChannels();
+
+                mask =falsevec(numel(chList));
+                idx = nanvec(numel(chList));
+                printedWarning = false;
+                for iC = 1:numel(chList)
+                    [mask(iC), myGroup] = td.isAnalogChannelInGroup(chList{iC});
+                    if mask(iC)
+                        [tf, idx(iC)] = ismember(myGroup, groupNames);
+                        if ~tf
+                            if ~printedWarning
+                                warning('Orphaned channels from analog channel group %s found. Use td.fixOrphanedAnalogChannelGroups to fix this.', myGroup);
+                            end
+                            mask(iC) = false;
+                            printedWarning = true;
+                        end
+                    end
+                end
+
+                channelsByGroup = cellvec(numel(groupNames));
+                for iG = 1:numel(groupNames)
+                    channelsByGroup{iG} = td.listAnalogChannelsInGroup(groupNames{iG});
+                end
+            end
         end
         
         function td = addImage(td, groupName, varargin)

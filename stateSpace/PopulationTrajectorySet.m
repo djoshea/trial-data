@@ -1248,12 +1248,29 @@ classdef PopulationTrajectorySet
                 v = pset.odc.tMinByTrial;
             end
         end
+        
+        function pset = set.tMinByTrial(pset, v)
+            if ~pset.dataByTrialSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMinByTrial = v;
+            else
+                pset.tMinByTrialManual = v;
+            end
+        end
 
         function v = get.tMaxByTrial(pset)
             v = pset.odc.tMaxByTrial;
             if isempty(v)
                 pset.buildDataByTrialPerTrialLimits();
                 v = pset.odc.tMaxByTrial;
+            end
+        end
+        function pset = set.tMaxByTrial(pset, v)
+            if ~pset.dataByTrialSourceManual
+                pset.odc = pset.odc.copy();
+                pset.odc.tMaxByTrial = v;
+            else
+                pset.tMaxByTrialManual = v;
             end
         end
 
@@ -1757,7 +1774,7 @@ classdef PopulationTrajectorySet
                 if isempty(v)
                     % simply compute on demand here to save ourselves a build method
                     v = cellfun(@numel, pset.trialLists);
-                    v(~pset.basisValid, :, :) = NaN;
+%                     v(~pset.basisValid, :, :) = NaN;
                     c = pset.odc;
                     c.dataNTrials = v;
                 end
@@ -2828,6 +2845,7 @@ classdef PopulationTrajectorySet
                     % store the time limits used in the time vector for
                     % the dataByTrial{..} matrix
                     if ~isempty(tvec)
+                        tvec = TrialDataUtilities.Data.removeSmallTimeErrors(tvec, spikeFilter.timeDelta, 0);
                         tMinForDataByTrial(iBasis, iAlign) = min(tvec);
                         tMaxForDataByTrial(iBasis, iAlign) = max(tvec);
                     end
@@ -2903,7 +2921,6 @@ classdef PopulationTrajectorySet
                 % but this isn't necessary since we've already
                 % extracted the aligned data
                 src = pset.dataSources{pset.basisDataSourceIdx(iBasis)};
-
                 listsThis = src.conditionInfo.listByCondition(:);
 
                 % filter out trials that don't have spikes, or lie outside
@@ -2971,7 +2988,7 @@ classdef PopulationTrajectorySet
                     % for each basis, align, take the widest window we can that
                     % is valid for a sufficient number of trials on this basis
                     for iCondition = 1:pset.nConditions
-                        nTrialsThis = pset.dataNTrials(iAlign, iBasis, iCondition);
+                        nTrialsThis = pset.dataNTrials(iBasis, iCondition);
                         if nTrialsThis == 0, continue, end
                         trialCountThresh = max(pset.minTrialsForTrialAveraging, ...
                             ceil(pset.minFractionTrialsForTrialAveraging*nTrialsThis));
@@ -3148,8 +3165,8 @@ classdef PopulationTrajectorySet
 
                     % lookup the new time limits which we'll compute the
                     % trial average within
-                    tMinValid = tMinForDataMean(iAlign);
-                    tMaxValid = tMaxForDataMean(iAlign);
+                    tMinValid = pset.tMinForDataMean(iAlign);
+                    tMaxValid = pset.tMaxForDataMean(iAlign);
 
                     % IGNORE THIS FOR NOW, CHANGED THIS ABOVE
                     % it is possible for the data by trial time vector to be
@@ -3312,8 +3329,8 @@ classdef PopulationTrajectorySet
 
             % grab random pair of trials for each basis, each condition,
             % concatenate aligns in time
-            NbyTAbyCby2 = pset.arrangeNbyTAbyCbyR('numTrials', 2, 'ignoreTrialsWithTooFewSamples', true, ...
-                'chooseRandom', true, 'message', 'Building difference of trials noise estimate');
+            NbyTAbyCby2 = pset.arrangeNbyTAbyCbyR('maxTrials', 2, 'ignoreTrialsWithTooFewSamples', true, ...
+                 'message', 'Building difference of trials noise estimate');
 
             % grab trial counts
             nTrials_NbyC = pset.computeTrialCountsNbyC();
@@ -4352,7 +4369,7 @@ classdef PopulationTrajectorySet
         end
 
         function pset = setBasisNamesUsingFormatString(pset, prefix)
-            assert(ischar(prefix) && ~isempty(strfind(prefix, '%d')), 'Format string must be char containing ''%d'''); %#ok<STREMP>
+%             assert(ischar(prefix) && ~isempty(strfind(prefix, '%d')), 'Format string must be char containing ''%d'''); %#ok<STREMP>
             pset.warnIfNoArgOut(nargout);
 
             names = arrayfun(@(n) sprintf(prefix, n), (1:pset.nBases)', 'UniformOutput', false);
@@ -5175,6 +5192,7 @@ classdef PopulationTrajectorySet
                 if p.Results.showSem
                     for iCondition = 1:nConditionsPlot
                         idxCondition = conditionIdx(iCondition);
+                        app = appearances(idxCondition);
                         dataC = TensorUtils.squeezeDims(data(:, iCondition, :), 2);
                         dataSemC = TensorUtils.squeezeDims(dataSem(:, iCondition, :), 2);
                         for iBasis = 1:nBasesPlot
@@ -5184,10 +5202,10 @@ classdef PopulationTrajectorySet
                                 [~, hShade] = TrialDataUtilities.Plotting.stairsError(...
                                      tvecPlot + stairsXOffset, dataC(iBasis, :), dataSemC(iBasis, :), ...
                                      'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(idxCondition).Color, 'alpha', p.Results.alpha, ...
-                                     'errorStyle', 'fill', 'errorColor', app(idxCondition).Color, 'lineWidth', p.Results.lineWidth * app(idxCondition).LineWidth, 'showLine', false);
+                                     'errorStyle', 'fill', 'errorColor', app.Color, 'lineWidth', p.Results.lineWidth * app.LineWidth, 'showLine', false);
                             else
                                 hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...
-                                    dataSemC(iBasis, :), app(idxCondition).Color, 'axh', axh, ...
+                                    dataSemC(iBasis, :), app.Color, 'axh', axh, ...
                                     'alpha', p.Results.errorAlpha, 'z', 0, 'showLine', false);
                             end
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
@@ -5378,6 +5396,7 @@ classdef PopulationTrajectorySet
             
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markOutline', true, @islogical);
+            p.addParameter('markOutlineAlpha', 1, @isscalar);
             p.addParameter('markSize', 10, @isscalar);
             p.addParameter('useThreeVector', false, @islogical);
             p.addParameter('threeVectorLength', 1, @isscalar);
@@ -5522,6 +5541,7 @@ classdef PopulationTrajectorySet
                     'showStop', p.Results.stopShowOnData, ...
                     'markAlpha', p.Results.markAlpha, ...
                     'markOutline', p.Results.markOutline, ...
+                    'markOutlineAlpha', p.Results.markOutlineAlpha, ...
                     'intervalAlpha', p.Results.intervalAlpha, ...
                     'showRanges', p.Results.showRangesOnData, ...
                     'markSize', p.Results.markSize, 'clipping', p.Results.clipping);
@@ -5651,7 +5671,7 @@ classdef PopulationTrajectorySet
                     TrialDataUtilities.Plotting.showFirstInLegend(h, pset.conditionDescriptor.namesShort{c});
                 end
             else
-                [dataByAlign, indexInfo, tvecCell]  = pset.simultaneous_arrangeNbyRbyTA('splitByAlign', true, ...
+                [dataByAlign, indexInfo, tvecCell]  = pset.arrangeNbyRbyTA('splitByAlign', true, ...
                     'alignIdx', alignIdx, 'basisIdx', basisIdx, 'validBasesOnly', true, 'conditionIdx', conditionIdx, ...
                     'trialIdx', p.Results.trialIdx, 'validTrialsOnly', true, 'timeDelta', p.Results.timeDelta, ...
                     'maxTrials', p.Results.maxTrials);
@@ -6352,6 +6372,7 @@ classdef PopulationTrajectorySet
             p.addParameter('ignoreTrialsWithTooFewSamples', true, @islogical);
             p.addParameter('minFractionTrialSamples', 0.8, @isscalar);
             p.addParameter('randomSeed', 0, @isscalar);
+            p.addParameter('chooseRandom', true, @islogical);
             p.addParameter('conditionIdx', truevec(pset.nConditions), @isvector);
             p.addParameter('alignIdx', truevec(pset.nAlign), @isvector);
             p.addParameter('basisIdx', truevec(pset.nBases), @isvector);
@@ -6365,6 +6386,7 @@ classdef PopulationTrajectorySet
             % if nRepeatedSamples is > 1, NbyTAbyCbyR will be
             % NbyTAbyCbyRbyNsamples and whichTrials will be
             p.addParameter('nRepeats', 1, @isscalar);
+            p.addParameter('maxTrials', Inf, @isscalar);
 
             p.addParameter('message', 'Extracting individual trial data matrix by basis', @ischar);
             p.parse(varargin{:});
@@ -6414,11 +6436,11 @@ classdef PopulationTrajectorySet
             cMask = pset.conditionHasValidTrialAverageAllAlignsBases(:);
 
             if isempty(p.Results.trialListsByBasisCondition)
-                dataNTrials = pset.dataNTrials(alignIdx, basisIdx, conditionIdx);
+                dataNTrials = pset.dataNTrials(basisIdx, conditionIdx);
                 trialLists = pset.trialLists;
             else
                 trialLists = p.Results.trialListsByBasisCondition;
-                dataNTrials = repmat(shiftdim(cellfun(@numel, trialLists), -1), pset.nAlign, 1, 1);
+                dataNTrials = cellfun(@numel, trialLists);
             end
 
             % figure out how many trials to select and allocate for
@@ -6642,7 +6664,7 @@ classdef PopulationTrajectorySet
         end
 
         function nTrials_NbyC = computeTrialCountsNbyC(pset)
-            nTrials_NbyC = permute(min(pset.dataNTrials, [], 1), [2 3 1]);
+            nTrials_NbyC = pset.dataNTrials;
         end
 
         function nTrials_NbyAttr = computeTrialCountsNbyConditionAttr(pset)

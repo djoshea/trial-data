@@ -3430,6 +3430,42 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
+        function td = addAnalogChannelGroupModifiedInPlace(td, oldName, newName, data)
+            % if we do a reset here we'll mess up the valid array the user
+            % was expecting
+%             td = td.reset();
+            td.warnIfNoArgOut(nargout);
+            td = td.copyChannel(oldName, newName);
+            td = td.setAnalogChannelGroup(newName, data);
+        end
+        
+        function td = addAnalogChannelGroupViaSelection(td, groupName, newName, varargin)
+            p = inputParser();
+            p.addParameter('chNames', {}, @iscellstr);
+            p.addParameter('slice', [], @(x) true); % this is used to index specifically into each sample
+            p.addParameter('linearCombinationWeights', [], @(x) true); % alternatively, take a weighted combination over samples in the slice, size should be [size of analog channel, number of weighted combinations]
+            p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
+            p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
+            p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis this enables nanmean like computations
+            p.addParameter('averageOverSlice', false, @islogical); % average within each slice
+            
+            p.parse(varargin{:});
+            td.warnIfNoArgOut(nargout);
+            data = td.getAnalogChannelGroup(groupName, 'slice', p.Results.slice, ...
+                'linearCombinationWeights', p.Results.linearCombinationWeights, ...
+                'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
+                'keepNaNIfAllNaNs', p.Results.keepNaNIfAllNaNs, ...
+                'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                'averageOverSlice', p.Results.averageOverSlice);
+            
+            td = td.addAnalogChannelGroupModifiedInPlace(groupName, newName, data);
+            
+            if ~isempty(p.Results.chNames)
+                td = td.setAnalogChannelGroupSubChannelNames(newName, p.Results.chNames);
+            end
+        end
+            
+        
         function td = transformAnalogChannelGroupInPlace(td, groupName, transformFn, varargin)
             % dataMat = tranformFn(dataMat, tvec, trialInd)
             p = inputParser();
@@ -7174,7 +7210,7 @@ classdef TrialDataConditionAlign < TrialData
                         permute(data{iAlign}, [2 3 1]), ...  % data needs to be T x D x C x N, currently C x T x D
                         'showMarks', p.Results.markShowOnData, 'showIntervals', p.Results.intervalShowOnData, ...
                         'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, ...
-                        'tOffsetZero', timeOffsetByAlign(iAlign), 'alpha', p.Results.alpha, ...
+                        'tOffsetZero', timeOffsetByAlign(iAlign), ...
                         'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
                         'intervalAlpha', p.Results.intervalAlpha, ...
                         'showRanges', p.Results.showRangesOnData, ...
