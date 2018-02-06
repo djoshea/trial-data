@@ -155,6 +155,104 @@ classdef PopulationTrajectorySetBuilder
             pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
         end
+        
+        function pset = fromDataMeanTensor(dataMean_NbyCbyT, varargin)
+            p = inputParser();
+            
+            p.addOptional('time', [], @(x) isempty(x) || iscell(x) || isvector(x));
+            p.addParameter('basisNames', {}, @iscellstr);
+            p.addParameter('zeroEventNames', {}, @iscellstr);
+            p.addParameter('conditionsSize', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('axisNames', {}, @iscellstr);
+            p.addParameter('valuesAlongAxes', {}, @iscell);
+            p.addParameter('dataSem', [], @(x) isempty(x) || iscell(x) || isnumeric(x));
+            p.addParameter('timeUnitName', 'ms', @ischar);
+            p.addParameter('timeUnitsPerSecond', 1000, @isscalar);
+            p.parse(varargin{:});
+            
+            if ~iscell(dataMean_NbyCbyT)
+                dataMean_NbyCbyT = {dataMean_NbyCbyT};
+            end
+            if isempty(p.Results.dataSem)
+                dataSem = cellfun(@(x) nan(size(x)), dataMean_NbyCbyT, 'UniformOutput', false);
+            else
+                dataSem = p.Results.dataSem;
+                if ~iscell(dataSem)
+                    dataSem = {dataSem};
+                end
+            end
+            T = cellfun(@(d) size(d, 3), dataMean_NbyCbyT);
+            C = size(dataMean_NbyCbyT{1}, 2);
+            N = size(dataMean_NbyCbyT{1}, 1);
+            if isempty(p.Results.conditionsSize)
+                conditionsSize = C;
+            else
+                conditionsSize = p.Results.conditionsSize;
+                assert(prod(conditionsSize) == C);
+            end
+            cd = ConditionDescriptor.createManualWithSize(conditionsSize, 'axisNames', p.Results.axisNames, 'valuesAlongAxes', p.Results.valuesAlongAxes);
+                
+            if isempty(p.Results.time)
+                time = (1:T)';
+            else
+                time = p.Results.time;
+            end
+            if ~iscell(time)
+                time = {time};
+            end
+            timeDelta = time{1}(2) - time{1}(1);
+            tMinDataMean = cellfun(@min, time);
+            tMaxDataMean = cellfun(@max, time);
+            A = numel(dataMean_NbyCbyT);
+            
+            if isempty(p.Results.zeroEventNames)
+                zeroEventNames = arrayfun(@(i) sprintf('Align%d', i), (1:A)', 'UniformOutput', false);
+            end
+            alignDescriptorSet = cell(A, 1);
+            for iA = 1:A
+                ev = zeroEventNames{iA};
+                alignDescriptorSet{iA} = AlignDescriptor().zero(ev).start(ev, tMinDataMean(iA)).stop(ev, tMaxDataMean(iA));
+            end
+            
+            [tMinValidByAlignBasisCondition, tMaxValidByAlignBasisCondition] = deal(nan(A, N, C));
+            dataValid = false(A, N, C);
+            for iA = 1:A
+                tMinValidByAlignBasisCondition(iA, :, :) = TensorUtils.findNAlongDim(~isnan(dataMean_NbyCbyT{1}), 3, 1, 'first');
+                tMaxValidByAlignBasisCondition(iA, :, :) = TensorUtils.findNAlongDim(~isnan(dataMean_NbyCbyT{1}), 3, 1, 'last');
+                dataValid(iA, :, :) = any(~isnan(dataMean_NbyCbyT{iA}), 3);
+            end
+            
+            if isempty(p.Results.basisNames)
+                basisNames = arrayfun(@(i) sprintf('basis%d', i), (1:N)', 'UniformOutput', false);
+            else
+                basisNames = p.Results.basisNames;
+            end
+            
+            pset = PopulationTrajectorySet();
+            pset.dataSourceManual = true;
+            pset.alignDescriptorSet = alignDescriptorSet;
+            pset.basisNames = basisNames;
+            pset.timeUnitName = p.Results.timeUnitName;
+            pset.timeUnitsPerSecond = p.Results.timeUnitsPerSecond;
+            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', timeDelta);
+            pset.conditionDescriptor = cd;
+            pset.tMinForDataMean = tMinDataMean;
+            pset.tMaxForDataMean = tMaxDataMean;
+            pset.dataMean = dataMean_NbyCbyT;
+            pset.dataSem = dataSem;
+            pset.dataValid = dataValid;
+            pset.dataNTrials = double(dataValid);
+            pset.tMinValidByAlignBasisCondition = tMinValidByAlignBasisCondition;
+            pset.tMaxValidByAlignBasisCondition = tMaxValidByAlignBasisCondition;
+            
+            alignSummaryData = cell(1, A);
+            for iA = 1:A
+                alignSummaryData{iA} = AlignSummary.buildEmptyFromConditionAlignDescriptor(cd, pset.alignDescriptorSet{iA}, tMinDataMean(iA), tMaxDataMean(iA));
+            end
+            pset.alignSummaryData = alignSummaryData;
+            pset.basisAlignSummaryLookup = ones(N, 1);
+            pset = pset.initialize();
+        end
     end
     
     methods(Static)

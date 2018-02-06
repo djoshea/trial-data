@@ -260,8 +260,19 @@ classdef StateSpaceTranslationNormalization
             norms = cellfun(@(t) t.normalizationByBasis, trNormCell, 'UniformOutput', false);
             normByBasis = cat(1, norms{:});
             
-            obj = StateSpaceTranslationNormalization.buildManual('translationByBasis', translationByBasis, ...
-                'normalizationByBasis', normByBasis);
+            obj = StateSpaceTranslationNormalization.buildManual(translationByBasis, normByBasis);
+        end
+        
+        function tf = checkEqual(varargin)
+            tf = true;
+            first = varargin{1};
+            for i = 2:numel(varargin)
+                if ~all(TrialDataUtilities.Data.isequaltol(first.translationByBasis, varargin{i}.translationByBasis)) || ...
+                   ~all(TrialDataUtilities.Data.isequaltol(first.normalizationByBasis, varargin{i}.normalizationByBasis))
+                    tf = false;
+                    continue;
+                end
+            end
         end
         
         function obj = combine(varargin)

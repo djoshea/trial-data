@@ -762,6 +762,28 @@ classdef StateSpaceProjectionStatistics
     end
     
     methods(Static) % Build from StateSpaceProjection and PopulationTrajectorySet
+        function [marginalizationNames, marginalizationList, combinedParams, axisIncludeMask] = listMarginalizations(pset, varargin)
+            p = inputParser();
+            p.addParameter('axesIgnore', {}, @(x) true);
+            p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
+            p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
+            p.addParameter('combineAxesWithTime', true, @(x) islogical(x) || iscell(x));
+            p.parse(varargin{:});
+            
+            % filter for non-singular axes
+            nConditionsAlongAxis = pset.conditionDescriptor.conditionsSize;
+            dimMask = nConditionsAlongAxis > 1;
+            
+            [combinedParams, marginalizationNames, axisIncludeMask, marginalizationList] = StateSpaceProjectionStatistics.generateCombinedParamsForMarginalization( ...
+                pset.conditionDescriptor.axisAttributes, ...
+                'axisIncludeMask', dimMask, ...
+                'axisNames', pset.conditionDescriptor.axisNames, ...
+                'axesIgnore', p.Results.axesIgnore, ...
+                'axesCombineSpecificMarginalizations', p.Results.axesCombineSpecificMarginalizations, ...
+                'axesCombineAllMarginalizations', p.Results.axesCombineAllMarginalizations, ...
+                'combineAxesWithTime', p.Results.combineAxesWithTime);
+        end
+        
         function s = build(proj, pset, varargin)
             p = inputParser();
             p.addParameter('meanSubtract', true, @islogical); % setting this to false only makes sense for situations where the data is already normalized relative to some absolute baseline, such as a difference between two conditions
