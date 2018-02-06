@@ -1,45 +1,6 @@
 classdef StateSpaceComparison
 
     methods(Static)
-        function [valueTensor, tvec, conditionDescriptorSansAxis] = dprime(pset, axisSpec, varargin)
-            % compute (mu_each - mu_control) / sigma_control along each
-            % axis for a specified idxControl (default 1)
-            % valueTensor will match size of dataMean
-            p = inputParser();
-            p.addParameter('idxControl', 1, @islogical); % which position to use as the "control group"
-            p.parse(varargin{:});
-
-            axisIdx = pset.conditionDescriptor.axisLookupByAttributes(axisSpec);
-            condSize = pset.conditionsSize;
-            condSizeOther = TensorUtils.sizeOtherDims(pset.conditions, axisIdx);
-            
-            dataMean = pset.dataMean;
-            dataStd = pset.computeDataStdRandomized
-            pTensorByAlign = cell(pset.nAlign, 1);
-            for iA = 1:pset.nAlign
-                pTensorByAlign{iA} = nan(pset.nBases, pset.nTimeDataMean(iA), condSizeOther);
-
-                if ~pset.alignValid(iA), continue; end
-                prog = ProgressBar(pset.nBases, 'Computing %s for each basis for align %d', p.Results.functionName, iA);
-                for iB = 1:pset.nBases
-                    prog.update(iB);
-                    if ~pset.basisValid(iB), continue; end
-
-                    dataThis = reshape(dataByTrialGrouped(iB, iA, :), condSize);
-                    [pTensor, ~, conditionDescriptorSansAxis] = fn(pset.getDataSourceForBasis(iB), ...
-                        'axis', axisIdx, 'data', dataThis);
-                    pTensorByAlign{iA}(iB, :) = pTensor(:);
-                end
-                prog.finish();
-            end
-
-            tvecByAlign = pset.tvecDataMean;
-        end
-
-    end
-    
-    methods(Static)
-        
         %%%%%%%%%
         % kruskal wallis
         %%%%%%%%%

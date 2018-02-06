@@ -35,14 +35,14 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
     methods(Static)
         function [proj, unmatched] = parseCreateParams(proj, varargin)
             p = inputParser;
-            p.addParamValue('nBasesProjKeep', NaN, @isscalar);
-            p.addParamValue('nBasesProjPerMarginalization', NaN, @(x) isscalar(x) || isvector(x));
-            p.addParamValue('lambda', [], @(x) isempty(x) || isscalar(x));
-            p.addParamValue('useOptimizedLambdaForMarginalization', {}, @(x) isscalar(x) || ischar(x) || iscell(x));
-            p.addParamValue('axesCombineSpecificMarginalizations', {}, @iscell);
-            p.addParamValue('axesCombineAllMarginalizations', {}, @iscell);
-            p.addParamValue('combineAxesWithTime', true, @islogical);
-            p.addParamValue('orderBasesByVariance', true, @islogical);
+            p.addParameter('nBasesProjKeep', NaN, @isscalar);
+            p.addParameter('nBasesProjPerMarginalization', NaN, @(x) isscalar(x) || isvector(x));
+            p.addParameter('lambda', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('useOptimizedLambdaForMarginalization', {}, @(x) isscalar(x) || ischar(x) || iscell(x));
+            p.addParameter('axesCombineSpecificMarginalizations', {}, @iscell);
+            p.addParameter('axesCombineAllMarginalizations', {}, @iscell);
+            p.addParameter('combineAxesWithTime', true, @islogical);
+            p.addParameter('orderBasesByVariance', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             unmatched = p.Unmatched;

@@ -1049,6 +1049,16 @@ classdef AlignInfo < AlignDescriptor
                         end
                         alignedTimes{i,j} = raw(rawTimesMask{i,j}) - zero(i);
                     end
+                else
+                    % here we select nothing along first dim to ensure that
+                    % the result is cat' able
+                    for j = 1:J
+                        if ~isempty(rawTimesCell{i, j})
+                            mask = nan(0, 1);
+                            alignedTimes{i, j} = rawTimesCell{i, j}(mask, 1);
+                            rawTimesMask{i, j} = rawTimesCell{i, j}(mask, 1);
+                        end
+                    end
                 end
             end
         end
@@ -1100,13 +1110,15 @@ classdef AlignInfo < AlignDescriptor
         function [alignedData, alignedTime] = getAlignedTimeseries(ad, dataCell, timeCell, includePadding, varargin)
             % align timeseries where trials are along dimension 1
             [alignedTime, rawTimesMask] = ad.getAlignedTimesCell(timeCell, includePadding, varargin{:});
-%             alignedData = cellfun(@(data, mask) data(mask, :), dataCell, rawTimesMask, ...
-%                 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
-            nonEmpty = ~cellfun(@isempty, rawTimesMask);
 
-            alignedData = cell(size(dataCell));
-            alignedData(nonEmpty) = cellfun(@(data, mask) data(mask(1:size(data, 1)), :, :, :), ...
-                makecol(dataCell(nonEmpty)), makecol(rawTimesMask(nonEmpty)), ...
+%             nonEmpty = ~cellfun(@isempty, rawTimesMask);
+%             alignedData = cell(size(dataCell));
+%             alignedData(nonEmpty) = cellfun(@(data, mask) data(mask(1:size(data, 1)), :, :, :), ...
+%                 makecol(dataCell(nonEmpty)), makecol(rawTimesMask(nonEmpty)), ...
+%                 'UniformOutput', false);
+            
+            alignedData = cellfun(@(data, mask) data(mask(1:size(data, 1)), :, :, :), ...
+                makecol(dataCell), makecol(rawTimesMask), ...
                 'UniformOutput', false);
         end
 

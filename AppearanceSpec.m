@@ -3,6 +3,7 @@ classdef AppearanceSpec
         Color
         LineWidth
         LineStyle
+        Alpha
         TextOffsetX
         TextOffsetY
         HorizontalAlignment
@@ -11,6 +12,7 @@ classdef AppearanceSpec
     
     properties(Hidden)
         mColor
+        mAlpha
         mLineWidth
         mLineStyle
         mTextOffsetX
@@ -34,6 +36,22 @@ classdef AppearanceSpec
 
         function c = defaultColor(~)
            c = [0 0 0];
+        end
+       
+        function v = get.Alpha(app)
+            if isempty(app.mAlpha)
+                v = app.defaultAlpha();
+            else
+                v = app.mAlpha;
+            end
+        end
+
+        function app = set.Alpha(app, v)
+            app.mAlpha = v;
+        end
+
+        function a = defaultAlpha(~)
+            a = 1;
         end
        
         function v = get.LineWidth(app)
@@ -64,7 +82,7 @@ classdef AppearanceSpec
             app.mLineStyle = v;
         end
         
-        function s = defaultLineStyle(app)
+        function s = defaultLineStyle(app) %#ok<MANU>
             s = '-';
         end
         
@@ -153,9 +171,54 @@ classdef AppearanceSpec
                 end
             end
         end
+        
+        function val = getPropIfSpecifiedElseDefault(app, argName, default)
+            mArgName = ['m' argName];
+            if ~isempty(app.(mArgName))
+                val = app.(mArgName);
+            else
+                val = default;
+            end
+        end
        
-       function args = getPlotArgs(app)
+       function args = getPlotArgs(app, varargin)
            args = app.getNonEmptyArgsByName({'Color', 'LineWidth', 'LineStyle'});
+       end
+       
+       function args = getPlotArgsCombinedWithDefaults(app, varargin)
+           % takes in values containing defaults via varargin, and then merges them
+           % with the values specified in this appearance spec
+           p = inputParser();
+           p.KeepUnmatched = true;
+           p.parse(varargin{:});
+           
+           def = p.Unmatched;
+           flds = fieldnames(def);
+           s = struct();
+           for iF = 1:numel(flds)
+               fld = flds{iF};
+               switch fld
+                   case 'Color'
+                       s.Color = [app.Color 1];
+                       % need to handle alpha here as well
+                       if isfield(def, 'Alpha')
+                           s.Color(4) = def.Alpha * app.Alpha;
+                       else
+                           s.Color(4) = app.Alpha;
+                       end
+                   case 'Alpha'
+                       % handled by Color
+                       
+                   case 'LineWidth'
+                       s.LineWidth = app.LineWidth * def.LineWidth;
+                   case 'LineStyle'
+                       s.LineStyle = app.getPropIfSpecifiedElseDefault('LineStyle', def.LineStyle);
+                   otherwise
+                       s.(fld) = def.(fld);
+               end
+           end
+           
+           args = AppearanceSpec.structToArgs(s);
        end
        
        function args = getMarkerPlotArgs(app, showEdges)
@@ -173,6 +236,15 @@ classdef AppearanceSpec
     end
        
     methods(Static)
+        function args = structToArgs(s)
+            flds = fieldnames(s);
+            args = cell(1, 2*numel(flds));
+            for iF = 1:numel(flds)
+                args{2*iF-1} = flds{iF};
+                args{2*iF} = s.(flds{iF});
+            end
+        end
+        
         function cvec = convertColor(c)
             if ~ischar(c)
                 cvec = c;

@@ -69,6 +69,18 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     tMinRaw = TrialDataUtilities.Data.removeSmallTimeErrors(tMinRaw, timeDelta, p.Results.timeReference);
     tMaxRaw = TrialDataUtilities.Data.removeSmallTimeErrors(tMaxRaw, timeDelta, p.Results.timeReference);
     
+    % need to factor in the excluded padding before we generate the bin
+    % aligned time vector, since we don't want to throw off the locations
+    % relative to timeReference
+    if ~isempty(p.Results.tMinExcludingPadding)
+        tExcPad = TrialDataUtilities.Data.removeSmallTimeErrors(p.Results.tMinExcludingPadding, timeDelta, p.Results.timeReference);
+        tMinRaw = max(tMinRaw, tExcPad, 'includenan');
+    end
+    if ~isempty(p.Results.tMaxExcludingPadding)
+        tExcPad = TrialDataUtilities.Data.removeSmallTimeErrors(p.Results.tMaxExcludingPadding, timeDelta, p.Results.timeReference);        
+        tMaxRaw = min(tMaxRaw, tExcPad, 'includenan');
+    end
+    
     % expand the global min / max timestamps to align with timeReference
     if interpolate
         %ceilfix = @(x)ceil(abs(x)).*sign(x);
@@ -95,13 +107,6 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     else
         tMin = tMinRaw;
         tMax = tMaxRaw;
-    end
-    
-    if ~isempty(p.Results.tMinExcludingPadding)
-        tMin = max(tMin, p.Results.tMinExcludingPadding, 'includenan');
-    end
-    if ~isempty(p.Results.tMaxExcludingPadding)
-        tMax = min(tMax, p.Results.tMaxExcludingPadding, 'includenan');
     end
 
     % build the global time vector

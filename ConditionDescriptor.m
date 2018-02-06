@@ -145,6 +145,9 @@ classdef ConditionDescriptor
         
         % see conditionIncludeMask above
         conditionIncludeMaskManual
+        
+        namesManual % conditionsSize cell array of condition names for manual specification
+        namesShortManual
     end
     
     % END OF STORED TO DISK PROPERTIES
@@ -771,6 +774,19 @@ classdef ConditionDescriptor
             ci = ci.invalidateNames();
         end
         
+        function ci = setConditionNames(ci, names, namesShort)
+            ci.warnIfNoArgOut(nargout);
+            
+            assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), 'Names must be cellstr with conditionsSize');
+            if nargin < 3
+                namesShort = names;
+            end
+            
+            ci.namesManual = names;
+            ci.namesShortManual = namesShort;
+            ci = ci.invalidateNames();
+        end
+        
         function ci = fixAxisValueList(ci, axisSpec)
             ci.warnIfNoArgOut(nargout);
             idx = ci.axisLookupByAttributes(axisSpec);
@@ -1172,7 +1188,7 @@ classdef ConditionDescriptor
                         % all axes along this
                         newValueListModes(iArg) = ci.AxisValueListManual;
                         newAxisValueListsManual{iArg} = ...
-                            TensorUtils.buildCombinatorialStructTensor(ci.axisValueLists{idx});
+                            TensorUtils.flatten(TensorUtils.buildCombinatorialStructTensor(ci.axisValueLists{idx}));
                     else
                         % all are automatic
                         if isAutoOccupied
@@ -2628,6 +2644,18 @@ classdef ConditionDescriptor
             
             % pass along values(i) and the subscripts of that condition in case useful 
             if ci.nConditions > 0
+                % first check manual fields
+                if p.Results.short && ~isempty(ci.namesShortManual)
+                    names = ci.namesShortManual;
+                    if TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), return, end
+                end
+                if ~isempty(ci.namesManual)
+                    names = ci.namesManual;
+                    if TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), return, end
+                end
+                
+                % then use condition name fn, which defaults to using the
+                % axis value lists as strings
                 fn = ci.nameFn;
                 if isempty(fn)
                     fn = @ConditionDescriptor.defaultNameFn;
@@ -2833,10 +2861,13 @@ classdef ConditionDescriptor
             if nConditions == 1
                 cmap = [0.2 0.2 0.2];
             else
-                if nConditions > 256
+                if nConditions > 37
                     cmap = jet(nConditions);
                 else
-                    cmap = distinguishable_colors(nConditions);
+                    cmap = cat(1, TrialDataUtilities.Color.cbrewer('qual', 'Set1'), ...
+                        TrialDataUtilities.Color.cbrewer('qual', 'Paired'), ...
+                        TrialDataUtilities.Color.cbrewer('qual', 'Accent'), ...
+                        TrialDataUtilities.Color.cbrewer('qual', 'Dark2'));
                 end
             end
 
@@ -2875,7 +2906,7 @@ classdef ConditionDescriptor
             p.parse(varargin{:});
             
             if p.Results.multiline
-                separator = char(10);
+                separator = char(10); %#ok<CHARTEN>
             else
                 separator = ' ';
             end
@@ -2917,6 +2948,128 @@ classdef ConditionDescriptor
             cd = ConditionDescriptor();
             cd = cd.addAttributes(fieldnames(s));
         end
+        
+        function cd = createManualWithSize(sz, varargin)
+            p = inputParser();
+            p.addParameter('axisNames', {}, @iscellstr);
+            p.addParameter('valuesAlongAxes', {}, @iscell);
+            p.parse(varargin{:});
+            
+            cd = ConditionDescriptor();
+            
+            nAxes = numel(sz);
+            
+            if isempty(p.Results.axisNames)
+                if nAxes == 1
+                    axisNames = {'condition'};
+                else
+                    axisNames = arrayfun(@(i) sprintf('a%d', i), (1:nAxes)', 'UniformOutput', false);
+                end
+            else
+                axisNames = p.Results.axisNames;
+            end
+            if isempty(p.Results.valuesAlongAxes)
+                valuesAlongAxes = cell(nAxes, 1);
+                for iA = 1:nAxes
+                    valuesAlongAxes{iA} = (1:sz(iA))';
+                end
+            else
+                valuesAlongAxes = p.Results.valuesAlongAxes;
+            end
+
+            for iA = 1:nAxes
+                cd = cd.addAttribute(axisNames{iA}, 'valueList', valuesAlongAxes{iA});
+            end
+            cd = cd.groupBy(axisNames{:});
+            cd = cd.fixAllAxisValueLists();
+        end
+        
+        function cd = concatenateAlongAxis(cdCell, axisName)
+            if numel(cdCell) == 1
+                cd = cdCell{1};
+                return;
+            end
+            
+            cd = cdCell{1};
+            aIdx = cd.axisLookupByAttributes(axisName);
+            
+            % check for condition axis count match
+            nAxes = cellfun(@(cd) cd.nAxes, cdCell);
+            assert(numel(unique(nAxes)) == 1 || all(nAxes == 0 | nAxes == 1));
+            
+            % check for equal conditions size
+            sz = cd.conditionsSize;
+            sz(aIdx) = 1;
+            N = numel(cdCell);
+            for i = 2:N
+                szThis = cdCell{i}.conditionsSize;
+                szThis(aIdx) = 1;
+                assert(TensorUtils.compareSizeVectors(sz, szThis), 'Condition Size for cdCell{%d} does not match cdCell{1}', i);
+            end
+            
+            for i = 1:N
+                if isa(cdCell{i}, 'ConditionInfo')
+                    cdCell{i} = cdCell{i}.fixAllValueLists().getConditionDescriptor();
+                end
+                assert(cdCell{i}.allAxisValueListsManual, 'cdCell{%d}: ConditionDescriptor must have manual axis value lists. Use .setAxisValueList or .fixValueListsByApplyingToTrialData', i);
+            end
+            
+            % take union over attribute values on concatenation axis
+            attr = cd.axisAttributes{aIdx};
+            attrIdx = cd.getAttributeIdx(attr);
+            nAttr = numel(attr);
+            attrValueLists = cell(N, 1);
+            attrValueListsAsStrings = cell(N, 1);
+            for iAttr = 1:nAttr
+                for iN = 1:N
+                    attrValueLists{iN} = cd.attributeValueLists{attrIdx(iAttr)};
+                    attrValueListsAsStrings{iN} = cd.attributeValueListsAsStrings{attrIdx(iAttr)};
+                end
+                [attrValueListMerged, select] = unique(cat(1, attrValueLists{:}));
+                attrValueListsAsStringsFull = cat(1, attrValueListsAsStrings{:});
+                cd = cd.setAttributeValueList(attrIdx(iAttr), attrValueListMerged, 'displayAs', attrValueListsAsStringsFull(select));
+            end
+            
+            % determine if axis is numeric
+            emptyAxisValue = struct();
+            for iN = 1:N
+                if cdCell{iN}.nAxes > 0
+                    vals = cdCell{iN}.axisValueLists{aIdx}(1);
+                    fields = fieldnames(vals);
+                    for iF = 1:numel(fields)
+                        if ischar(vals.(fields{iF}))
+                            emptyAxisValue.(fields{iF}) = '';
+                        elseif isscalar(vals.(fields{iF}))
+                            emptyAxisValue.(fields{iF}) = NaN;
+                        else
+                            emptyAxisValue.(fields{iF}) = [];
+                        end
+                    end
+                    break;
+                end
+            end
+                
+            % and concatenate value lists along axis
+            axisValueLists = cell(N, 1);
+            axisValueListsAsStrings = cell(N, 1);
+            axisValueListsAsStringsShort = cell(N, 1);
+            for iN = 1:N
+                if cdCell{iN}.nAxes == 0
+                    axisValueLists{iN} = emptyAxisValue;
+                    axisValueListsAsStrings{iN} = cdCell{iN}.names;
+                    axisValueListsAsStringsShort{iN} = cdCell{iN}.namesShort;
+                else
+                    axisValueLists{iN} = cdCell{iN}.axisValueLists{aIdx};
+                    axisValueListsAsStrings{iN} = cdCell{iN}.axisValueListsAsStrings{aIdx};
+                    axisValueListsAsStringsShort{iN} = cdCell{iN}.axisValueListsAsStringsShort{aIdx};
+                end
+            end
+            
+            cd = cd.setAxisValueList(aIdx, cat(1, axisValueLists{:}), ...
+                'asStrings', cat(1, axisValueListsAsStrings{:}), ...
+                'asStringsShort', cat(1, axisValueListsAsStringsShort{:}));
+        end
+        
     end
     
     methods

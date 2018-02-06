@@ -37,15 +37,15 @@ classdef NonOverlappingSpikeBinFilter < ConvolutionSpikeFilter
             indZero = 1;
         end
         
-        % keep binWidthMs == timeDelta
-        function sf = postSetBinWidthMs(sf)
-            % this would trigger a infinte loop if AbortSet were false,
-            % so just in case
-            if sf.timeDelta ~= sf.binWidthMs
-                sf.timeDelta = sf.binWidthMs;
-            end
-        end
-        
+%         % keep binWidthMs == timeDelta
+%         function sf = postSetBinWidthMs(sf)
+%             % this would trigger a infinte loop if AbortSet were false,
+%             % so just in case
+%             if sf.timeDelta ~= sf.binWidthMs
+%                 sf.timeDelta = sf.binWidthMs;
+%             end
+%         end
+%         
         function checkOkay(sf) % superclass overrides
             assert(sf.timeDelta == sf.binWidthMs, 'timeDelta must match binWidthMs in order to get non-overlapping bins');
         end

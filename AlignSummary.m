@@ -313,7 +313,13 @@ classdef AlignSummary
     
     % constructor methods and aggregation
     methods(Static)
-        function as = buildEmptyFromConditionAlignDescriptor(conditionDescriptor, alignDescriptor)
+        function as = buildEmptyFromConditionAlignDescriptor(conditionDescriptor, alignDescriptor, start, stop)
+            if nargin < 3
+                start = [];
+            end
+            if nargin < 4
+                stop = [];
+            end
             as = AlignSummary();
             as.alignDescriptor = alignDescriptor;
             as.conditionDescriptor = conditionDescriptor;
@@ -321,23 +327,23 @@ classdef AlignSummary
             delta = alignDescriptor.minTimeDelta;
             
             as.nTrials = 0;
-            as.startAgg = EventAccumulator([], delta);
-            as.stopAgg = EventAccumulator([], delta);
+            as.startAgg = EventAccumulator(start, delta);
+            as.stopAgg = EventAccumulator(stop, delta);
             as.markAgg = cell(alignDescriptor.nMarks);
             as.intervalStartAgg = cell(alignDescriptor.nIntervals);
             as.intervalStopAgg = cell(alignDescriptor.nIntervals);
             
-            temp(conditionDescriptor.nConditions, 1) = EventAccumulator();
-            for i = 1:numel(temp)
-                temp(i).delta = delta;
+            as.nTrialsByCondition = zeros(conditionDescriptor.nConditions, 1);
+            as.startAggC = EventAccumulator(start, delta);
+            as.stopAggC = EventAccumulator(start, delta);
+            for i = 1:conditionDescriptor.nConditions
+                as.startAggC(i, 1) = EventAccumulator(start, delta);
+                as.stopAggC(i, 1) = EventAccumulator(stop, delta);
             end
-            as.startAggC = temp;
-            as.stopAggC = temp;
             
             as.markAggC = cell(alignDescriptor.nMarks);
             as.intervalStartAggC = cell(alignDescriptor.nIntervals);
             as.intervalStopAggC = cell(alignDescriptor.nIntervals);
-            
         end
         
         % factory constructor method used by TDCA
@@ -415,7 +421,7 @@ classdef AlignSummary
             p = inputParser();
             p.addParameter('aggregateMarks', true, @islogical);
             p.addParameter('aggregateIntervals', true, @islogical);
-%             p.addParameter('aggregateConditions', true, @islogical); % for internal use only
+            p.addParameter('skipConditions', false, @islogical); % for internal use only, will not call initialize
             p.parse(varargin{:});
             
             if isempty(alignSummarySet)
@@ -470,38 +476,39 @@ classdef AlignSummary
                 end
             end
             
-            % nConditions x nSummary matrix of trial counts for doing
-            % proper re-weighting
-            nTrialsByConditionMat = cat(2, [set.nTrialsByCondition]);
+            if ~p.Results.skipConditions
+                % nConditions x nSummary matrix of trial counts for doing
+                % proper re-weighting
+                nTrialsByConditionMat = cat(2, [set.nTrialsByCondition]);
 
-            % add up trial counts
-            as.nTrialsByCondition = sum(nTrialsByConditionMat, 2);
+                % add up trial counts
+                as.nTrialsByCondition = sum(nTrialsByConditionMat, 2);
 
-            args = arrayfun(@(as) as.startAggC, set, 'UniformOutput', false);
-            as.startAggC = EventAccumulator.aggregate(args{:});
+                args = arrayfun(@(as) as.startAggC, set, 'UniformOutput', false);
+                as.startAggC = EventAccumulator.aggregate(args{:});
 
-            args = arrayfun(@(as) as.stopAggC, set, 'UniformOutput', false);
-            as.stopAggC = EventAccumulator.aggregate(args{:});
+                args = arrayfun(@(as) as.stopAggC, set, 'UniformOutput', false);
+                as.stopAggC = EventAccumulator.aggregate(args{:});
 
-            if p.Results.aggregateMarks
-                as.markAggC = cell(set1.nMarks, 1);
-                for iM = 1:set1.nMarks
-                    args = arrayfun(@(as) as.markAggC{iM}, set, 'UniformOutput', false);
-                    as.markAggC{iM} = EventAccumulator.aggregate(args{:});
+                if p.Results.aggregateMarks
+                    as.markAggC = cell(set1.nMarks, 1);
+                    for iM = 1:set1.nMarks
+                        args = arrayfun(@(as) as.markAggC{iM}, set, 'UniformOutput', false);
+                        as.markAggC{iM} = EventAccumulator.aggregate(args{:});
+                    end
                 end
-            end
 
-            if p.Results.aggregateIntervals
-                [as.intervalStartAggC, as.intervalStopAggC] = deal(cell(set1.nIntervals, 1));
-                for iM = 1:set1.nIntervals
-                    args = arrayfun(@(as) as.intervalStartAggC{iM}, set, 'UniformOutput', false);
-                    as.intervalStartAggC{iM} = EventAccumulator.aggregate(args{:});
-                    args = arrayfun(@(as) as.intervalStopAggC{iM}, set, 'UniformOutput', false);
-                    as.intervalStopAggC{iM} = EventAccumulator.aggregate(args{:});
+                if p.Results.aggregateIntervals
+                    [as.intervalStartAggC, as.intervalStopAggC] = deal(cell(set1.nIntervals, 1));
+                    for iM = 1:set1.nIntervals
+                        args = arrayfun(@(as) as.intervalStartAggC{iM}, set, 'UniformOutput', false);
+                        as.intervalStartAggC{iM} = EventAccumulator.aggregate(args{:});
+                        args = arrayfun(@(as) as.intervalStopAggC{iM}, set, 'UniformOutput', false);
+                        as.intervalStopAggC{iM} = EventAccumulator.aggregate(args{:});
+                    end
                 end
+                as = as.initialize(); % only initialize if we did the conditions, otherwise caller is responsible
             end
-            
-            as = as.initialize();
         end
         
         function as = aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, newConditionDescriptor, varargin)
@@ -512,7 +519,7 @@ classdef AlignSummary
             
             % let aggregation handle the non-condition specific values
             as = AlignSummary.buildByAggregation(alignSummarySet, p.Results);
-            minTimeDelta = max(cellfun(@(as) as.minTimeDelta, alignSummarySet));
+            minTimeDelta = max(arrayfun(@(as) as.minTimeDelta, alignSummarySet));
             
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
@@ -523,6 +530,14 @@ classdef AlignSummary
             % update the condtion descriptor with the new version
             as.conditionDescriptor = newConditionDescriptor;
 
+            args = arrayfun(@(as) as.nTrialsByCondition, set, 'UniformOutput', false);
+            as.nTrialsByCondition = cat(1, args{:});
+            
+            args = arrayfun(@(as) as.startAggC, set, 'UniformOutput', false);
+            as.startAggC = cat(1, args{:});
+            args = arrayfun(@(as) as.stopAggC, set, 'UniformOutput', false);
+            as.stopAggC = cat(1, args{:});
+            
             if p.Results.aggregateMarks
                 as.markAggC = cell(as.nMarks, 1);
                 for i = 1:as.nMarks
@@ -547,10 +562,85 @@ classdef AlignSummary
                 nC = cellfun(@(x) size(x, 2), varargin);
                 newC = max(nC);
                 for j = 1:numel(varargin)
-                    varargin{j} = cat(2, varargin{j}, repmat(EventAccumulator([], minTimeDelta), size(varargin{j}, 1), newC - nC(i)));
+                    varargin{j} = cat(2, varargin{j}, repmat(EventAccumulator([], minTimeDelta), size(varargin{j}, 1), newC - nC(j)));
                 end
                 
                 out = cat(1, varargin{:});
+            end
+        end
+        
+        function as = aggregateByConcatenatingConditionsAlongExistingAxis(alignSummarySet, newConditionDescriptor, catAxis, varargin)
+            p = inputParser();
+            p.addParameter('aggregateMarks', true, @islogical);
+            p.addParameter('aggregateIntervals', true, @islogical);
+            p.parse(varargin{:});
+            
+            % let aggregation handle the non-condition specific values
+            as = AlignSummary.buildByAggregation(alignSummarySet, p.Results);
+           
+            if iscell(alignSummarySet)
+                set = makecol([alignSummarySet{:}]);
+            else
+                set = makecol(alignSummarySet);
+            end
+            
+            origConditionSizes = arrayfun(@(as) as.conditionDescriptor.conditionsSize, alignSummarySet, 'UniformOutput', false);
+            
+            % update the condtion descriptor with the new version
+            as.conditionDescriptor = newConditionDescriptor;
+            
+            args = arrayfun(@(as) as.nTrialsByCondition, set, 'UniformOutput', false);
+            as.nTrialsByCondition = catAlong(args{:});
+            
+            args = arrayfun(@(as) as.startAggC, set, 'UniformOutput', false);
+            as.startAggC = catAlong(args{:});
+            args = arrayfun(@(as) as.stopAggC, set, 'UniformOutput', false);
+            as.stopAggC = catAlong(args{:});
+
+            if p.Results.aggregateMarks
+                as.markAggC = cell(as.nMarks, 1);
+                for i = 1:as.nMarks
+                    args = arrayfun(@(as) as.markAggC{i}, set, 'UniformOutput', false);
+                    as.markAggC{i} = catAlongPadCols(args{:});
+                end
+            end
+
+            if p.Results.aggregateIntervals
+                [as.intervalStartAggC, as.intervalStopAggC] = deal(cell(as.nIntervals, 1));
+                for i = 1:as.nIntervals
+                    args = arrayfun(@(as) as.intervalStartAggC{i}, set, 'UniformOutput', false);
+                    as.intervalStartAggC{i} = catAlongPadCols(args{:});
+                    args = arrayfun(@(as) as.intervalStopAggC{i}, set, 'UniformOutput', false);
+                    as.intervalStopAggC{i} = catAlongPadCols(args{:});
+                end
+            end
+            
+            as = as.initialize();
+            
+            function out = catAlong(varargin)
+                for j = 1:numel(varargin)
+                    varargin{j} = reshape(varargin{j}, origConditionSizes{j});
+                end
+                
+                out = cat(catAxis, varargin{:});
+                out = out(:);
+            end
+            
+            function out = catAlongPadCols(varargin)
+                % pad out each arg to the max number of columns (for marks,
+                % intervals that have different nOccurrences)
+                nC = cellfun(@(x) size(x, 2), varargin);
+                newC = max(nC);
+                for j = 1:numel(varargin)
+                    varargin{j} = cat(2, varargin{j}, repmat(EventAccumulator([], minTimeDelta), size(varargin{j}, 1), newC - nC(j)));
+                end
+                
+                for j = 1:numel(varargin)
+                    varargin{j} = reshape(varargin{j}, origConditionSizes{j});
+                end
+                
+                out = cat(catAxis, varargin{:});
+                out = out(:);
             end
         end
         
@@ -660,7 +750,7 @@ classdef AlignSummary
     % manipulations of AlignSummary that yield new AlignSummary objects
     methods    
         function as = combineSetsOfConditions(as, newConditionDescriptor, conditionIdxCell)
-            assert(nargout == 1);
+            as.warnIfNoArgOut(nargout);
             % recombine conditions, for each entry of conditionIdxCell,
             % collect stats across the condition indices inside
             as.conditionDescriptor = newConditionDescriptor;
@@ -690,6 +780,17 @@ classdef AlignSummary
             as.nTrialsByCondition = cellfun(@(idx) sum(as.nTrialsByCondition(idx)), conditionIdxCell);
             
             as = as.initialize();
+        end
+        
+        function as = setConditionDescriptor(as, newConditionDescriptor)
+            % replace condition descriptor with one with the same number of
+            % conditions
+            as.warnIfNoArgOut(nargout);
+            
+            assert(as.conditionDescriptor.nConditions == newConditionDescriptor.nConditions, 'Number of conditions do not match');
+            % recombine conditions, for each entry of conditionIdxCell,
+            % collect stats across the condition indices inside
+            as.conditionDescriptor = newConditionDescriptor;
         end
         
 %         function as = manualSliceTimeWindow(as, tMin, tMax)
@@ -1214,15 +1315,20 @@ classdef AlignSummary
             p.addParameter('axh', gca, @ishandle);
             p.addParameter('tMin', -Inf, @isscalar);
             p.addParameter('tMax', Inf, @isscalar);
-            p.addParameter('alpha', 1, @isscalar);
+            
             p.addParameter('markAlpha', 1, @isscalar);
+            p.addParameter('markOutline', true, @islogical);
+            p.addParameter('markOutlineAlpha', 0.6, @isscalar)
             p.addParameter('markSize', 8, @isscalar);
             p.addParameter('intervalAlpha', 1, @isscalar);
             p.addParameter('showInLegend', true, @islogical);
-            p.addParameter('useTranslucentMark3d', true, @islogical);
-%             p.addParameter('markErrorAlpha', 1, @isscalar);
+
             p.addParameter('showRanges', false, @islogical);
             p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showZero', false, @islogical);
+            p.addParameter('showStart', false, @islogical);
+            p.addParameter('showStop', false, @islogical);
+            
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
@@ -1389,7 +1495,7 @@ classdef AlignSummary
 
                         % get the position along the timeseries via
                         % interpolation
-                        % d will be T x D x N, t will be T x 1;
+                        % d will be T x D x C, t will be T x 1;
                         if iscell(data)
                             d = data{iC};
                             t = time{iC};
@@ -1416,7 +1522,7 @@ classdef AlignSummary
                     if D == 1
                         markMeanLoc(:, 1, :) = markMeanLoc(:, 1, :) + tOffsetZero;
                         for i = 1:numel(markErrorLoc)
-                            if isempty(markErrorLoc{i}), continue; end;
+                            if isempty(markErrorLoc{i}), continue; end
                             markErrorLoc{i}(:, 1) = markErrorLoc{i}(:, 1) + tOffsetZero;
                         end
                     end
@@ -1437,13 +1543,111 @@ classdef AlignSummary
 
                     % plot mark and provide legend hint
                     h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
-                        p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
+                        p.Results.markSize, 'alpha', p.Results.markAlpha, 'outline', p.Results.markOutline, 'outlineAlpha', p.Results.markOutlineAlpha, ...
                         'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'clipping', p.Results.clipping);
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});
                     else
                         TrialDataUtilities.Plotting.hideInLegend(h);
                     end
+                end
+            end
+            
+            if p.Results.showZero
+                markMeanLoc = nan(1, max(2, D), nConditions);
+                for iC = 1:nConditions
+                    % get the position along the timeseries via
+                    % interpolation
+                    % d will be T x D x C, t will be T x 1;
+                    if iscell(data)
+                        d = data{iC};
+                        t = time{iC};
+                    else
+                        d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
+                        t = time;
+                    end
+                    
+                    markMeanLoc(:, :, iC) = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(t, d, 0);
+
+                    % add the time offset if plotting against time
+                    if D == 1
+                        markMeanLoc(:, 1, :) = markMeanLoc(:, 1, :) + tOffsetZero;
+                    end
+                end
+                app = as.alignDescriptor.zeroAppear;
+                h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
+                        p.Results.markSize, 'alpha', p.Results.markAlpha, 'outline', p.Results.markOutline, ...
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'clipping', p.Results.clipping);
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.zeroLabel);
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+            end
+                    
+            if p.Results.showStart
+                markMeanLoc = nan(1, max(2, D), nConditions);
+                for iC = 1:nConditions
+                    % get the position along the timeseries via
+                    % interpolation
+                    % d will be T x D x C, t will be T x 1;
+                    if iscell(data)
+                        d = data{iC};
+                    else
+                        d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
+                    end
+                    
+                    % find first non-nan sample
+                    idxStart = find(TensorUtils.allMultiDim(~isnan(d), [2 3]), 1, 'first');
+                    if isempty(idxStart), continue, end
+                    markMeanLoc(:, :, iC) = d(idxStart, :, :);
+
+                    % add the time offset if plotting against time
+                    if D == 1
+                        markMeanLoc(:, 1, :) = markMeanLoc(:, 1, :) + tOffsetZero;
+                    end
+                end
+                app = as.alignDescriptor.startAppear;
+                h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
+                      p.Results.markSize, 'alpha', p.Results.markAlpha, 'outline', p.Results.markOutline, ...
+                      'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'clipping', p.Results.clipping);
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.startLabel);
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
+                end
+            end
+            
+            if p.Results.showStop
+                markMeanLoc = nan(1, max(2, D), nConditions);
+                for iC = 1:nConditions
+                    % get the position along the timeseries via
+                    % interpolation
+                    % d will be T x D x N, t will be T x 1;
+                    if iscell(data)
+                        d = data{iC};
+                    else
+                        d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
+                    end
+                    
+                    % find last non-nan sample
+                    idxStop = find(TensorUtils.allMultiDim(~isnan(d), [2 3]), 1, 'last');
+                    if isempty(idxStop), continue, end
+                    markMeanLoc(:, :, iC) = d(idxStop, :, :);
+
+                    % add the time offset if plotting against time
+                    if D == 1
+                        markMeanLoc(:, 1, :) = markMeanLoc(:, 1, :) + tOffsetZero;
+                    end
+                end
+                app = as.alignDescriptor.stopAppear;
+                h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
+                        p.Results.markSize, 'alpha', p.Results.markAlpha, 'outline', p.Results.markOutline, ...
+                        'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'clipping', p.Results.clipping);
+                if p.Results.showInLegend
+                    TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.stopLabel);
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(h);
                 end
             end
         end
@@ -1619,6 +1823,15 @@ classdef AlignSummary
 %             end
 %         end
 
+    end
+    
+    methods(Access=protected) % Utility methods
+        function warnIfNoArgOut(obj, nargOut)
+            if nargOut == 0 && ~ishandle(obj)
+                warning('%s is not a handle class. If the instance handle returned by this method is not stored, this call has no effect.', ...
+                    class(obj));
+            end
+        end
     end
 
 end

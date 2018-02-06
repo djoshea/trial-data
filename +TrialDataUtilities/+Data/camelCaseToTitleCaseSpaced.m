@@ -1,7 +1,7 @@
 function newName = camelCaseToTitleCaseSpaced(name)
 % here we assume the name is TitleCased, camelCased, or
 % snake_cased and convert to Spaced Words
-    pattern = '([A-Z]*[a-z]+)';
+    pattern = '([A-Z]*[a-z0-9]+)';
     words = regexp(name, pattern, 'match');
     
     if iscell(name)
