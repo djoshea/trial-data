@@ -81,8 +81,11 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
         
         function str = generateNameFromTypeArray(type, array)
             if isempty(type)
-                str = sprintf('%s', array);
+                str = array;
             else
+                if isempty(array)
+                    array = 'array';
+                end
                 str = sprintf('%s_%s', type, array);
             end
         end

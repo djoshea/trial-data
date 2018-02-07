@@ -376,9 +376,10 @@ classdef TrialData
             for iChannel = 1:nChannels
                 prog.update(iChannel, 'Repairing and converting %s', names{iChannel});
                 chd = channelDescriptorsByName.(names{iChannel});
-                
+                if isa(chd, 'AnalogChannelDescriptor') && chd.isColumnOfSharedMatrix, continue, end
                 for iF = 1:chd.nFields
                     fld = chd.dataFields{iF};
+                    
                     valueCell = {data.(fld)}';
                     [chd, valueCell] = chd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell);
                     data = TrialDataUtilities.Data.assignIntoStructArray(data, fld, valueCell);
@@ -3640,25 +3641,6 @@ classdef TrialData
             
             if nargout > 1
                 % go in and get channelsByGroup
-                chList = td.listAnalogChannels();
-
-                mask =falsevec(numel(chList));
-                idx = nanvec(numel(chList));
-                printedWarning = false;
-                for iC = 1:numel(chList)
-                    [mask(iC), myGroup] = td.isAnalogChannelInGroup(chList{iC});
-                    if mask(iC)
-                        [tf, idx(iC)] = ismember(myGroup, groupNames);
-                        if ~tf
-                            if ~printedWarning
-                                warning('Orphaned channels from analog channel group %s found. Use td.fixOrphanedAnalogChannelGroups to fix this.', myGroup);
-                            end
-                            mask(iC) = false;
-                            printedWarning = true;
-                        end
-                    end
-                end
-
                 channelsByGroup = cellvec(numel(groupNames));
                 for iG = 1:numel(groupNames)
                     channelsByGroup{iG} = td.listAnalogChannelsInGroup(groupNames{iG});

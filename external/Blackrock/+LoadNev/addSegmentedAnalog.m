@@ -20,10 +20,10 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
     
     [timeCell, dataCell] = deal(cell(length(nsxData), 1));
 
-    prog = ProgressBar(length(Q), 'Adding segmented analog data');
     for insx = 1:length(nsxData)
         % find start and end inds
         
+        prog = ProgressBar(length(Q), 'Finding segmented analog data times');
         [startInds, endInds] = deal(nan(length(Q), 1));
         for iq = 1:length(Q)
             temp = find(nsxData(insx).time >= startTimes(iq), 1, 'first');
@@ -34,7 +34,9 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
             if ~isempty(temp)
                 endInds(iq) = temp;
             end
+            prog.update(iq);
         end    
+        prog.finish();
         
 %         startInds = ceil((startTimes - nsxData(insx).timeStart) / nsxData(insx).timeSamplePeriod) + 1;
 %         endInds =  floor((endTimes - nsxData(insx).timeStart) / nsxData(insx).timeSamplePeriod) + 1;
@@ -74,11 +76,13 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
         colsCount = [preTrialCols reshape([trialCols'; [interTrialCols' postTrialCols]], 1, [])];
 
         % use these counts to split the giant data matrix into a cell
+        debug('Splitting analog data into segments (may take some time)\n');
         timeCell{insx} = mat2cell(makerow(nsxData(insx).time), 1, colsCount);
         dataCell{insx} = mat2cell(nsxData(insx).data, size(nsxData(insx).data, 1), colsCount);
         indexIntoCellForEachQ = 2:2:length(colsCount);
     end
 
+    prog = ProgressBar(length(Q), 'Adding segmented analog data');
     for iq = 1:length(Q)
         prog.update(iq);
 
