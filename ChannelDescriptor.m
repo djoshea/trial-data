@@ -232,7 +232,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         
                 case cd.NUMERIC
                     if cd.collectAsCellByField(iF) && iscell(data)
-                        okay = cellfun(@(x) isempty(x) || isnumeric(x), data);
+                        okay = cellfun(@(x) isempty(x) || (isnumeric(x) || islogical(x)), data);
                         if ~all(okay)
                             throwError('Data cell contents must be numeric');
                         end

@@ -78,13 +78,13 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
 
         function cd = inferAttributesFromData(cd, dataCell, timeCell)
             cd.warnIfNoArgOut(nargout);
-            dataClass = ChannelDescriptor.getCellElementClass(dataCell);
-            timeClass = ChannelDescriptor.getCellElementClass(timeCell);
+            dataCell = {tdi.trials.(group.signalNames{1})};
+                    
             cd.originalDataClassByField = {dataClass, timeClass};
             if strcmp(dataClass, 'cell')
                 cd.elementTypeByField = [cd.CELL, cd.VECTOR];
             else
-                cd.elementTypeByField = [cd.VECTOR, cd.VECTOR]; 
+                cd.elementTypeByField = [cd.NUMERIC, cd.VECTOR]; 
             end
         end
         
