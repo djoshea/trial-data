@@ -1,4 +1,4 @@
-function Q = loadNev_Generic(filename, varargin)
+function [Q, analogLookup] = loadNev_Generic(filename, varargin)
 
 p = inputParser;
 p.addParameter('trialSegmentationInfo', [], @(x) true);
@@ -86,7 +86,7 @@ clear spikeData;
 
 % add the analog channels in nicely formatted channel groups
 % with time vectors and lookup tables
-Q = LoadNev.addSegmentedAnalog(Q, analogInfo, nsxData);
+[Q, analogLookup] = LoadNev.addSegmentedAnalog(Q, analogInfo, nsxData);
 clear analogInfo;
 clear nsxData;
     

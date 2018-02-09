@@ -146,6 +146,7 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
                 Q(iq).nsxData.(outerName).names = lk.names;
             end
             Q(iq).nsxData.(outerName).units = lk.units;
+            Q(iq).nsxData.(outerName).channelIds = lk.channelIds;
             Q(iq).nsxData.(outerName).lookup = lk.lookup;
             
             Q(iq).nsxData.(outerName).isGroup = ~lk.single;
