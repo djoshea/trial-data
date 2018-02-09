@@ -52,6 +52,8 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
             nsxExtByGroup = struct();
         end
         analogInfo = rmfield(analogInfo, 'meta_nsxExtMaskByGroup');
+    else
+        nsxExtByGroup = struct();
     end
 
     channelGroups = fieldnames(analogInfo);
@@ -65,7 +67,7 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
         
         if isfield(nsxExtByGroup, groupName)
             extMatches = @(ext) ismember(ext, nsxExtByGroup.(groupName)) || ismember(ext(2:end), nsxExtByGroup.(groupName));
-            nsxMaskThisGroup = arrayfun(@(nsx) extMatches(nsxData.ext), nsxData);
+            nsxMaskThisGroup = arrayfun(@(nsx) extMatches(nsx.ext), nsxData);
         else
             nsxMaskThisGroup = true(numel(nsxData), 1);
         end
@@ -84,6 +86,7 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
                 lookup.names = {signalName};
                 lookup.nsxIndex = nsxIndex;
                 lookup.idxWithinNsx = idxWithinNsx;
+                lookup.channelIds = nsxData(nsxIndex).channelIds(idxWithinNsx);
                 lookup.single = true;
                 lookup.lookup = 1;
                 lookup.scaleFn = nsxData(nsxIndex).scaleFns{idxWithinNsx};
@@ -138,6 +141,7 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
                 lookup.names = names;
                 lookup.nsxIndex = nsxIndex;
                 lookup.idxWithinNsx = idxWithinNsx;
+                lookup.channelIds = nsxData(nsxIndex).channelIds(idxWithinNsx);
                 lookup.single = false;
                 lookup.lookup = find(found);
                 lookup.scaleFn = nsxData(nsxIndex).scaleFns{1};
@@ -155,37 +159,66 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
     end
 
     if keepExtraAnalogChannels
+        % nsxDataChannelIsExtraMask{insx} is true for all signals that
+        % weren't captured by name above. First filter those masks so that
+        % each channel id is only true in the nsx with the highest sampling
+        % rate
+        for insx = 1:numel(nsxData)
+            indsExtra = find(nsxDataChannelIsExtraMask{insx});
+            for iInd = 1:numel(indsExtra)
+                id = nsxData(insx).channelIds(indsExtra(iInd));
+                [~, bestInsx] = findChannelIdInNsxData(nsxData, id, true(numel(nsxData), 1), nsxDataChannelIsExtraMask);
+                if insx ~= bestInsx
+                    nsxDataChannelIsExtraMask{insx}(indsExtra(iInd)) = false;     
+                end
+            end
+        end
+        
         % build a lookup for all the extra channels that we didn't use
         % group them by ns index since they'll have the same sampling rate
-        for insx = 1:length(nsxData)
-            idxWithinNsx = find(nsxDataChannelIsExtraMask{insx});
-            if ~any(idxWithinNsx), continue, end
+        lastNeuralChannelId = 128;
+        for insx = 1:numel(nsxData)
+            % need to split channels between [1 128] and [129 - Inf]
+            % because front panel channels have different scaling limits
+            for channelGroup = 1:2
+                if channelGroup == 1
+                    idxWithinNsx = find(nsxDataChannelIsExtraMask{insx} & nsxData(insx).channelIds <= lastNeuralChannelId);
+                    groupSuffix = '_neural';
+                else
+                    idxWithinNsx = find(nsxDataChannelIsExtraMask{insx} & nsxData(insx).channelIds > lastNeuralChannelId);
+                    groupSuffix = '_frontPanel';
+                end
+                    
+                if ~any(idxWithinNsx), continue, end
             
-            if nsxData(insx).ext(1) == '.'
-                lookup.groupName =  nsxData(insx).ext(2:end);
-            else
-                lookup.groupName =  nsxData(insx).ext;
-            end
-            
-            lookup.names = nsxData(insx).chLabels(idxWithinNsx);
-            lookup.nsxIndex = insx;
-            lookup.idxWithinNsx = idxWithinNsx;
-            lookup.single = false;
-            lookup.lookup = 1:numel(idxWithinNsx);
+                if nsxData(insx).ext(1) == '.'
+                    lookup.groupName =  sprintf('%s%s', nsxData(insx).ext(2:end), groupSuffix);
+                else
+                    lookup.groupName =  sprintf('%s%s', nsxData(insx).ext, groupSuffix);
+                end
+                nsxIndex = insx;
 
-            scale = nsxData(nsxIndex).scaleLims{1};
-            for j = 2:numel(idxWithinNsx)
-                assert(isequal(scale, nsxData(nsxIndex).scaleLims{idxWithinNsx(j)}), 'Scale limits for extra channel %s does not match first channel in group', lookup.names{j});
-            end
-            
-            lookup.scaleFn = nsxData(insx).scaleFns{1};
-            lookup.scaleLims = nsxData(insx).scaleLims{1};
-            lookup.units = getCheckUnits(lookup.groupName, nsxData, insx, idxWithinNsx);
-                
-            if isempty(analogLookup)
-                analogLookup = lookup;
-            else
-                analogLookup(end+1) = lookup; %#ok<AGROW>
+                lookup.names = nsxData(nsxIndex).chLabels(idxWithinNsx);
+                lookup.nsxIndex = nsxIndex;
+                lookup.idxWithinNsx = idxWithinNsx;
+                lookup.channelIds = nsxData(nsxIndex).channelIds(idxWithinNsx);
+                lookup.single = false;
+                lookup.lookup = 1:numel(idxWithinNsx);
+
+                scale = nsxData(nsxIndex).scaleLims{1};
+                for j = 2:numel(idxWithinNsx)
+                    assert(isequal(scale, nsxData(nsxIndex).scaleLims{idxWithinNsx(j)}), 'Scale limits for extra channel %s does not match first channel in group', lookup.names{j});
+                end
+
+                lookup.scaleFn = nsxData(nsxIndex).scaleFns{1};
+                lookup.scaleLims = nsxData(nsxIndex).scaleLims{1};
+                lookup.units = getCheckUnits(lookup.groupName, nsxData, nsxIndex, idxWithinNsx);
+
+                if isempty(analogLookup)
+                    analogLookup = lookup;
+                else
+                    analogLookup(end+1) = lookup; %#ok<AGROW>
+                end
             end
         end
     end
