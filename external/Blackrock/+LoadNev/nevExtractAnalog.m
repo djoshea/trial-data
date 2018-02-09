@@ -27,6 +27,7 @@ end
 
 nsxPath = path;
 
+
 % find existing .nsX files (which hold continuous data)
 % attempt each nsx extension to find analog data
 nsxCount = 0;
@@ -51,6 +52,7 @@ for iext = 1:length(nsxExts)
             nsxData(nsxCount).data = nsxInfo.Data;
             nsxData(nsxCount).channelIds = cat(1, nsxInfo.ElectrodesInfo.ElectrodeID);
             channelIndLookup = 1:size(nsxData(nsxCount).data ,1);
+            found = true(numel(channelIndLookup), 1);
         else
             channelIdsInFile = cat(1, nsxInfo.ElectrodesInfo.ElectrodeID);
             [found, channelIndLookup] = ismember(channelIds, channelIdsInFile);
@@ -74,10 +76,14 @@ for iext = 1:length(nsxExts)
             % clock with the right sampling rate for ms
             t{iPart} = double(nsxInfo.MetaTags.Timestamp(iPart)) / 30 + double(0:nsxInfo.MetaTags.DataPoints(iPart)-1)' * double((1000 / nsxInfo.MetaTags.SamplingFreq));
         end
-        nsxData(nsxCount).time = cat(1, t{:});
+        nsxData(nsxCount).time = cat(1, t{:}); %#ok<*AGROW>
         nsxData(nsxCount).timeSamplePeriod = 1000 / nsxInfo.MetaTags.SamplingFreq;
         % this function rescales to be in the correct units, but uses more memory
-        [nsxData(nsxCount).scaleFns nsxData(nsxCount).scaleLims] = getScaleFns(nsxInfo.ElectrodesInfo, channelIndLookup(found)); 
+        [nsxData(nsxCount).scaleFns nsxData(nsxCount).scaleLims] = getScaleFns(nsxInfo.ElectrodesInfo, channelIndLookup(found));
+        
+        trim = @(s) strtok(s, char(0));
+        nsxData(nsxCount).chLabels = cellfun(trim, {nsxInfo.ElectrodesInfo(channelIndLookup(found)).Label}', 'UniformOutput', false);
+        nsxData(nsxCount).chUnits = cellfun(trim, {nsxInfo.ElectrodesInfo(channelIndLookup(found)).AnalogUnits}', 'UniformOutput', false);
     end
 end
 

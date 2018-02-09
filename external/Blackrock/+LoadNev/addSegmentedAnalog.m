@@ -23,7 +23,7 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
     for insx = 1:length(nsxData)
         % find start and end inds
         
-        prog = ProgressBar(length(Q), 'Finding segmented analog data times');
+        prog = ProgressBar(length(Q), 'Segmenting analog data for nsx %s', nsxData(insx).ext);
         [startInds, endInds] = deal(nan(length(Q), 1));
         for iq = 1:length(Q)
             temp = find(nsxData(insx).time >= startTimes(iq), 1, 'first');
@@ -83,9 +83,9 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
     end
 
     prog = ProgressBar(length(Q), 'Adding segmented analog data');
-    for iq = 1:length(Q)
-        prog.update(iq);
 
+    for iq = 1:length(Q)
+        
         % precompute the segmented data for this trial
         %for insx = 1:length(nsxData)
         %    timeInds = nsxData(insx).time >= Q(iq).CerebusInfo.startTime & ...
@@ -93,38 +93,68 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
         %    data{insx} = nsxData(insx).data(:, timeInds);
         %    timeOffset{insx} = nsxData(insx).time(timeInds) - Q(iq).CerebusInfo.startTime;
         %end
+        
+        % analogInfo.channelName = Channel_ID
+        %    results in Q(i).nsxSingle.channelName.data = [ parsed data]
+        %          Q(i).nsxSingle.channelName.time = [ associated time vector ]
+        % analogInfo.channelGroupName.channelName = Channel_ID
+        % analogInfo.channelGroupName = [ Channel_ID List ]
+        %   results in Q(i).nsxGroup.channelGroupName.data = [ parsed data matrix ]
+
+        
+        % analogLookup(i) has fields
+        %    .groupName --> name of signal group or '' for signals
+        %    .names --> cellstr of signal name(s)
+        %    .nsxIndex: which nsx this comes from 
+        %    .indWithinNsx : nsxData(nsxIndex).data(chInd, :) are these channels' data
+        %    .single : false for groups, true for single
+        %    .lookup : for mutliple channels only, the lookup table corresponding to the elements of chInd
+        %               i.e. data(chInd(i), :) corresponds to analogInfo.group( .lookup (i) )
+        %              this is necessary because not all channels in the analogInfo.group array may be found
+        %    .scaleFns, .scaleLims
 
         % look over each analog channel/channel set requested
         for ia = 1:length(analogLookup)
             lk = analogLookup(ia);
             insx = lk.nsxIndex;
+            if lk.single
+                outerName = lk.names{1};
+            else
+                outerName = lk.groupName;
+            end
+            
             % check for time field in this channel group, add if missing
-            if ~isfield(Q(iq), lk.groupName) || ~isfield(Q(iq).(lk.groupName), 'time') || isempty(Q(iq).(lk.groupName).time)
-                Q(iq).(lk.groupName).time = timeCell{insx}{indexIntoCellForEachQ(iq)} - startTimes(iq);
+            if ~isfield(Q(iq), outerName) || ~isfield(Q(iq).(outerName), 'time') || isempty(Q(iq).(outerName).time)
+                Q(iq).nsxData.(outerName).time = timeCell{insx}{indexIntoCellForEachQ(iq)} - startTimes(iq);
             end
 
             % check for scaleFn and scaleLims field in this channel group, add if missing
-            if ~isfield(Q(iq), lk.groupName) || ~isfield(Q(iq).(lk.groupName), 'scaleFn') || isempty(Q(iq).(lk.groupName).scaleFn)
-                Q(iq).(lk.groupName).scaleFn = lk.scaleFn;
-                Q(iq).(lk.groupName).scaleLims = lk.scaleLims;
+            if ~isfield(Q(iq), outerName) || ~isfield(Q(iq).(outerName), 'scaleFn') || isempty(Q(iq).(outerName).scaleFn)
+                Q(iq).nsxData.(outerName).scaleFn = lk.scaleFn;
+                Q(iq).nsxData.(outerName).scaleLims = lk.scaleLims;
             end
 
             % mark with sampling rate
-            Q(iq).(lk.groupName).samplingFreq = nsxData(insx).samplingHz;
+            Q(iq).nsxData.(outerName).samplingFreq = nsxData(insx).samplingHz;
 
             % figure out how to assign the data (single or multiple channel assign with lookup?)
             if(lk.single)
                 % single channel assign into group
-                dataName = lk.name;
+                Q(iq).nsxData.(outerName).names = lk.names;
             else
                 % multiple channels: assign into matrix, include lookup table
-                dataName = 'data';
-                Q(iq).(lk.groupName).lookup = lk.lookup;
+                Q(iq).nsxData.(outerName).names = lk.names;
             end
+            Q(iq).nsxData.(outerName).units = lk.units;
+            Q(iq).nsxData.(outerName).lookup = lk.lookup;
+            
+            Q(iq).nsxData.(outerName).isGroup = ~lk.single;
 
             % actually assign the data for this channel or channel set
-            Q(iq).(lk.groupName).(dataName) = dataCell{insx}{indexIntoCellForEachQ(iq)}(lk.chInd, :);
+            Q(iq).nsxData.(outerName).data = dataCell{insx}{indexIntoCellForEachQ(iq)}(lk.idxWithinNsx, :);
         end
+        
+        prog.update(iq);
     end
     prog.finish();
 end
