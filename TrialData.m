@@ -1858,6 +1858,8 @@ classdef TrialData
             % the alignment window). Used currently by
             % setAnalogWithinAlignWindow
             p.addParameter('timesMatchFullTrialRaw', false, @islogical);
+            
+            p.addParameter('separateChannelFromGroupIfNeeded', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
@@ -1944,10 +1946,13 @@ classdef TrialData
             % for shared column channels where the scaling or time vectors
             % change, it needs to be separated from the shared column form
             if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ((cd.hasScaling && ~p.Results.keepScaling) || updateTimes)
-                error('Setting analog channel while ''keepScaling'' is false or when specifying new sample times requires this channel to be separated from its analog channel group. Use separateAnalogChannelFromGroup if you want to do this. Or use setAnalogChannelGroup to set all channels in the group at once.');
-                %                 debug('Separating channel %s from column of shared matrix %s\n', name, cd.primaryDataField);
-                %                 td = td.separateAnalogChannelFromGroup(name, false, false); % no separate time field, no copy data
-                %                 cd = td.channelDescriptorsByName.(name);
+                if p.Results.separateChannelFromGroupIfNeeded
+                    debug('Separating channel %s from column of shared matrix %s\n', name, cd.primaryDataField);
+                    td = td.separateAnalogChannelFromGroup(name, 'separateTimeField', true); % no separate time field, no copy data
+                    cd = td.channelDescriptorsByName.(name);
+                else
+                    error('Setting analog channel while ''keepScaling'' is false or when specifying new sample times requires this channel to be separated from its analog channel group. Use separateAnalogChannelFromGroup if you want to do this. Or use setAnalogChannelGroup to set all channels in the group at once.');
+                end               
             end
             
             if ~p.Results.keepScaling
@@ -2003,7 +2008,8 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             if td.hasAnalogChannel(name)
                 td = td.setAnalog(name, data, times, 'updateMask', mask, ...
-                    'isAligned', p.Results.isAligned, 'dataInMemoryScale', p.Results.dataInMemoryScale);
+                    'isAligned', p.Results.isAligned, 'dataInMemoryScale', p.Results.dataInMemoryScale, ...
+                    'separateChannelFromGroupIfNeeded', true);
             else
                 % clear masked out cells
                 [times{~mask}] = deal([]);

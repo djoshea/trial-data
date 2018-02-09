@@ -8,13 +8,10 @@ p = inputParser;
 p.addParameter('includePhotobox', false, @islogical); % copy Q photobox to td.photoboxNev
 p.addParameter('overwriteSpikes', true, @islogical);
 p.addParameter('includeWaveforms', true, @islogical);
-p.addParameter('includeLFP', true, @islogical);
-p.addParameter('includeBroadband', true, @islogical);
+p.addParameter('dropChannelsWithSameName', false, @islogical);
 p.parse(varargin{:});
 includeSpikes = p.Results.overwriteSpikes;
 includeWaveforms = p.Results.includeWaveforms;
-includeLFP = p.Results.includeLFP;
-includeBroadband = p.Results.includeBroadband;
 
 % align td to Q based on computed delay periods
 qMatchInTD = LoadNev.findNevTrialsMatchInTrialData(td, Q);
@@ -23,10 +20,6 @@ prog = ProgressBar(numel(Q), 'Merging nev trials into TrialData');
 nTD = td.nTrials;
 spikeData = struct();
 waveData = struct();
-lfpData = cellvec(nTD);
-lfpTime = cellvec(nTD);
-broadbandData = cellvec(nTD);
-broadbandTime = cellvec(nTD);
 
 td = td.reset();
 nevShort = cellvec(nTD);
@@ -34,6 +27,8 @@ nevShort = cellvec(nTD);
 convertName = @(dotName) strrep(dotName, '.', '_');
 
 mergedMask = falsevec(td.nTrials);
+
+nsxGroupData = struct();
 
 for iQ = 1:numel(Q)
     prog.update(iQ);
@@ -52,11 +47,6 @@ for iQ = 1:numel(Q)
         warning('Trial %d in TrialData has already been merged with file %s', iR, nevShort{iR});
     end 
     nevShort{iR} = q.CerebusInfo.nevNameShort;
-
-%     % get photobox
-%     photoboxNev{iR} = q.analog.photobox;
-%     photoboxNevTime{iR} = q.analog.time;
-%     photoboxScaleLims = q.analog.scaleLims;
     
     % grab spikes into spikeData struct
     for iK = 1:numel(units)
@@ -71,29 +61,27 @@ for iQ = 1:numel(Q)
             waveData.(chName){iR} = q.waveformsRaw(units{iK});
         end
     end
-    
-    % overwrite lfp
-    if isfield(q, 'lfp') && includeLFP
-        lfpData{iR} = q.lfp.data'; % need each channel as successive column
-        lfpTime{iR} = makecol(q.lfp.time - tOffsetQ);
-        lfpScaleFromLims = q.lfp.scaleLims(1:2);
-        lfpScaleToLims = q.lfp.scaleLims(3:4);
-    end
-    
-    if isfield(q, 'broadband') && includeBroadband
-        broadbandData{iR} = q.broadband.data'; % need each channel as successive column
-        broadbandTime{iR} = makecol(q.broadband.time - tOffsetQ);
-        broadbandScaleFromLims = q.broadband.scaleLims(1:2);
-        broadbandScaleToLims = q.broadband.scaleLims(3:4);
+   
+    % handle nsx analog signals
+    nsxGroupsThisTrial = fieldnames(q.nsxData);
+    for iG = 1:numel(nsxGroupsThisTrial)
+        grp = nsxGroupsThisTrial{iG};
+        if ~isfield(nsxGroupData, grp)
+            nsxGroupData.(grp).isGroup = q.nsxData.(grp).isGroup;
+            nsxGroupData.(grp).scaleFromLims = q.nsxData.(grp).scaleLims(1:2);
+            nsxGroupData.(grp).scaleToLims  = q.nsxData.(grp).scaleLims(3:4);
+            nsxGroupData.(grp).data = cell(nTD, 1);
+            nsxGroupData.(grp).time = cell(nTD, 1);
+            nsxGroupData.(grp).names = q.nsxData.(grp).names;
+            nsxGroupData.(grp).units = q.nsxData.(grp).units;
+        end
+        
+        % grab this trial's data
+        nsxGroupData.(grp).data{iR} = q.nsxData.(grp).data';
+        nsxGroupData.(grp).time{iR} = makecol(q.nsxData.(grp).time - tOffsetQ);
     end
 end
 prog.finish();
-
-% if p.Results.includePhotobox
-%     td = td.addAnalog('photoboxNev', photoboxNev, photoboxNevTime, 'units', 'V', ...
-%         'isAligned', false, 'clearForInvalid', false, ...
-%         'scaleFromlims', photoboxScaleLims(1:2), 'scaleToLims', photoboxScaleLims(3:4));
-% end
 
 numMerged = nnz(mergedMask);
 if numMerged == 0
@@ -127,33 +115,31 @@ if includeSpikes
     prog.finish();
 end
 
-if includeLFP && isfield(q, 'lfp')
-    chLookup = Q(1).lfp.lookup;
-    prefix = 'lfp';
-    lfpCh = arrayfun(@(ch) sprintf('%s_ch%03d', prefix, ch), chLookup, 'UniformOutput', false);
-
-    debug('Adding %s data to TrialData as continuous neural group\n', prefix);
-    td = td.addOrUpdateContinuousNeuralChannelGroup(prefix, lfpCh, ...
-     lfpData, lfpTime, 'mask', tdMask, 'units', 'uV', 'scaleFromLims', lfpScaleFromLims, 'scaleToLims', lfpScaleToLims, ...
-     'dataInMemoryScale', true);
+nsxGroupNames = fieldnames(nsxGroupData);
+for iG = 1:numel(nsxGroupNames)
+    grpName = nsxGroupNames{iG};
+    grp = nsxGroupData.(grpName);
     
-    hasLfp = cellfun(@(x) size(x, 2) > 0, lfpData);
-    td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasLfp, 'mask', tdMask);
-end
-if includeBroadband && isfield(q, 'broadband')
-    chLookup = Q(1).broadband.lookup;
-    prefix = 'broadband';
-    broadbandCh = arrayfun(@(ch) sprintf('%s_ch%03d', prefix, ch), chLookup, 'UniformOutput', false);
-        
-    debug('Adding %s data to TrialData as continuous neural group\n', prefix);
-    td = td.addOrUpdateContinuousNeuralChannelGroup(prefix, broadbandCh, ...
-        broadbandData, broadbandTime, 'mask', tdMask, 'units', 'uV', 'scaleFromLims', broadbandScaleFromLims, 'scaleToLims', broadbandScaleToLims, ...
-        'dataInMemoryScale', true, 'isAligned', false);
-    hasBroadband = cellfun(@(x) size(x, 2) > 0, broadbandData);
-    td = td.addOrUpdateBooleanParam(sprintf('has%s', upperFirst(prefix)), hasBroadband, 'mask', tdMask);
+    if p.Results.dropChannelsWithSameName
+        td = td.dropChannels(grpName).dropChannels(grp.names);
+    end
+    
+    if grp.isGroup
+        debug('Adding %s data to TrialData as continuous neural group with %d channels\n', grpName, numel(grp.names));
+        td = td.addOrUpdateContinuousNeuralChannelGroup(grpName, grp.names, ...
+             grp.data, grp.time, 'mask', tdMask, 'units', grp.units, 'scaleFromLims', grp.scaleFromLims, 'scaleToLims', grp.scaleToLims, ...
+             'dataInMemoryScale', true);
+    else
+        td = td.addOrUpdateAnalog(grpName, grp.data, grp.time, 'mask', tdMask, 'units', grp.units, ...
+            'scaleFromLims', grp.scaleFromLims, 'scaleToLims', grp.scaleToLims, ...
+            'dataInMemoryScale', true);
+    end        
 end
 
 prog.finish();
 
+if p.Results.dropChannelsWithSameName
+    td = td.dropChannels({'nevMerged', 'nevMergedFile'});
+end
 td = td.addOrUpdateBooleanParam('nevMerged', mergedMask, 'mask', tdMask);
 td = td.addOrUpdateStringParam('nevMergedFile', nevShort,  'mask', tdMask);

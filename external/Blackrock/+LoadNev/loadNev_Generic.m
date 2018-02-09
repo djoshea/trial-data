@@ -12,6 +12,8 @@ p.addParameter('spikeWindowPre', 0, @isscalar); % time before trial start to gra
 p.addParameter('spikeWindowPost', 0, @isscalar); % time after trial end to grab spikes from
 
 p.addParameter('nsxExts',  {'.ns1', '.ns2', '.ns3', '.ns4', '.ns5', '.ns6'}, @iscellstr);
+
+p.addParameter('keepExtraAnalogChannels', true, @islogical); % if false, channels not mentioned in analogInfo will be discarded
 p.parse(varargin{:});
 
 trialSegmentationInfo = p.Results.trialSegmentationInfo;
@@ -51,8 +53,12 @@ spikeData.waveform = data.Data.Spikes.Waveform;
 eventData.timestamp = double(data.Data.SerialDigitalIO.TimeStamp) / 30.0;
 eventData.code = data.Data.SerialDigitalIO.UnparsedData;
 
-% figure out which analog channel ids to load to save memory
-channelIdList = LoadNev.buildAnalogChannelIdList(analogInfo);
+if p.Results.keepExtraAnalogChannels
+    channelIdList = [];
+else
+    % figure out which analog channel ids to load to save memory
+    channelIdList = LoadNev.buildAnalogChannelIdList(analogInfo);
+end
 
 % load analog data from nsx files
 nsxData = LoadNev.nevExtractAnalog(filenameNev, 'channelIds', channelIdList, 'nsxExts', nsxExts);
