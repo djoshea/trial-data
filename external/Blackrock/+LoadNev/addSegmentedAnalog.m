@@ -11,6 +11,8 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
     if isempty(Q)
         return;
     end
+    
+    nsxIdxNeeded = unique([analogLookup.nsxIndex]);
 
     % we first want to split the data into multiple facets
     % grab the start and end inds of each trial
@@ -22,6 +24,7 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
 
     for insx = 1:length(nsxData)
         % find start and end inds
+        if ~ismember(insx, nsxIdxNeeded), continue, end
         
         prog = ProgressBar(length(Q), 'Segmenting analog data for nsx %s', nsxData(insx).ext);
         [startInds, endInds] = deal(nan(length(Q), 1));
