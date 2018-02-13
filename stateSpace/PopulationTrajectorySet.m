@@ -42,13 +42,7 @@ classdef PopulationTrajectorySet
         % Setting it to false will save space on disk
         keepComputedOnSaveFast = false;
     end
-
-    properties(SetAccess=protected, Hidden)
-        % odc is an instance of OnDemandCache
-        % which is a handle class. Properties which derive from
-        odc
-    end
-
+    
     % properties which control the behavior of the pset and will invalidate
     % computed values when they are set by one of the corresponding setProperty methods
     properties(SetAccess=?PopulationTrajectorySetBuilder)
@@ -498,8 +492,19 @@ classdef PopulationTrajectorySet
         conditionsWithValidTrialAverageOnNonEmptyBases
     end
 
-    properties(Constant, Hidden)
-        propMeta = PopulationTrajectorySet.buildPropertyMeta()
+    
+    properties(SetAccess=protected, Hidden)
+        % odc is an instance of OnDemandCache
+        % which is a handle class. Properties which derive from
+        odc
+    end
+    
+    properties(SetAccess=protected, Hidden)
+        propMeta = PopulationTrajectorySet.buildPropertyMeta();
+    end
+    
+    properties(Hidden)
+        debugPropMeta = true;
     end
 
     % Constructor
@@ -514,29 +519,31 @@ classdef PopulationTrajectorySet
             meta = struct();
 
             % settings
-            meta.datasetName = PropertyShapeMeta({}, 'char', 'group', 'setting');
-            meta.timeUnitName = PropertyShapeMeta({}, 'char', 'group', 'setting');
-            meta.timeUnitsPerSecond = PropertyShapeMeta({}, 'char', 'group', 'setting');
-            meta.spikeFilter = PropertyShapeMeta({}, 'SpikeFilter', 'group', 'setting')
-            meta.minTrialsForTrialAveraging = PropertyShapeMeta({}, 'int', 'group', 'setting')
-            meta.minFractionTrialsForTrialAveraging = PropertyShapeMeta({}, 'float', 'group', 'setting')
-            meta.ignoreAllZeroSpikeTrials = PropertyShapeMeta({}, 'logical', 'group', 'setting');
-            meta.ignoreLeadingTrailingZeroSpikeTrials = PropertyShapeMeta({}, 'logical', 'group', 'setting');
+            meta.datasetName = PropertyShapeMeta({}, 'char', 'group', 'settings');
+            meta.timeUnitName = PropertyShapeMeta({}, 'char', 'group', 'settings');
+            meta.timeUnitsPerSecond = PropertyShapeMeta({}, 'char', 'group', 'settings');
+            meta.spikeFilter = PropertyShapeMeta({}, 'SpikeFilter', 'group', 'settings');
+            meta.minTrialsForTrialAveraging = PropertyShapeMeta({}, 'int', 'group', 'settings');
+            meta.minFractionTrialsForTrialAveraging = PropertyShapeMeta({}, 'float', 'group', 'settings');
+            meta.ignoreAllZeroSpikeTrials = PropertyShapeMeta({}, 'logical', 'group', 'settings');
+            meta.ignoreLeadingTrailingZeroSpikeTrials = PropertyShapeMeta({}, 'logical', 'group', 'settings');
 
             % descriptors
-            meta.alignDescriptorSet = PropertyShapeMeta({'A'}, 'AlignDescriptor', 'group', 'descriptor');
-            meta.conditionDescriptor = PropertyShapeMeta({}, 'AlignDescriptor', 'group', 'descriptor');
+            meta.alignDescriptorSet = PropertyShapeMeta({'A'}, 'AlignDescriptor', 'group', 'descriptors');
+            meta.conditionDescriptor = PropertyShapeMeta({}, 'AlignDescriptor', 'group', 'descriptors');
             meta.translationNormalization = PropertyShapeMeta({}, 'StateSpaceTranslationNormalization', ...
-              'group', 'descriptor', 'emptyOkay', true);
-            meta.interAlignGaps = PropertyShapeMeta({}, 'float', 'group', 'descriptor', 'emptyOkay', true);
+              'group', 'descriptors', 'emptyOkay', true);
+            meta.interAlignGaps = PropertyShapeMeta({}, 'float', 'group', 'descriptors', 'emptyOkay', true);
 
             % basis info
             meta.basisNames = PropertyShapeMeta({'N'}, 'char', 'group', 'basisInfo', ...
               'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'dataSources'}, ...
               'buildFn', 'buildBasisNamesUnits');
+          
             meta.basisUnits = PropertyShapeMeta({'N'}, 'char', 'group', 'basisInfo', ...
               'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'dataSources'}, ...
               'buildFn', 'buildBasisNamesUnits');
+          
             meta.basisValidPermanent = PropertyShapeMeta({'N'}, 'logical', 'group', 'basisInfo');
             meta.basisInvalidCausePermanent = PropertyShapeMeta({'N'}, 'logical', 'group', 'basisInfo');
             meta.basisValidTemporary = PropertyShapeMeta({'N'}, 'logical', 'group', 'basisInfo');
@@ -552,59 +559,76 @@ classdef PopulationTrajectorySet
               'odc', true, 'useManualProp', 'dataByTrialSourceManual', ...
               'depends', {'dataSources', 'alignDescriptorSet', 'conditionDescriptor'}, ...
               'buildFn', 'buildDataByTrial', 'translate', true, 'normalize', true);
+          
             meta.tMinForDataByTrialRaw = PropertyShapeMeta({'N', 'A'}, 'float', 'group', 'singleTrial', ...
               'odc', true, 'useManualProp', 'dataByTrialSourceManual', ...
               'depends', {'dataSources', 'alignDescriptorSet', 'conditionDescriptor'}, ...
               'buildFn', 'buildDataByTrial');
+          
             meta.tMaxForDataByTrialRaw = PropertyShapeMeta({'N', 'A'}, 'float', 'group', 'singleTrial', ...
               'odc', true, 'useManualProp', 'dataByTrialSourceManual', ...
               'depends', {'dataSources', 'alignDescriptorSet', 'conditionDescriptor'}, ...
               'buildFn', 'buildDataByTrial');
+           
             meta.tMinByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R'}}, 'float', 'group', 'singleTrial', ...
               'odc', true, 'useManualProp', 'dataByTrialSourceManual', 'depends', 'dataByTrialRaw', ...
               'buildFn', 'buildDataByTrialPerTrialLimits');
+          
             meta.tMaxByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R'}}, 'float', 'group', 'singleTrial', ...
               'odc', true, 'useManualProp', 'dataByTrialSourceManual', 'depends', 'dataByTrialRaw', ...
               'buildFn', 'buildDataByTrialPerTrialLimits');
 
-            % trial averaged
-            meta.trialListsRaw = PropertyShapeMeta({{'N', 'C'}, {'Rc'}}, 'int', 'group', 'trialAvg', ...
+            meta.trialListsRaw = PropertyShapeMeta({{'N', 'C'}, {'Rc'}}, 'int', 'group', 'singleTrial', ...
               'odc', true, 'useManualProp', 'dataSourceManual', ...
               'depends', {'dataSources', 'conditionDescriptor', 'trialHasSpikesMaskByBasis', 'ignoreAllZeroSpikeTrials', 'ignoreLeadingTrailingZeroSpikeTrials'}, ...
               'buildFn', 'buildTrialLists');
-            meta.tMinValidByAlignBasisConditionRaw = PropertyShapeMeta({'A', 'N', 'C'}, 'float', 'group', 'trialAvg', ...
+          
+            % trial averaged
+            meta.tMinValidByAlignBasisConditionRaw = PropertyShapeMeta({'A', 'N', 'C'}, 'float', 'group', 'trialAverage', ...
               'odc', true, 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'tMinByTrialRaw', 'tMaxByTrialRaw', 'minFractionTrialsForTrialAveraging', 'minTrialsForTrialAveraging'}, ...
               'buildFn', 'buildTimeWindowsByAlignBasisCondition');
-            meta.tMaxValidByAlignBasisConditionRaw = PropertyShapeMeta({'A', 'N', 'C'}, 'float', 'group', 'trialAvg', ...
+          
+            meta.tMaxValidByAlignBasisConditionRaw = PropertyShapeMeta({'A', 'N', 'C'}, 'float', 'group', 'trialAverage', ...
               'odc', true, 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'tMinByTrialRaw', 'tMaxByTrialRaw', 'minFractionTrialsForTrialAveraging', 'minTrialsForTrialAveraging'}, ...
               'buildFn', 'buildTimeWindowsByAlignBasisCondition');
-            meta.basisValid = PropertyShapeMeta({'N'}, 'logical', 'group', 'trialAvg', ...
+          
+            meta.basisValid = PropertyShapeMeta({'N'}, 'logical', 'group', 'trialAverage', ...
               'odc', true, 'depends', {'basisValidPermanent', 'basisValidTemporary', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'conditionDescriptor', 'alignDescriptorSet'}, ...
               'buildFn', 'buildBasisValid');
-            meta.basisInvalidCause = PropertyShapeMeta({'N'}, 'char', 'group', 'trialAvg', ...
+          
+            meta.basisInvalidCause = PropertyShapeMeta({'N'}, 'char', 'group', 'trialAverage', ...
               'odc', true, 'depends', {'basisValidPermanent', 'basisValidTemporary', 'basisInvalidCauseTemporary', 'basisInvalidCausePermanent', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'conditionDescriptor', 'alignDescriptorSet'}, ...
               'buildFn', 'buildBasisValid');
-            meta.tMinForDataMean = PropertyShapeMeta({'A'}, 'float', 'group', 'trialAvg', ...
+          
+            meta.tMinForDataMean = PropertyShapeMeta({'A'}, 'float', 'group', 'trialAverage', ...
               'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'basisValid', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'spikeFilter'}, ...
-              'buildFn', 'buildTvecDataMean'), ...
-            meta.tMaxForDataMean = PropertyShapeMeta({'A'}, 'float', 'group', 'trialAvg', ...
+              'buildFn', 'buildTvecDataMean');
+          
+            meta.tMaxForDataMean = PropertyShapeMeta({'A'}, 'float', 'group', 'trialAverage', ...
               'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'basisValid', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'spikeFilter'}, ...
-              'buildFn', 'buildTvecDataMean'), ...
-            meta.dataMean = PropertyShapeMeta({{'A'}, {'N', 'C', 'T'}}, 'float', 'group', 'trialAvg', ...
+              'buildFn', 'buildTvecDataMean');
+          
+            meta.dataMean = PropertyShapeMeta({{'A'}, {'N', 'C', 'T'}}, 'float', 'group', 'trialAverage', ...
               'odc', true, 'translate', true, 'normalize', true, 'buildFn', 'buildDataMean', ...
-              'depends', {'tMinForDataMean', 'tMaxForDataMean', 'spikeFilter', 'basisValid'}), ...
-            meta.dataSem = PropertyShapeMeta({{'A'}, {'N', 'C', 'T'}}, 'float', 'group', 'trialAvg', ...
+              'depends', {'tMinForDataMean', 'tMaxForDataMean', 'spikeFilter', 'basisValid'});
+          
+            meta.dataSem = PropertyShapeMeta({{'A'}, {'N', 'C', 'T'}}, 'float', 'group', 'trialAverage', ...
               'odc', true, 'translate', false, 'normalize', true, 'buildFn', 'buildDataMean', ...
-              'depends', {'tMinForDataMean', 'tMaxForDataMean', 'spikeFilter', 'basisValid'}), ...
-            meta.dataNumTrials = PropertyShapeMeta({'N', 'C'}, 'int', 'group', 'trialAvg', ...
-              'odc', true, 'buildFn', 'buildDataNumTrials', 'depends', {'trialListsRaw', 'basisValid'}), ...
-            meta.dataMeanValid = PropertyShapeMeta({'N', 'C'}, 'logical', 'group', 'trialAvg', ...
-              'odc', true, 'buildFn', 'buildDataNumTrials', 'depends', {'trialListsRaw', 'basisValid'}), ...
-            meta.alignSummaryData = PropertyShapeMeta({'nDataSources', 'A'}, 'AlignSummary', 'group', 'trialAvg', ... % nDataSources == nAlignSummaryData
+              'depends', {'tMinForDataMean', 'tMaxForDataMean', 'spikeFilter', 'basisValid'});
+          
+            meta.dataNumTrials = PropertyShapeMeta({'N', 'C'}, 'int', 'group', 'trialAverage', ...
+              'odc', true, 'buildFn', 'buildDataNumTrials', 'depends', {'trialListsRaw', 'basisValid'});
+          
+            meta.dataMeanValid = PropertyShapeMeta({'N', 'C'}, 'logical', 'group', 'trialAverage', ...
+              'odc', true, 'buildFn', 'buildDataNumTrials', 'depends', {'trialListsRaw', 'basisValid'});
+          
+            meta.alignSummaryData = PropertyShapeMeta({'nDataSources', 'A'}, 'AlignSummary', 'group', 'trialAverage', ... % nDataSources == nAlignSummaryData
               'odc', true, 'useManualProp', 'dataSourceManual', 'depends', 'alignDescriptorSet', 'buildFn', 'buildAlignSummaryData');
-            meta.alignSummaryAggregated = PropertyShapeMeta({'A'}, 'AlignSummary', 'group', 'trialAvg', ...
-              'odc', true, 'useManualProp', 'dataSourceManual', 'depends', 'alignSummaryData', 'buildFn', 'buildAlignSummaryAggregated');
-            meta.basisAlignSummaryLookup = PropertyShapeMeta({'N'}, 'int', 'group', 'trialAvg', ...
+          
+            meta.alignSummaryAggregated = PropertyShapeMeta({'A'}, 'AlignSummary', 'group', 'trialAverage', ...
+              'odc', true, 'depends', 'alignSummaryData', 'buildFn', 'buildAlignSummaryAggregated');
+          
+            meta.basisAlignSummaryLookup = PropertyShapeMeta({'N'}, 'int', 'group', 'trialAverage', ...
               'odc', true, 'useManualProp', 'dataSourceManual', 'depends', 'alignDescriptorSet', 'buildFn', 'buildAlignSummaryData');
 
             % noise estimate
@@ -614,28 +638,52 @@ classdef PopulationTrajectorySet
               'depends', {'dataByTrial', 'trialLists'});
         end
 
+        function [props, metaFiltered] = listPropsInGroup(group)
+            meta = PopulationTrajectorySet.buildPropertyMeta();
+            if ~iscell(group), group = {group}; end
+            metaFiltered = TrialDataUtilities.Struct.filterFields(meta, @(meta, prop) ismember(meta.getAttrWithDefault('group', ''), group));
+            props = fieldnames(metaFiltered); 
+        end
+        
+        function [props, metaFiltered] = listPropInGroupNonEmptyRequired(group)
+            [~, metaFiltered] = PopulationTrajectorySet.listPropsInGroup(group);
+            metaFiltered = TrialDataUtilities.Struct.filterFields(metaFiltered, @(meta, prop) ~meta.getAttrWithDefault('emptyOkay', false));
+            props = fieldnames(metaFiltered);
+        end
 
     end
 
     % Related to on demand computed and PropMeta properties (including .stored)
     methods(Hidden)
-        function useManual = isODCPropUsingManual(pset, prop)
+        function useManual = isPropUsingManual(pset, prop)
             propMeta = pset.propMeta.(prop);
             if isfield(propMeta.attr, 'useManualProp')
+                % manual is determined by named property value
                 useManual = pset.(propMeta.attr.useManualProp);
+            elseif propMeta.getAttrWithDefault('useManualIfSet', false)
+                % manual is used if not empty
+                useManual = isfield(pset.manual, prop) && ~isempty(pset.manual.(prop));
             else
-                useManual = false;
+                % if its not odc, then it's not using .manual
+                useManual = ~propMeta.getAttrWithDefault('odc', false);
+            end
+        end
+        
+        function tf = propCanBeSetCurrently(pset, prop)
+            % determines whether this property value can be specified externally,
+            % this is true if the property is not odc, or if its odc but using .manual
+            propMeta = pset.propMeta.(prop);
+            if ~propMeta.getAttrWithDefault('odc', false)
+                tf = true;
+            else
+                tf = pset.isPropUsingManual(prop);
             end
         end
 
         % retrieves the value either from .manual or from .odc, and if not present in .odc, runs buildFn to compute it
-        function value = processODCPropGet(pset, prop)
+        function value = processPropGet(pset, prop)
             propMeta = pset.propMeta.(prop);
-            if isfield(propMeta.attr, 'useManualProp')
-                useManual = pset.(propMeta.attr.useManualProp);
-            else
-                useManual = false;
-            end
+            useManual = pset.isPropUsingManual(prop);
             if useManual
                 value = pset.manual.(prop);
             else
@@ -646,19 +694,18 @@ classdef PopulationTrajectorySet
                 else
                     % call the build fn which is expected to set the value in odc, then return the result from odc
                     buildFn = propMeta.attr.buildFn;
+                    if pset.debugPropMeta
+                        debug('PropMeta: Computing %s on demand via %s\n', prop, buildFn);
+                    end
                     pset.(buildFn)();
                     value = pset.odc.data.(prop);
                 end
             end
         end
 
-        function [value, useManual] = procesODCPropGetWithoutComputing(pset, prop)
-            propMeta = pset.propMeta.(prop);
-            if isfield(propMeta.attr, 'useManualProp')
-                useManual = pset.(propMeta.attr.useManualProp);
-            else
-                useManual = false;
-            end
+        function [value, useManual] = processPropGetWithoutComputing(pset, prop)
+            useManual = pset.isPropUsingManual(prop);
+            
             if useManual
                 value = pset.manual.(prop);
             else
@@ -676,13 +723,7 @@ classdef PopulationTrajectorySet
         % this is important as it makes it easier to assign multiple properties at once without worrying about complex sequencing
         function pset = processODCPropSet(pset, prop, value)
             pset.warnIfNoArgOut(nargout);
-
-            propMeta = pset.propMeta.(prop);
-            if isfield(propMeta.attr, 'useManualProp')
-                useManual = pset.(propMeta.attr.useManualProp);
-            else
-                useManual = false;
-            end
+            useManual = pset.isPropUsingManual(prop);            
             if useManual
                 pset.manual.(prop) = value;
             else
@@ -761,12 +802,12 @@ classdef PopulationTrajectorySet
 
                             propsInvalidated{end+1} = prop; %#ok<AGROW>
                             if isempty(updateFn)
-                                debug('Invalidating %s\n', prop);
+                                debug('PropMeta: Invalidating %s\n', prop);
                             else
-                                debug('Updating %s\n', prop);
+                                debug('PropMeta: Updating %s via provided function\n', prop);
                             end
 
-                            [value, useManual] = pset.procesODCPropGetWithoutComputing(prop);
+                            [value, useManual] = pset.processPropGetWithoutComputing(prop);
 
                             if useManual
                                 if isempty(updateFn)
@@ -807,17 +848,19 @@ classdef PopulationTrajectorySet
                             depends = attr.depends;
                             if any(ismember(propsChanged, depends))
                                 propsInvalidated{end+1} = prop; %#ok<AGROW>
-                                if isempty(updateFn)
-                                    debug('Invalidating %s %s\n', propContainer, prop);
-                                else
-                                    debug('Updating %s %s\n', propContainer, prop);
-                                end
-
-                                % prop depends on propChanged, invalidate it
-                                if isempty(updateFn)
-                                    dataRoot.(prop) = [];
-                                else
-                                    dataRoot.(prop) = updateFn(value, prop, propMeta, propContainer);
+                                if pset.debugPropMeta
+                                    if isempty(updateFn)
+                                        debug('Invalidating %s %s\n', propContainer, prop);
+                                    else
+                                        debug('Updating %s %s\n', propContainer, prop);
+                                    end
+                                    
+                                    % prop depends on propChanged, invalidate it
+                                    if isempty(updateFn)
+                                        dataRoot.(prop) = [];
+                                    else
+                                        dataRoot.(prop) = updateFn(value, prop, propMeta, propContainer);
+                                    end
                                 end
                             end
                         end
@@ -826,7 +869,7 @@ classdef PopulationTrajectorySet
             end
         end
 
-        function pset = processPropertiesBasedOnPropMeta(pset, fn)
+        function pset = transformInternalProperties(pset, fn)
             % fn should take fn(data, prop, propMeta, propContainer, varargin)
             % propContainer will be 'pset' or 'stored' or 'random'
 
@@ -906,90 +949,90 @@ classdef PopulationTrajectorySet
     % get and set properties for ODC properties that utilize propMeta
     methods
         function v = get.basisNames(pset)
-            v = pset.processODCPropGet('basisNames');
+            v = pset.processPropGet('basisNames');
         end
         function pset = set.basisNames(pset, v)
             pset = pset.processODCPropSet('basisNames', v);
         end
 
         function v = get.basisUnits(pset)
-            v = pset.processODCPropGet('basisUnits');
+            v = pset.processPropGet('basisUnits');
         end
         function pset = set.basisUnits(pset, v)
             pset = pset.processODCPropSet('basisUnits', v);
         end
 
         function v = get.alignSummaryData(pset)
-            v = pset.processODCPropGet('alignSummaryData');
+            v = pset.processPropGet('alignSummaryData');
         end
         function pset = set.alignSummaryData(pset, v)
             pset = pset.processODCPropSet('alignSummaryData', v);
         end
 
         function v = get.basisAlignSummaryLookup(pset)
-            v = pset.processODCPropGet('basisAlignSummaryLookup');
+            v = pset.processPropGet('basisAlignSummaryLookup');
         end
         function pset = set.basisAlignSummaryLookup(pset, v)
             pset = pset.processODCPropSet('basisAlignSummaryLookup', v);
         end
 
         function v = get.alignSummaryAggregated(pset)
-            v = pset.processODCPropGet('alignSummaryAggregated');
+            v = pset.processPropGet('alignSummaryAggregated');
         end
         function pset = set.alignSummaryAggregated(pset, v)
             pset = pset.processODCPropSet('alignSummaryAggregated', v);
         end
 
         function v = get.dataByTrialRaw(pset)
-            v = pset.processODCPropGet('dataByTrialRaw');
+            v = pset.processPropGet('dataByTrialRaw');
         end
         function pset = set.dataByTrialRaw(pset, v)
             pset = pset.processODCPropSet('dataByTrialRaw', v);
         end
 
         function v = get.tMinForDataByTrialRaw(pset)
-            v = pset.processODCPropGet('tMinForDataByTrialRaw');
+            v = pset.processPropGet('tMinForDataByTrialRaw');
         end
         function pset = set.tMinForDataByTrialRaw(pset, v)
             pset = pset.processODCPropSet('tMinForDataByTrialRaw', v);
         end
 
         function v = get.tMaxForDataByTrialRaw(pset)
-            v = pset.processODCPropGet('tMaxForDataByTrialRaw');
+            v = pset.processPropGet('tMaxForDataByTrialRaw');
         end
         function pset = set.tMaxForDataByTrialRaw(pset, v)
             pset = pset.processODCPropSet('tMaxForDataByTrialRaw', v);
         end
 
         function v = get.tMinByTrialRaw(pset)
-            v = pset.processODCPropGet('tMinByTrialRaw');
+            v = pset.processPropGet('tMinByTrialRaw');
         end
         function pset = set.tMinByTrialRaw(pset, v)
             pset = pset.processODCPropSet('tMinByTrialRaw', v);
         end
 
         function v = get.tMaxByTrialRaw(pset)
-            v = pset.processODCPropGet('tMaxByTrialRaw');
+            v = pset.processPropGet('tMaxByTrialRaw');
         end
         function pset = set.tMaxByTrialRaw(pset, v)
             pset = pset.processODCPropSet('tMaxByTrialRaw', v);
         end
         function v = get.basisValid(pset)
-            v = pset.processODCPropGet('basisValid');
+            v = pset.processPropGet('basisValid');
         end
         function pset = set.basisValid(pset, v)
             pset = pset.processODCPropSet('basisValid', v);
         end
 
         function v = get.basisInvalidCause(pset)
-            v = pset.processODCPropGet('basisInvalidCause');
+            v = pset.processPropGet('basisInvalidCause');
         end
         function pset = set.basisInvalidCause(pset, v)
             pset = pset.processODCPropSet('basisInvalidCause', v);
         end
 
         function v = get.trialListsRaw(pset)
-            v = pset.processODCPropGet('trialListsRaw');
+            v = pset.processPropGet('trialListsRaw');
         end
 
         function pset = set.trialListsRaw(pset, v)
@@ -997,50 +1040,50 @@ classdef PopulationTrajectorySet
         end
 
         function v = get.tMinValidByAlignBasisConditionRaw(pset)
-            v = pset.processODCPropGet('tMinValidByAlignBasisConditionRaw');
+            v = pset.processPropGet('tMinValidByAlignBasisConditionRaw');
         end
         function pset = set.tMinValidByAlignBasisConditionRaw(pset, v)
             pset = pset.processODCPropSet('tMinValidByAlignBasisConditionRaw', v);
         end
 
         function v = get.tMaxValidByAlignBasisConditionRaw(pset)
-            v = pset.processODCPropGet('tMaxValidByAlignBasisConditionRaw');
+            v = pset.processPropGet('tMaxValidByAlignBasisConditionRaw');
         end
         function pset = set.tMaxValidByAlignBasisConditionRaw(pset, v)
             pset = pset.processODCPropSet('tMaxValidByAlignBasisConditionRaw', v);
         end
 
         function v = get.tMinForDataMean(pset)
-            v = pset.processODCPropGet('tMinForDataMean');
+            v = pset.processPropGet('tMinForDataMean');
         end
         function pset = set.tMinForDataMean(pset, v)
             pset = pset.processODCPropSet('tMinForDataMean', v);
         end
 
         function v = get.tMaxForDataMean(pset)
-            v = pset.processODCPropGet('tMaxForDataMean');
+            v = pset.processPropGet('tMaxForDataMean');
         end
         function pset = set.tMaxForDataMean(pset, v)
             pset = pset.processODCPropSet('tMaxForDataMean', v);
         end
 
         function v = get.dataMean(pset)
-            v = pset.processODCPropGet('dataMean');
+            v = pset.processPropGet('dataMean');
         end
         function pset = set.dataMean(pset, v)
             pset = pset.processODCPropSet('dataMean', v);
         end
 
         function v = get.dataSem(pset)
-            v = pset.processODCPropGet('dataMean');
+            v = pset.processPropGet('dataSem');
         end
 
         function pset = set.dataSem(pset, v)
-            pset = pset.processODCPropSet('dataMean', v);
+            pset = pset.processODCPropSet('dataSem', v);
         end
 
         function v = get.dataNumTrials(pset)
-            v = pset.processODCPropGet('dataNumTrials');
+            v = pset.processPropGet('dataNumTrials');
         end
 
         function pset = set.dataNumTrials(pset, v)
@@ -1048,7 +1091,7 @@ classdef PopulationTrajectorySet
         end
 
         function v = get.dataMeanValid(pset)
-            v = pset.processODCPropGet('dataMeanValid');
+            v = pset.processPropGet('dataMeanValid');
         end
 
         function pset = set.dataMeanValid(pset, v)
@@ -1056,11 +1099,11 @@ classdef PopulationTrajectorySet
         end
 
         function v = get.dataDifferenceOfTrialsScaledNoiseEstimate(pset)
-            v = pset.processODCPropGet('dataMean');
+            v = pset.processPropGet('dataDifferenceOfTrialsScaledNoiseEstimate');
         end
 
         function pset = set.dataDifferenceOfTrialsScaledNoiseEstimate(pset, v)
-            pset = pset.processODCPropSet('dataMean', v);
+            pset = pset.processODCPropSet('dataDifferenceOfTrialsScaledNoiseEstimate', v);
         end
     end
 
@@ -3181,7 +3224,7 @@ classdef PopulationTrajectorySet
                 end
             end
 
-            pset = pset.processPropertiesBasedOnPropMeta(@doTransform);
+            pset = pset.transformInternalProperties(@doTransform);
         end
 
         function pset = clearTranslationNormalization(pset)
@@ -3207,7 +3250,7 @@ classdef PopulationTrajectorySet
                 end
             end
 
-            pset = pset.processPropertiesBasedOnPropMeta(@undoTransform);
+            pset = pset.transformInternalProperties(@undoTransform);
 
             pset.translationNormalization = [];
         end
@@ -3703,24 +3746,25 @@ classdef PopulationTrajectorySet
             psetNew = b.buildManualWithTrialAveragedData();
         end
 
-        function pset = dropDataRandom(pset)
-            % drop the .dataRandom and derived fields from the pset
-            pset.warnIfNoArgOut(nargout);
-            pset.dataMeanRandomized = [];
-            pset.dataSemRandomized = [];
-            pset.dataNumTrialsRawRandomized = [];
-            pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = [];
-            pset.conditionDescriptorRandomized = [];
-            pset.odc = pset.odc.copy();
-            pset.odc.flushRandomizedTrialAveragedData();
-        end
-
-        function pset = clearCachedSampledTrialsTensor(pset)
-            pset.warnIfNoArgOut(nargout);
-            pset.dataCachedSampledTrials = [];
-            pset.dataCachedSampledTrialCounts = [];
-            pset.dataCachedMeanExcludingSampledTrials = [];
-        end
+        % TODO
+%         function pset = dropDataRandom(pset)
+%             % drop the .dataRandom and derived fields from the pset
+%             pset.warnIfNoArgOut(nargout);
+%             pset.dataMeanRandomized = [];
+%             pset.dataSemRandomized = [];
+%             pset.dataNumTrialsRawRandomized = [];
+%             pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = [];
+%             pset.conditionDescriptorRandomized = [];
+%             pset.odc = pset.odc.copy();
+%             pset.odc.flushRandomizedTrialAveragedData();
+%         end
+% 
+%         function pset = clearCachedSampledTrialsTensor(pset)
+%             pset.warnIfNoArgOut(nargout);
+%             pset.dataCachedSampledTrials = [];
+%             pset.dataCachedSampledTrialCounts = [];
+%             pset.dataCachedMeanExcludingSampledTrials = [];
+%         end
     end
 
     methods % Filtering bases
@@ -3744,7 +3788,7 @@ classdef PopulationTrajectorySet
                 data = propMeta.filterDimByName(data, 'N', idx);
             end
 
-            pset = pset.processPropertiesBasedOnPropMeta(@doFilterBases);
+            pset = pset.transformInternalProperties(@doFilterBases);
 
             % filter alignSummaryData
             if pset.dataSourceManual || ~isempty(pset.odc.alignSummaryData)

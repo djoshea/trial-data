@@ -13,7 +13,7 @@ classdef SaveArrayIndividualized < handle
             
             callbackFn = p.Results.callbackFn;
             
-            assert(isvector(S));
+            assert(isempty(S) || isvector(S));
             N = numel(S);
             
             % create the directory as path/name

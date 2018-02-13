@@ -10,6 +10,7 @@ classdef PopulationTrajectorySetBuilder
         data
     end
    
+    % initial construction methods
     methods(Static)
         function pset = fromAllUnitsInTrialData(tdca)
             if ~isa(tdca, 'TrialDataConditionAlign')
@@ -261,24 +262,17 @@ classdef PopulationTrajectorySetBuilder
             p.addParameter('includeDataSourceInfo', false, @islogical); % used when construction psets with dataSourceManual == true
             p.parse(varargin{:});
             
-            toCopy = [PopulationTrajectorySet.fSettings, ...
-                PopulationTrajectorySet.fDescriptors, ...
-                PopulationTrajectorySet.fBasisInfo, ...
-                PopulationTrajectorySet.fDataSourceInfo, ...
-                PopulationTrajectorySet.fSingleTrial, ...
-                PopulationTrajectorySet.fTrialAvg, ...
-                PopulationTrajectorySet.fTrialAvgRandomized, ...
-                PopulationTrajectorySet.fDiffTrialsNoise];
+            % TODO fix randomized
+            toCopy = PopulationTrajectorySet.listPropsInGroup(...
+               {'settings', 'descriptors', 'basisInfo', 'dataSourceInfo', 'singleTrial', ...
+                 'trialAverage', 'randomized', 'noise'});
             
-            toCheckNonEmpty = [PopulationTrajectorySet.fDescriptors, ...
-                PopulationTrajectorySet.fBasisInfo, ...
-                ... %PopulationTrajectorySet.fDataSourceInfo, ...
-                PopulationTrajectorySet.fSingleTrial, ...
-                PopulationTrajectorySet.fTrialAvg];
-            
+            toCheckNonEmpty = PopulationTrajectorySet.listPropInGroupNonEmptyRequired(...
+                {'settings', 'descriptors', 'basisInfo', 'singleTrial', 'trialAverage'});
+             
             if p.Results.includeDataSourceInfo
-                toCopy = [toCopy, PopulationTrajectorySet.fDataSourceInfo];
-                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.fDataSourceInfo];
+                toCopy = [toCopy; PopulationTrajectorySet.listPropsInGroup('dataSourceInfo')];
+                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.listPropInGroupNonEmptyRequired('dataSourceInfo')];
             end
         end
         
@@ -288,12 +282,9 @@ classdef PopulationTrajectorySetBuilder
             p.addParameter('includeDataSourceInfo', false, @islogical); % used when construction psets with dataSourceManual == true
             p.parse(varargin{:});
             
-            toCopy = [PopulationTrajectorySet.fSettings, ...
-                PopulationTrajectorySet.fDescriptors, ...
-                PopulationTrajectorySet.fBasisInfo, ...
-                PopulationTrajectorySet.fTrialAvg, ...
-                PopulationTrajectorySet.fTrialAvgRandomized, ...
-                PopulationTrajectorySet.fDiffTrialsNoise];
+            toCopy = PopulationTrajectorySet.listPropsInGroup(...
+                {'settings', 'descriptors', 'basisInfo', ...
+                 'trialAverage', 'randomized', 'noise'});
             
             toCheckNonEmpty = {};
             
@@ -302,8 +293,8 @@ classdef PopulationTrajectorySetBuilder
 %             end
             
             if p.Results.includeDataSourceInfo
-                toCopy = [toCopy, PopulationTrajectorySet.fDataSourceInfo];
-                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.fDataSourceInfo];
+                toCopy = [toCopy, PopulationTrajectorySet.listPropsInGroup('dataSourceInfo')];
+                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.listPropInGroupNonEmptyRequired('dataSourceInfo')];
             end
         end
     end
@@ -311,7 +302,7 @@ classdef PopulationTrajectorySetBuilder
     methods(Static)
         function bld = copyFromPopulationTrajectorySet(pset, fields)
             % copy values from population trajectory set, all fields by default
-            bld = PopulationTrajectorySet();
+            bld = PopulationTrajectorySetBuilder();
             
             if nargin < 2
                 fields = PopulationTrajectorySetBuilder.listFieldsSingleTrial();
@@ -319,14 +310,14 @@ classdef PopulationTrajectorySetBuilder
             
             for iF = 1:length(fields)
                 fld = fields{iF};
-                bld.(fld) = pset.(fld);
+                bld.data.(fld) = pset.(fld);
             end
         end
 
         function bld = copyTrialAveragedOnlyFromPopulationTrajectorySet(pset, fields)
             % copy values from population trajectory set, all fields except
             % single trial data
-            bld = PopulationTrajectorySet();
+            bld = PopulationTrajectorySetBuilder();
             
             if nargin < 2
                 fields = PopulationTrajectorySetBuilder.listFieldsTrialAverage();
@@ -334,22 +325,18 @@ classdef PopulationTrajectorySetBuilder
             
             for iF = 1:length(fields)
                 fld = fields{iF};
-                bld.(fld) = pset.(fld);
+                bld.data.(fld) = pset.(fld);
             end
         end
         
         function bld = copySettingsDescriptorsBasisInfoFromPopulationTrajectorySet(pset)
-            bld = PopulationTrajectorySet.copyFromPopulationTrajectorySet(pset, ...
-                [ PopulationTrajectorySet.fSettings, ...
-                  PopulationTrajectorySet.fDescriptors, ...
-                  PopulationTrajectorySet.fBasisInfo, ...
-                  ]);
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
+                      PopulationTrajectorySet.listPropsInGroup({'settings', 'descriptors', 'basisInfo'}));
         end
         
         function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
-            bld = PopulationTrajectorySet.copyFromPopulationTrajectorySet(pset, ...
-                [ PopulationTrajectorySet.fSettings, ...
-                  PopulationTrajectorySet.fDescriptors ]);
+            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
+                      PopulationTrajectorySet.listPropsInGroup({'settings', 'descriptors'}));
         end
         
         function psetManual = convertToManualWithSingleTrialData(pset, varargin)
@@ -394,17 +381,17 @@ classdef PopulationTrajectorySetBuilder
             for iF = 1:length(fields)
                 fld = fields{iF};
                 vals = getFn(fld);
-                bld.(fld) = cat(1, vals{:});
+                bld.data.(fld) = cat(1, vals{:});
             end
             
             nBasesTotal = sum(cellfun(@(pset) pset.nBases, psetCell));
             
             if simultaneous
-                bld.dataSources = pset.dataSource;
-                bld.basisDataSourceIdx = ones(nBasesTotal, 1);
+                bld.data.dataSources = pset.dataSource;
+                bld.data.basisDataSourceIdx = ones(nBasesTotal, 1);
             else
                 vals = getFn('dataSources');
-                bld.dataSources = cat(1, vals{:});
+                bld.data.dataSources = cat(1, vals{:});
                 vals = getFn('basisDataSourceIdx');
             
                 % offset the data source idx according to the concatenation
@@ -415,11 +402,11 @@ classdef PopulationTrajectorySetBuilder
                     vals(whichPset == iP) = vals(whichPset == iP) + accum;
                     accum = accum + nSources(iP);
                 end
-                bld.basisDataSourceIdx = vals;
+                bld.data.basisDataSourceIdx = vals;
             end
             
             vals = getFn('basisDataSourceChannelNames');
-            bld.basisDataSourceChannelNames = cat(1, vals{:});
+            bld.data.basisDataSourceChannelNames = cat(1, vals{:});
             
             if simultaneous
                 pset = bld.buildAutoWithSingleTrialData();
@@ -468,8 +455,8 @@ classdef PopulationTrajectorySetBuilder
         function assertNonEmpty(bld, varargin)
             % assert that all fields in field are non empty
             fields = cat(1, varargin{:});
-            fields = setdiff(fields, PopulationTrajectorySetBuilder.fCanBeEmptyExceptions);
-            isEmpty = cellfun(@(fld) isempty(bld.(fld)), fields);
+%             fields = setdiff(fields, PopulationTrajectorySetBuilder.fCanBeEmptyExceptions);
+            isEmpty = cellfun(@(fld) isempty(bld.data.(fld)), fields);
             if any(isEmpty)
                 error('Values must be specified for these fields: %s', ...
                     strjoin(fields(isEmpty), ', '));
@@ -482,11 +469,15 @@ classdef PopulationTrajectorySetBuilder
             
             for iFld = 1:numel(fields)
                 fld = fields{iFld};
-                pset.(fld) = bld.(fld);
+                if isfield(bld.data, fld)
+                    pset.(fld) = bld.data.(fld);
+                elseif pset.propCanBeSetCurrently(fld)
+                    % warn since this property should theoretically be set 
+                    warning('PTS Builder missing property value for %s', fld);
+                end
             end 
             
             pset = pset.initialize();
-            pset.dataSourceManual = true;
         end
         
         function pset = buildAutoWithFields(bld, fields)
@@ -495,7 +486,7 @@ classdef PopulationTrajectorySetBuilder
             
             for iFld = 1:numel(fields)
                 fld = fields{iFld};
-                pset.(fld) = bld.(fld);
+                pset.(fld) = bld.data.(fld);
             end 
             
             pset = pset.initialize();
