@@ -878,12 +878,11 @@ classdef TrialData
                             TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                     end
                 end
-                if any(~groupsNamedMask)
-                    groupsUnnamed = cellfun(@(n) sprintf('{blue}%s {none}(%s)', n, ...
-                        TrialDataUtilities.String.strjoin(td.getAnalogChannelGroupSize(n), ',')), ...
-                        groups(~groupsNamedMask), 'UniformOutput', false);
+                for iG = 1:numel(groups)
                     if ~groupsNamedMask(iG)
-                        tcprintf('inline', '  %s\n',  TrialDataUtilities.String.strjoin(groupsUnnamed, ', '));
+                        sz = td.getAnalogChannelGroupSize(groups{iG});
+                        tcprintf('inline', '  {bright blue}%s {none}(%s)\n', groups{iG}, ...
+                        TrialDataUtilities.String.strjoin(sz, ','));
                     end
                 end
             end
@@ -2627,6 +2626,12 @@ classdef TrialData
                 chIdx = 1:numel(chNames);
             end
             
+            % drop the existing named channels
+            [oldNamedChannels, hasName] = td.listAnalogChannelsInGroupByColumn(groupName, chIdx);
+            if any(hasName)
+                td = td.dropChannels(oldNamedChannels(hasName));
+            end
+            
             for iCh = 1:numel(chNames)
                 % build a channel descriptor for the data
                 cd = cdGroup.buildIndividualSubChannel(chNames{iCh}, chIdx(iCh));
@@ -2829,6 +2834,27 @@ classdef TrialData
             colIndex = cellfun(@(cd) cd.primaryDataFieldColumnIndex, cdCell);
             [colIndex, idx] = sort(colIndex, 'ascend');
             names = names(idx);
+        end
+        
+        function [namesByColumn, hasName] = listAnalogChannelsInGroupByColumn(td, groupName, colIdx)
+            % namesByColumn will be either the name or '' if not named
+            if nargin < 3
+                sz = td.getAnalogChannelGroupSize(groupName);
+                colIdx = reshape(1:prod(sz), TensorUtils.expandScalarSize(sz));
+            end
+            
+            namesByColumn = cell(size(colIdx));
+            hasName = false(size(colIdx));
+            [names, namedColIndex] = td.listAnalogChannelsInGroup(groupName);
+            for c = 1:numel(colIdx)
+                [tf, which] = ismember(colIdx(c), namedColIndex);
+                if tf 
+                    namesByColumn{c} = names{which};
+                else
+                    namesByColumn{c} = '';
+                end
+                hasName(c) = tf;
+            end 
         end
         
         function [chList, colIdx, groupName] = listAnalogChannelsInGroupWith(td, name)
@@ -3073,6 +3099,11 @@ classdef TrialData
             time = {td.data.(timeField)}';
         end
         
+        function emptySlice = getAnalogChannelGroupEmptySlice(td, groupName, varargin)
+            sz = td.getAnalogChannelGroupSize(groupName);
+            emptySlice = nan([0 sz(2:end)]);
+        end
+        
         function [data, time] = getAnalogChannelGroupRaw(td, groupName, varargin)
             p = inputParser();
             p.addParameter('applyScaling', true, @islogical);
@@ -3104,7 +3135,7 @@ classdef TrialData
             emptySlice = [];
             for i = 1:numel(data)
                 sz = size(data{i});
-                if sz(2) > 1
+                if sz(2) >= 1
                     emptySlice = nan([0 sz(2:end)]);
                 end
             end
@@ -3292,11 +3323,13 @@ classdef TrialData
             td.assertHasAnalogChannelGroup(groupName);
             
             p = inputParser();
-            p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
+            p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x) && ~ischar(x));
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('keepScaling', true, @islogical); % if false, drop the scaling of the channel in memory and convert everything to access class
             p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
             p.addParameter('updateMask', td.valid, @isvector);
+            p.addParameter('channelNames', {}, @iscellstr);
+            p.addParameter('units', '', @ischar);
             p.KeepUnmatched = false;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
@@ -3423,6 +3456,14 @@ classdef TrialData
             td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, values, mask);
             if updateTimes
                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, times, mask);
+            end
+            
+            if ~isempty(p.Results.channelNames)
+                td = td.setAnalogChannelGroupSubChannelNames(groupName, p.Results.channelNames);
+            end
+            
+            if ~isempty(p.Results.units)
+                td = setChannelUnitsPrimary(td, groupName, p.Results.units);
             end
             
             if updateTimes

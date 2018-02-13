@@ -112,12 +112,17 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             % cast to access class, also do scaling upon request
             % (cd.scaleFromLims -> cd.scaleToLims)
             data = convertDataCellOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
-                scaleFromLow = cd.scaleFromLims(2);
+            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims) && ~isempty(data)
+                scaleFromLow = cd.scaleFromLims(1);
                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
-                scaleToLow = cd.scaleToLims(2);
+                scaleToLow = cd.scaleToLims(1);
                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
-                data = cellfun(@(d) (d-scaleFromLow)*(scaleToRange/scaleFromRange) + scaleToLow, data, 'UniformOutput', false);
+                scaleFn = @(d) (d-scaleFromLow)*(scaleToRange/scaleFromRange) + scaleToLow;
+                if iscell(data)
+                    data = cellfun(scaleFn, data, 'UniformOutput', false);
+                else
+                    data = scaleFn(data);
+                end
             end
         end
         
