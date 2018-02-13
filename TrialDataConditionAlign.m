@@ -2430,8 +2430,15 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('polynomialOrder', 2, @isscalar);
             p.parse(varargin{:});
             
-            [data, time, delta] = td.getAnalogUniformlySampled(name, ...
-                'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
+            if td.hasAnalogChannelGroup(name)
+                % fetch as group, rather than single channel
+                [data, time, delta] = td.getAnalogChannelGroupUniformlySampled(name, ...
+                    'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
+            else
+                [data, time, delta] = td.getAnalogUniformlySampled(name, ...
+                    'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
+            end
+            
             diffData = cellvec(td.nTrials);
             
             deltaMs = delta / td.timeUnitsPerMs;
@@ -3428,13 +3435,28 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
-        function td = addAnalogChannelGroupModifiedInPlace(td, oldName, newName, data)
+        function td = addAnalogChannelGroupModifiedInPlace(td, oldName, newName, data, varargin)
             % if we do a reset here we'll mess up the valid array the user
             % was expecting
 %             td = td.reset();
             td.warnIfNoArgOut(nargout);
             td = td.copyChannel(oldName, newName);
-            td = td.setAnalogChannelGroup(newName, data);
+            td = td.setAnalogChannelGroup(newName, data, varargin{:});
+        end
+        
+        function td = addDifferentiatedAnalogChannelGroup(td, groupName, diffName, varargin)
+            % drops alignment and grouping before differentiating since
+            % this is typically what the user wants
+            
+            p = inputParser();
+            p.addParameter('channelNames', {}, @iscellstr);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            [diffData, diffTime, diffUnits] = td.reset().differentiateAnalogChannel(groupName, p.Unmatched);
+            td = td.addAnalogChannelGroupModifiedInPlace(groupName, diffName, diffData, ...
+                'times', diffTime, 'units', diffUnits, 'isAligned', false, p.Results);
         end
         
         function td = addAnalogChannelGroupViaSelection(td, groupName, newName, varargin)
@@ -3456,13 +3478,12 @@ classdef TrialDataConditionAlign < TrialData
                 'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
                 'averageOverSlice', p.Results.averageOverSlice);
             
-            td = td.addAnalogChannelGroupModifiedInPlace(groupName, newName, data);
+            td = td.addAnalogChannelGroupModifiedInPlace(groupName, newName, data, 'channelNames', p.Results.chNames);
             
-            if ~isempty(p.Results.chNames)
-                td = td.setAnalogChannelGroupSubChannelNames(newName, p.Results.chNames);
-            end
+%             if ~isempty(p.Results.chNames)
+%                 td = td.setAnalogChannelGroupSubChannelNames(newName, p.Results.chNames);
+%             end
         end
-            
         
         function td = transformAnalogChannelGroupInPlace(td, groupName, transformFn, varargin)
             % dataMat = tranformFn(dataMat, tvec, trialInd)
