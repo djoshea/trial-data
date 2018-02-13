@@ -2521,7 +2521,11 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            [data, time] = td.getAnalog(name, p.Unmatched);
+            if td.hasAnalogChannel(name)
+                [data, time] = td.getAnalog(name, p.Unmatched);
+            elseif td.hasAnalogChannelGroup(name)
+                [data, time] = td.getAnalogChannelGroup(name, p.Unmatched);
+            end
             data = TrialDataUtilities.Data.filterIgnoreLeadingTrailingNaNs(B, A, data, ...
                 'filtfilt', p.Results.filtfilt, 'subtractFirstSample', p.Results.subtractFirstSample);
         end
@@ -6347,8 +6351,10 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
+            stemName = parseIndexedAnalogChannelName(td, name);
+            
             % grab raw data (for marking) and grouped data (for plotting)
-            if td.hasAnalogChannel(name)
+            if td.hasAnalogChannel(stemName) || td.hasAnalogChannelGroup(stemName)
                 [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);
                 cd = td.getAnalogChannelDescriptor(name); % in case analogGroup(5)
                 
