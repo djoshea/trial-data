@@ -628,10 +628,10 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % A x N x C
             b.tMinValidByAlignBasisCondition = catConditionsFlat(psetCell, @(p) p.tMinValidByAlignBasisCondition, 3, cSize, cAxis);
             b.tMaxValidByAlignBasisCondition = catConditionsFlat(psetCell, @(p) p.tMaxValidByAlignBasisCondition, 3, cSize, cAxis);
-            b.dataNTrials = catConditionsFlat(psetCell, @(p) p.dataNTrials, 3, cSize, cAxis);
-            b.dataValid = catConditionsFlat(psetCell, @(p) p.dataValid, 3, cSize, cAxis);
             
             % N x C
+            b.dataNTrials = catConditionsFlat(psetCell, @(p) p.dataNTrials, 2, cSize, cAxis);
+            b.dataValid = catConditionsFlat(psetCell, @(p) p.dataValid, 2, cSize, cAxis);
             b.trialLists = catConditionsFlat(psetCell, @(p) p.trialLists, 2, cSize, cAxis);
             
             % N x TA x C
