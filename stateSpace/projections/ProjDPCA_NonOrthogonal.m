@@ -98,12 +98,18 @@ classdef ProjDPCA_NonOrthogonal < StateSpaceProjection
                     nBasesProjPerMarginalization = repmat(nBasesProjKeep, M, 1);
                 end
             else
-                if numel(nBasesProjPerMarginalization) ~= 1 && numel(nBasesProjPerMarginalization) ~= M
-                    error('nBasesProjPerMarginalization must be scalar or a vector with length nMarg = %d (%s)', M, strjoin(proj.marginalizationNames, ', '));
-                end
                 if isscalar(nBasesProjPerMarginalization)
                     nBasesProjPerMarginalization = repmat(nBasesProjPerMarginalization, M, 1);
                 end
+                if numel(nBasesProjPerMarginalization) < M
+                    warning('Expecting %d marginalizations in nBasesProjPerMarginalization, expanding with zeros', M);
+                    nBasesProjPerMarginalization = [makecol(nBasesProjPerMarginalization); zeros(M - numel(nBasesProjPerMarginalization), 1)];
+                end
+                
+                if numel(nBasesProjPerMarginalization) ~= 1 && numel(nBasesProjPerMarginalization) ~= M
+                    error('nBasesProjPerMarginalization must be scalar or a vector with length nMarg = %d (%s)', M, strjoin(proj.marginalizationNames, ', '));
+                end
+                
                 if isnan(nBasesProjKeep)
                      % keep all of the bases generated
                     nBasesProjKeep = sum(nBasesProjPerMarginalization);
