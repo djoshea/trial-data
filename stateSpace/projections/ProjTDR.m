@@ -1,4 +1,5 @@
 classdef ProjTDR < StateSpaceProjection
+%%%% NOT FINISHED
 
     properties
         designCoefficientsByAxis % nAxis x 1 cell 

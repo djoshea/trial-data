@@ -60,7 +60,7 @@ function M = skewSymRegress(dX,X)
     %%%%%%%
     
     % just call minimize.m with the appropriate function...
-    [m, fM, i] = TrialDataUtilities.jPCA.minimize( m0 , 'skewSymLSeval' , 1000, dX , X );
+    [m, fM, i] = TrialDataUtilities.jPCA.minimize( m0 , @TrialDataUtilities.jPCA.skewSymLSeval, 1000, dX , X );
 
     % check to make sure that nothing was funky.
     if i > 500
