@@ -650,7 +650,17 @@ classdef PopulationTrajectorySet
             metaFiltered = TrialDataUtilities.Struct.filterFields(metaFiltered, @(meta, prop) ~meta.getAttrWithDefault('emptyOkay', false));
             props = fieldnames(metaFiltered);
         end
-
+        
+        function [lookup, vec] = filterUsedUpdateLookup(lookup, vec)
+            % lookup is a vector of indices into vec
+            % keep elements of vec that are mentioned by lookup
+            % and then update lookup to reflect the new positions of the values in vec
+            
+            N = numel(vec);
+            oldVecIdx = (1:N)';
+            [keepIdx, lookup] = intersect(lookup, oldVecIdx);
+            vec = vec(keepIdx);
+        end
     end
 
     % Related to on demand computed and PropMeta properties (including .stored)
@@ -749,25 +759,29 @@ classdef PopulationTrajectorySet
             pset = pset.invalidateDerivedProperties(props);
         end
 
-        function pset = invalidateDerivedProperties(pset, propsChanged, propsAlreadyHandled, updateFn)
+        function [pset, propsInvalidated] = invalidateDerivedProperties(pset, propsChanged, varargin)
             % recursively and efficiently clear out any properties that depend on properties in the set propsChanged
             % handles pset (.propMeta), stored (.storedpropMeta) and .randomized (.randomizedpropMeta)
             % updateFn can be empty, in which case the properties will be cleared to []
             % or it can have signature newValue = updateFn(oldValue, prop, propMeta, propContainer, varargin)
             % where propContainer will be 'pset', 'stored', or 'random'
 
+            p = inputParser();
+            p.addParameter('propsAlreadyUpdated', {}, @(x) ischar(x) || iscellstr(x));
+            p.addParameter('updateFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            p.addParameter('errorIfManualNotUpdated', true, @islogical);
+            p.parse(varargin{:});
+            
             if ischar(propsChanged)
                 propsChanged = {propsChanged};
             end
-            if nargin < 3
-                propsAlreadyHandled = {};
+            
+            % keep a running list of properties that have already been handled
+            propsAlreadyUpdated = p.Results.propsAlreadyUpdated;
+            if ischar(propsAlreadyUpdated)
+                propsAlreadyUpdated = {propsAlreadyUpdated};
             end
-            if ischar(propsAlreadyHandled)
-                propsAlreadyHandled = {propsAlreadyHandled};
-            end
-            if nargin < 4
-                updateFn = [];
-            end
+            updateFn = p.Results.updateFn;
 
             pset.warnIfNoArgOut(nargout);
             propsInvalidated = cell(0, 1);
@@ -781,8 +795,8 @@ classdef PopulationTrajectorySet
 
             % recursively update the invalidated properties all at once here
             if ~isempty(propsInvalidated)
-                propsAlreadyHandled = union(propsChanged, propsAlreadyHandled);
-                pset = pset.invalidateDerivedProperties(propsInvalidated, propsAlreadyHandled, updateFn);
+                propsAlreadyUpdated = union(propsChanged, propsAlreadyUpdated);
+                pset = pset.invalidateDerivedProperties(propsInvalidated, 'propsAlreadyUpdated', propsAlreadyUpdated, 'updateFn', updateFn);
             end
 
             function propsInvalidated = processPset(alreadyInvalidated)
@@ -791,7 +805,7 @@ classdef PopulationTrajectorySet
                 for iP = 1:numel(props)
                     prop = props{iP};
                     propMeta = pset.propMeta.(prop);
-                    if ismember(prop, propsChanged) || ismember(prop, alreadyInvalidated) || ismember(prop, propsAlreadyHandled), continue; end % don't invalidate what we just changed
+                    if ismember(prop, propsChanged) || ismember(prop, alreadyInvalidated) || ismember(prop, propsAlreadyUpdated), continue; end % don't invalidate what we just changed
                     attr = propMeta.attr;
 
                     if isfield(attr, 'depends')
@@ -801,26 +815,29 @@ classdef PopulationTrajectorySet
                             % get the old value without computing on-demand if not already in odc
 
                             propsInvalidated{end+1} = prop; %#ok<AGROW>
-                            if isempty(updateFn)
-                                debug('PropMeta: Invalidating %s\n', prop);
-                            else
-                                debug('PropMeta: Updating %s via provided function\n', prop);
-                            end
-
                             [value, useManual] = pset.processPropGetWithoutComputing(prop);
 
                             if useManual
                                 if isempty(updateFn)
                                     % internal logic error checking - this needs to be handled directly since we can't just invalidate manual property values
-                                    warning('Property %s is stored in manual but has been invalidated by the dependency logic');
+                                    if p.Results.errorIfManualNotUpdated
+                                        error('Property %s is stored in manual but has been invalidated by the dependency logic', prop);
+                                    else
+                                        warning('PropMeta: Property %s is stored in manual but has been invalidated by the dependency logic, clearing value', prop);
+                                    end
                                     pset.(prop) = [];
                                 else
+                                    if pset.debug, debug('PropMeta: Updating manual property %s via provided function\n', prop); end
                                     pset.(prop) = updateFn(value, prop, propMeta, 'pset');
                                 end
                             else
                                 if isempty(updateFn)
+                                    debug('PropMeta: Invalidating compute-on-demand %s\n', prop);
                                     pset.(prop) = [];
+                                elseif isempty(value)
+                                    debug('PropMeta: Skipping compute-on-demand %s not yet computed\n', prop);
                                 else
+                                    debug('PropMeta: Updating compute-on-demand %s via provided function\n', prop);
                                     pset.(prop) = updateFn(value, prop, propMeta, 'pset');
                                 end
                             end
@@ -850,9 +867,9 @@ classdef PopulationTrajectorySet
                                 propsInvalidated{end+1} = prop; %#ok<AGROW>
                                 if pset.debugPropMeta
                                     if isempty(updateFn)
-                                        debug('Invalidating %s %s\n', propContainer, prop);
+                                        debug('PropMeta: Clearing %s.%s\n', propContainer, prop);
                                     else
-                                        debug('Updating %s %s\n', propContainer, prop);
+                                        debug('PropMeta: Updating %s.%s via provided function\n', propContainer, prop);
                                     end
                                     
                                     % prop depends on propChanged, invalidate it
@@ -902,6 +919,7 @@ classdef PopulationTrajectorySet
                         end
 
                         if ~isempty(pset.stored.(prop))
+                            
                             dataRoot.(prop) = fn(dataRoot.(prop), prop, propMeta, propType);
                         end
                     end
@@ -3790,6 +3808,12 @@ classdef PopulationTrajectorySet
 
             pset = pset.transformInternalProperties(@doFilterBases);
 
+            % basisDataSourceIdx has been filtered by mask already
+            % but this leaves some elements of dataSources unused
+            % so we want to select the elements of dataSources that are used in basisDataSourceIdx, 
+            % and then update the lookup indices in basisDataSurceIdx to match.
+            [pset.basisDataSourceIdx, pset.dataSources] = PopulationTrajectorySet.filterUsedUpdateLookup(pset.basisDataSourceIdx, pset.dataSources);
+            
             % filter alignSummaryData
             if pset.dataSourceManual || ~isempty(pset.odc.alignSummaryData)
                 cachedMaskedBasisAlignSummaryLookup = pset.basisAlignSummaryLookup(mask);
