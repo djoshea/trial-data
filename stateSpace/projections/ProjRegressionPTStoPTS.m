@@ -21,7 +21,7 @@ classdef ProjRegressionPTStoPTS < StateSpaceProjection
     methods(Static)
         function [proj, unmatched] = parseCreateParams(proj, varargin)
             p = inputParser;
-            p.addParameter('regressMeanSubtractedData', false, @islogical);
+            p.addParameter('regressMeanSubtractedData', true, @islogical);
             p.addParameter('target', [], @(x) isa(x, 'PopulationTrajectorySet'));
             p.addParameter('basisNameProjStem', 'pre dict_', @ischar);
             p.KeepUnmatched = true;
@@ -62,7 +62,9 @@ classdef ProjRegressionPTStoPTS < StateSpaceProjection
             end
             
             if proj.regressMeanSubtractedData
+                targetMeans = target.computeMeanByBasis();
                 target = target.meanSubtractBases();
+                
             end
             
             assert(isequal(source.nTimeDataMean, target.nTimeDataMean), 'Time point counts do not match between source and target pts');
@@ -100,7 +102,7 @@ classdef ProjRegressionPTStoPTS < StateSpaceProjection
             encoderNbyK = decoderKbyN';
             
             if ~isempty(target.translationNormalization)
-                proj.translationNormalizationPostProject = target.translationNormalization.getInverse();
+                proj.translationNormalizationPostProject = StateSpaceTranslationNormalization.buildManual(targetMeans, ones(nBasesProj, 1));
             end
         end
 

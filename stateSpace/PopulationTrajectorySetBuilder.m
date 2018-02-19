@@ -12,7 +12,11 @@ classdef PopulationTrajectorySetBuilder
    
     % initial construction methods
     methods(Static)
-        function pset = fromAllUnitsInTrialData(tdca)
+        function pset = fromAllUnitsInTrialData(tdca, varargin)
+            p = inputParser();
+            p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
+            p.parse(varargin{:});
+            
             if ~isa(tdca, 'TrialDataConditionAlign')
                 tdca = TrialDataConditionAlign(tdca);
             end
@@ -30,6 +34,9 @@ classdef PopulationTrajectorySetBuilder
             pset.dataUnits = 'sp/s';
             pset.basisDataSourceIdx = onesvec(nUnits);
             pset.basisDataSourceChannelNames = units;
+            if ~isempty(p.Results.spikeFilter)
+                pset.spikeFilter = p.Results.spikeFilter;
+            end
             
             ci = tdca.conditionInfo.fixAllValueLists();
             pset = pset.setConditionDescriptor(ci);

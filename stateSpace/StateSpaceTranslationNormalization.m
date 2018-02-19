@@ -168,6 +168,12 @@ classdef StateSpaceTranslationNormalization
             end
         end
         
+        function tr = getTranslationOnly(obj)
+            tr = StateSpaceTranslationNormalization(); 
+            tr.translationByBasis = obj.translationByBasis;
+            tr.normalizationByBasis = ones(obj.nBases, 1);
+        end
+
         function inv = getInverse(obj)
             obj.warnIfNoArgOut(nargout);
             % in the inverse, the order of translation, then normalization
