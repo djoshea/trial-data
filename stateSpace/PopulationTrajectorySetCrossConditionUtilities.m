@@ -467,20 +467,20 @@ classdef PopulationTrajectorySetCrossConditionUtilities
             % contribute to that output are valid. All is if
             % replaceNanWithZero is false, any is if replaceNanWithZero is true
             wNbyO_forValid = bsxfun(@rdivide, wNbyO ~= 0, sum(wNbyO ~= 0, 2));
-            [dataValidTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataValid, 3, pset.conditionsSize);
+            [dataValidTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataValid, 2, pset.conditionsSize);
             
             if p.Results.replaceNaNWithZero
                 b.dataValid = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
-                    dataValidTensor, aIdx+2, wNbyO_forValid) == 1, cdims);
+                    dataValidTensor, aIdx+1, wNbyO_forValid) == 1, cdims);
             else
                 b.dataValid = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
-                    dataValidTensor, aIdx+2, wNbyO_forValid) ~= 0, cdims);
+                    dataValidTensor, aIdx+1, wNbyO_forValid) ~= 0, cdims);
             end
             
             % sum trials from all included conditions
-            [dataNTrialsTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataNTrials, 3, pset.conditionsSize);
+            [dataNTrialsTensor, cdims] = TensorUtils.reshapeDimsInPlace(pset.dataNTrials, 2, pset.conditionsSize);
             b.dataNTrials = TensorUtils.flattenDimsInPlace(TensorUtils.linearCombinationAlongDimension(...
-                dataNTrialsTensor, aIdx+2, wNbyO ~= 0, 'replaceNaNWithZero', p.Results.replaceNaNWithZero), cdims);
+                dataNTrialsTensor, aIdx+1, wNbyO ~= 0, 'replaceNaNWithZero', p.Results.replaceNaNWithZero), cdims);
 
             % shrink the time windows over all considered conditions
             if p.Results.replaceNaNWithZero

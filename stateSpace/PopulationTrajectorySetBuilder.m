@@ -205,10 +205,16 @@ classdef PopulationTrajectorySetBuilder
                         iBasis = iBasis + 1;
                     end
                 else
-                    % use specified channel names
-                    basisDataSourceIdx(iBasis) = i;
-                    basisDataSourceChannelNames{iBasis} = p.Results.channelNames{i}; 
-                    iBasis = iBasis + 1;
+                    chNamesThis = p.Results.channelNames{i};
+                    if ischar(chNamesThis)
+                        chNamesThis = {chNamesThis};
+                    end
+                    for j = 1:numel(chNamesThis)
+                        % use specified channel names
+                        basisDataSourceIdx(iBasis) = i;
+                        basisDataSourceChannelNames{iBasis} = chNamesThis{j}; 
+                        iBasis = iBasis + 1;
+                    end
                 end
             end
             
@@ -230,6 +236,60 @@ classdef PopulationTrajectorySetBuilder
             pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
             pset = pset.initialize();
         end
+        
+        function pset = fromAnalogChannelsInMultipleTrialData(tdCell, varargin)
+            p = inputParser();
+            p.addRequired('channelNames', @(x) iscell(x));
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.parse(varargin{:});
+            
+            timeDelta = p.Results.timeDelta;
+            
+            % if only tdCell is provided, all spiking units in each td will
+            % be used
+            pset = PopulationTrajectorySet();
+            %pset.datasetName = td.datasetName;
+            
+            nSources = numel(tdCell);
+            iBasis = 1;
+            for i = 1:nSources
+                if ~isa(tdCell{i}, 'TrialDataConditionAlign')
+                    tdCell{i} = TrialDataConditionAlign(tdCell{i});
+                end
+
+                chNamesThis = p.Results.channelNames{i};
+                if ischar(chNamesThis)
+                    chNamesThis = {chNamesThis};
+                end
+                for j = 1:numel(chNamesThis)
+                    if isempty(timeDelta)
+                        timeDelta = tdCell{i}.getAnalogTimeDelta(chNamesThis{j});
+                    end
+                    % use specified channel names
+                    basisDataSourceIdx(iBasis) = i; %#ok<AGROW>
+                    basisDataSourceChannelNames{iBasis} = chNamesThis{j};  %#ok<AGROW>
+                    iBasis = iBasis + 1;
+                end
+            end
+            
+            % check that all tdCell have same timeUnitsPerSecond
+            assert(numel(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))) == 1, ...
+                'All data sources must have identical timeUnitsPerSecond');
+            
+            pset.timeUnitName = tdCell{1}.timeUnitName;
+            pset.timeUnitsPerSecond = tdCell{1}.timeUnitsPerSecond;
+            pset.dataSources = makecol(tdCell);
+            pset.basisDataSourceIdx = makecol(basisDataSourceIdx); 
+            pset.basisDataSourceChannelNames = makecol(basisDataSourceChannelNames); 
+            % don't want spiking filter to add padding
+            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', timeDelta);
+            
+            tdca = tdCell{1};
+            pset = pset.setConditionDescriptor(tdca.conditionInfo);
+            pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
+            pset = pset.initialize();
+        end
+        
         
         function pset = fromAnalogChannelsInTrialData(td, chNames, varargin)
             if nargin < 2
