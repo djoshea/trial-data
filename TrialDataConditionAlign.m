@@ -1568,6 +1568,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
+            p.addParameter('aggregateAllOccurrences', false, @islogical);
             p.parse(varargin{:});
             
             opts = p.Results;
