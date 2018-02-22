@@ -158,33 +158,39 @@ classdef EventAccumulator
     end 
     
     methods(Static)
-        function ea = constructForEachColumn(data, delta)
+        function ea = constructForEachColumn(data, delta, aggregateOverColumnsAlso)
             % like the constructor, except supports empty data matrix (in
             % which case this returns [])
             
-            % data is a column vector or a matrix. Each column of data will
+            % data is a column vector or a matrix.
+            %
+            % When aggregateOverColumnsAlso == true, each column of data will
             % generate its own EventAccumulator, so this will return a
             % column vector of EventAccumulator objects, one for each
             % column in data
+            %
+            % When aggregateOverColumnsAlso == false, only a scalar
+            % EventAccumulator will be returned that flattens data(:).
+            
             if nargin < 1
                 return;
             end
             if nargin < 2
                 delta = 1;
             end
+            if nargin < 3
+                aggregateOverColumnsAlso = false;
+            end
             
             if isempty(data) && size(data, 2) == 0
                 ea = [];
+            elseif aggregateOverColumnsAlso
+                ea = EventAccumulator(data(:), delta);
             else
                 ea = EventAccumulator(data, delta);
             end
         end
-        
-%         function ea = constructMatrixFromEventDataCell(dataCell, delta)
-%             % dataCell is a cell vector of 
-%             
-%         end
-            
+          
         function out = build_kde(bins, counts, bw)
             if numel(bins) < 2
                 out = counts;

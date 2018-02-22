@@ -92,6 +92,7 @@ classdef AlignDescriptor
         markAppear
         markShowOnData % whether to mark on data traces
         markShowOnAxis % whether to mark on the axis
+        markAggregateAllOccurrences % if true, multiple occurrences per trial will be aggregated the same as they are across trials, as opposed to aggregating each occurrence separately
 
         % for marking time intervals on the time axis as colored rectangles
         intervalEventsStart = {}; % n x 1 cell array of start/stop events
@@ -101,7 +102,7 @@ classdef AlignDescriptor
         intervalOffsetsStart % n x 1 array of offsets
         intervalOffsetsStop % n x 1 array of offsets
         intervalLabelsStored = {};
-
+        
         % 'first' means use events from first trial in each condition
         %intevalMultiTrialMode = 'first';
         intervalConditionMatch = {}; % n x 1 cell array of structs with .attrName = attrValue(s)
@@ -527,6 +528,16 @@ classdef AlignDescriptor
         end
     end
     
+    methods % Other auto-generated props if missing
+        function tf = get.markAggregateAllOccurrences(ad)
+            if isempty(ad.markAggregateAllOccurrences)
+                tf = false(ad.nMarks, 1);
+            else
+                tf = makecol(ad.markAggregateAllOccurrences);
+            end
+        end
+    end
+    
     methods % constructor, manual event specification
         function ad = AlignDescriptor(varargin)
             ad.eventAbbrevLookup = struct();
@@ -847,6 +858,7 @@ classdef AlignDescriptor
             p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
+            p.addParameter('aggregateAllOccurrences', false, @islogical);
             p.parse(varargin{:});
             
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
@@ -887,6 +899,8 @@ classdef AlignDescriptor
             ad.markShowOnData = makecol(ad.markShowOnData);
             ad.markShowOnAxis(iMark) = p.Results.showOnAxis;
             ad.markShowOnAxis = makecol(ad.markShowOnAxis);
+            ad.markAggregateAllOccurrences(iMark) = p.Results.aggregateAllOccurrences;
+            ad.markAggregateAllOccurrences = makecol(ad.markAggregateAllOccurrences);
             ad.markLabelsStored{iMark,1} = p.Results.as;
 
             ad = ad.postUpdateMark();
@@ -911,6 +925,7 @@ classdef AlignDescriptor
             ad.markAppear= ad.markAppear(~mask);
             ad.markShowOnData = ad.markShowOnData(~mask); 
             ad.markShowOnAxis = ad.markShowOnAxis(~mask);
+            ad.markAggregateAllOccurrences = ad.markAggregateAllOccurrences(~mask);
             
             ad = ad.postUpdateMark();
         end
@@ -1080,6 +1095,7 @@ classdef AlignDescriptor
             ad.markAppear= [];
             ad.markShowOnData = []; 
             ad.markShowOnAxis = [];
+            ad.markAggregateAllOccurrences = [];
             
             ad = ad.postUpdateMark();
         end
