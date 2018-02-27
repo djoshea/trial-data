@@ -1,11 +1,23 @@
 classdef PropertyShapeMeta < matlab.mixin.CustomDisplay
     % a lightweight metadata class for describing the meaning of each dimension in a nested
     % array, i.e. one in which the top levels are cell arrays and the bottom level is a matrix,
-    % For example, an A x B x C cell array of D x E matrices would be
+    % For example, an A x B x C cell array of D x E matrices would be {{'A','B','C'}, {'D','E'}}
+    %
+    % PropertyShapeMeta can also specify custom handling of slicing and concatenation operations on
+    % specific dimensions. Typically, this can be handled automatically based on the shape of the value.
+    % However it is also possible to specify custom handling functions for specific dimensions, even if these dimensions
+    % are not included in dimsByLevel. This is useful if the property holds an class instance that internally has data
+    % along that dimension. For example, the StateSpaceTranslationNormalization class manages arrays of length 'N' internally.
+    % So a property like pset.translationNormalization that holds a scalar StateSpaceTranslationNormalization can handle slicing
+    % along 'N' using a custom function, e.g. 'selectBases'.
     properties
         dimsByLevel cell = {} % will be cell of cellstr, each top level corresponds to a dim
         leafClass char = 'float';
         attr struct = struct(); % contains any additional metadata applying to the whole array
+
+        customDims cell = {}; % list of dimension names handled via some custom function
+        customSelectAlongDimFn function_handle = @(meta, value, dimNames, masksByDim, varargin) error('Custom slicing function not specified');
+        customConcatenateAlongDimFn function_handle = @(meta, valueCell, dimName) error('Custom concatenation function not specified');
     end
 
     properties(Dependent)
@@ -16,6 +28,9 @@ classdef PropertyShapeMeta < matlab.mixin.CustomDisplay
     methods
         function meta = PropertyShapeMeta(dimsByLevel, leafClass, varargin)
             p = inputParser();
+            p.addParameter('customDims', {}, @iscellstr);
+            p.addParameter('customSelectAlongDimFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            p.addParameter('customConcatenateAlongDimFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -36,6 +51,15 @@ classdef PropertyShapeMeta < matlab.mixin.CustomDisplay
             assert(numel(dimNames) == numel(unique(dimNames)));
 
             meta.leafClass = leafClass;
+
+            % setup custom dim handling if specified
+            meta.customDims = p.Results.customDims;
+            if ~isempty(p.Results.customSelectAlongDimFn)
+                meta.customSelectAlongDimFn = p.Results.customSelectAlongDimFn;
+            end
+            if ~isempty(p.Results.customConcatenateAlongDimFn)
+                meta.customConcatenateAlongDimFn = p.Results.customConcatenateAlongDimFn;
+            end
 
             meta.attr = p.Unmatched;
         end
@@ -92,19 +116,45 @@ classdef PropertyShapeMeta < matlab.mixin.CustomDisplay
     end
 
     methods % Data transformation methods
-        function data = filterDimByName(meta, data, dimName, masks)
+        function [data, wasUpdated] = selectAlongDimByName(meta, data, dimNames, masks)
             % selects along dimension dimName with mask
             % if dimName is char, mask is a logical or numerical vector
             % if dimName is vector, mask is a cell of mask vectors for each dimName
-            [level, dim] = meta.findDimByName(dimName);
-            data = meta.filterLevelDim(data, level, dim, masks);
+            % This method will call the
+            if ischar(dimNames)
+                dimNames = {dimNames};
+                masks = {masks};
+            end
+            
+            maskCustom = ismember(dimNames, meta.customDims);
+            custom_dimNames = dimNames(maskCustom);
+            custom_masks = masks(maskCustom);
+            dimNames = dimNames(~maskCustom);
+            masks = masks(~maskCustom);
+
+            wasUpdated = false;
+            
+            if any(~maskCustom)
+                [level, dim] = meta.findDimByName(dimNames);
+                if any(~isnan(level))
+                    data = meta.selectAlongLevelDim(data, level, dim, masks);
+                    wasUpdated = true;
+                end
+            end
+            if any(maskCustom)
+                data = meta.customSelectAlongDimFn(meta, data, custom_dimNames, custom_masks);
+                wasUpdated = true;
+            end
         end
 
-        function data = filterLevelDim(meta, data, level, dim, masks)
+        function [data, wasUpdated] = selectAlongLevelDim(meta, data, level, dim, masks)
+            % this method performs a slicing operation on specific levels/dims. Typically the client would call
+            % selectAlongDimByName which looksup the level/dims by the name of the dimension and also calls any custom functions
             if ~iscell(masks)
                 masks = {masks};
             end
             data = filterInner(data, 1);
+            wasUpdated = numel(level) > 0;
 
             function d = filterInner(d, levelThis)
                 % apply any filtering that needs to happen at this level, and then recurse on deeper levels
@@ -137,8 +187,8 @@ classdef PropertyShapeMeta < matlab.mixin.CustomDisplay
             end
         end
 
-        function data = assignValueMaskedSelectionAlongDimByName(meta, data, dimName, masks, value, clearCells)
-            [level, dim] = meta.findDimByName(dimName);
+        function data = assignValueMaskedSelectionAlongDimByName(meta, data, dimNames, masks, value, clearCells)
+            [level, dim] = meta.findDimByName(dimNames);
             data = meta.assignValueMaskedSelectionAlongLevelDim(data, level, dim, masks, value, clearCells);
         end
 
@@ -271,6 +321,15 @@ classdef PropertyShapeMeta < matlab.mixin.CustomDisplay
             else
                 sizes = {size(data)};
             end
+        end
+        
+        function metaStruct = filterMetaStruct(metaStruct, keepFn, nested)
+            % given a struct consisting of other structs and PropertyShapeMeta objects, keep those fields where
+            % keepFn(propMeta, prop) evaluates to true
+            if nargin < 3
+                nested = false;
+            end
+            metaStruct = TrialDataUtilities.Struct.filterFields(metaStruct, keepFn, nested);
         end
     end
 

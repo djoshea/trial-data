@@ -8,6 +8,7 @@ classdef PopulationTrajectorySetBuilder
     % when building 
     properties
         data
+        propMeta
     end
    
     % initial construction methods
@@ -263,92 +264,84 @@ classdef PopulationTrajectorySetBuilder
         end
     end
     
+    % methods to list the properties that are involved in specific contexts
     methods(Static)
-        function [toCopy, toCheckNonEmpty] = listFieldsSingleTrial(varargin)
-            p = inputParser();
-            p.addParameter('includeDataSourceInfo', false, @islogical); % used when construction psets with dataSourceManual == true
-            p.parse(varargin{:});
+        function propMetaStruct = filterPropMetaNonEmptyRequired(propMetaStruct)
             
-            % TODO fix randomized
-            toCopy = PopulationTrajectorySet.listPropsInGroup(...
-               {'settings', 'descriptors', 'basisInfo', 'dataSourceInfo', 'singleTrial', ...
-                 'trialAverage', 'randomized', 'noise'});
-            
-            toCheckNonEmpty = PopulationTrajectorySet.listPropInGroupNonEmptyRequired(...
-                {'settings', 'descriptors', 'basisInfo', 'singleTrial', 'trialAverage'});
-             
-            if p.Results.includeDataSourceInfo
-                toCopy = [toCopy; PopulationTrajectorySet.listPropsInGroup('dataSourceInfo')];
-                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.listPropInGroupNonEmptyRequired('dataSourceInfo')];
-            end
+            propMetaStruct = PropertyShapeMeta.filterMetaStruct(propMetaStruct, @(meta, name) meta.getAttrWithDefault('emptyOkay', false), true);
         end
         
-        function [toCopy, toCheckNonEmpty] = listFieldsTrialAverage(varargin)
+        function [toCopy, toCheckNonEmpty] = getPropMetaInGroups(groups)
+            toCopy = PopulationTrajectorySet.getPropMetaInGroup(groups);
+            toCheckNonEmpty = PopulationTrajectorySetBuilder.filterPropMetaNonEmptyRequired(toCopy);
+        end
+            
+        function [toCopy, toCheckNonEmpty] = getPropMetaSingleTrial(varargin)
             p = inputParser();
-            p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
-            p.addParameter('includeDataSourceInfo', false, @islogical); % used when construction psets with dataSourceManual == true
+            p.addParameter('includeDataSourceInfo', true, @islogical); % used when construction psets with dataSourceManual == true
             p.parse(varargin{:});
             
-            toCopy = PopulationTrajectorySet.listPropsInGroup(...
-                {'settings', 'descriptors', 'basisInfo', ...
-                 'trialAverage', 'randomized', 'noise'});
-            
-            toCheckNonEmpty = {};
-            
-%             if p.Results.includeDiffTrialsNoise
-%                 toCopy = [toCopy, PopulationTrajectorySet.fDiffTrialsNoise];
-%             end
-            
+            groups = {'settings', 'descriptors', 'basisInfo', 'singleTrial', ...
+                 'trialAverage', 'randomized', 'noise'}
             if p.Results.includeDataSourceInfo
-                toCopy = [toCopy, PopulationTrajectorySet.listPropsInGroup('dataSourceInfo')];
-                toCheckNonEmpty = [toCheckNonEmpty, PopulationTrajectorySet.listPropInGroupNonEmptyRequired('dataSourceInfo')];
+                groups{end+1} = 'dataSourceInfo';
             end
+            
+            [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaInGroups(groups);
+        end
+        
+        function [toCopy, toCheckNonEmpty] = getPropMetaTrialAverage(varargin)
+            p = inputParser();
+            p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
+%             p.addParameter('includeDataSourceInfo', true, @islogical); % used when construction psets with dataSourceManual == true
+            p.parse(varargin{:});
+            
+            groups = {'settings', 'descriptors', 'basisInfo', ...
+                 'trialAverage', 'randomized'}
+%             if p.Results.includeDataSourceInfo
+%                 groups{end+1} = 'dataSourceInfo';
+%             end
+            if p.Results.includeDiffTrialsNoise
+                groups{end+1} = 'noise';
+            end
+            
+            [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaInGroups(groups);
+        end
+    end
+    
+    % methods to copy fields from pset into a builder
+    methods(Static)
+        function bld = copySingleTrialFromPopulationTrajectorySet(pset)
+            % copy values from population trajectory set, all fields by default
+            bld = PopulationTrajectorySetBuilder();
+            propMeta = PopulationTrajectorySetBuilder.getPropMetaSingleTrial();
+            bld.data = pset.getValuesFromPropMeta(propMeta);
+        end
+
+        function bld = copyTrialAveragedOnlyFromPopulationTrajectorySet(pset)
+            % copy values from population trajectory set, all fields except
+            % single trial data
+            bld = PopulationTrajectorySetBuilder();
+            propMeta = PopulationTrajectorySetBuilder.getPropMetaTrialAverage();
+            bld.data = pset.getValuesFromPropMeta(propMeta);
+        end
+        
+        function bld = copySettingsDescriptorsBasisInfoFromPopulationTrajectorySet(pset)
+            bld = PopulationTrajectorySetBuilder();
+            propMeta = PopulationTrajectorySetBuilder.getPropMetaInGroups({'settings', 'descriptors', 'basisInfo'});
+            bld.data = pset.getValuesFromPropMeta(propMeta);
+        end
+        
+        function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
+            bld = PopulationTrajectorySetBuilder();
+            propMeta = PopulationTrajectorySetBuilder.getPropMetaInGroups({'settings', 'descriptors'});
+            bld.data = pset.getValuesFromPropMeta(propMeta);
         end
     end
     
     methods(Static)
-        function bld = copyFromPopulationTrajectorySet(pset, fields)
-            % copy values from population trajectory set, all fields by default
-            bld = PopulationTrajectorySetBuilder();
-            
-            if nargin < 2
-                fields = PopulationTrajectorySetBuilder.listFieldsSingleTrial();
-            end
-            
-            for iF = 1:length(fields)
-                fld = fields{iF};
-                bld.data.(fld) = pset.(fld);
-            end
-        end
-
-        function bld = copyTrialAveragedOnlyFromPopulationTrajectorySet(pset, fields)
-            % copy values from population trajectory set, all fields except
-            % single trial data
-            bld = PopulationTrajectorySetBuilder();
-            
-            if nargin < 2
-                fields = PopulationTrajectorySetBuilder.listFieldsTrialAverage();
-            end
-            
-            for iF = 1:length(fields)
-                fld = fields{iF};
-                bld.data.(fld) = pset.(fld);
-            end
-        end
-        
-        function bld = copySettingsDescriptorsBasisInfoFromPopulationTrajectorySet(pset)
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
-                      PopulationTrajectorySet.listPropsInGroup({'settings', 'descriptors', 'basisInfo'}));
-        end
-        
-        function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, ...
-                      PopulationTrajectorySet.listPropsInGroup({'settings', 'descriptors'}));
-        end
-        
-        function psetManual = convertToManualWithSingleTrialData(pset, varargin)
-            fields = PopulationTrajectorySetBuilder.listFieldsSingleTrial(varargin{:});
-            bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, fields);
+        function psetManual = convertToAutoWithManualDataByTrial(pset, varargin)
+            bld = PopulationTrajectorySetBuilder.copySingleTrialFromPopulationTrajectorySet(pset);
             psetManual = bld.buildManualWithSingleTrialData(varargin{:});
         end
         
@@ -421,14 +414,45 @@ classdef PopulationTrajectorySetBuilder
                 pset = bld.buildAutoWithTrialAveragedData();
             end
         end
-
     end
     
+    % methods to build a pset from the fields that were stored
     methods
-        function pset = buildAutoWithSingleTrialData(bld)
-            [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.listFieldsSingleTrial('includeDataSourceInfo', true);
+        function pset = buildWithFields(bld, propMetaToCopy, varargin)
+            p = inputParser();
+            p.addParameter('dataInfoManual', false, @islogical);
+            p.addParameter('dataByTrialManual', false, @islogical);
+            p.addParameter('dataMeanManual', false, @islogical);
+            p.parse(varargin{:});
+            
+            pset = PopulationTrajectorySet();
+            
+            % first set the properties that determine what is manual and what is automatically computed
+            % these settings will dictate where the subsequent properties are stored
+            pset.dataInfoManual = p.Results.dataInfoManual;
+            pset.dataByTrialManual = p.Results.dataByTrialManual;
+            pset.dataMeanManual = p.Results.dataMeanManual;
+            
+            flds = fieldnames(propMetaToCopy);
+            for f = 1:numel(flds)
+                if isfield(bld.data, flds{f})
+                    pset.(flds{f}) = bld.data.(flds{f});
+                end
+            end
+
+            pset = pset.initialize();
+        end
+        
+        function pset = buildAuto(bld, varargin)
+            [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaSingleTrial(varargin{:});
             bld.assertNonEmpty(toCheckNonEmpty);
-            pset = bld.buildAutoWithFields(toCopy);
+            pset = bld.buildWithFields(toCopy);
+        end
+        
+        function pset = buildManualDataInfo(bld, varargin)
+            [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaSingleTrial(varargin{:});
+            bld.assertNonEmpty(toCheckNonEmpty);
+            pset = bld.buildWithFields(toCopy);
         end
         
         function pset = buildAutoWithTrialAveragedData(bld, varargin)

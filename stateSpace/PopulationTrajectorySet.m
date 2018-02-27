@@ -43,9 +43,69 @@ classdef PopulationTrajectorySet
         keepComputedOnSaveFast = false;
     end
     
+    % Properties which determine whether specific other properties are computed or stored manually
+    properties(SetAccess=?PopulationTrajectorySetBuilder)
+        % There are currently four modes in which a pset can be operating:
+        % 1. auto: fully automatic
+        % 2. dataByTrialManualmanually specified data by trial, but with data sources. For example, this would be used after splicing.
+        %      It enables new condition groupings to be used but not new alignments.
+        % 3. manually specified data by trial, manual trialLists, without data sources. This allows dataMean to be
+        %      computed on demand, as well as randomizations to be done. But no new condition groupings nor new alignments.
+        % 4. manual data mean, without data by trial.
+        %
+        % For each of thse modes, the properties below are set as follows:
+
+        % Mode | dataByTrialManual | dataInfoManual | dataMeanManual
+        % -----|-------------------|------------------|---------------
+        % auto    | false             | false            | false
+        % autoWithManualDataByTrial    | true              | false            | false
+        % auto   | true              | true             | false
+        % 4    | true             | true             | true
+        %
+        % Note that dataMeanManual is really just ~hasDataByTrial.
+
+        % Are data sources included with this pset? If false, values are computed dynamically
+        % from the dataSources and stored in the .odc. If true, values are derived from *Manual properties
+        dataInfoManual = false
+
+        % is dataByTrial and associated properties being extracted directly from the dataSources (false)
+        % or stored manually in the corresponding dataByTrialManual properties.
+        % this is useful if the data of interest was computed manually by the user on a single trial basis in correspondence
+        % with trial data objects, so that subsequent grouping operations can take
+        dataByTrialManual = false
+        
+        % is dataMean computed from dataByTrial? This must be true if dataByTrial is not present or stored with the pset. This
+        % would be the case if the means are computed in some way, e.g. via a projection or concatenation operations
+        dataMeanManual = false;
+    end
+
+    methods % ensure consistency for the data manual properties above
+        function str = describeDataManualMode(pset)
+            % generate a short description that encapuslates the settings of the manual mode properties above
+            if pset.dataInfoManual
+                if ~pset.dataByTrialManual
+                    % mode 4
+                    str = 'manual trial-averaged, no single trial';
+                else
+                    % mode 3
+                    str = 'manual single trial, manual trial groupings';
+                end
+            else
+                if pset.dataByTrialManual
+                    % mode 2
+                    str = 'manual single trial, trial groupings via data sources';
+                else
+                    % mode 1
+                    str = 'single trial from data sources';
+                end
+            end
+        end
+    end
+
     % properties which control the behavior of the pset and will invalidate
     % computed values when they are set by one of the corresponding setProperty methods
     properties(SetAccess=?PopulationTrajectorySetBuilder)
+
         % The following parameters affect trial-averaging:
 
         % The minimum number of trials over which to compute a trial
@@ -74,19 +134,15 @@ classdef PopulationTrajectorySet
         % nAlign x 1 cell of alignDescriptors
         alignDescriptorSet = {};
 
-        % nAlign-1 x 1 vector of time gaps between successive alignments
-        % initially empty, indicating that no gap has been specified
-        interAlignGaps
-
         % ConditionDescriptor instance describing condition information
         conditionDescriptor
 
         % StateSpaceTranslationNormalization instance describing the
         % translation and normalization to apply to each basis.
-        % This will be applied during buildDataByTrial for dataSourceManual
+        % This will be applied during buildDataByTrial for dataInfoManual
         % = false psets (thus being reflected in the trial-averages automatically)
         % or applied manually to dataByTrial (if non-empty) and dataMean
-        % (if non-empty) for dataSourceManual = false
+        % (if non-empty) for dataInfoManual = false
         translationNormalization
 
         % SpikeFilter instance to use when converting spiking units to
@@ -99,17 +155,6 @@ classdef PopulationTrajectorySet
         timeUnitName % string name of common time units
 
         timeUnitsPerSecond % scalar conversion factor
-
-        % boolean scalar
-        % Are data sources included with this pset? If false, values are computed dynamically
-        % from the dataSources and stored in the .odc. If true, values are derived from *Manual properties
-        dataSourceManual = false
-
-        % is dataByTrial and associated properties being extracted directly from the dataSources (false)
-        % or stored manually in the corresponding dataByTrialManual properties.
-        % If dataSourceManual is true, then dataByTrialSourceManual is automatically true as there are no data sources
-        % this is useful if the data of interest was computed manually by the user on a single trial basis in correspondence with trial data objects, so that subsequent grouping operations can take place
-        dataByTrialSourceManual = false
 
         % TrialData data sources which source all data for the trajectories
         % this may be a single trial data object or many. If there is only
@@ -140,18 +185,18 @@ classdef PopulationTrajectorySet
         % nBases x 1 cellstrvec
         basisInvalidCauseTemporary
 
+        % holds randomized data (will be walked by propMeta)
         randomized
-        randomizedMeta % struct of propMeta instancesx
-
+        
+        % holds stored data (will be walked by propMeta)
         stored
-        storedMeta
 
         % stores manual values of properties that are persistent (as opposed to ODC)
         manual
 
             % some things that may be stored within stored
             % FOR INDIVIDUAL TRIAL DATA, BUT LINKED TO THE CONDITIONS SINCE ONLY VALID TRIALS ARE INCLUDED
-            % these are computed from dataByTrial if dataSourceManual is false,
+            % these are computed from dataByTrial if dataInfoManual is false,
             % else stored in the corresponding *Manual property
 
             % nBases x nAlign cell each containing nTrials x nTime analog data
@@ -203,7 +248,7 @@ classdef PopulationTrajectorySet
 
     % ON DEMAND PROPERTIES
     % Properties whose values are computed on-demand and persist within odc or .manual
-    % depending on dataSourceManual or dataByTrialSourceManual. They have special get and set
+    % depending on dataInfoManual or dataByTrialManual. They have special get and set
     % methods that use the PropMeta metadata to be built on the fly and invalidated when appropriate
     % They require write-access by PopulationTrajectorySetBuilder
     properties(Dependent, Transient, SetAccess=?PopulationTrajectorySetBuilder)
@@ -230,7 +275,7 @@ classdef PopulationTrajectorySet
         basisUnits
 
         %% BELOW ARE FOR INDIVIDUAL TRIAL DATA
-        % these are computed from dataSources if dataByTrialSourceManual is false,
+        % these are computed from dataSources if dataByTrialManual is false,
         % else stored in the corresponding *Manual property
 
         % data by trial cells contain common time vectors across trials,
@@ -254,11 +299,11 @@ classdef PopulationTrajectorySet
         % nBasis x nAlign cell arrays indicating the start and stop
         % timepoints for each trial in dataByTrial
         % raw implies does not reflect .basisValid
-        tMinByTrialRaw
-        tMaxByTrialRaw
+        tMinValidByTrialRaw
+        tMaxValidByTrialRaw
 
         %% BELOW ARE FOR TRIAL-AVERAGED DATA WITHIN CONDITION
-        % these are computed from dataByTrial if dataSourceManual is false,
+        % these are computed from dataByTrial if dataInfoManual is false,
         % else stored in the corresponding *Manual property
 
         % nBases x nConditions cell of trial (into dataByTrial) for each
@@ -492,17 +537,17 @@ classdef PopulationTrajectorySet
         conditionsWithValidTrialAverageOnNonEmptyBases
     end
 
-    
+
     properties(SetAccess=protected, Hidden)
         % odc is an instance of OnDemandCache
         % which is a handle class. Properties which derive from
         odc
     end
-    
+
     properties(SetAccess=protected, Hidden)
         propMeta = PopulationTrajectorySet.buildPropertyMeta();
     end
-    
+
     properties(Hidden)
         debugPropMeta = true;
     end
@@ -532,130 +577,155 @@ classdef PopulationTrajectorySet
             meta.alignDescriptorSet = PropertyShapeMeta({'A'}, 'AlignDescriptor', 'group', 'descriptors');
             meta.conditionDescriptor = PropertyShapeMeta({}, 'AlignDescriptor', 'group', 'descriptors');
             meta.translationNormalization = PropertyShapeMeta({}, 'StateSpaceTranslationNormalization', ...
-              'group', 'descriptors', 'emptyOkay', true);
-            meta.interAlignGaps = PropertyShapeMeta({}, 'float', 'group', 'descriptors', 'emptyOkay', true);
+              'group', 'descriptors', 'emptyOkay', true, ...
+              'customDims', {'N'}, 'customSelectAlongDimFn', @trNormSelectBasesFn);
 
+           function trNorm = trNormSelectBasesFn(meta, trNorm, dimNames, masksByDim, varargin) %#ok<INUSL>
+               assert(strcmp(dimNames{1}, 'N'));
+               if ~isempty(trNorm)
+                   trNorm = trNorm.selectBases(masksByDim{1});
+               end
+           end
+          
             % basis info
             meta.basisNames = PropertyShapeMeta({'N'}, 'char', 'group', 'basisInfo', ...
-              'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'dataSources'}, ...
+              'odc', true, 'useManualProp', 'dataInfoManual', 'depends', {'dataSources'}, ...
               'buildFn', 'buildBasisNamesUnits');
-          
+
             meta.basisUnits = PropertyShapeMeta({'N'}, 'char', 'group', 'basisInfo', ...
-              'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'dataSources'}, ...
+              'odc', true, 'useManualProp', 'dataInfoManual', 'depends', {'dataSources'}, ...
               'buildFn', 'buildBasisNamesUnits');
-          
+
             meta.basisValidPermanent = PropertyShapeMeta({'N'}, 'logical', 'group', 'basisInfo');
             meta.basisInvalidCausePermanent = PropertyShapeMeta({'N'}, 'logical', 'group', 'basisInfo');
             meta.basisValidTemporary = PropertyShapeMeta({'N'}, 'logical', 'group', 'basisInfo');
             meta.basisInvalidCauseTemporary = PropertyShapeMeta({'N'}, 'logical', 'group', 'basisInfo');
 
             % data source info
-            meta.dataSources = PropertyShapeMeta({'nDataSources'}, 'TrialDataConditionAlign', 'group', 'dataSourceInfo');
+            meta.dataSources = PropertyShapeMeta({'nDataSources'}, 'TrialDataConditionAlign', 'group', 'dataSourceInfo', ...
+                'customDims', {'A'}, 'customSelectAlongDimFn', @dataSourcesSelectAlongDimFn);
+
+           function dataSources = dataSourcesSelectAlongDimFn(meta, dataSources, dimNames, masksByDim, varargin) %#ok<INUSL>
+               for iD = 1:numel(dimNames)
+                   mask = masksByDim{iD};
+                   switch dimNames{iD}
+                       case 'A'
+                           for iDS = 1:numel(dataSources)
+                               dataSources{iDS} = dataSources{iDS}.selectAlign(mask);
+                           end
+                   end
+               end
+           end
+           
             meta.basisDataSourceIdx = PropertyShapeMeta({'N'}, 'int', 'group', 'dataSourceInfo');
             meta.basisDataSourceChannelNames = PropertyShapeMeta({'N'}, 'char', 'group', 'dataSourceInfo');
 
             % single trial
-            meta.dataByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R', 'T'}}, 'float', 'group', 'singleTrial', ...
-              'odc', true, 'useManualProp', 'dataByTrialSourceManual', ...
+            meta.dataByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R', 'Tsingle'}}, 'float', 'group', 'singleTrial', ...
+              'odc', true, 'useManualProp', 'dataByTrialManual', ...
               'depends', {'dataSources', 'alignDescriptorSet', 'conditionDescriptor'}, ...
               'buildFn', 'buildDataByTrial', 'translate', true, 'normalize', true);
-          
+
             meta.tMinForDataByTrialRaw = PropertyShapeMeta({'N', 'A'}, 'float', 'group', 'singleTrial', ...
-              'odc', true, 'useManualProp', 'dataByTrialSourceManual', ...
+              'odc', true, 'useManualProp', 'dataByTrialManual', ...
               'depends', {'dataSources', 'alignDescriptorSet', 'conditionDescriptor'}, ...
               'buildFn', 'buildDataByTrial');
-          
+
             meta.tMaxForDataByTrialRaw = PropertyShapeMeta({'N', 'A'}, 'float', 'group', 'singleTrial', ...
-              'odc', true, 'useManualProp', 'dataByTrialSourceManual', ...
+              'odc', true, 'useManualProp', 'dataByTrialManual', ...
               'depends', {'dataSources', 'alignDescriptorSet', 'conditionDescriptor'}, ...
               'buildFn', 'buildDataByTrial');
-           
-            meta.tMinByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R'}}, 'float', 'group', 'singleTrial', ...
-              'odc', true, 'useManualProp', 'dataByTrialSourceManual', 'depends', 'dataByTrialRaw', ...
+
+            meta.tMinValidByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R'}}, 'float', 'group', 'singleTrial', ...
+              'odc', true, 'useManualProp', 'dataByTrialManual', 'depends', 'dataByTrialRaw', ...
               'buildFn', 'buildDataByTrialPerTrialLimits');
-          
-            meta.tMaxByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R'}}, 'float', 'group', 'singleTrial', ...
-              'odc', true, 'useManualProp', 'dataByTrialSourceManual', 'depends', 'dataByTrialRaw', ...
+
+            meta.tMaxValidByTrialRaw = PropertyShapeMeta({{'N', 'A'}, {'R'}}, 'float', 'group', 'singleTrial', ...
+              'odc', true, 'useManualProp', 'dataByTrialManual', 'depends', 'dataByTrialRaw', ...
               'buildFn', 'buildDataByTrialPerTrialLimits');
 
             meta.trialListsRaw = PropertyShapeMeta({{'N', 'C'}, {'Rc'}}, 'int', 'group', 'singleTrial', ...
-              'odc', true, 'useManualProp', 'dataSourceManual', ...
+              'odc', true, 'useManualProp', 'dataInfoManual', ...
               'depends', {'dataSources', 'conditionDescriptor', 'trialHasSpikesMaskByBasis', 'ignoreAllZeroSpikeTrials', 'ignoreLeadingTrailingZeroSpikeTrials'}, ...
               'buildFn', 'buildTrialLists');
-          
-            % trial averaged
+
+            % automatically computed always, since they are determined directly from tM**ValidByTrialRaw
             meta.tMinValidByAlignBasisConditionRaw = PropertyShapeMeta({'A', 'N', 'C'}, 'float', 'group', 'trialAverage', ...
-              'odc', true, 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'tMinByTrialRaw', 'tMaxByTrialRaw', 'minFractionTrialsForTrialAveraging', 'minTrialsForTrialAveraging'}, ...
+              'odc', true, 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'tMinValidByTrialRaw', ...
+              'tMaxValidByTrialRaw', 'minFractionTrialsForTrialAveraging', 'minTrialsForTrialAveraging'}, ...
               'buildFn', 'buildTimeWindowsByAlignBasisCondition');
-          
+
             meta.tMaxValidByAlignBasisConditionRaw = PropertyShapeMeta({'A', 'N', 'C'}, 'float', 'group', 'trialAverage', ...
-              'odc', true, 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'tMinByTrialRaw', 'tMaxByTrialRaw', 'minFractionTrialsForTrialAveraging', 'minTrialsForTrialAveraging'}, ...
+              'odc', true, 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'tMinValidByTrialRaw', ...
+              'tMaxValidByTrialRaw', 'minFractionTrialsForTrialAveraging', 'minTrialsForTrialAveraging'}, ...
               'buildFn', 'buildTimeWindowsByAlignBasisCondition');
-          
+
+            % automatically computed from tM**ValidByAlignBasisConditionRaw and basisValidPermanent and basisValidTemporary
             meta.basisValid = PropertyShapeMeta({'N'}, 'logical', 'group', 'trialAverage', ...
-              'odc', true, 'depends', {'basisValidPermanent', 'basisValidTemporary', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'conditionDescriptor', 'alignDescriptorSet'}, ...
+              'odc', true, 'depends', {'basisValidPermanent', 'basisValidTemporary', 'tMinValidByAlignBasisConditionRaw', ...
+              'tMaxValidByAlignBasisConditionRaw', 'conditionDescriptor', 'alignDescriptorSet'}, ...
               'buildFn', 'buildBasisValid');
-          
+
             meta.basisInvalidCause = PropertyShapeMeta({'N'}, 'char', 'group', 'trialAverage', ...
-              'odc', true, 'depends', {'basisValidPermanent', 'basisValidTemporary', 'basisInvalidCauseTemporary', 'basisInvalidCausePermanent', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'conditionDescriptor', 'alignDescriptorSet'}, ...
+              'odc', true, 'depends', {'basisValidPermanent', 'basisValidTemporary', 'basisInvalidCauseTemporary', ...
+              'basisInvalidCausePermanent', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'conditionDescriptor', 'alignDescriptorSet'}, ...
               'buildFn', 'buildBasisValid');
-          
+
             meta.tMinForDataMean = PropertyShapeMeta({'A'}, 'float', 'group', 'trialAverage', ...
-              'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'basisValid', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'spikeFilter'}, ...
+              'odc', true, 'useManualProp', 'dataMeanManual', 'depends', {'alignDescriptorSet', 'conditionDescriptor', ...
+              'basisValid', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'spikeFilter'}, ...
               'buildFn', 'buildTvecDataMean');
-          
+
             meta.tMaxForDataMean = PropertyShapeMeta({'A'}, 'float', 'group', 'trialAverage', ...
-              'odc', true, 'useManualProp', 'dataSourceManual', 'depends', {'alignDescriptorSet', 'conditionDescriptor', 'basisValid', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'spikeFilter'}, ...
+              'odc', true, 'useManualProp', 'dataMeanManual', 'depends', {'alignDescriptorSet', 'conditionDescriptor', ...
+              'basisValid', 'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw', 'spikeFilter'}, ...
               'buildFn', 'buildTvecDataMean');
-          
-            meta.dataMean = PropertyShapeMeta({{'A'}, {'N', 'C', 'T'}}, 'float', 'group', 'trialAverage', ...
-              'odc', true, 'translate', true, 'normalize', true, 'buildFn', 'buildDataMean', ...
+
+            meta.dataMean = PropertyShapeMeta({{'A'}, {'N', 'C', 'Tmean'}}, 'float', 'group', 'trialAverage', ...
+              'odc', true, 'useManualProp', 'dataMeanManual', 'translate', true, 'normalize', true, 'buildFn', 'buildDataMean', ...
               'depends', {'tMinForDataMean', 'tMaxForDataMean', 'spikeFilter', 'basisValid'});
-          
-            meta.dataSem = PropertyShapeMeta({{'A'}, {'N', 'C', 'T'}}, 'float', 'group', 'trialAverage', ...
-              'odc', true, 'translate', false, 'normalize', true, 'buildFn', 'buildDataMean', ...
+
+            meta.dataSem = PropertyShapeMeta({{'A'}, {'N', 'C', 'Tmean'}}, 'float', 'group', 'trialAverage', ...
+              'odc', true, 'useManualProp', 'dataMeanManual', 'translate', false, 'normalize', true, 'buildFn', 'buildDataMean', ...
               'depends', {'tMinForDataMean', 'tMaxForDataMean', 'spikeFilter', 'basisValid'});
-          
+
             meta.dataNumTrials = PropertyShapeMeta({'N', 'C'}, 'int', 'group', 'trialAverage', ...
-              'odc', true, 'buildFn', 'buildDataNumTrials', 'depends', {'trialListsRaw', 'basisValid'});
-          
-            meta.dataMeanValid = PropertyShapeMeta({'N', 'C'}, 'logical', 'group', 'trialAverage', ...
-              'odc', true, 'buildFn', 'buildDataNumTrials', 'depends', {'trialListsRaw', 'basisValid'});
-          
+              'odc', true, 'useManualProp', 'dataMeanManual', 'buildFn', 'buildDataNumTrials', ...
+              'depends', {'trialListsRaw', 'basisValid'});
+
+            % align summary aggregation
             meta.alignSummaryData = PropertyShapeMeta({'nDataSources', 'A'}, 'AlignSummary', 'group', 'trialAverage', ... % nDataSources == nAlignSummaryData
-              'odc', true, 'useManualProp', 'dataSourceManual', 'depends', 'alignDescriptorSet', 'buildFn', 'buildAlignSummaryData');
-          
+              'odc', true, 'useManualProp', 'dataInfoManual', 'depends', 'alignDescriptorSet', 'buildFn', 'buildAlignSummaryData', ...
+              'customDims', {'C'});
+
             meta.alignSummaryAggregated = PropertyShapeMeta({'A'}, 'AlignSummary', 'group', 'trialAverage', ...
-              'odc', true, 'depends', 'alignSummaryData', 'buildFn', 'buildAlignSummaryAggregated');
-          
+              'odc', true, 'depends', 'alignSummaryData', 'buildFn', 'buildAlignSummaryAggregated', ...
+              'customDims', {'C'});
+
             meta.basisAlignSummaryLookup = PropertyShapeMeta({'N'}, 'int', 'group', 'trialAverage', ...
-              'odc', true, 'useManualProp', 'dataSourceManual', 'depends', 'alignDescriptorSet', 'buildFn', 'buildAlignSummaryData');
+              'odc', true, 'useManualProp', 'dataInfoManual', 'depends', 'alignDescriptorSet', 'buildFn', 'buildAlignSummaryData');
 
             % noise estimate
-            meta.dataDifferenceOfTrialsScaledNoiseEstimate = PropertyShapeMeta({{'A'}, {'N', 'T', 'C', 'R'}}, 'float', ...
+            meta.dataDifferenceOfTrialsScaledNoiseEstimate = PropertyShapeMeta({{'A'}, {'N', 'Tmean', 'C', 'R'}}, 'float', ...
               'group', 'noise', 'emptyOkay', true, ...
+              'useManualProp', 'dataMeanManual', ...
               'odc', true, 'translate', true, 'normalize', true, 'buildFn', 'buildDataNoiseEstimate', ...
               'depends', {'dataByTrial', 'trialLists'});
+          
+            meta.stored = struct();
+            meta.randomized = struct();
         end
 
-        function [props, metaFiltered] = listPropsInGroup(group)
+        function metaFiltered = getPropMetaInGroup(group)
             meta = PopulationTrajectorySet.buildPropertyMeta();
             if ~iscell(group), group = {group}; end
-            metaFiltered = TrialDataUtilities.Struct.filterFields(meta, @(meta, prop) ismember(meta.getAttrWithDefault('group', ''), group));
-            props = fieldnames(metaFiltered); 
+            metaFiltered = TrialDataUtilities.Struct.filterFields(meta, @(m, prop) ~isstruct(m) && ismember(m.getAttrWithDefault('group', ''), group));
         end
-        
-        function [props, metaFiltered] = listPropInGroupNonEmptyRequired(group)
-            [~, metaFiltered] = PopulationTrajectorySet.listPropsInGroup(group);
-            metaFiltered = TrialDataUtilities.Struct.filterFields(metaFiltered, @(meta, prop) ~meta.getAttrWithDefault('emptyOkay', false));
-            props = fieldnames(metaFiltered);
-        end
-        
-        function [lookup, vec] = filterUsedUpdateLookup(lookup, vec)
+
+        function [lookup, vec, keepIdx] = filterUsedUpdateLookup(lookup, vec)
             % lookup is a vector of indices into vec
             % keep elements of vec that are mentioned by lookup
             % and then update lookup to reflect the new positions of the values in vec
-            
             N = numel(vec);
             oldVecIdx = (1:N)';
             [keepIdx, lookup] = intersect(lookup, oldVecIdx);
@@ -665,35 +735,44 @@ classdef PopulationTrajectorySet
 
     % Related to on demand computed and PropMeta properties (including .stored)
     methods(Hidden)
-        function useManual = isPropUsingManual(pset, prop)
+        function useManual = isPropValueStoredInManual(pset, prop)
             propMeta = pset.propMeta.(prop);
             if isfield(propMeta.attr, 'useManualProp')
-                % manual is determined by named property value
+                %  is determined by named property value
                 useManual = pset.(propMeta.attr.useManualProp);
             elseif propMeta.getAttrWithDefault('useManualIfSet', false)
                 % manual is used if not empty
                 useManual = isfield(pset.manual, prop) && ~isempty(pset.manual.(prop));
             else
                 % if its not odc, then it's not using .manual
-                useManual = ~propMeta.getAttrWithDefault('odc', false);
+                useManual = false;
             end
         end
         
-        function tf = propCanBeSetCurrently(pset, prop)
-            % determines whether this property value can be specified externally,
-            % this is true if the property is not odc, or if its odc but using .manual
+        function isODC = isPropODC(pset, prop)
             propMeta = pset.propMeta.(prop);
-            if ~propMeta.getAttrWithDefault('odc', false)
-                tf = true;
-            else
-                tf = pset.isPropUsingManual(prop);
-            end
+            isODC = propMeta.getAttrWithDefault('odc', false);
         end
+
+%         function tf = propCanBeSetCurrently(pset, prop)
+%             % determines whether this property value can be specified externally,
+%             % this is true if the property is not odc, or if its odc but using .manual
+%             if ~pset.isPropODC(prop)
+%                 % non-ODC properties can always be assigned
+%                 tf = true;
+%             else
+%                 % ODC properties can be assigned when stored in manual
+%                 tf = pset.isPropValueStoredInManual(prop);
+%             end
+%         end
 
         % retrieves the value either from .manual or from .odc, and if not present in .odc, runs buildFn to compute it
         function value = processPropGet(pset, prop)
             propMeta = pset.propMeta.(prop);
-            useManual = pset.isPropUsingManual(prop);
+            if ~pset.isPropODC(prop)
+                error('Get for property %s should not use processODCPropGet', prop);
+            end
+            useManual = pset.isPropValueStoredInManual(prop);
             if useManual
                 value = pset.manual.(prop);
             else
@@ -713,10 +792,13 @@ classdef PopulationTrajectorySet
             end
         end
 
-        function [value, useManual] = processPropGetWithoutComputing(pset, prop)
-            useManual = pset.isPropUsingManual(prop);
-            
-            if useManual
+        function [value, storedManual, isODC] = processPropGetWithoutComputing(pset, prop)
+            isODC = pset.isPropODC(prop);
+            storedManual = pset.isPropValueStoredInManual(prop);
+
+            if ~isODC
+                value = pset.(prop);
+            elseif storedManual
                 value = pset.manual.(prop);
             else
                 % check for value already pre-computed ODC
@@ -733,7 +815,10 @@ classdef PopulationTrajectorySet
         % this is important as it makes it easier to assign multiple properties at once without worrying about complex sequencing
         function pset = processODCPropSet(pset, prop, value)
             pset.warnIfNoArgOut(nargout);
-            useManual = pset.isPropUsingManual(prop);            
+            if ~pset.isPropODC(prop)
+                error('Set for property %s should not use processODCPropSet', prop);
+            end
+            useManual = pset.isPropValueStoredInManual(prop);
             if useManual
                 pset.manual.(prop) = value;
             else
@@ -758,173 +843,288 @@ classdef PopulationTrajectorySet
             end
             pset = pset.invalidateDerivedProperties(props);
         end
+        
+        function varargout = walkPropMeta(pset, applyFn, numargout, varargin)
+            % utility for applying a function over all propMeta properties 
+            % [out1, out2, ..., outN] = applyFn(dataRoot, propName, propMeta, pathToContainer)
+            % where out# will be a struct whos form recapitualates the location of the property within pset
+            % pathToRoot will be something like '', 'stored', or 'random' and follow the path down to the prop, e.g. 'stored.structWithinStored'
+            
+            p = inputParser();
+            p.addParameter('propMeta', pset.propMeta, @isstruct);
+            p.parse(varargin{:});
+            
+            propMeta = p.Results.propMeta;
+            
+            if nargin < 3
+                numargout = min(0, nargout(applyFn));
+            end
+            
+            % walk properties in pset
+            outputs = walkInner(pset, propMeta, '');
+            
+            function outputs = walkInner(dataRoot, propMetaRoot, pathToContainer)
+                outputs = repmat({struct()}, numargout, 1);
+                
+                if isempty(pathToContainer)
+                    containerStr = 'pset';
+                else
+                    containerStr = ['pset.' pathToContainer];
+                end
+ 
+                props = fieldnames(propMetaRoot);
+                for iP = 1:numel(props)
+                    prop = props{iP};
+                    propMeta = propMetaRoot.(prop);
+                    
+                    if isstruct(propMeta)
+                        % recurse on subfields
+                        if isobject(dataRoot)
+                            assert(isprop(dataRoot, prop), 'Field %s not found in class %s', prop, class(dataRoot));
+                        else
+                            assert(isfield(dataRoot, prop), 'Field %s not found in property %s', prop, containerStr);
+                        end
+                        outputsThis = walkInner(dataRoot.(prop), propMeta, [pathToContainer '.' prop]);
+                    else
+                        % applyFn to this property
+                        outputsThis = cell(numargout, 1);
+                        if isobject(dataRoot)
+                            assert(isprop(dataRoot, prop), 'Property %s not found in class %s', prop, class(dataRoot));
+                        else
+                            assert(isfield(dataRoot, prop), 'Field %s not found in property %s', prop, containerStr);
+                        end
+                        [outputsThis{:}] = applyFn(dataRoot, prop, propMeta, pathToContainer);
+                    end
+                   
+                    % expand the outputs into the output struct
+                    for iO = 1:numargout
+                        outputs{iO}.(prop) = outputsThis{iO};
+                    end
+                end
+            end
+            
+            varargout = outputs;
+        end
+        
+        function values = getValuesFromPropMeta(pset, varargin)
+            p = inputParser();
+            p.addOptional('propMeta', pset.propMeta, @isstruct);
+            p.parse(varargin{:});
+            
+            values = pset.walkPropMeta(@(x, varargin) x, 1, 'propMeta', p.Results.propMeta);
+        end
+        
+        function pset = walkPropMetaAssignValues(pset, newValues, propWasUpdated)
+            % replace each propMeta property value in pset with the corresponding value from newValues 
+            % if propWasUpdated is provided, it will contain nested booleans in the same form as newValues, and the 
+            % value will only be assigned if true.
+            
+            if nargin < 3 || isempty(propWasUpdated)
+                propWasUpdated = true;
+            end
+            pset = walkInner(pset, pset.propMeta, newValues, propWasUpdated);
+            
+            function dataRoot = walkInner(dataRoot, propMetaRoot, valueRoot, doAssignRoot)
+                props = fieldnames(propMetaRoot);
+                for iP = 1:numel(props)
+                    prop = props{iP};
+                    meta = propMetaRoot.(prop);
+                    if ~isfield(valueRoot, prop)
+                        continue;
+                    end
+                    value = valueRoot.(prop);
+                    if islogical(doAssignRoot)
+                        doAssign = doAssignRoot;
+                    elseif isfield(doAssignRoot, prop)
+                        doAssign = doAssignRoot.(prop);
+                    else
+                        doAssign = false;
+                    end
+                    
+                    if isstruct(meta)
+                        % recurse on subfields
+                        dataRoot.(prop) = walkInner(dataRoot.(prop), meta, value, doAssign);
+                    elseif doAssign
+                        dataRoot.(prop) = value;
+                    end
+                end
+            end
+        end
 
+        function list = convertBooleanWalkStructToPathStrings(pset, walkStruct) %#ok<INUSL>
+            % takes a struct like that returned from walkPropMeta whose values are true or false and assembles a list of strings
+            
+            list = walkInner(walkStruct, '');
+            
+            function list = walkInner(walkStruct, path)
+                props = fieldnames(walkStruct);
+                list = cell(0, 1);
+                for p = 1:numel(props)
+                    val = walkStruct.(props{p});
+                    if isempty(path)
+                        pathThis = props{p};
+                    else
+                        pathThis = [path '.' props{p}];
+                    end
+                    if isstruct(val)
+                        list = cat(1, list, walkInner(val, pathThis));
+                    elseif islogical(val) && isscalar(val)
+                        if val
+                            list = cat(1, list, {pathThis});
+                        end
+                    else
+                        error('All fields must contain scalar logical values');
+                    end
+                end
+            end
+        end
+        
         function [pset, propsInvalidated] = invalidateDerivedProperties(pset, propsChanged, varargin)
             % recursively and efficiently clear out any properties that depend on properties in the set propsChanged
             % handles pset (.propMeta), stored (.storedpropMeta) and .randomized (.randomizedpropMeta)
             % updateFn can be empty, in which case the properties will be cleared to []
-            % or it can have signature newValue = updateFn(oldValue, prop, propMeta, propContainer, varargin)
+            % or it can have signature newValue = updateFn(oldValue, prop, propMeta, pathToContainer, varargin)
             % where propContainer will be 'pset', 'stored', or 'random'
-
+            pset.warnIfNoArgOut(nargout);
+            
             p = inputParser();
             p.addParameter('propsAlreadyUpdated', {}, @(x) ischar(x) || iscellstr(x));
             p.addParameter('updateFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('errorIfManualNotUpdated', true, @islogical);
             p.parse(varargin{:});
-            
+
             if ischar(propsChanged)
                 propsChanged = {propsChanged};
             end
-            
+
             % keep a running list of properties that have already been handled
             propsAlreadyUpdated = p.Results.propsAlreadyUpdated;
             if ischar(propsAlreadyUpdated)
                 propsAlreadyUpdated = {propsAlreadyUpdated};
             end
             updateFn = p.Results.updateFn;
-
-            pset.warnIfNoArgOut(nargout);
-            propsInvalidated = cell(0, 1);
-            propsInvalidated = processPset(propsInvalidated);
-            if ~isempty(pset.stored)
-                [pset.stored, propsInvalidated] = processStruct(pset.stored, pset.storedMeta, 'stored', propsInvalidated);
+           
+            % apply updateFn or generate cleared values 
+            [newData, propsInvalidated] = pset.walkPropMeta(@walkFn, 2);
+            
+            % assign the new values where invalidated
+            pset = pset.walkPropMetaAssignValues(newData, propsInvalidated);
+            
+            % then recursively invalidate properties dependent on those values just cleared
+            listInvalidated = pset.convertBooleanWalkStructToPathStrings(propsInvalidated);
+            if ~isempty(listInvalidated)
+                pset = pset.invalidateDerivedProperties(listInvalidated);
             end
-            if ~isempty(pset.randomized)
-                [pset.randomized, propsInvalidated] = processStruct(pset.randomized, pset.randomizedMeta, 'randomized', propsInvalidated);
-            end
-
-            % recursively update the invalidated properties all at once here
-            if ~isempty(propsInvalidated)
-                propsAlreadyUpdated = union(propsChanged, propsAlreadyUpdated);
-                pset = pset.invalidateDerivedProperties(propsInvalidated, 'propsAlreadyUpdated', propsAlreadyUpdated, 'updateFn', updateFn);
-            end
-
-            function propsInvalidated = processPset(alreadyInvalidated)
-                props = fieldnames(pset.propMeta);
-                propsInvalidated = alreadyInvalidated;
-                for iP = 1:numel(props)
-                    prop = props{iP};
-                    propMeta = pset.propMeta.(prop);
-                    if ismember(prop, propsChanged) || ismember(prop, alreadyInvalidated) || ismember(prop, propsAlreadyUpdated), continue; end % don't invalidate what we just changed
+            
+            function [valueOut, thisPropInvalidated] = walkFn(dataRoot, prop, propMeta, pathToContainer)
+                if ~isempty(pathToContainer)
+                    fullPathProp = [pathToContainer '.' prop];
+                    isRootPsetProp = false;
+                else
+                    fullPathProp = prop;
+                    isRootPsetProp = true;
+                end
+                    
+                if ismember(prop, propsChanged) || ismember(prop, propsAlreadyUpdated)
+                    thisPropInvalidated = false;
+                    valueOut = [];
+                else
                     attr = propMeta.attr;
 
-                    if isfield(attr, 'depends')
-                        depends = attr.depends;
-                        if any(ismember(propsChanged, depends))
-                            % prop depends on propChanged, we should invalidate or update it.
+                    if isfield(attr, 'depends') && any(ismember(propsChanged, attr.depends))
+                        % prop depends on propChanged, we should invalidate or update it.
+
+                        if isRootPsetProp
+                            % this is a property of pset
                             % get the old value without computing on-demand if not already in odc
+                            [propValue, useManual, isODC] = pset.processPropGetWithoutComputing(prop);
+                        else
+                            propValue = dataRoot.(prop);
+                            useManual = true;
+                        end
 
-                            propsInvalidated{end+1} = prop; %#ok<AGROW>
-                            [value, useManual] = pset.processPropGetWithoutComputing(prop);
-
-                            if useManual
-                                if isempty(updateFn)
+                        if useManual || ~isODC
+                            if isempty(updateFn)
+                                if isRootPsetProp
                                     % internal logic error checking - this needs to be handled directly since we can't just invalidate manual property values
                                     if p.Results.errorIfManualNotUpdated
-                                        error('Property %s is stored in manual but has been invalidated by the dependency logic', prop);
+                                        error('Property %s is stored manually but has been invalidated by the dependency logic', fullPathProp);
                                     else
-                                        warning('PropMeta: Property %s is stored in manual but has been invalidated by the dependency logic, clearing value', prop);
+                                        warning('PropMeta: Property %s is stored manually but has been invalidated by the dependency logic, clearing value', fullPathProp);
                                     end
-                                    pset.(prop) = [];
                                 else
-                                    if pset.debug, debug('PropMeta: Updating manual property %s via provided function\n', prop); end
-                                    pset.(prop) = updateFn(value, prop, propMeta, 'pset');
+                                    if isempty(updateFn)
+                                        debug('PropMeta: Clearing %s\n', fullPathProp);
+                                    else
+                                        debug('PropMeta: Updating %s via provided function\n', fullPathProp);
+                                    end
                                 end
+
+                                valueOut = [];
+                                thisPropInvalidated = true;
                             else
-                                if isempty(updateFn)
-                                    debug('PropMeta: Invalidating compute-on-demand %s\n', prop);
-                                    pset.(prop) = [];
-                                elseif isempty(value)
-                                    debug('PropMeta: Skipping compute-on-demand %s not yet computed\n', prop);
-                                else
-                                    debug('PropMeta: Updating compute-on-demand %s via provided function\n', prop);
-                                    pset.(prop) = updateFn(value, prop, propMeta, 'pset');
-                                end
+                                if pset.debugPropMeta, debug('PropMeta: Updating property %s via provided function\n', fullPathProp); end
+                                valueOut = updateFn(propValue, prop, propMeta, pathToContainer);
+                                thisPropInvalidated = true;
                             end
-                        end
-
-                    end
-                end
-            end
-
-            function [dataRoot, propsInvalidated] = processStruct(dataRoot, propMetaRoot, propContainer, alreadyInvalidated)
-                props = fieldnames(propMetaRoot);
-                propsInvalidated = alreadyInvalidated;
-                for iP = 1:numel(props)
-                    prop = props{iP};
-                    %if ~isfield(dataRoot, prop), continue; end
-                    value = dataRoot.(prop);
-                    propMeta = propMetaRoot.(prop);
-                    if isstruct(val) % can be recursive
-                        [dataRoot.(prop), propsInvalidated] = processStruct(dataRoot.(prop), propMeta, propContainer, propsInvalidated);
-                    else
-                        if ismember(prop, propsChanged) || ismember(prop, alreadyInvalidated), continue; end % don't invalidate what we just changed
-                        attr = propMeta.attr;
-
-                        if isfield(attr, 'depends')
-                            depends = attr.depends;
-                            if any(ismember(propsChanged, depends))
-                                propsInvalidated{end+1} = prop; %#ok<AGROW>
-                                if pset.debugPropMeta
-                                    if isempty(updateFn)
-                                        debug('PropMeta: Clearing %s.%s\n', propContainer, prop);
-                                    else
-                                        debug('PropMeta: Updating %s.%s via provided function\n', propContainer, prop);
-                                    end
-                                    
-                                    % prop depends on propChanged, invalidate it
-                                    if isempty(updateFn)
-                                        dataRoot.(prop) = [];
-                                    else
-                                        dataRoot.(prop) = updateFn(value, prop, propMeta, propContainer);
-                                    end
-                                end
+                        else
+                            if isempty(propValue)
+                                if pset.debugPropMeta, debug('PropMeta: Skipping compute-on-demand %s not yet computed\n', fullPathProp); end
+                                valueOut = [];
+                                thisPropInvalidated = false;   
+                            elseif isempty(updateFn)
+                                if pset.debugPropMeta, debug('PropMeta: Invalidating compute-on-demand %s\n', fullPathProp); end
+                                valueOut = [];
+                                thisPropInvalidated = true;
+                            else
+                                if pset.debugPropMeta, debug('PropMeta: Updating compute-on-demand %s via provided function\n', prop); end
+                                valueOut = updateFn(value, prop, propMeta, pathToContainer);
+                                thisPropInvalidated = true;
                             end
-                        end
+                        end % useManual
+                        
+                    else % this prop does not depend on an invalidated prop?
+                        thisPropInvalidated = false;
+                        valueOut = [];
                     end
-                end
-            end
+                    
+                end % was this one of the props already handled
+            end % walkFn
         end
 
         function pset = transformInternalProperties(pset, fn)
-            % fn should take fn(data, prop, propMeta, propContainer, varargin)
+            % fn should look like [data, wasUpdated] = fn(data, propName, propMeta, pathToContainer, varargin)
             % propContainer will be 'pset' or 'stored' or 'random'
 
-            pset.warnIfNoArgOut(nargout);
-            pset = processStruct(pset, pset.propMeta, 'pset');
-            if ~isempty(pset.stored)
-                pset.stored = processStruct(pset.stored, pset.storedMeta, 'stored');
-            end
-            if ~isempty(pset.randomized)
-                pset.randomized = processStruct(pset.randomized, pset.randomizedMeta, 'randomized');
-            end
-
-            function dataRoot = processStruct(dataRoot, propMetaRoot, propType)
-                props = fieldnames(propMetaRoot);
-                for iP = 1:numel(props)
-                    prop = props{iP};
-                    if ~isfield(dataRoot, prop), continue; end
-                    val = dataRoot.(prop);
-                    propMeta = propMetaRoot.(prop);
-                    if isstruct(val)
-                        dataRoot.(prop) = processStruct(dataRoot.(prop), propMeta, propType);
-                    else
-                        attr = propMetaRoot.(prop).attr;
-
-                        % does this attribute exist within OnDemandCache?
-                        odc = isfield(attr, 'odc') && attr.odc;
-                        if odc && ~pset.dataSourceManual && isempty(pset.odc.(prop))
-                            % no need to process if it hasn't been computed and stored in ODC yet
-                            continue;
-                        end
-
-                        if ~isempty(pset.stored.(prop))
-                            
-                            dataRoot.(prop) = fn(dataRoot.(prop), prop, propMeta, propType);
-                        end
-                    end
+            function [dataRoot, wasUpdated] = walkImpl(dataRoot, propName, propMeta, pathToContainer)
+                if isa(dataRoot, 'PopulationTrajectorySet')
+                    [value, storedManual, isODC] = pset.processPropGetWithoutComputing(propName);
+                else
+                    value = dataRoot.(propName);
+                    storedManual = true;
+                    isODC = false;
                 end
+                if isempty(value) && ~storedManual && isODC
+                    if pset.debugPropMeta, debug('PropMeta: transformInternalProperties skipping not-yet-computed %s\n', propName); end
+                    wasUpdated = false;
+                else
+                    [dataRoot, wasUpdated] = fn(value, propName, propMeta, pathToContainer);
+                end    
             end
+            
+            [newValues, wasTransformed] = pset.walkPropMeta(@walkImpl, 2); 
+            pset = pset.walkPropMetaAssignValues(newValues, wasTransformed);
+        end
+
+        function pset = transformInternalProperties_selectAlongDimension(pset, dimNames, masksByDim)
+            pset.warnIfNoArgOut(nargout);
+
+            function [data, wasUpdated] = transformFn(data, prop, propMeta, varargin) %#ok<INUSL>
+                [data, wasUpdated] = propMeta.selectAlongDimByName(data, dimNames, masksByDim);
+            end
+
+            % apply slicing operation along those dims on all properties
+            pset = pset.transformInternalProperties(@transformFn);
         end
 
         function pset = storeDataInStored(pset, name, data, propMeta, varargin)
@@ -1022,18 +1222,18 @@ classdef PopulationTrajectorySet
             pset = pset.processODCPropSet('tMaxForDataByTrialRaw', v);
         end
 
-        function v = get.tMinByTrialRaw(pset)
-            v = pset.processPropGet('tMinByTrialRaw');
+        function v = get.tMinValidByTrialRaw(pset)
+            v = pset.processPropGet('tMinValidByTrialRaw');
         end
-        function pset = set.tMinByTrialRaw(pset, v)
-            pset = pset.processODCPropSet('tMinByTrialRaw', v);
+        function pset = set.tMinValidByTrialRaw(pset, v)
+            pset = pset.processODCPropSet('tMinValidByTrialRaw', v);
         end
 
-        function v = get.tMaxByTrialRaw(pset)
-            v = pset.processPropGet('tMaxByTrialRaw');
+        function v = get.tMaxValidByTrialRaw(pset)
+            v = pset.processPropGet('tMaxValidByTrialRaw');
         end
-        function pset = set.tMaxByTrialRaw(pset, v)
-            pset = pset.processODCPropSet('tMaxByTrialRaw', v);
+        function pset = set.tMaxValidByTrialRaw(pset, v)
+            pset = pset.processODCPropSet('tMaxValidByTrialRaw', v);
         end
         function v = get.basisValid(pset)
             v = pset.processPropGet('basisValid');
@@ -1108,14 +1308,6 @@ classdef PopulationTrajectorySet
             pset = pset.processODCPropSet('dataNumTrials', v);
         end
 
-        function v = get.dataMeanValid(pset)
-            v = pset.processPropGet('dataMeanValid');
-        end
-
-        function pset = set.dataMeanValid(pset, v)
-            pset = pset.processODCPropSet('dataMeanValid', v);
-        end
-
         function v = get.dataDifferenceOfTrialsScaledNoiseEstimate(pset)
             v = pset.processPropGet('dataDifferenceOfTrialsScaledNoiseEstimate');
         end
@@ -1169,15 +1361,6 @@ classdef PopulationTrajectorySet
             tempCause(~tempValid & emptyMask) = {'marked invalid temporarily'};
             tempCause(tempValid) = {''};
         end
-
-        function tf = get.dataByTrialSourceManual(pset)
-            % ensure dataSourceManual == true implies dataByTrialSourceManual == true
-            if pset.dataSourceManual || isempty(pset.dataByTrialSourceManual)
-                tf = pset.dataSourceManual;
-            else
-                tf = pset.dataByTrialSourceManual;
-            end
-        end
     end
 
     % Dependent on-the-fly computation (not cached in ODC)
@@ -1229,12 +1412,13 @@ classdef PopulationTrajectorySet
         end
 
         function tf = get.hasDataByTrial(pset)
-            tf = ~isempty(pset.dataByTrialRaw);
+            % we have dataByTrial if we have data sources, or if the dataByTrial is manually specified
+            tf = ~pset.dataInfoManual || pset.dataByTrialManual;
         end
 
         % has one of the storeDataRandomized* methods been called to
         % populate dataMeanRandomized?
-        function tf = get.hasDataRandomized(pset)
+        function tf = get.hasDataRandomized(pset) %#ok<MANU>
             tf = false;
             % TODO
 %             tf = ~isempty(pset.randomizedData) && numel(fieldnames(pset.randomizedData)) > 0;
@@ -1276,7 +1460,7 @@ classdef PopulationTrajectorySet
 
         function v = get.conditionHasValidTrialAverageAllAlignsBases(pset)
             % here is where conditionIncludeMask is factored in
-            hasAvg = pset.hasValidTrialAverageByBasisCondition;
+            hasAvg = pset.hasValidTrialAverageByBasisCondition;pset.manualSliceOrExpandTimeWindow
             v = makecol(squeeze(all(hasAvg(pset.basisValid, :), 1)));
             v(~pset.conditionIncludeMask) = false;
         end
@@ -1406,7 +1590,7 @@ classdef PopulationTrajectorySet
             % by the widest time vector along any trial. Missing samples in
             % this matrix are NaNs.
 
-            if pset.dataSourceManual
+            if pset.dataInfoManual
                 return;
             end
 
@@ -1511,12 +1695,12 @@ classdef PopulationTrajectorySet
 
             % store the results in the odc without copying
             c = pset.odc;
-            c.data.tMinByTrialRaw = tMinByTrial;
-            c.data.tMaxByTrialRaw = tMaxByTrial;
+            c.data.tMinValidByTrialRaw = tMinByTrial;
+            c.data.tMaxValidByTrialRaw = tMaxByTrial;
         end
 
         function buildTrialLists(pset)
-            if pset.dataSourceManual
+            if pset.dataInfoManual
                 return;
             end
             % computes and stores dataNumTrialsRaw and dataValid into odc
@@ -1561,7 +1745,7 @@ classdef PopulationTrajectorySet
         function buildTimeWindowsByAlignBasisCondition(pset)
             % computes and stores tMin/MaxValidByBasisAlignCondition, the
             % time windows for each basis over which enough trials exist to
-            if pset.dataSourceManual
+            if pset.dataInfoManual
                 return;
             end
 
@@ -1572,7 +1756,7 @@ classdef PopulationTrajectorySet
 
             % do this first to force computation of data by trial at the beginning,
             % rather than having it happen on the first loop iteration
-            temp = pset.tMinByTrialRaw; %#ok<NASGU>
+            temp = pset.tMinValidByTrialRaw; %#ok<NASGU>
             dataNumTrialsRaw = cellfun(@numel, pset.trialListsRaw);
 
             prog = ProgressBar(pset.nBases, 'Computing trial-averaged time windows by basis/align/condition');
@@ -1585,8 +1769,8 @@ classdef PopulationTrajectorySet
                     % but this isn't necessary since we've already
                     % extracted the aligned data
                     src = pset.dataSources{pset.basisDataSourceIdx(iBasis)};
-                    tMinByTrial = pset.tMinByTrialRaw{iBasis, iAlign};
-                    tMaxByTrial = pset.tMaxByTrialRaw{iBasis, iAlign};
+                    tMinByTrial = pset.tMinValidByTrialRaw{iBasis, iAlign};
+                    tMaxByTrial = pset.tMaxValidByTrialRaw{iBasis, iAlign};
 
                     % group the condition windows by conditionLists
                     [tMinByTrialGrouped, tMaxByTrialGrouped] = src.conditionInfo.groupElements(tMinByTrial, tMaxByTrial);
@@ -2225,7 +2409,7 @@ classdef PopulationTrajectorySet
 
             sources = pset.dataSources;
 
-            if ~pset.dataSourceManual
+            if ~pset.dataInfoManual
                 pset.dataSources = 'saved separately, use PopulationTrajectorySet.loadFast to load';
             end
 
@@ -2242,7 +2426,7 @@ classdef PopulationTrajectorySet
             savefast(fullfile(location, 'pset.mat'), 'pset');
 
             % save elements of sources
-            if ~pset.dataSourceManual
+            if ~pset.dataInfoManual
                 msg = sprintf('Saving PopulationTrajectorySet to %s', location);
                 if p.Results.recursive
                     TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, sources, 'message', msg, 'callbackFn', @saveCallback);
@@ -2275,7 +2459,7 @@ classdef PopulationTrajectorySet
             pset = loaded.pset;
 
             % load elements of sources
-            if ~pset.dataSourceManual
+            if ~pset.dataInfoManual
                 msg = sprintf('Loading PopulationTrajectorySet from %s', location);
                 if p.Results.recursive
                     sources = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg, 'callbackFn', @loadCallback);
@@ -2302,7 +2486,7 @@ classdef PopulationTrajectorySet
             % use save custom only if I have data sources that could be
             % saved separately. If I only carry pre-extracted data, we'll
             % save as one entity using the normal save process
-            tf = ~pset.dataSourceManual;
+            tf = ~pset.dataInfoManual;
         end
 
         function token = saveCustomToLocation(pset, location)
@@ -2342,12 +2526,12 @@ classdef PopulationTrajectorySet
                 pset.minFractionTrialsForTrialAveraging = 0; % default to requiring only 1 trials
             end
 
-            if isempty(pset.dataSourceManual)
-                pset.dataSourceManual = false;
+            if isempty(pset.dataInfoManual)
+                pset.dataInfoManual = false;
             end
 
-            if isempty(pset.dataByTrialSourceManual)
-                pset.dataByTrialSourceManual = pset.dataSourceManual;
+            if isempty(pset.dataByTrialManual)
+                pset.dataByTrialManual = pset.dataInfoManual;
             end
 
             if isempty(pset.dataSources)
@@ -2371,12 +2555,10 @@ classdef PopulationTrajectorySet
     % Display / description
     methods
         function printDescription(pset)
-            if pset.dataSourceManual
-                dataSourceStr = 'manual stored data';
-            elseif pset.dataByTrialSourceManual
-                dataSourceStr = sprintf('%d data sources, manual dataByTrial', pset.nDataSources);
+            if pset.dataInfoManual
+                dataSourceStr = '';
             else
-                dataSourceStr = sprintf('%d data sources', pset.nDataSources);
+                dataSourceStr = sprintf(', %d data sources', pset.nDataSources);
             end
 
             % get.basisValid requires data to be extracted which is time
@@ -2387,14 +2569,16 @@ classdef PopulationTrajectorySet
                 valid = [];
             end
             if isempty(valid)
-                tcprintf('inline', '{yellow}%s: {bright white}%d bases {red}(??? valid){none}, %d permanently invalid, {bright white}%d conditions, %d alignments, %s\n', ...
+                tcprintf('inline', '{yellow}%s: {bright white}%d bases {red}(??? valid){none}, %d permanently invalid, {bright white}%d conditions, %d alignments%s\n', ...
                     class(pset), pset.nBases, pset.nBasesPermanentlyInvalid, pset.nConditions, pset.nAlign, dataSourceStr);
                 tcprintf('inline', '  {darkGray}Note: basis validity will be determined after .trialLists is computed.\n');
             else
-                tcprintf('inline', '{yellow}%s: {bright white}%d bases ({red}%d valid:{none} %d perm, %d temp invalid), {bright white}%d conditions, %d alignments, %s\n', ...
+                tcprintf('inline', '{yellow}%s: {bright white}%d bases ({red}%d valid:{none} %d perm, %d temp invalid), {bright white}%d conditions, %d alignments%s\n', ...
                     class(pset), pset.nBases, pset.nBasesValid, pset.nBasesPermanentlyInvalid, pset.nBasesTemporarilyInvalid, pset.nConditions, pset.nAlign, dataSourceStr);
             end
             tcprintf('inline', '{yellow}Dataset: {none}%s\n', pset.datasetName);
+            
+            tcprintf('inline', '{yellow}Data Source Mode: {none}%s\n', pset.describeDataManualMode());
 
             if pset.simultaneous
                 tcprintf('inline', '{yellow}Simultaneous: {none}%d trials {red}(%d valid)\n', pset.nTrials, pset.nTrialsValid);
@@ -2529,7 +2713,7 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             assert(isscalar(v));
 
-            assert(~pset.dataSourceManual, 'minTrialsForTrialAveraging cannot be changed with dataSourceManual == true');
+            assert(~pset.dataInfoManual, 'minTrialsForTrialAveraging cannot be changed with dataInfoManual == true');
 
             if ~isequal(pset.minTrialsForTrialAveraging, v)
                 pset.minTrialsForTrialAveraging = v;
@@ -2541,7 +2725,7 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             assert(isscalar(v));
 
-            assert(~pset.dataSourceManual, 'minFractionTrialsForTrialAveraging cannot be changed with dataSourceManual == true');
+            assert(~pset.dataInfoManual, 'minFractionTrialsForTrialAveraging cannot be changed with dataInfoManual == true');
 
             if ~isequal(pset.minFractionTrialsForTrialAveraging, v)
                 pset.minFractionTrialsForTrialAveraging = v;
@@ -2553,7 +2737,7 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             assert(isscalar(tf) && islogical(tf));
 
-            assert(~pset.dataSourceManual, 'ignoreAllZeroSpikeTrials cannot be changed with dataSourceManual == true');
+            assert(~pset.dataInfoManual, 'ignoreAllZeroSpikeTrials cannot be changed with dataInfoManual == true');
 
             if ~isequal(pset.ignoreAllZeroSpikeTrials, tf)
                 pset.ignoreAllZeroSpikeTrials = tf;
@@ -2565,7 +2749,7 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             assert(isscalar(tf) && islogical(tf));
 
-            assert(~pset.dataSourceManual, 'ignoreLeadingTrailingZeroSpikeTrials cannot be changed with dataSourceManual == true');
+            assert(~pset.dataInfoManual, 'ignoreLeadingTrailingZeroSpikeTrials cannot be changed with dataInfoManual == true');
 
             if ~isequal(pset.ignoreLeadingTrailingZeroSpikeTrials, tf)
                 pset.ignoreLeadingTrailingZeroSpikeTrials = tf;
@@ -2579,7 +2763,7 @@ classdef PopulationTrajectorySet
             pset.warnIfNoArgOut(nargout);
             assert(isa(f, 'SpikeFilter'));
 
-            assert(~pset.dataSourceManual, 'spikeFilter cannot be changed with dataSourceManual == true');
+            assert(~pset.dataInfoManual, 'spikeFilter cannot be changed with dataInfoManual == true');
 
             if ~isequal(pset.spikeFilter,  f)
                 pset.spikeFilter = f;
@@ -2604,8 +2788,8 @@ classdef PopulationTrajectorySet
             assert(islogical(v) && isvector(v) && numel(v) == pset.nConditions, ...
                 'conditionIncludeMask must be logical vector with length nConditions');
 
-            % TODO this can be changed to handle manual masking of the appropriate fields for dataSourceManual case
-            assert(~pset.dataSourceManual, 'conditionIncludeMask cannot be changed with dataSourceManual == true');
+            % TODO this can be changed to handle manual masking of the appropriate fields for dataInfoManual case
+            assert(~pset.dataInfoManual, 'conditionIncludeMask cannot be changed with dataInfoManual == true');
 
             cd = pset.conditionDescriptor;
             cd = cd.setConditionIncludeMask(v);
@@ -2761,7 +2945,7 @@ classdef PopulationTrajectorySet
             p = inputParser();
             p.addParameter('suppressWarning', false, @islogical);
             p.parse(varargin{:});
-            
+
             pset.warnIfNoArgOut(nargout);
             assert(ismember(class(cd), {'ConditionDescriptor', 'ConditionInfo'}), ...
                 'Must be ConditionDescriptor instance');
@@ -2774,13 +2958,13 @@ classdef PopulationTrajectorySet
 
             pset.conditionDescriptor = cd.getConditionDescriptor();
 
-            if pset.dataSourceManual
+            if pset.dataInfoManual
                 assert(pset.conditionDescriptor.nConditions == cd.nConditions, ...
                     'Pset has manual data source, conditionDescriptor can only be replaced so as to preserve nConditions');
                 if ~p.Results.suppressWarning
                     warning('Replacing ConditionDescriptor for PopulationTrajectorySet with manual data source. This will only change the labeling of conditions, not the extracted data');
                 end
-                
+
                 % need to replace condition descriptor in alignsummaryData
                 % too
                 for i = 1:numel(pset.alignSummaryData)
@@ -2799,16 +2983,37 @@ classdef PopulationTrajectorySet
             end
             prog.finish();
         end
-        
+
         function pset = flattenConditionAxes(pset)
             pset.warnIfNoArgOut(nargout);
             pset = pset.setConditionDescriptor(pset.conditionDescriptor.flattenAxes(), 'suppressWarning', true);
         end
-        
+
         function pset = setConditionNames(pset, varargin)
             % setConditionNames(names, [namesShort])
             pset.warnIfNoArgOut(nargout);
             pset.conditionDescriptor = pset.conditionDescriptor.setConditionNames(varargin{:});
+        end
+    end
+    
+    methods(Access=protected)
+        function pset = internalRealignDataSources(pset)
+            pset.warnIfNoArgOut(nargout);
+            
+            % align all data sources to the FIRST alignDescriptor
+            % since we have to hold onto one anyway
+            prog = ProgressBar(pset.nDataSources, 'Aligning data sources to each alignDescriptor');
+            dataSources = pset.dataSources;
+            nDataSources = pset.nDataSources;
+            alignDescriptorSet = pset.alignDescriptorSet;
+
+            for iSrc = 1:nDataSources
+                dataSources{iSrc} = dataSources{iSrc}.align(alignDescriptorSet{:});
+                prog.update(iSrc);
+            end
+            prog.finish();
+
+            pset.dataSources = dataSources; 
         end
     end
 
@@ -2817,7 +3022,7 @@ classdef PopulationTrajectorySet
         function pset = setAlignDescriptorSet(pset, adSet)
             pset.warnIfNoArgOut(nargout);
 
-            assert(~pset.dataSourceManual, 'PopulationTrajectorySets with manual data source cannot be realigned');
+            assert(~pset.dataInfoManual, 'PopulationTrajectorySets with manual data source cannot be realigned');
 
             if ~iscell(adSet)
                 adSet = {adSet};
@@ -2844,105 +3049,53 @@ classdef PopulationTrajectorySet
 
             pset.alignDescriptorSet = adSet;
 
-            % align all data sources to the FIRST alignDescriptor
-            % since we have to hold onto one anyway
-            prog = ProgressBar(pset.nDataSources, 'Aligning data sources to each alignDescriptor');
-            dataSources = pset.dataSources;
-            nDataSources = pset.nDataSources;
-            alignDescriptorSet = pset.alignDescriptorSet;
-
-            for iSrc = 1:nDataSources
-                dataSources{iSrc} = dataSources{iSrc}.align(alignDescriptorSet{:});
-                prog.update(iSrc);
-            end
-            prog.finish();
-
-            pset.dataSources = dataSources;
+            pset = pset.internalRealignDataSources();
 
             % changing alignments invalidates everything
             pset = pset.invalidateDerivedProperties({'alignDescriptorSet', 'dataSources'});
         end
 
-        function pset = filterAlign(pset, idx)
-            error('Not yet implemented'); % @TODO
-            if ~pset.dataSourceManual
-                pset = pset.setAlignDescriptorSet(pset.alignDescriptorSet(idx));
-            else
-                % manually slice everything
-                if ~isempty(pset.interAlignGaps)
-                    idxVec = TensorUtils.vectorMaskToIndices(idx);
-                    pset.interAlignGaps = pset.interAlignGaps(idxVec(1:end-1));
-                end
+        function pset = selectAlign(pset, mask)
+            % keep only align listed in or selected by mask
+            pset.warnIfNoArgOut(nargout);
 
-%                 if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
-%                     dsplit = TensorUtils.splitAlongDimension(pset.dataDifferenceOfTrialsScaledNoiseEstimate, 2, pset.nTimeDataMean);
-%                     dsplit = dsplit(idx);
-%                     pset.dataDifferenceOfTrialsScaledNoiseEstimate = cat(2, dsplit{:});
-%                 end
-%
-%                 if ~isempty(pset.dataCachedSampledTrials)
-%                     pset.dataCachedSampledTrialsTensor = pset.dataCachedSampledTrialsTensor(idx);
-%                 end
-%                 if ~isempty(pset.dataCachedMeanExcludingSampledTrialsTensor)
-%                     pset.dataCachedMeanExcludingSampledTrialsTensor = pset.dataCachedMeanExcludingSampledTrialsTensor(idx);
-%                 end
+            mask = TensorUtils.vectorIndicesToMask(mask, pset.nAlign);
 
-                pset.alignDescriptorSet = pset.alignDescriptorSet(idx);
-
-                % must be aggregated before the align summary is truncated!
-                pset.alignSummaryAggregated = pset.alignSummaryAggregated(idx);
-                pset.alignSummaryData = pset.alignSummaryData(:, idx);
-
-                if pset.hasDataByTrial
-                    pset.dataByTrial = pset.dataByTrial(:, idx);
-                    pset.tMinForDataByTrial = pset.tMinForDataByTrial(:, idx);
-                    pset.tMaxForDataByTrial = pset.tMaxForDataByTrial(:, idx);
-                    pset.tMinByTrial = pset.tMinByTrial(:, idx);
-                    pset.tMaxByTrial = pset.tMaxByTrial(:, idx);
-                end
-                pset.tMinValidByAlignBasisConditionRaw = pset.tMinValidByAlignBasisConditionRaw(idx, :, :);
-                pset.tMaxValidByAlignBasisConditionRaw = pset.tMaxValidByAlignBasisConditionRaw(idx, :, :);
-                pset.tMinForDataMean = pset.tMinForDataMean(idx);
-                pset.tMaxForDataMean = pset.tMaxForDataMean(idx);
-                pset.dataMean = pset.dataMean(idx);
-                pset.dataSem = pset.dataSem(idx);
-
-%                 if pset.hasDataRandomized
-%                     pset.dataMeanRandomized = pset.dataMeanRandomized(idx);
-%                     pset.dataSemRandomized = pset.dataSemRandomized(idx);
-%                     pset.dataIntervalLow = pset.dataIntervalLow(idx);
-%                     pset.dataIntervalHigh = pset.dataIntervalHigh(idx);
-%
-%                     if ~isempty(pset.dataDifferenceOfTrialsScaledNoiseEstimate)
-%                         dsplit = TensorUtils.splitAlongDimension(pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized, 2, pset.nTimeDataMean);
-%                         dsplit = dsplit(idx);
-%                         pset.dataDifferenceOfTrialsScaledNoiseEstimateRandomized = cat(2, dsplit{:});
-%                     end
-%                 end
-            end
+            % apply slicing operation along N dim on all properties
+            % note that this will take care of translationNormalization automatically through customDim handling
+            pset = pset.transformInternalProperties_selectAlongDimension('A', mask);
+            
+            % now alignDescriptor should have been masked
+%             if ~pset.dataMeanManual
+            pset = pset.invalidateDerivedProperties({'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw'});
+%             end
         end
     end
 
     % manual time reslicing: converts to manual data source pset and
     % selects along time axis
     methods
-        function psetManual = getAsManual(pset)
-            if pset.dataSourceManual
+        function psetManual = getAsManualDataByTrial(pset, varargin)
+            if pset.dataByTrialManual
                 psetManual = pset;
             else
-                psetManual = PopulationTrajectorySetBuilder.convertToManualWithSingleTrialData(pset);
+                psetManual = PopulationTrajectorySetBuilder.convertToManualDataByTrial(pset, vararin{:});
             end
         end
-
-        function psetManual = getAsManualTrialAveraged(pset, varargin)
-            p = inputParser();
-            p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
-            p.parse(varargin{:});
-
-            if pset.dataSourceManual
+        
+        function psetManual = getAsManualDataInfo(pset)
+            if pset.dataInfoManual
                 psetManual = pset;
             else
-                psetManual = PopulationTrajectorySetBuilder.convertToManualWithTrialAveragedData(pset, p.Results);
+                psetManual = PopulationTrajectorySetBuilder.convertToManualDataInfo(pset, varargin{:});
+            end
+        end
+        
+        function psetManual = getAsManualDataMean(pset, varargin)
+            if pset.dataMeanManual
+                psetManual = pset;
+            else
+                psetManual = PopulationTrajectorySetBuilder.convertToManualDataMean(pset, vararin{:});
             end
         end
 
@@ -3068,30 +3221,30 @@ classdef PopulationTrajectorySet
             prog.finish();
         end
 
-        function pset = setInterAlignGap(pset, gaps)
-            % set .interAlignGaps, which represent the time gaps between
-            % successive alignments, mainly when plotting
-            pset.warnIfNoArgOut(nargout);
-
-            if pset.nAlign < 2
-                error('Inter alignment gap not valid when only one align present');
-            end
-            if isscalar(gaps)
-                gaps = repmat(gaps, pset.nAlign - 1, 1);
-            else
-                assert(numel(gaps) == pset.nAlign - 1, 'Gaps must be scalar or be length nAlign-1');
-            end
-
-            pset.interAlignGaps = gaps;
-
-            % this is for convenience / avoiding confusion
-            prog = ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
-            for iSrc = 1:pset.nDataSources
-                pset.dataSources{iSrc} = pset.dataSources{iSrc}.setInterAlignGap(gaps);
-                prog.update(iSrc);
-            end
-            prog.finish();
-        end
+        % function pset = setInterAlignGap(pset, gaps)
+        %     % set .interAlignGaps, which represent the time gaps between
+        %     % successive alignments, mainly when plotting
+        %     pset.warnIfNoArgOut(nargout);
+        %
+        %     if pset.nAlign < 2
+        %         error('Inter alignment gap not valid when only one align present');
+        %     end
+        %     if isscalar(gaps)
+        %         gaps = repmat(gaps, pset.nAlign - 1, 1);
+        %     else
+        %         assert(numel(gaps) == pset.nAlign - 1, 'Gaps must be scalar or be length nAlign-1');
+        %     end
+        %
+        %     pset.interAlignGaps = gaps;
+        %
+        %     % this is for convenience / avoiding confusion
+        %     prog = ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
+        %     for iSrc = 1:pset.nDataSources
+        %         pset.dataSources{iSrc} = pset.dataSources{iSrc}.setInterAlignGap(gaps);
+        %         prog.update(iSrc);
+        %     end
+        %     prog.finish();
+        % end
 
         function pset = setStartAppearanceForAlign(pset, alignInd, varargin)
             % update this AppearanceSpec in alignDescriptorSet{ind}
@@ -3776,7 +3929,7 @@ classdef PopulationTrajectorySet
 %             pset.odc = pset.odc.copy();
 %             pset.odc.flushRandomizedTrialAveragedData();
 %         end
-% 
+%
 %         function pset = clearCachedSampledTrialsTensor(pset)
 %             pset.warnIfNoArgOut(nargout);
 %             pset.dataCachedSampledTrials = [];
@@ -3785,80 +3938,39 @@ classdef PopulationTrajectorySet
 %         end
     end
 
-    methods % Filtering bases
-        function pset = filterBases(pset, mask)
-            error('Not yet implemented');
+    methods % Selecting bases
+        function pset = selectBases(pset, mask)
             % keep only bases listed in or selected by mask
-            % only filter fields in odc if they are non-empty, implying that have already
-            % been computed
-            %
-            % some of the logic below is tricky because we have properties
-            % that can be computed on demand, which need to be masked only
-            % if they are already computed. These same properties have a
-            % propertyManual equivalent that is active when
-            % .dataSourceManual is true, which should be masked directly in
-            % that case.
             pset.warnIfNoArgOut(nargout);
 
-            idx = TensorUtils.vectorIndicesToMask(mask, pset.nBases);
+            mask = TensorUtils.vectorIndicesToMask(mask, pset.nBases);
 
-            function data = doFilterBases(data, prop, propMeta, varargin) %#ok<INUSL>
-                data = propMeta.filterDimByName(data, 'N', idx);
-            end
-
-            pset = pset.transformInternalProperties(@doFilterBases);
+            % apply slicing operation along N dim on all properties
+            % note that this will take care of translationNormalization automatically through customDim handling
+            pset = pset.transformInternalProperties_selectAlongDimension('N', mask);
 
             % basisDataSourceIdx has been filtered by mask already
             % but this leaves some elements of dataSources unused
-            % so we want to select the elements of dataSources that are used in basisDataSourceIdx, 
+            % so we want to select the elements of dataSources that are used in basisDataSourceIdx,
             % and then update the lookup indices in basisDataSurceIdx to match.
-            [pset.basisDataSourceIdx, pset.dataSources] = PopulationTrajectorySet.filterUsedUpdateLookup(pset.basisDataSourceIdx, pset.dataSources);
-            
-            % filter alignSummaryData
-            if pset.dataSourceManual || ~isempty(pset.odc.alignSummaryData)
-                cachedMaskedBasisAlignSummaryLookup = pset.basisAlignSummaryLookup(mask);
-                alignSummaryKeep = false(size(pset.alignSummaryData{1}, 1), 1);
-                alignSummaryKeep(cachedMaskedBasisAlignSummaryLookup) = true;
+            [pset.basisDataSourceIdx, pset.dataSources, selectedDataSources] = PopulationTrajectorySet.filterUsedUpdateLookup(pset.basisDataSourceIdx, pset.dataSources);
+            pset = pset.transformInternalProperties_selectAlongDimension('nDataSources', selectedDataSources);
 
-                % updating the lookup table is tricky, since the lookup
-                % indices change
-                newIdxForOldSummary = cumsum(alignSummaryKeep) .* alignSummaryKeep;
-                newSummaryIdx = newIdxForOldSummary(cachedMaskedBasisAlignSummaryLookup);
-                pset.basisAlignSummaryLookup = makecol(newSummaryIdx);
+            % same squashing required with alignSummaryData and basisAlignSummaryLookup
+            [pset.basisAlignSummaryLookup, pset.alignSummaryData, selectedAlignSummaryData] = PopulationTrajectorySet.filterUsedUpdateLookup(pset.basisAlignSummaryLookup, pset.alignSummaryData);
+            pset = pset.transformInternalProperties_selectAlongDimension('nAlignSummaryData', selectedAlignSummaryData);
 
-                pset.alignSummaryData = pset.alignSummaryData(alignSummaryKeep, :);
-                pset.alignSummaryAggregated = [];
+            if ~pset.dataMeanManual
+                % when data mean is computed from dataByTrial, we should recompute it and all of the time vectors,
+                % to allow for the possibility that the time vectors will expand. If not, we leave it as is.
+                pset = pset.invalidateDerivedProperties({'dataByTrialRaw'});
             end
-
-            % filter dataSources
-            if ~isempty(pset.dataSources)
-                dataSourcesKeep = false(numel(pset.dataSources), 1);
-                dataSourcesKeep(pset.basisDataSourceIdx(mask)) = true;
-
-                % updating the lookup table is tricky, since the lookup
-                % indices change
-                newIdxForOldSrc = cumsum(dataSourcesKeep) .* dataSourcesKeep;
-                newSourceIdx = newIdxForOldSrc(pset.basisDataSourceIdx);
-                pset.basisDataSourceIdx = makecol(newSourceIdx(mask));
-
-                pset.basisDataSourceChannelNames = pset.basisDataSourceChannelNames(mask);
-
-                pset.dataSources = pset.dataSources(dataSourcesKeep);
-            end
-
-            % filter translationNormalization
-            if ~isempty(pset.translationNormalization)
-                pset.translationNormalization = pset.translationNormalization.filterBases(mask);
-            end
-
-            % force time windows to become updated
-            pset = pset.updateValid();
         end
 
-        function [pset, mask] = filterBasesMissingTrialAverageForNonEmptyConditionAligns(pset)
+        function [pset, mask] = selectBasesMissingTrialAverageForNonEmptyConditionAligns(pset)
             pset.warnIfNoArgOut(nargout);
             mask = ~pset.basesMissingTrialAverageForNonEmptyConditionAligns;
-            pset = pset.filterBases(mask);
+            pset = pset.selectBases(mask);
         end
     end
 
@@ -3877,7 +3989,7 @@ classdef PopulationTrajectorySet
 
             [cd, maskC] = pset.conditionDescriptor.selectConditionsAlongAxis(axisAttr, mask);
 
-            if ~pset.dataSourceManual
+            if ~pset.dataInfoManual
                 % just update the condition descriptor and the data will be
                 % re-trialaveraged accordingly
                 pset = pset.setConditionDescriptor(cd);
@@ -3899,7 +4011,6 @@ classdef PopulationTrajectorySet
                 pset = PopulationTrajectorySetCrossConditionUtilities.applyLinearCombinationAlongConditionAxis(pset, aIdx, wNewByOld);
                 pset = pset.setConditionDescriptor(cd);
             end
-
         end
 
         function [pset, maskC] = matchSelectConditionsAlongAxis(pset, varargin)
@@ -3924,7 +4035,7 @@ classdef PopulationTrajectorySet
         function pset = updateValid(pset)
             pset.warnIfNoArgOut(nargout);
 
-            if pset.dataSourceManual
+            if pset.dataInfoManual
                 mask = ~pset.basisValid;
                 clearFn = @(in, dim) TensorUtils.assignValueMaskedSelectionAlongDimension(in, dim, mask, NaN);
 
@@ -4070,7 +4181,7 @@ classdef PopulationTrajectorySet
 
         function pset = restoreBasesTemporarilyInvalid(pset)
             pset.warnIfNoArgOut(nargout);
-            if pset.dataSourceManual
+            if pset.dataInfoManual
                 error('Data source has manually-provided data. Bases can only be marked invalid; basisValid cannot be reset');
             end
             pset.basisValidTemporary = truevec(pset.nBases);
@@ -4241,7 +4352,7 @@ classdef PopulationTrajectorySet
         end
 
         function n = get.nBases(pset)
-            if pset.dataSourceManual
+            if pset.dataInfoManual
                 n = size(pset.dataMean{1}, 1);
             else
                 n = numel(pset.basisDataSourceIdx);
@@ -4680,14 +4791,14 @@ classdef PopulationTrajectorySet
             end
 
             % determine the inter alignment gaps
-            if isempty(pset.interAlignGaps)
+            % if isempty(pset.interAlignGaps)
                 % no inter align gap specified, determine automatically as
                 % 2% of total span
                 T = sum(maxs - mins);
                 gaps = repmat(0.02 * T, nAlign-1, 1);
-            else
-                gaps = pset.interAlignGaps;
-            end
+            % else
+            %     gaps = pset.interAlignGaps;
+            % end
 
             for iAlign = 2:nAlign
                 currentOffset = currentOffset + maxs(iAlign-1) + ...
@@ -4792,12 +4903,12 @@ classdef PopulationTrajectorySet
             timeWidthByAlign = pset.nTimeDataMean(alignIdx)*pset.timeDelta;
             nAlignUsed = numel(alignIdx);
 
-            if isempty(pset.interAlignGaps)
+            % if isempty(pset.interAlignGaps)
                 % compute absolute x-gap between alignments
                 alignGaps = repmat(alignGapFraction*sum(timeWidthByAlign) / (1 - alignGapFraction*nAlignUsed), nAlignUsed-1, 1);
-            else
-                alignGaps = pset.interAlignGaps;
-            end
+            % else
+            %     alignGaps = pset.interAlignGaps;
+            % end
 
             % keep track of start and stop of each align in time
             tAlignZero = nanvec(nAlignUsed);
@@ -5135,7 +5246,7 @@ classdef PopulationTrajectorySet
             p.addParameter('alpha', 1, @isscalar);
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.addParameter('lineWidth', 1, @isscalar);
-            
+
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markOutline', true, @islogical);
             p.addParameter('markOutlineAlpha', 1, @isscalar);
@@ -5204,7 +5315,7 @@ classdef PopulationTrajectorySet
                     app = pset.conditionDescriptor.appearances(c);
 %                     plotArgsC = appear.getPlotArgs();
                     plotArgsC = {};
-                    
+
                     dataMat = squeeze(data(basisIdx, c, :));
 
                     if p.Results.plotTubes
