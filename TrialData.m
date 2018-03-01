@@ -568,18 +568,155 @@ classdef TrialData
     
     % Faster saving
     methods
-        function saveFast(td, location)
-            data = td.data;
-            td.data = 'saved separately';
-            td.odc = []; %#ok<MCHV2>
+        function list = expandChannelListGroups(td, list, keepGroupNamesInList)
+            if ischar(list)
+                list = {list};
+            end
+            if nargin < 3
+                keepGroupNamesInList = true;
+            end
+
+            mask = false(numel(list), 1);
+            for iF = 1:numel(list)
+                cd = td.channelDescriptorsByName.(list{iF});
+                if isa(cd, 'AnalogChannelGroupDescriptor')
+                    mask(iF) = true;
+                end
+            end
             
+            groups = unique(list(mask));
+            subCh = cellfun(@(grp) td.listAnalogChannelsInGroup(grp), groups, 'UniformOutput', false);
+            if ~keepGroupNamesInList
+                list = list(~mask);
+            end
+            list = union(list, cat(1, subCh{:}));
+        end
+        
+        function list = listFieldsReferencedExclusivelyByChannels(td, channels, ignoreSubChannels)
+            % this function will not resolve issues arising from channel groups
+            % if an analog channel group is included but not one of its sub channels
+            % then the data fields of that group will be included if ignoreSubChannels == true,
+            % and not included if false
+            if nargin < 3
+                ignoreSubChannels = false;
+            end
+            
+            cdsAll = td.channelDescriptorsByName;
+            
+            if ignoreSubChannels
+                channels = td.expandChannelListGroups(channels);
+            end
+            
+            cdsInside = rmfield(cdsAll, setdiff(fieldnames(cdsAll), channels));
+            cdsOutside = rmfield(cdsAll, intersect(fieldnames(cdsAll), channels));
+            
+            fieldsInside = cellfun(@(fld) makecol(cdsInside.(fld).dataFields), fieldnames(cdsInside), 'UniformOutput', false);
+            fieldsOutside = cellfun(@(fld) makecol(cdsOutside.(fld).dataFields), fieldnames(cdsOutside), 'UniformOutput', false);
+            
+            fieldsInside = cat(1, fieldsInside{:});
+            fieldsOutside = cat(1, fieldsOutside{:});
+            
+            list = setdiff(fieldsInside, fieldsOutside);
+        end
+        
+        function saveFast(td, location, varargin)
+            % saveFast(td, location, ['partitions', partitionStruct])
+            %
+            % a partition defines a set of channels / channel groups that will be saved separately from the main trial data .mat files
+            % and can be independently loaded in when loadFast is called, when the partition name is passed to loadFast
+            %
+            % if partitionWaveforms is set true, this will create a partition named waveforms that will save the spike waveforms into a
+            % separate partition from the spike data
+            
+            p = inputParser();
+            p.addParameter('partitions', struct(), @isstruct);
+            p.addParameter('partitionWaveforms', false, @islogical);
+            p.parse(varargin{:});
+            
+            channelDescriptorsByName = td.channelDescriptorsByName;
+            data = td.data;
+            
+            keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
+            
+            partitionMeta = struct();
+            partitionFields = struct();
+            
+            % to support partitions, we need to define the fields of .data that are used within a partition,
+            % that aren't needed by other channels, and strip these fields and channels off
+            partitions = p.Results.partitions;
+            partitionNames = fieldnames(partitions);
+            
+            % spike waveforms get handled separately. other partitions live at the channel boundary, but spike waveforms are 
+            % part of a spike channel
+            if p.Results.partitionWaveforms
+                assert(~ismember('waveforms', partitionNames), 'Parttition named waveforms reserved for partitionWaveforms');
+                
+                spikeCh = td.listSpikeChannels();
+                if ~isempty(spikeCh)
+                    wavefields = cellvec(numel(spikeCh));
+                    cdWithWaveforms = struct();
+                    hasWaveforms = falsevec(numel(spikeCh));
+                    for iU = 1:numel(spikeCh)
+                        ch = spikeCh{iU};
+                        hasWaveforms(iU) = channelDescriptorsByName.(ch).hasWaveforms;
+                        
+                        if hasWaveforms(iU)
+                            wavefields{iU} = channelDescriptorsByName.(ch).waveformsField;
+                            % hold onto the original channel descriptor to store in the partition meta
+                            cdWithWaveforms.(ch) = td.channelDescriptorsByName.(ch);
+                            % and strip the waveforms from the descriptor saved with the core trial data
+                            % so that it will be overwritten if the waveforms partition is loaded
+                            channelDescriptorsByName.(ch) = channelDescriptorsByName.(ch).removeWaveformsField();
+                        end
+                    end
+                    
+                    if any(hasWaveforms)
+                        partitionMeta.waveforms.channelDescriptorsByName = cdWithWaveforms;
+                        partitionFields.waveforms = wavefields(hasWaveforms);
+                    end
+                end
+            end
+           
+            % figure out field subset and channel descriptors for each user-specified partition
+            for p = 1:numel(partitionNames)
+                pname = partitionNames{p};
+
+                chThisPartition = partitions.(pname);
+                
+                % check that fields aren't analog channel groups
+                for iC = 1:numel(chThisPartition)
+                    cd = td.channelDescriptorsByName.(chThisPartition{iC});
+                    if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ~ismember(cd.groupName, chThisPartition)
+                        error('%s is an analog channel in group %s but group %s is not included in the partition', cd.name, cd.groupName, cd.groupName);
+                    end
+                end
+                
+                % include the group sub channel names
+                chThisPartition = td.expandChannelListGroups(chThisPartition, true);
+                fieldsThisPartition = td.listFieldsReferencedExclusivelyByChannels(chThisPartition);
+                
+                % store the channel descriptors in partition meta
+                partitionMeta.(pname) = struct('channelDescriptorsByName', keepfields(channelDescriptorsByName, chThisPartition));
+                partitionFields.(pname) = fieldsThisPartition;
+                
+                % strip these fields off channelDescriptorsByName, leave them in data though since saveArray will do this
+                channelDescriptorsByName = rmfield(channelDescriptorsByName, chThisPartition);
+            end
+            
+            td.data = 'saved separately, load with loadFast';
+            td.channelDescriptorsByName = channelDescriptorsByName;
+            td.odc = []; %#ok<MCHV2>
+                
             mkdirRecursive(location);
-            savefast(fullfile(location, 'td.mat'), 'td');
+            TrialDataUtilities.Save.savefast(fullfile(location, 'td.mat'), 'td');
             
             % save elements of data
             msg = sprintf('Saving TrialData to %s', location);
-            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg);
+            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg, ...
+                'partitionFieldLists', partitionFields, 'partitionMeta', partitionMeta);
         end
+        
+        
     end
     
     methods(Static)
@@ -594,7 +731,11 @@ classdef TrialData
             end
         end
         
-        function td = loadFast(location)
+        function td = loadFast(location, varargin)
+            p = inputParser();
+            p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x));
+            p.addParameter('loadAllPartitions', false, @islogical);
+            p.parse(varargin{:});
             % strip extension
             %             [path, name, ext] = fileparts(location);
             %             location = fullfile(path, name);
@@ -617,11 +758,25 @@ classdef TrialData
 
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
-                td.data = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg);
+                [td.data, partitionMeta] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg, ...
+                    'partitions', p.Results.partitions, 'loadAllPartitions', p.Results.loadAllPartitions);
 
+                % add channel descriptors in partitionMeta, overwriting existing channels if overlapping (used for partitionWaveforms)
+                partitions = fieldnames(partitionMeta);
+                for iF = 1:numel(partitions)
+                    td.channelDescriptorsByName = structMerge(td.channelDescriptorsByName, partitionMeta.(partitions{iF}).channelDescriptorsByName);
+                end
+                
                 td = td.rebuildOnDemandCache();
             else
                 error('Directory %s not found. Did you save with saveFast?', location);
+            end
+            
+            function s = structMerge(s, s2)
+                flds = fieldnames(s2);
+                for f = 1:numel(flds)
+                    s.(flds{f}) = s2.(flds{f});
+                end
             end
         end
         
@@ -649,6 +804,10 @@ classdef TrialData
             else
                 error('Location %s not found', location);
             end
+        end
+        
+        function list = loadFastListPartitions(location)
+            list = TrialDataUtilities.Data.SaveArrayIndividualized.listPartitions(location);
         end
         
         function tf = loadFastIsValidLocation(location)

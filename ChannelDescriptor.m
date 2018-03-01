@@ -503,6 +503,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     % of the same name to give subclasses an opportunity to redefine their
     % implementation
     methods
+        function grp = get.groupName(cd)
+            grp = cd.getGroupName(cd.groupName);
+        end
+        
+        % allows for sub classes to overwrite
+        function groupName = getGroupName(cd, groupName)
+            
+        end
         function n = get.nFields(cd)
             n = numel(cd.dataFields);
         end
