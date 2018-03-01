@@ -37,6 +37,14 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
         end  
         
+        function grp = getGroupName(cd, ~)
+            if cd.isColumnOfSharedMatrix
+                grp = cd.primaryDataField;
+            else
+                grp = '';
+            end
+        end
+        
         function cd = set.primaryDataField(cd, f)
             assert(cd.isColumnOfSharedMatrix, 'Primary data field cannot be set unless isColumnOfSharedMatrix is set to true.');
             assert(ischar(f) && isvector(f), 'Field name must be string');
