@@ -715,8 +715,6 @@ classdef TrialData
             TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg, ...
                 'partitionFieldLists', partitionFields, 'partitionMeta', partitionMeta);
         end
-        
-        
     end
     
     methods(Static)
@@ -820,6 +818,10 @@ classdef TrialData
                      exist(fullfile(location, 'td.mat'), 'file') && ...
                      TrialDataUtilities.Data.SaveArrayIndividualized.isValidLocation(location);
             end
+        end
+        
+        function saveFastLinkPartitionFromOtherLocation(locationNameRef, locationNameDest, varargin)
+            TrialDataUtilities.Data.SaveArrayIndividualized.linkPartitionFromOtherLocation(locationNameRef, locationNameDest, varargin{:});
         end
     end
        
