@@ -2,7 +2,6 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
     properties(Dependent) 
         % these are encoded in the channel name
         array
-        electrode
         type
     end
     
@@ -43,15 +42,11 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
         end
       
         function type = get.type(cd)
-            type = ContinuousNeuralChannelGroupDescriptor.parseTypeArrayElectrode(cd.name);
+            type = ContinuousNeuralChannelGroupDescriptor.parseTypeArray(cd.name);
         end
         
         function array = get.array(cd)
-           [~, array] = ContinuousNeuralChannelGroupDescriptor.parseTypeArrayElectrode(cd.name);
-        end
-        
-        function elec = get.electrode(cd)
-            [~, ~, elec] = ContinuousNeuralChannelGroupDescriptor.parseTypeArrayElectrode(cd.name);
+           [~, array] = ContinuousNeuralChannelGroupDescriptor.parseTypeArray(cd.name);
         end
        
         function cdIndividual = buildIndividualSubChannel(cd, name, index)

@@ -5744,8 +5744,20 @@ classdef TrialData
             % that field too to newName
             td.warnIfNoArgOut(nargout);
             
+            cd = td.channelDescriptorsByName.(oldName);
+            
+            if isa(cd, 'AnalogChannelGroupDescriptor')
+                % rename component channels of group first, since
+                % renameDataField will check for shared use of this channel
+                % group 
+                ch = td.listAnalogChannelsInGroup(oldName);
+                for c = 1:numel(ch)
+                    td.channelDescriptorsByName.(ch{c}) = td.channelDescriptorsByName.(ch{c}).renameGroup(newName);
+                end
+            end
+            
             % update channel descriptor directly
-            [cd, dataFieldRenameMap] = td.channelDescriptorsByName.(oldName).rename(newName);
+            [cd, dataFieldRenameMap] = cd.rename(newName);
             td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, oldName);
             td.channelDescriptorsByName.(newName) = cd;
             
