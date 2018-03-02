@@ -6324,6 +6324,8 @@ classdef TrialData
     % save / load wrappers for CacheCustomSaveLoad
     properties
         cacheWithSaveFast = false;
+        saveFastPartitionInfo = struct();
+        saveFastPartitionWaveforms = false;
     end
     
     methods
@@ -6332,14 +6334,15 @@ classdef TrialData
         end
         
         function token = saveCustomToLocation(td, location)
-            td.saveFast(location);
+            td.saveFast(location, 'partitions', td.saveFastPartitionInfo, ...
+                'partitionWaveforms', td.saveFastPartitionWaveforms);
             token = [];
         end
     end
     
     methods(Static)
-        function data = loadCustomFromLocation(location, token) %#ok<INUSD>
-            data = TrialData.loadFast(location);
+        function data = loadCustomFromLocation(location, token, varargin)  %#ok<INUSL>
+            data = TrialData.loadFast(location, varargin{:});
         end
     end
 end
