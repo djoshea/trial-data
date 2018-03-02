@@ -347,6 +347,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     case {cd.SCALAR, cd.VECTOR, cd.NUMERIC, cd.DATENUM}
                         if ismember(memClass{iF}, {'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'single'})
                             c{iF} = 'single';
+                        elseif ismember(memClass{iF}, {'logical'})
+                            c{iF} = 'logical';
                         else
                             c{iF} = 'double';
                         end

@@ -2901,10 +2901,10 @@ classdef TrialData
                 end
                 chList = chList(mask);
                 idx = idx(mask);
-
+                
                 channelsByGroup = cellvec(numel(groupNames));
                 for iG = 1:numel(groupNames)
-                    channelsByGroup{iG} = chList(idx==iG);
+                    channelsByGroup{iG} = td.listAnalogChannelsInGroup(groupNames{iG});
                 end
             end
         end
