@@ -633,7 +633,6 @@ classdef TrialData
             p.addParameter('partitionWaveforms', false, @islogical);
             p.parse(varargin{:});
             
-            channelDescriptorsByName = td.channelDescriptorsByName;
             data = td.data;
             
             keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
@@ -658,15 +657,15 @@ classdef TrialData
                     hasWaveforms = falsevec(numel(spikeCh));
                     for iU = 1:numel(spikeCh)
                         ch = spikeCh{iU};
-                        hasWaveforms(iU) = channelDescriptorsByName.(ch).hasWaveforms;
+                        hasWaveforms(iU) = td.channelDescriptorsByName.(ch).hasWaveforms;
                         
                         if hasWaveforms(iU)
-                            wavefields{iU} = channelDescriptorsByName.(ch).waveformsField;
+                            wavefields{iU} = td.channelDescriptorsByName.(ch).waveformsField;
                             % hold onto the original channel descriptor to store in the partition meta
                             cdWithWaveforms.(ch) = td.channelDescriptorsByName.(ch);
                             % and strip the waveforms from the descriptor saved with the core trial data
                             % so that it will be overwritten if the waveforms partition is loaded
-                            channelDescriptorsByName.(ch) = channelDescriptorsByName.(ch).removeWaveformsField();
+                            td.channelDescriptorsByName.(ch) = td.channelDescriptorsByName.(ch).removeWaveformsField();
                         end
                     end
                     
@@ -676,6 +675,8 @@ classdef TrialData
                     end
                 end
             end
+            
+            channelDescriptorsByName = td.channelDescriptorsByName;
            
             % figure out field subset and channel descriptors for each user-specified partition
             for p = 1:numel(partitionNames)
@@ -685,7 +686,7 @@ classdef TrialData
                 
                 % check that fields aren't analog channel groups
                 for iC = 1:numel(chThisPartition)
-                    cd = td.channelDescriptorsByName.(chThisPartition{iC});
+                    cd = channelDescriptorsByName.(chThisPartition{iC});
                     if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ~ismember(cd.groupName, chThisPartition)
                         error('%s is an analog channel in group %s but group %s is not included in the partition', cd.name, cd.groupName, cd.groupName);
                     end
@@ -700,6 +701,10 @@ classdef TrialData
                 partitionFields.(pname) = fieldsThisPartition;
                 
                 % strip these fields off channelDescriptorsByName, leave them in data though since saveArray will do this
+                % we don't want to strip these off of td here, because then
+                % fields that overlap between two partitions will be
+                % stripped off by the second partition, rather than left in
+                % the core td object, which is what we want.
                 channelDescriptorsByName = rmfield(channelDescriptorsByName, chThisPartition);
             end
             
