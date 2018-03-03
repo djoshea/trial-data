@@ -81,7 +81,12 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
         % use these counts to split the giant data matrix into a cell
         debug('Splitting analog data into segments (may take some time)\n');
         timeCell{insx} = mat2cell(makerow(nsxData(insx).time), 1, colsCount);
-        dataCell{insx} = mat2cell(nsxData(insx).data, size(nsxData(insx).data, 1), colsCount);
+        if ~iscell(nsxData(insx).data)
+            % no pauses
+            dataCell{insx} = mat2cell(nsxData(insx).data, size(nsxData(insx).data, 1), colsCount);
+        else
+            dataCell{insx} = mat2cell(cat(2, nsxData(insx).data{:}), size(nsxData(insx).data{1}, 1), colsCount);
+        end
         indexIntoCellForEachQ = 2:2:length(colsCount);
     end
 

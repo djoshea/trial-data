@@ -133,10 +133,12 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
                 nsxIndex = nsxIndex(1);
                 
                 scale = nsxData(nsxIndex).scaleLims{1};
-                for j = 2:numel(ids)
-                    assert(isequal(scale, nsxData(nsxIndex).scaleLims{j}), 'Scale limits for channel %s.%s (id == %d) does not match first channel in group', groupName, names{j}, ids(j));
+                if numel(nsxData(nsxIndex).scaleLims) > 1
+                    for j = 2:numel(ids)
+                        assert(isequal(scale, nsxData(nsxIndex).scaleLims{j}), 'Scale limits for channel %s.%s (id == %d) does not match first channel in group', groupName, names{j}, ids(j));
+                    end
                 end
-
+                
                 lookup.groupName = groupName;
                 lookup.names = names;
                 lookup.nsxIndex = nsxIndex;
@@ -256,9 +258,13 @@ end
 function units = getCheckUnits(groupName, nsxData, nsxIndex, idxWithinNsx)
     trim = @(s) strtok(s, char(0));
 
-    units = arrayfun(@(ind) trim(nsxData(nsxIndex).chUnits{ind}), idxWithinNsx, 'UniformOutput', false);
-    if numel(unique(units)) > 1
-        warning('Channels in group %s use different units: %s', groupName, strjoin(unique(units)));
+    if numel(nsxData(nsxIndex).chUnits) == 1
+        units = trim(nsxData(nsxIndex).chUnits{1});
+    else
+        units = arrayfun(@(ind) trim(nsxData(nsxIndex).chUnits{ind}), idxWithinNsx, 'UniformOutput', false);
+        if numel(unique(units)) > 1
+            warning('Channels in group %s use different units: %s', groupName, strjoin(unique(units)));
+        end
+        units = units{1};  
     end
-    units = units{1};           
 end
