@@ -266,8 +266,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             fld = ['unit', strrep(unitStr, '.', '_')];
         end
         
-        function cd = buildFromArrayElectrodeUnit(array, electrode, unit)
-            name = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(array, electrode, unit);
+        function cd = buildFromArrayElectrodeUnit(array, electrode, unit, varargin)
+            name = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(array, electrode, unit, varargin{:});
             cd = SpikeChannelDescriptor.buildFromUnitName(name);
         end
         
@@ -284,8 +284,13 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function name = generateNameFromArrayElectrodeUnit(array, electrode, unit)
-            name = sprintf('%s%02d_%d', array, electrode, unit);
+        function name = generateNameFromArrayElectrodeUnit(array, electrode, unit, maxElectrode)
+            if nargin < 4
+                maxElectrode = 99;
+            end
+            nZeros = floor(log10(maxElectrode)) + 1;
+                
+            name = sprintf('%s%0*d_%d', array, nZeros, electrode, unit);
         end
     end
     
