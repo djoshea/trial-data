@@ -647,6 +647,12 @@ classdef AlignInfo < AlignDescriptor
                 t.startPad = nanmax(t.startPad, times);
                 t.start = t.startPad + padPre;
             end
+            
+            % mark trials invalid if start > stop
+            maskInvalid = valid & t.start > t.stop;
+            valid(maskInvalid) = false;
+            [t.invalidCause{maskInvalid}] = deal(sprintf('Start event after stop event after truncation'));
+            
 
             % mark trials as invalid if startPad:stopPad includes any invalidateEvents
             for i = 1:length(ad.invalidateEvents)
@@ -1023,7 +1029,7 @@ classdef AlignInfo < AlignDescriptor
                 if valid(i)
                     for j = 1:J
                         raw = rawTimesCell{i, j};
-                        if (stop(i) - start(i)) < eps
+                        if (stop(i) - start(i)) < eps && (stop(i) - start(i)) > -eps % second clause is just in case somehow stop ends up pre-start
                             % only one timepoint requested, get the closest
                             % point if it's nearby  
                             % provided that the sampling time is within the
@@ -1053,11 +1059,8 @@ classdef AlignInfo < AlignDescriptor
                     % here we select nothing along first dim to ensure that
                     % the result is cat' able
                     for j = 1:J
-                        if ~isempty(rawTimesCell{i, j})
-                            mask = nan(0, 1);
-                            alignedTimes{i, j} = rawTimesCell{i, j}(mask, 1);
-                            rawTimesMask{i, j} = rawTimesCell{i, j}(mask, 1);
-                        end
+                        alignedTimes{i, j} = zeros(0, 1, 'like', rawTimesCell{i, j});
+                        rawTimesMask{i, j} = false(size(rawTimesCell{i, j}, 1), 1);
                     end
                 end
             end

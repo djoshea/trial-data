@@ -536,10 +536,29 @@ classdef AlignDescriptor
             ad.zeroEvent = 'TimeZero';
 
             % either use named property value pairs or string syntax
-            if nargin == 1 && ischar(varargin{1});
+            if nargin == 1 && ischar(varargin{1})
                 ad = ad.parseDescriptionString(varargin{1});
-            else
-                ad = structargs(ad, varargin);
+            elseif nargin == 1 && isa(varargin{1}, 'AlignDescriptor')
+                ad = ad.copyFromAlignDescriptor(varargin{1});
+            elseif nargin > 0
+                error('this method of constructing alignDescriptor not supported')
+%                 ad = structargs(ad, varargin);
+            end
+        end
+        
+        function ad = copyFromAlignDescriptor(ad, adOther)
+            % this is used by subclasses, so can't copy to output
+            meta = ?AlignDescriptor;
+            props = meta.PropertyList;
+            
+            for iProp = 1:length(props)
+                prop = props(iProp);
+                if prop.Dependent || prop.Constant || prop.Transient
+                    continue;
+                else
+                    name = prop.Name; %#ok<*PROPLC>
+                    ad.(name) = adOther.(name);
+                end
             end
         end
 
@@ -1584,7 +1603,7 @@ classdef AlignDescriptor
             tcprintf('inline', '  {bright blue}Stop {purple}%s {darkGray}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
             tcprintf('inline', '  {bright blue}Zero {purple}%s {darkGray}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
 
-            for i = 1:length(ad.markEvents);
+            for i = 1:length(ad.markEvents)
                 tcprintf('inline', '  {bright blue}Mark {purple}%s {darkGray}as {white}%s\n', ...
                     ad.markUnabbreviatedLabels{i}, ad.markLabels{i}); 
             end
@@ -1594,13 +1613,13 @@ classdef AlignDescriptor
                     ad.intervalLabels{i}); 
                 % TODO add condition match description
             end
-            for i = 1:length(ad.truncateBeforeEvents);
+            for i = 1:length(ad.truncateBeforeEvents)
                 tcprintf('inline', '  {bright blue}Truncate before {purple}%s\n', ad.truncateBeforeUnabbreviatedLabels{i});
             end
-            for i = 1:length(ad.truncateAfterEvents);
+            for i = 1:length(ad.truncateAfterEvents)
                 tcprintf('inline', '  {bright blue}Truncate after {purple}%s\n', ad.truncateAfterUnabbreviatedLabels{i});
             end
-            for i = 1:length(ad.invalidateEvents);
+            for i = 1:length(ad.invalidateEvents)
                 tcprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});
             end     
                    
