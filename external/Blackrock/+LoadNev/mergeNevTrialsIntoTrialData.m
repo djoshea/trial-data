@@ -9,9 +9,13 @@ p.addParameter('includePhotobox', false, @islogical); % copy Q photobox to td.ph
 p.addParameter('overwriteSpikes', true, @islogical);
 p.addParameter('includeWaveforms', true, @islogical);
 p.addParameter('dropChannelsWithSameName', false, @islogical);
+p.addParameter('array', 'ch', @ischar); % prefix spike channels with this name
+
 p.parse(varargin{:});
 includeSpikes = p.Results.overwriteSpikes;
 includeWaveforms = p.Results.includeWaveforms;
+
+array = p.Results.array;
 
 % align td to Q based on computed delay periods
 qMatchInTD = LoadNev.findNevTrialsMatchInTrialData(td, Q);
@@ -63,7 +67,11 @@ for iQ = 1:numel(Q)
     end
    
     % handle nsx analog signals
-    nsxGroupsThisTrial = fieldnames(q.nsxData);
+    if isfield(q, 'nsxData')
+        nsxGroupsThisTrial = fieldnames(q.nsxData);
+    else
+        nsxGroupsThisTrial = {};
+    end
     for iG = 1:numel(nsxGroupsThisTrial)
         grp = nsxGroupsThisTrial{iG};
         if ~isfield(nsxGroupData, grp)
@@ -94,7 +102,7 @@ if includeSpikes
     units = fieldnames(spikeData);
     prog = ProgressBar(numel(units), 'Adding spike data to TrialData');
     for iU = 1:numel(units)
-        chName = strrep(units{iU}, 'unit', 'ch');
+        chName = strrep(units{iU}, 'unit', array);
         prog.update(iU, 'Adding %s to TrialData', chName);
         if includeWaveforms
             wd = waveData.(units{iU});
@@ -115,6 +123,7 @@ if includeSpikes
     prog.finish();
 end
 
+% TODO add handling for multiple arrays by renaming the signal
 nsxGroupNames = fieldnames(nsxGroupData);
 for iG = 1:numel(nsxGroupNames)
     grpName = nsxGroupNames{iG};

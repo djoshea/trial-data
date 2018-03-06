@@ -8,7 +8,7 @@ function [Q, analogLookup] = addSegmentedAnalog(Q, analogInfo, nsxData)
 
     analogLookup = LoadNev.buildAnalogLookup(analogInfo, nsxData);
 
-    if isempty(Q)
+    if isempty(nsxData) || isempty(Q)
         return;
     end
     

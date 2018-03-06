@@ -51,15 +51,19 @@ for iext = 1:length(nsxExts)
             % keep all channels
             nsxData(nsxCount).data = nsxInfo.Data;
             nsxData(nsxCount).channelIds = cat(1, nsxInfo.ElectrodesInfo.ElectrodeID);
-            channelIndLookup = 1:size(nsxData(nsxCount).data ,1);
+            if iscell(nsxInfo.Data)
+                channelIndLookup = 1:size(nsxData(nsxCount).data{1},1);
+            else
+                channelIndLookup = 1:size(nsxData(nsxCount).data, 1);
+            end
             found = true(numel(channelIndLookup), 1);
         else
             channelIdsInFile = cat(1, nsxInfo.ElectrodesInfo.ElectrodeID);
             [found, channelIndLookup] = ismember(channelIds, channelIdsInFile);
             
             if iscell(nsxInfo.Data)
-                nsxInfo.Data = cellfun(@(d) int16(d(channelIndLookup(found), :)), nsxInfo.Data, 'UniformOutput', false);
-                nsxData(nsxCount).data = cat(2, nsxInfo.Data{:});
+                nsxData(nsxCount).data = cellfun(@(d) int16(d(channelIndLookup(found), :)), nsxInfo.Data, 'UniformOutput', false);
+                % keep in pieces so we know where the breaks are
             else
                 nsxData(nsxCount).data = int16(nsxInfo.Data(channelIndLookup(found), :));
             end

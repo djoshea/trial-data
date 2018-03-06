@@ -41,9 +41,7 @@ end
 
 % load spiking data from the nev file
 debug('Loading nev file %s\n', filenameNev);
-data = openNEV(filenameNev, 'nosave', 'nomat');
-
-%[spikeData, eventData] = LoadNev.nevExtractSpikesEvents(filenameNev);
+data = openNEV(filenameNev, 'nosave'); % , 'nomat');
 
 spikeData.timestamp = double(data.Data.Spikes.TimeStamp) / 30.0;
 spikeData.electrode = data.Data.Spikes.Electrode;
