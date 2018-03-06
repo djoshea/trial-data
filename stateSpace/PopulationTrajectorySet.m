@@ -4848,6 +4848,7 @@ classdef PopulationTrajectorySet
 
             p.addParameter('showVerticalScaleBars', true, @islogical);
             p.addParameter('showBasisLabels', true, @islogical);
+            p.addParameter('basisLabelsInside', false, @islogical);
 
             % usually plot first basis at top, last basis at bottom
             p.addParameter('reverse', false, @islogical);
@@ -4863,6 +4864,8 @@ classdef PopulationTrajectorySet
 
             p.addParameter('alpha', 1, @isscalar); % alpha for main traces
             p.addParameter('showSem', false, @islogical); % show standard error traces?
+            p.addParameter('showStd', false, @islogical); % show standard error traces?
+            
             p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
 
             % show less by default than in TDCA
@@ -4881,7 +4884,8 @@ classdef PopulationTrajectorySet
 
             p.addParameter('timeAxisStyle', 'tickBridge', @ischar); % 'tickBridge' or 'marker'
 
-            % make room for labels using AutoAxis
+            % make room for labels using AutoAxis (used only if
+            % basisLabelsInside is false)
             p.addParameter('axisMarginLeft', 2.5, @isscalar);
 
             p.parse(varargin{:});
@@ -4909,6 +4913,13 @@ classdef PopulationTrajectorySet
             alignGapFraction = p.Results.alignGapFraction;
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
+            
+            showSem = p.Results.showSem;
+            showStd = p.Results.showStd;
+            if showSem && showStd
+                error('Both showSem and showStd set true');
+            end
+            showError = showSem || showStd;
 
             alignIdx = TensorUtils.vectorMaskToIndices(p.Results.alignIdx);
             timeWidthByAlign = pset.nTimeDataMean(alignIdx)*pset.timeDelta;
@@ -4939,30 +4950,39 @@ classdef PopulationTrajectorySet
                 end
                 data = data';
 
-                if p.Results.showSem
+                if showSem
                     if ~isempty(p.Results.dataRandomIndex)
                         % use a sample from dataSemRandomized instead
-                        dataSem = pset.arrangeCTAbyN('type', 'semRandom', 'validBasesOnly', true, ...
-                            'dataRandomIndex', p.Results.dataRandomIndex, ...
+                        dataError = pset.arrangeCTAbyN('type', 'semRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
                             'basisIdx', basisIdx, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
                     else
-                        dataSem = pset.arrangeCTAbyN('type', 'sem', 'validBasesOnly', true, 'basisIdx', basisIdx, ...
+                        dataError = pset.arrangeCTAbyN('type', 'sem', 'basisIdx', basisIdx, ...
                             'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
                     end
-                    dataSem = dataSem';
+                    dataError = dataError';
+                elseif showStd
+                    if ~isempty(p.Results.dataRandomIndex)
+                        % use a sample from dataSemRandomized instead
+                        dataError = pset.arrangeCTAbyN('type', 'stdRandom', 'dataRandomIndex', p.Results.dataRandomIndex, ...
+                            'basisIdx', basisIdx, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
+                    else
+                        dataError = pset.arrangeCTAbyN('type', 'std', 'basisIdx', basisIdx, ...
+                            'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx);
+                    end
+                    dataError = dataError';
                 end
             else
                 [data, indexInfo] = pset.simultaneous_arrangeCTAbyN('basisIdx', basisIdx, 'validBasesOnly', p.Results.validBasesOnly, 'conditionIdx', p.Results.conditionIdx, 'alignIdx', alignIdx, 'trialIdx', trialIdx, 'validTrialsOnly', true);
-                dataSem = zeros(size(data)); % to ease normalization calculations below only
+                dataError = zeros(size(data)); % to ease normalization calculations below only
             end
 
             if p.Results.scaleBases
                 if normalize
                     % each basis will be independently scaled to [0 1]
-                    if p.Results.showSem
+                    if showError
                         % include sem in limits
-                        offsets = nanmin(data - dataSem, [], 2);
-                        norms = nanmax(data + dataSem, [], 2) - offsets;
+                        offsets = nanmin(data - dataError, [], 2);
+                        norms = nanmax(data + dataError, [], 2) - offsets;
                     else
                         offsets = nanmin(data, [], 2); % N x 1
                         norms = nanmax(data, [], 2) - offsets;
@@ -4970,12 +4990,12 @@ classdef PopulationTrajectorySet
                 else
                     % data will collectively be scaled to [0 1], but the same
                     % transformation will apply to all bases
-                    if p.Results.showSem
+                    if showError
                         % include sem in limits
-                        offsets = nanmin(data - dataSem, [], 2); % N x 1
+                        offsets = nanmin(data - dataError, [], 2); % N x 1
 
                         %offsets = repmat(m, nBasesPlot, 1);
-                        ranges = nanmax(data + dataSem, [], 2) - nanmin(data - dataSem, [], 2);
+                        ranges = nanmax(data + dataError, [], 2) - nanmin(data - dataError, [], 2);
                         norms = repmat(nanmax(ranges), nBasesPlot, 1);
                     else
                         offsets = nanmin(data, [], 2); % N x 1
@@ -4992,6 +5012,19 @@ classdef PopulationTrajectorySet
             else
                 offsets = zerosvec(nBasesPlot);
                 norms = onesvec(nBasesPlot);
+            end
+            
+            if showError
+                if showSem
+                    
+                    if ~isempty(p.Results.dataRandomIndex)
+                        dataErrorCell = pset.dataSemRandomized;
+                    else
+                        dataErrorCell = pset.dataSem;
+                    end
+                elseif showStd
+                    dataErrorCell = pset.computeDataStd;
+                end
             end
 
             appearances = pset.conditionDescriptor.appearances;
@@ -5034,12 +5067,12 @@ classdef PopulationTrajectorySet
                 data = bsxfun(@rdivide, data, norms);
 
                 if isempty(p.Results.dataRandomIndex)
-                    dataSem = pset.dataSem{idxAlign}(basisIdx, conditionIdx, :);
+                    dataError = dataErrorCell{idxAlign}(basisIdx, conditionIdx, :);
                 else
-                    dataSem = pset.dataSemRandomized{idxAlign}(basisIdx, conditionIdx, :, p.Results.dataRandomIndex);
+                    dataError = dataErrorCell{idxAlign}(basisIdx, conditionIdx, :, p.Results.dataRandomIndex);
                 end
                 % only apply normalization
-                dataSem = bsxfun(@rdivide, dataSem, norms);
+                dataError = bsxfun(@rdivide, dataError, norms);
 
                 % uniformly scale and separate data vertically
                 data = data + yOffset;
@@ -5047,29 +5080,29 @@ classdef PopulationTrajectorySet
 
                 if reverse
                     data = flipud(data);
-                    dataSem = flipud(dataSem);
+                    dataError = flipud(dataError);
                 end
 
                 stairsXOffset = pset.spikeFilter.binAlignmentMode.getBinStartOffsetForBinWidth(pset.timeDelta); % for stairs plotting only
 
                 % draw error bars
-                if p.Results.showSem
+                if showError
                     for iCondition = 1:nConditionsPlot
                         idxCondition = conditionIdx(iCondition);
                         app = appearances(idxCondition);
                         dataC = TensorUtils.squeezeDims(data(:, iCondition, :), 2);
-                        dataSemC = TensorUtils.squeezeDims(dataSem(:, iCondition, :), 2);
+                        dataErrorC = TensorUtils.squeezeDims(dataError(:, iCondition, :), 2);
                         for iBasis = 1:nBasesPlot
                             if strcmp(p.Results.style, 'stairs')
                                 % offset the plot so as to resemble the binning
                                 % mode used
                                 [~, hShade] = TrialDataUtilities.Plotting.stairsError(...
-                                     tvecPlot + stairsXOffset, dataC(iBasis, :), dataSemC(iBasis, :), ...
+                                     tvecPlot + stairsXOffset, dataC(iBasis, :), dataErrorC(iBasis, :), ...
                                      'axh', axh, 'errorAlpha', p.Results.errorAlpha, 'color', app(idxCondition).Color, 'alpha', p.Results.alpha, ...
                                      'errorStyle', 'fill', 'errorColor', app.Color, 'lineWidth', p.Results.lineWidth * app.LineWidth, 'showLine', false);
                             else
                                 hShade = TrialDataUtilities.Plotting.errorshade(tvecPlot, dataC(iBasis, :), ...
-                                    dataSemC(iBasis, :), app.Color, 'axh', axh, ...
+                                    dataErrorC(iBasis, :), app.Color, 'axh', axh, ...
                                     'alpha', p.Results.errorAlpha, 'z', 0, 'showLine', false);
                             end
                             TrialDataUtilities.Plotting.hideInLegend(hShade);
@@ -5141,7 +5174,12 @@ classdef PopulationTrajectorySet
             if p.Results.showBasisLabels
                 yloc = yOffset + (nBasesPlot-1:-1:0)' + 0.5;
                 ylabel = pset.basisNames(basisIdx);
-                au.addTicklessLabels('y', 'tick', yloc, 'tickLabel', ylabel);
+                if p.Results.basisLabelsInside
+                    loc = AutoAxis.FullPositionSpec.leftInside;
+                else
+                    loc = AutoAxis.FullPositionSpec.leftOutside;
+                end
+                au.addTicklessLabels('y', 'location', loc, 'tick', yloc, 'tickLabel', ylabel);
             end
             au.yUnits = pset.dataUnitsCommon;
 
@@ -5182,10 +5220,20 @@ classdef PopulationTrajectorySet
 
                 end
             end
+            
+            for iBasis = 1:numel(basisIdx)
+                % for hiding grid lines between bases and setting the grid
+                % placement appropriately
+                au.addAutoBridgeY('zero', iBasis-1, 'start', 0, 'stop', scaling, ...
+                            'zeroLabel', '', ...
+                            'autoTicks', true, 'drawBridge', false);
+            end
 
             % make large left side to accommodate labels
-            au.axisMarginLeft = p.Results.axisMarginLeft;
-            axis off;
+            if ~p.Results.basisLabelsInside
+                au.axisMarginLeft = p.Results.axisMarginLeft;
+            end
+%             axis off;
 
             pset.setupTimeAxisMultiAlign('axh', axh, 'doUpdate', true, ...
                 'showMarks', p.Results.markShowOnAxis, ...
