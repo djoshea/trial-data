@@ -1782,7 +1782,18 @@ classdef PopulationTrajectorySet
                         if nTrialsThis == 0, continue, end
                         trialCountThresh = max(pset.minTrialsForTrialAveraging, ...
                             ceil(pset.minFractionTrialsForTrialAveraging*nTrialsThis));
-                        if nTrialsThis >= trialCountThresh
+
+                        % it's possible for a trial to be valid, but for
+                        % there to be no valid data for this trial because
+                        % the particular channel being requested had no
+                        % data here. So we decide here that
+                        % minFractionTrialsForTrialAveraging is relative to
+                        % the total number of trials included, which might
+                        % mean there is no data for this window, but that's
+                        % what the user has requested
+                        nTrialsThisWithData = nnz(~isnan(tMinByTrialGrouped{iCondition}) & ~isnan(tMaxByTrialGrouped{iCondition}));
+                        if nTrialsThisWithData == 0, continue, end
+                        if nTrialsThisWithData >= trialCountThresh
                             tMinSorted = sort(removenan(tMinByTrialGrouped{iCondition}), 1, 'ascend');
                             tMinValidByAlignBasisConditionRaw(iAlign, iBasis, iCondition) = tMinSorted(trialCountThresh);
                             tMaxSorted = sort(removenan(tMaxByTrialGrouped{iCondition}), 1, 'descend');
