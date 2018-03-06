@@ -685,12 +685,17 @@ classdef TrialData
                 chThisPartition = partitions.(pname);
                 
                 % check that fields aren't analog channel groups
+                mask = falsevec(numel(chThisPartition));
                 for iC = 1:numel(chThisPartition)
-                    cd = channelDescriptorsByName.(chThisPartition{iC});
-                    if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ~ismember(cd.groupName, chThisPartition)
-                        error('%s is an analog channel in group %s but group %s is not included in the partition', cd.name, cd.groupName, cd.groupName);
+                    mask(iC) = isfield(td.channelDescriptorsByName, chThisPartition{iC});
+                    if mask(iC)
+                        cd = td.channelDescriptorsByName.(chThisPartition{iC});
+                        if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix && ~ismember(cd.groupName, chThisPartition)
+                            error('%s is an analog channel in group %s but group %s is not included in the partition', cd.name, cd.groupName, cd.groupName);
+                        end
                     end
                 end
+                chThisPartition = chThisPartition(mask);
                 
                 % include the group sub channel names
                 chThisPartition = td.expandChannelListGroups(chThisPartition, true);
@@ -705,7 +710,7 @@ classdef TrialData
                 % fields that overlap between two partitions will be
                 % stripped off by the second partition, rather than left in
                 % the core td object, which is what we want.
-                channelDescriptorsByName = rmfield(channelDescriptorsByName, chThisPartition);
+                channelDescriptorsByName = rmfield(channelDescriptorsByName, intersect(fieldnames(channelDescriptorsByName), chThisPartition));
             end
             
             td.data = 'saved separately, load with loadFast';
