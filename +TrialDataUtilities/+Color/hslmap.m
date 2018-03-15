@@ -4,9 +4,9 @@ function map = hslmap(n, varargin)
 % returns hue-spaced color map in rgb
     
     p = inputParser();
-    p.addParameter('saturation', 1, @isscalar);
-    p.addParameter('luminance', 0.6, @isscalar);
-    p.addParameter('hueSpan', [-0.01 0.8], @isvector);
+    p.addParameter('saturation', 0.7, @isscalar);
+    p.addParameter('luminance', 0.65, @isscalar);
+    p.addParameter('hueSpan', 360*[-0.01 0.8], @isvector);
     p.parse(varargin{:});
     
     if nargin < 1
@@ -15,9 +15,9 @@ function map = hslmap(n, varargin)
     
     hueSpan = p.Results.hueSpan;
     if mod(hueSpan(1), 1) == mod(hueSpan(2), 1)
-        hues = 360 * mod(circspace(hueSpan(1), hueSpan(2), n)', 1);   
+        hues = mod(circspace(hueSpan(1), hueSpan(2), n)', 360);   
     else
-        hues = 360 * mod(linspace(hueSpan(1), hueSpan(2), n)', 1);  
+        hues = mod(linspace(hueSpan(1), hueSpan(2), n)', 360);
     end
      
     hsl = [hues, p.Results.saturation * ones(n, 1), p.Results.luminance * ones(n,1)];
