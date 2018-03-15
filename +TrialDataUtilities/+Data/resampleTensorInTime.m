@@ -38,6 +38,9 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     
     time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, timeReference);
 
+    origDelta = round(origDelta, 5, 'significant');
+    timeDelta = round(timeDelta, 5, 'significant');
+    
     tMin = p.Results.tMin;
     tMax = p.Results.tMax;
     [tMinCalc, tMaxCalc] = p.Results.binAlignmentMode.getTimeLimitsForRebinning(min(time), max(time), origDelta, timeDelta, timeReference);
@@ -109,7 +112,8 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
             if timeDelta > origDelta
                 % downsample via averaging
                 P = timeDelta/origDelta;
-                assert(ceil(P) == P, 'New sampling interval must be an integer multiple of old sampling interval');
+                assert(TrialDataUtilities.Data.isequaltol(round(P), P, P / 1000), 'New sampling interval must be an integer multiple of old sampling interval');
+                P = ceil(P);
                 data = blockproc(data, [P 1], @(block) mean(block.data));
                 
                 % trim average from partial blocks at the end

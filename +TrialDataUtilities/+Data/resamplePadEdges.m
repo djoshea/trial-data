@@ -83,7 +83,7 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
     x = x(:, :);
     colMask = ~all(isnan(x), 1);
     x = x(:, colMask);
-    [P, Q] = rat(timeDeltaX / timeDeltaY);
+    [P, Q] = rat(timeDeltaX / timeDeltaY, timeDeltaY*0.001);
     [y] = resample(x, P, Q);
     
     % this is the effective time vector of the data in Y after resampling
