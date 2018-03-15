@@ -113,8 +113,9 @@ classdef RepeatedUnitUtils
             
             for c = 1:nR
                 unitName = setWillRemove{c};
-                    
+                prog = ProgressBar(td.nTrials, 'Removing shared spikes by trial');
                 for t = 1:td.nTrials
+                    prog.update(t);
                     thisTrial = dataRemove{t, c};
 
                     if ~isempty(thisTrial)
@@ -131,6 +132,7 @@ classdef RepeatedUnitUtils
                         end
                     end
                 end
+                prog.finish();
 
                 td = td.maskSpikeChannelSpikes(unitName, maskKeep(:, c), 'keepRemovedSpikesAs', p.Results.keepRemovedSpikesAs);    
             end
@@ -216,7 +218,7 @@ classdef RepeatedUnitUtils
             
             % loop from max electrode number to min, remove spikes from the
             % max of the two, so that the effects cascade up the 
-            span = p.Results.electrodeSpan;
+            span = min(p.Results.electrodeSpan, N);
             prog = ProgressBar(N-1, 'Removing shared spikes');
             for cHigh = N:-1:2
                 if ~ismember(cHigh, electrodeNums), continue; end
