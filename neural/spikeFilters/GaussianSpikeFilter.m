@@ -52,7 +52,7 @@ classdef GaussianSpikeFilter < ConvolutionSpikeFilter
             % we care about 3 sigma in the future from the delayPeak 
             % unless we're truncating beyond a certain point in the future
             % regardless we must overlap with 0
-            tMin = min(0, max(ceil(-sigmaMultiple*sf.sigma) + sf.delayPeak, -sf.truncatePast));
+            tMin = min(0, max(ceil(-sigmaMultiple*sf.sigma) + sf.delayPeak, -sf.truncateFuture));
 
             % past is positive time (causal taps)
             % we care about 3 sigma in the past from the delayPeak
