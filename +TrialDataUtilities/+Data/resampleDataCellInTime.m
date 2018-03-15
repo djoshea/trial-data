@@ -23,9 +23,9 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     timeCell = TensorUtils.singletonExpandToSize(timeCell, size(dataCell));
     tol = p.Results.timeDelta / 1000;
     
-    %prog = ProgressBar(numel(dataCell), 'Resampling data');
+    prog = ProgressBar(numel(dataCell), 'Resampling data');
     for iD = 1:numel(dataCell)
-        %prog.update(iD);
+        prog.update(iD);
         if isempty(dataCell{iD}) || size(dataCell{iD}, 1) == 1, continue; end % test for empty or single-sample
         [d, t] = TrialDataUtilities.Data.resampleTensorInTime(dataCell{iD}, 1, timeCell{iD}, ...
             'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
@@ -38,6 +38,6 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
         dataCell{iD} = d(mask, :, :, :);
         timeCell{iD} = t(mask);
     end
-    %prog.finish();
+    prog.finish();
 end
 
