@@ -51,6 +51,7 @@ classdef TrialDataConditionAlign < TrialData
         conditionIdx
         conditionSubs
         conditionMembership
+        conditionNamesEachTrial
         conditions
         conditionsAxisAttributesOnly
         conditionsAsStrings
@@ -1322,6 +1323,13 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.conditionIdx(td)
             v = td.conditionInfo.conditionIdx;
         end
+        
+        function v = get.conditionNamesEachTrial(td)
+            idx = td.conditionIdx;
+            namesFlat = td.conditionNames(:);
+            namesValidTrials = namesFlat(idx(td.valid));
+            v = TensorUtils.inflateMaskedTensor(namesValidTrials, 1, td.valid, '');
+        end
 
         function v = get.conditionSubs(td)
             v = td.conditionInfo.conditionSubs;
@@ -2495,7 +2503,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.addAnalog(diffName, diffData, time, 'units', diffUnits, 'isAligned', false);
         end
         
-        function td = addAnalogChannelModifiedInPlace(td, oldName, newName, data)
+        function td = addAnalogChannelModifiedFromExisting(td, oldName, newName, data)
             % if we do a reset here we'll mess up the valid array the user
             % was expecting
 %             td = td.reset();
@@ -2510,6 +2518,15 @@ classdef TrialDataConditionAlign < TrialData
             [data, time] = td.getAnalogRaw(name);
             data = cellfun(@(d) d*multiplyBy, data, 'UniformOutput', false);
             td = td.addAnalog(scaledName, data, time, 'units', scaledUnits, 'isAligned', false);
+        end
+        
+        function td = addResampledAnalogChannel(td, name, newName, timeDelta, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            [data, time] = td.reset().getAnalog(name, 'timeDelta', timeDelta, varargin{:});
+            
+            td = td.copyChannel(name, newName);
+            td = td.setAnalog(newName, data, time, 'isAligned', false, 'updateValidOnly', true, 'clearForInvalid', true);
         end
         
         function [data, time] = getAnalogFiltered(td, name, B, A, varargin)
@@ -2532,7 +2549,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.reset();
             data = td.getAnalogFiltered(name, B, A, varargin{:});
-            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+            td = td.addAnalogChannelModifiedFromExisting(name, filtName, data);
         end
         
         function [data, time] = getAnalogLowPassFiltered(td, name, order, cornerHz, varargin)
@@ -2546,7 +2563,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.reset();
             data = td.getAnalogLowPassFiltered(name, order, cornerHz, varargin{:});
-            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+            td = td.addAnalogChannelModifiedFromExisting(name, filtName, data);
         end
 
         function [data, time] = getAnalogHighPassFiltered(td, name, order, cornerHz, varargin)
@@ -2560,7 +2577,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.reset();
             data = td.getAnalogHighPassFiltered(name, order, cornerHz, varargin{:});
-            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+            td = td.addAnalogChannelModifiedFromExisting(name, filtName, data);
         end
         
         function [data, time] = getAnalogBandPassFiltered(td, name, order, cornerHz, varargin)
@@ -2574,7 +2591,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.reset();
             data = td.getAnalogBandPassFiltered(name, order, cornerHz, varargin{:});
-            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+            td = td.addAnalogChannelModifiedFromExisting(name, filtName, data);
         end
         
         function [data, time] = getAnalogBandStopFiltered(td, name, order, cornerHz, varargin)
@@ -2588,7 +2605,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.reset();
             data = td.getAnalogBandStopFiltered(name, order, cornerHz, varargin{:});
-            td = td.addAnalogChannelModifiedInPlace(name, filtName, data);
+            td = td.addAnalogChannelModifiedFromExisting(name, filtName, data);
         end
         
         function td = setAnalogWithinAlignWindow(td, name, values, varargin)
@@ -3439,7 +3456,7 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
         
-        function td = addAnalogChannelGroupModifiedInPlace(td, oldName, newName, data, varargin)
+        function td = addAnalogChannelGroupModifiedFromExisting(td, oldName, newName, data, varargin)
             % if we do a reset here we'll mess up the valid array the user
             % was expecting
 %             td = td.reset();
@@ -3459,7 +3476,7 @@ classdef TrialDataConditionAlign < TrialData
             
             td.warnIfNoArgOut(nargout);
             [diffData, diffTime, diffUnits] = td.reset().differentiateAnalogChannel(groupName, p.Unmatched);
-            td = td.addAnalogChannelGroupModifiedInPlace(groupName, diffName, diffData, ...
+            td = td.addAnalogChannelGroupModifiedFromExisting(groupName, diffName, diffData, ...
                 'times', diffTime, 'units', diffUnits, 'isAligned', false, p.Results);
         end
         
@@ -3482,7 +3499,7 @@ classdef TrialDataConditionAlign < TrialData
                 'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
                 'averageOverSlice', p.Results.averageOverSlice);
             
-            td = td.addAnalogChannelGroupModifiedInPlace(groupName, newName, data, 'channelNames', p.Results.chNames);
+            td = td.addAnalogChannelGroupModifiedFromExisting(groupName, newName, data, 'channelNames', p.Results.chNames);
             
 %             if ~isempty(p.Results.chNames)
 %                 td = td.setAnalogChannelGroupSubChannelNames(newName, p.Results.chNames);
@@ -3580,6 +3597,14 @@ classdef TrialDataConditionAlign < TrialData
             for i = 1:numel(timeFields)
                 td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, startTimes, stopTimes);
             end
+        end
+        
+        function td = resampleAnalogChannelGroup(td, groupName, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.reset();
+            [data, time] = td.getAnalogChannelGroup(groupName, varargin{:});
+            
+            td = td.setAnalogChannelGroup(groupName, data, time);
         end
     end
 
@@ -5336,6 +5361,9 @@ classdef TrialDataConditionAlign < TrialData
                 'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'), ...
                 'quick', p.Results.quick, 'binAlignmentMode', sf.binAlignmentMode, 'binWidth', sf.timeDelta, p.Unmatched);
             
+            if isnumeric(unitNames)
+                unitNames = td.lookupSpikeChannelByIndex(unitNames);
+            end
             TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s : Unit %s', td.datasetName, TrialDataUtilities.String.strjoin(unitNames, ', '));
             axis(axh, 'tight');
             
@@ -5882,7 +5910,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('markShowOnAxis', true, @islogical);
             p.addParameter('markShowInLegend', false, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
-            p.addParameter('markSize', 4, @isscalar);
+            p.addParameter('markSize', 8, @isscalar);
+            p.addParameter('markOutline', true, @islogical);
+            p.addParameter('markOutlineAlpha', 1, @isscalar);
+            
             
             p.addParameter('intervalShowOnData', true, @islogical);
             p.addParameter('intervalShowOnAxis', true, @islogical);
@@ -6233,6 +6264,8 @@ classdef TrialDataConditionAlign < TrialData
                         'showInLegend', p.Results.markShowInLegend && iCond == 1, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
                         'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
                         'showMarks', p.Results.markShowOnData, ...
+                        'markOutline', p.Results.markOutline, ...
+                        'markOutlineAlpha', p.Results.markOutlineAlpha, ...
                         'showIntervals', p.Results.intervalShowOnData);
                 end
 
@@ -6872,7 +6905,7 @@ classdef TrialDataConditionAlign < TrialData
             if ~p.Results.quick
                 au = AutoAxis(axh);
             else
-                set(gca, 'YTick', []);
+%                 set(gca, 'YTick', []);
             end
                 
             % setup time axis markers

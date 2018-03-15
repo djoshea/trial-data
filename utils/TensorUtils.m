@@ -475,6 +475,9 @@ classdef TensorUtils
                     fillWith = NaN;
                 end
             end
+            if ischar(fillWith)
+                fillWith = {fillWith};
+            end
             inflated = repmat(fillWith, inflatedSize);
             
             maskByDim = TensorUtils.maskByDimCellSelectAlongDimension(inflatedSize, dims, masks);
