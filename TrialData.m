@@ -493,10 +493,15 @@ classdef TrialData
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, emptyVal, ~okay);
                 end
                 
+                timeData = {td.data.(timeField)}';
+                emptyMask = cellfun(@(t) numel(t) < 2, timeData);
+                timeDelta = nanmedian(cellfun(@(x) nanmedian(diff(x)), timeData(~emptyMask)));
+                
                 % check sorted and no duplicates
                 resort = truevec(td.nTrials);
                 for iT = 1:td.nTrials
-                    timeThis = td.data(iT).(timeField);
+                    timeThis = timeData{iT};
+                    timeThis = TrialDataUtilities.Data.removeSmallTimeErrors(timeThis, timeDelta, 0);
                     resort(iT) = ~issorted(timeThis) || numel(timeThis) > numel(unique(timeThis));
                 end
                 if any(resort)
@@ -510,7 +515,8 @@ classdef TrialData
                         timeField = td.channelDescriptorsByName.(dataFields{iA}).timeField; % update post rename
                     end
                     
-                    [timeInsert, dataInsert] = cellfun(@resortTimeDedup, {td.data(resort).(timeField)}, {td.data(resort).(dataField)}, 'UniformOutput', false);
+                    % use the time vectors with small errors removed
+                    [timeInsert, dataInsert] = cellfun(@resortTimeDedup, timeData(resort), {td.data(resort).(dataField)}', 'UniformOutput', false);
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, timeInsert, resort);
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, dataInsert, resort);
                 end
@@ -519,6 +525,7 @@ classdef TrialData
             prog.finish();
             
             function [time, data] = resortTimeDedup(time, data)
+                time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, 0);
                 [time, idx] = unique(time, 'last');
                 data = data(idx, :, :, :, :);
             end
@@ -5917,18 +5924,20 @@ classdef TrialData
             
             cd = td.channelDescriptorsByName.(oldName);
             
+            % update channel descriptor directly
+            [cd, dataFieldRenameMap] = cd.rename(newName);
+            
             if isa(cd, 'AnalogChannelGroupDescriptor')
                 % rename component channels of group first, since
                 % renameDataField will check for shared use of this channel
                 % group 
                 ch = td.listAnalogChannelsInGroup(oldName);
                 for c = 1:numel(ch)
-                    td.channelDescriptorsByName.(ch{c}) = td.channelDescriptorsByName.(ch{c}).renameGroup(newName);
+                    td.channelDescriptorsByName.(ch{c}) = td.channelDescriptorsByName.(ch{c}).updateGroup(cd);
                 end
             end
             
-            % update channel descriptor directly
-            [cd, dataFieldRenameMap] = cd.rename(newName);
+            % then rename the actual channel
             td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, oldName);
             td.channelDescriptorsByName.(newName) = cd;
             

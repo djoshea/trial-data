@@ -30,11 +30,12 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function cd = renameGroup(cd, newName)
+        function cd = updateGroup(cd, newGroupDescriptor)
             cd.warnIfNoArgOut(nargout);
-            if cd.isColumnOfSharedMatrix
-                cd.primaryDataField = newName;
-            end
+            assert(isa(newGroupDescriptor, 'AnalogChannelGroupDescriptor'));
+            assert(cd.isColumnOfSharedMatrix)
+            cd.primaryDataField = newGroupDescriptor.name;
+            cd.timeField = newGroupDescriptor.timeField;
         end  
         
         function grp = getGroupName(cd, ~)
@@ -50,6 +51,10 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             assert(ischar(f) && isvector(f), 'Field name must be string');
             cd.primaryDataFieldManual = f;
             cd = cd.initialize();
+        end
+        
+        function cd = set.timeField(cd, f)
+            cd.dataFields{2} = f;
         end
         
         function tf = get.hasScaling(cd)
