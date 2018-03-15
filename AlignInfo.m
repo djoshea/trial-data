@@ -1233,7 +1233,9 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
-            p.addParameter('markSize', 4, @isscalar);
+            p.addParameter('markOutline', true, @islogical);
+            p.addParameter('markOutlineAlpha', 1, @isscalar);
+            p.addParameter('markSize', 8, @isscalar);
             p.addParameter('intervalThickness', 3, @isscalar);
             p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParameter('showInLegend', true, @islogical);
@@ -1391,8 +1393,9 @@ classdef AlignInfo < AlignDescriptor
                     % plot mark and provide legend hint
                     if ~isempty(markLoc)
                         hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
-                            p.Results.markAlpha, p.Results.markSize, 'useTranslucentMark3d', p.Results.useTranslucentMark3d);
-
+                            p.Results.markSize, 'alpha', p.Results.markAlpha, 'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
+                            'outline', p.Results.markOutline, 'outlineAlpha', p.Results.markOutlineAlpha);
+                        
                         if p.Results.showInLegend
                             TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
                             TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));

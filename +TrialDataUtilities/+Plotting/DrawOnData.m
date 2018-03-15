@@ -37,7 +37,7 @@ classdef DrawOnData
             else
                 edge = 'none';
                 edgeAlpha = 0;
-                lineWidth = 0;
+                lineWidth = 0.1;
             end
        
             if D == 1 || D == 2
