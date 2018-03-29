@@ -1332,7 +1332,7 @@ classdef TensorUtils
             sz = size(in);
             sz(dims) = sz(dims) + by;
             
-            if nargin < 4
+            if nargin < 4 || isempty(fillWith)
                 out = TensorUtils.emptyWithSameType(in, sz);
             else
                 out = repmat(fillWith, sz);
@@ -1353,16 +1353,20 @@ classdef TensorUtils
             out = repmat(in, repmatArg);
         end
         
-        function t = expandOrTruncateToSize(t, dims, makeSize)
+        function t = expandOrTruncateToSize(t, dims, makeSize, fillWith)
             % along each dims(i), truncate or expand with NaN to be size sz(i)
             
             sz = TensorUtils.sizeMultiDim(t, dims);
             makeSize = TensorUtils.makerow(makeSize);
             expandBy = makeSize - sz;
+            
+            if nargin < 4
+                fillWith = [];
+            end
                 
             tooSmall = expandBy > 0;
             if any(tooSmall)
-                t = TensorUtils.expandAlongDims(t, dims(tooSmall), expandBy(tooSmall));
+                t = TensorUtils.expandAlongDims(t, dims(tooSmall), expandBy(tooSmall), fillWith);
             end
             
             tooLarge = expandBy < 0;
