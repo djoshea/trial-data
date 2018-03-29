@@ -2638,7 +2638,7 @@ classdef TrialData
             % parameter 'timeField' can specify which time field in which
             % to find the times for this channel
             p = inputParser();
-            p.addOptional('values', {}, @(x) iscell(x) || isnumeric(x));
+            p.addOptional('values', {}, @(x) iscell(x) || isnumeric(x) || islogical(x));
             p.addOptional('times', {}, @(x) isempty(x) || ischar(x) || iscell(x) || isvector(x)); % char or time cell
             p.addParameter('timeField', '', @ischar);
             p.addParameter('units', '', @ischar);
@@ -3518,7 +3518,7 @@ classdef TrialData
             nCh = numel(chList);
             
             % check the values and convert to nTrials cellvec
-            if isnumeric(values) && isnumeric(values)
+            if isnumeric(values) || islogical(values)
                 % values must be nTrials x nTimes x nChannels
                 assert(size(values, 1) == td.nTrials, 'Values as matrix must be nTrials along dimension 1');
                 
@@ -3794,7 +3794,7 @@ classdef TrialData
             if isvector(times) && ~iscell(times)
                 times = repmat({times}, td.nTrials, 1);
             end
-            if isnumeric(values)
+            if isnumeric(values) || islogical(values)
                 assert(size(values, 1) == td.nTrials, 'Values must be nTrials along dimension 1');
                 
                 valNum = values;
