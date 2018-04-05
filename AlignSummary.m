@@ -370,8 +370,10 @@ classdef AlignSummary
             as.stopAgg = EventAccumulator(stopData, as.minTimeDelta);
             
             % compute summary statistics for EACH occurrence of EACH
-            % mark and interval event.
-            as.markAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), markData, 'UniformOutput', false);
+            % mark and interval event, nless markAggregateAllOccurrences is
+            % true)
+            as.markAgg = cellfun(@(d, aggAllOccur) EventAccumulator.constructForEachColumn(d, as.minTimeDelta, aggAllOccur), ...
+                markData, num2cell(alignInfo.markAggregateAllOccurrences), 'UniformOutput', false);
             as.intervalStartAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), intervalStartData, 'UniformOutput', false);
             as.intervalStopAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), intervalStopData, 'UniformOutput', false);
                         
@@ -386,7 +388,8 @@ classdef AlignSummary
             temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), stopGrouped, 'UniformOutput', false);
             as.stopAggC = cat(1, temp{:});
             
-            as.markAggC = aggMultipleEventByCondition(markData, conditionInfo);
+            % aggregate within each condition for 
+            as.markAggC = aggMultipleEventByCondition(markData, conditionInfo, alignInfo.markAggregateAllOccurrences);
             as.intervalStartAggC = aggMultipleEventByCondition(intervalStartData, conditionInfo);
             as.intervalStopAggC = aggMultipleEventByCondition(intervalStopData, conditionInfo);
             
@@ -406,8 +409,10 @@ classdef AlignSummary
                 end
                 
                 for iE = 1:nEvents
-                    dataGrouped = ci.groupElementsFlattened(dataCell{iE});          
-                    out = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta)', dataGrouped, 'UniformOutput', false); % nConditions x 1 cell of 1 x nOccurrences arrays
+                    dataGrouped = ci.groupElementsFlattened(dataCell{iE});
+                    aggAllOccur = aggregateAllOccurrences(iE);
+                    out = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta, aggAllOccur)', ...
+                        dataGrouped, 'UniformOutput', false); % nConditions x 1 cell of 1 x nOccurrences arrays
                     agg{iE} = cat(1, out{:}); % nConditions x nOccurrences
                 end
             end

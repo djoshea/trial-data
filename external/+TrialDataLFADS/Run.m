@@ -119,14 +119,17 @@ classdef Run < LFADS.Run
                 td = td.dropAnalogChannelGroup({'controllerOutputs', 'factors', 'generatorStates', 'rates'});
                 td = td.dropChannels({'generatorIC', 'post_g0_mean', 'post_g0_logvar'});
                 
-                td = td.addAnalogChannelGroup('factors', genNames('f', pm.nFactors), ...
+                facNames = {}; % genNames('f', pm.nFactors)
+                td = td.addAnalogChannelGroup('factors', facNames, ...
                     inflate(permute(pm.factors, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
-                td = td.addAnalogChannelGroup('generatorStates', genNames('g', pm.nGeneratorUnits), ...
+                    
+                genStateNames = {}; % genNames('g', pm.nGeneratorUnits)
+                td = td.addAnalogChannelGroup('generatorStates', genStateNames, ...
                     inflate(permute(pm.generator_states, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 
                 rnames = r.listChannelsForLFADS(td);
                 if isempty(rnames)
-                    rnames = genNames('r', pm.nNeurons);
+                    rnames = {};
                 else
                     rnames = cellfun(@(n) sprintf('rate_%s', n), rnames, 'UniformOutput', false);
                 end
@@ -135,7 +138,8 @@ classdef Run < LFADS.Run
                 td = td.setChannelUnitsPrimary('rates', 'spikes / sec');
                 
                 if pm.nControllerOutputs > 0
-                    td = td.addAnalogChannelGroup('controllerOutputs', genNames('co', pm.nControllerOutputs), ...
+                    coNames = {}; % genNames('co', pm.nControllerOutputs)
+                    td = td.addAnalogChannelGroup('controllerOutputs', coNames, ...
                         inflate(permute(pm.controller_outputs, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 end
                 
