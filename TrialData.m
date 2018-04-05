@@ -2487,6 +2487,10 @@ classdef TrialData
             end
         end
         
+        function ch = generateIndexedAnalogChannelName(td, groupName, idx)
+            ch = sprintf('%s(%d)', groupName, idx);
+        end
+        
         function cd = getAnalogChannelDescriptor(td, name)
             % grabs the channel descriptor for a given analog channel name
             % specification
@@ -3014,8 +3018,13 @@ classdef TrialData
             names = names(idx);
         end
         
-        function [namesByColumn, hasName] = listAnalogChannelsInGroupByColumn(td, groupName, colIdx)
-            % namesByColumn will be either the name or '' if not named
+        function [namesByColumn, hasName] = listAnalogChannelsInGroupByColumn(td, groupName, colIdx, varargin)
+            p = inputParser();
+            p.addParameter('channelNamesBySource', true, @islogical);
+            p.parse(varargin{:});
+            
+            % namesByColumn will be either the name or '' if not named (or
+            % groupName(###) if channelNamesBySource is true
             if nargin < 3
                 sz = td.getAnalogChannelGroupSize(groupName);
                 colIdx = reshape(1:prod(sz), TensorUtils.expandScalarSize(sz));
@@ -3028,6 +3037,8 @@ classdef TrialData
                 [tf, which] = ismember(colIdx(c), namedColIndex);
                 if tf 
                     namesByColumn{c} = names{which};
+                elseif p.Results.channelNamesBySource
+                    namesByColumn{c} = td.generateIndexedAnalogChannelName(groupName, c);
                 else
                     namesByColumn{c} = '';
                 end
