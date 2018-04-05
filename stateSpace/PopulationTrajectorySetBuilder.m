@@ -197,14 +197,21 @@ classdef PopulationTrajectorySetBuilder
             pset = PopulationTrajectorySet();
             %pset.datasetName = td.datasetName;
             
+            channelNamesBySource = p.Results.channelNames;
+            if ~isempty(channelNamesBySource)
+                if ischar(channelNamesBySource)
+                    channelNamesBySource = repmat({channelNamesBySource}, nSources, 1);
+                end
+            end
+
             nSources = numel(tdCell);
             iBasis = 1;
             for i = 1:nSources
                 if ~isa(tdCell{i}, 'TrialDataConditionAlign')
                     tdCell{i} = TrialDataConditionAlign(tdCell{i});
                 end
-                units = tdCell{i}.listSpikeChannels();
-                if isempty(p.Results.channelNames)
+                if isempty(channelNamesBySource)
+                    units = tdCell{i}.listSpikeChannels();
                     % use all spike channels in each file
                     for j = 1:numel(units)
                         basisDataSourceIdx(iBasis) = i; %#ok<AGROW>
@@ -212,15 +219,27 @@ classdef PopulationTrajectorySetBuilder
                         iBasis = iBasis + 1;
                     end
                 else
-                    chNamesThis = p.Results.channelNames{i};
+                    chNamesThis = channelNamesBySource{i};
                     if ischar(chNamesThis)
                         chNamesThis = {chNamesThis};
                     end
                     for j = 1:numel(chNamesThis)
-                        % use specified channel names
-                        basisDataSourceIdx(iBasis) = i;
-                        basisDataSourceChannelNames{iBasis} = chNamesThis{j}; 
-                        iBasis = iBasis + 1;
+                        if td.hasAnalogChannelGroup(chNamesThis{j})
+                            % split analog channel group into separate channels
+                            newNames = td.listAnalogChannelsInGroupByColumn(chNamesThis{j});
+                            
+                            for k = 1:numel(newNames)
+                                % use specified channel names
+                                basisDataSourceIdx(iBasis) = i;
+                                basisDataSourceChannelNames{iBasis} = newNames{k}; 
+                                iBasis = iBasis + 1;
+                            end
+                        else
+                            % use specified channel names
+                            basisDataSourceIdx(iBasis) = i;
+                            basisDataSourceChannelNames{iBasis} = chNamesThis{j}; 
+                            iBasis = iBasis + 1;
+                        end
                     end
                 end
             end
@@ -257,25 +276,40 @@ classdef PopulationTrajectorySetBuilder
             pset = PopulationTrajectorySet();
             %pset.datasetName = td.datasetName;
             
+            channelNamesBySource = p.Results.channelNames;
+            
             nSources = numel(tdCell);
             iBasis = 1;
             for i = 1:nSources
                 if ~isa(tdCell{i}, 'TrialDataConditionAlign')
                     tdCell{i} = TrialDataConditionAlign(tdCell{i});
                 end
-
-                chNamesThis = p.Results.channelNames{i};
+                
+                chNamesThis = channelNamesBySource{i};
                 if ischar(chNamesThis)
                     chNamesThis = {chNamesThis};
                 end
                 for j = 1:numel(chNamesThis)
-                    if isempty(timeDelta)
-                        timeDelta = tdCell{i}.getAnalogTimeDelta(chNamesThis{j});
+                    if tdCell{i}.hasAnalogChannelGroup(chNamesThis{j})
+                        % split analog channel group into separate channels
+                        newNames = tdCell{i}.listAnalogChannelsInGroupByColumn(chNamesThis{j});
+
+                        for k = 1:numel(newNames)
+                            % use specified channel names
+                            basisDataSourceIdx(iBasis) = i; %#ok<AGROW>
+                            basisDataSourceChannelNames{iBasis} = newNames{k};  %#ok<AGROW>
+                            iBasis = iBasis + 1;
+                        end
+                        
+                        if isempty(timeDelta)
+                            timeDelta = tdCell{i}.getAnalogTimeDelta(chNamesThis{j});
+                        end
+                    else
+                        % use specified channel names
+                        basisDataSourceIdx(iBasis) = i;
+                        basisDataSourceChannelNames{iBasis} = chNamesThis{j}; 
+                        iBasis = iBasis + 1;
                     end
-                    % use specified channel names
-                    basisDataSourceIdx(iBasis) = i; %#ok<AGROW>
-                    basisDataSourceChannelNames{iBasis} = chNamesThis{j};  %#ok<AGROW>
-                    iBasis = iBasis + 1;
                 end
             end
             
