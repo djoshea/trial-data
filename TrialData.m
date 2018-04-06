@@ -1453,7 +1453,8 @@ classdef TrialData
         
         function assertHasChannel(td, name)
             if ischar(name)
-                assert(td.hasChannel(name), 'TrialData does not have channel %s', name);
+                ch = td.parseIndexedAnalogChannelName(name);
+                assert(td.hasChannel(ch), 'TrialData does not have channel %s', name);
             elseif iscellstr(name)
                 tf = td.hasChannel(name);
                 missing = name(~tf);

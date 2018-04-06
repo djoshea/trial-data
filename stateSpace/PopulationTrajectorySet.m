@@ -1540,6 +1540,7 @@ classdef PopulationTrajectorySet
                 end
 
                 % this call works for unit names as well
+                chName = td.parseIndexedAnalogChannelName(chName);
                 basisUnits{iBasis} = td.getChannelUnitsPrimary(chName);
             end
 
@@ -5016,7 +5017,6 @@ classdef PopulationTrajectorySet
             
             if showError
                 if showSem
-                    
                     if ~isempty(p.Results.dataRandomIndex)
                         dataErrorCell = pset.dataSemRandomized;
                     else
@@ -5066,14 +5066,18 @@ classdef PopulationTrajectorySet
                 data = bsxfun(@minus, data, offsets);
                 data = bsxfun(@rdivide, data, norms);
 
-                if isempty(p.Results.dataRandomIndex)
-                    dataError = dataErrorCell{idxAlign}(basisIdx, conditionIdx, :);
+                if showError
+                    if isempty(p.Results.dataRandomIndex)
+                        dataError = dataErrorCell{idxAlign}(basisIdx, conditionIdx, :);
+                    else
+                        dataError = dataErrorCell{idxAlign}(basisIdx, conditionIdx, :, p.Results.dataRandomIndex);
+                    end
+                    % only apply normalization
+                    dataError = bsxfun(@rdivide, dataError, norms);
                 else
-                    dataError = dataErrorCell{idxAlign}(basisIdx, conditionIdx, :, p.Results.dataRandomIndex);
+                    dataError = nan(size(data));
                 end
-                % only apply normalization
-                dataError = bsxfun(@rdivide, dataError, norms);
-
+                
                 % uniformly scale and separate data vertically
                 data = data + yOffset;
                 data = bsxfun(@plus, data, (nBasesPlot-1:-1:0)');
@@ -5319,6 +5323,7 @@ classdef PopulationTrajectorySet
             p.addParameter('stopShowOnData', false, @islogical);
             p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
+            p.addParameter('intervalSize', 10, @isscalar);
             p.addParameter('clipping', 'off', @ischar);
 
             p.addParameter('showRangesOnData', true, @islogical); % show ranges for marks on traces
@@ -5374,8 +5379,13 @@ classdef PopulationTrajectorySet
                     app = pset.conditionDescriptor.appearances(c);
 %                     plotArgsC = appear.getPlotArgs();
                     plotArgsC = {};
+<<<<<<< HEAD
 
                     dataMat = squeeze(data(basisIdx, c, :));
+=======
+                    
+                    dataMat = squeeze(data(:, c, :));
+>>>>>>> 2409e8e... Plotting tweaks with interval size
 
                     if p.Results.plotTubes
                         h = TrialDataUtilities.Plotting.tubeplot(dataMat(1:3, :), p.Results.tubeRadius, 'FaceAlpha', p.Results.alpha, ...
@@ -5399,18 +5409,17 @@ classdef PopulationTrajectorySet
                 end
             else
                 [dataMean, indexInfo, tvecCell] = pset.arrangeNbyCbyTA('timeDelta', p.Results.timeDelta, 'splitByAlign', true, ...
-                    'basisIdx', basisIdx, 'conditionIdx', conditionIdx, 'alignIdx', alignIdx);
+                    'basisIdx', basisIdx, 'alignIdx', alignIdx);
                 %                 dataMean = squeeze(TensorUtils.splitAlongDimension(dataMean, 3, pset.nTimeDataMean));
 
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
                     %                     tvec = pset.tvecDataMean{idxAlign};
-                    data = dataMean{idxAlign};
                     for iCondition = 1:nConditions
                         idxCondition = conditionIdx(iCondition);
                         app = pset.conditionDescriptor.appearances(idxCondition);
                         plotArgsC = app.getPlotArgsCombinedWithDefaults('Color', [0 0 0], 'LineWidth', p.Results.lineWidth, 'Alpha', p.Results.alpha);
-                        dataMat = squeeze(data(:, iCondition, :));
+                        dataMat = squeeze(dataMean{iAlign}(:, idxCondition, :));
 
                         if use3d
                             h = plot3(axh, dataMat(1, :), dataMat(2, :), dataMat(3, :), ...
@@ -5455,6 +5464,7 @@ classdef PopulationTrajectorySet
                     'markOutline', p.Results.markOutline, ...
                     'markOutlineAlpha', p.Results.markOutlineAlpha, ...
                     'intervalAlpha', p.Results.intervalAlpha, ...
+                    'intervalSize', p.Results.intervalSize, ...
                     'showRanges', p.Results.showRangesOnData, ...
                     'markSize', p.Results.markSize, 'clipping', p.Results.clipping);
             end
