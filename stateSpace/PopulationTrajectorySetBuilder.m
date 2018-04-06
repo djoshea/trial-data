@@ -300,15 +300,15 @@ classdef PopulationTrajectorySetBuilder
                             basisDataSourceChannelNames{iBasis} = newNames{k};  %#ok<AGROW>
                             iBasis = iBasis + 1;
                         end
-                        
-                        if isempty(timeDelta)
-                            timeDelta = tdCell{i}.getAnalogTimeDelta(chNamesThis{j});
-                        end
                     else
                         % use specified channel names
                         basisDataSourceIdx(iBasis) = i;
                         basisDataSourceChannelNames{iBasis} = chNamesThis{j}; 
                         iBasis = iBasis + 1;
+                    end
+                    
+                    if isempty(timeDelta)
+                        timeDelta = tdCell{i}.getAnalogTimeDelta(chNamesThis{j});
                     end
                 end
             end
@@ -337,8 +337,32 @@ classdef PopulationTrajectorySetBuilder
                 chNames = td.listAnalogChannels();
             end
             p = inputParser();
-            p.addParameter('timeDelta', td.getAnalogTimeDelta(chNames), @isscalar);
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.parse(varargin{:});
+            timeDelta = p.Results.timeDelta;
+            
+            chNamesExpanded = cell(0, 1);
+            iBasis = 1;
+            for c = 1:numel(chNames)
+                if td.hasAnalogChannelGroup(chNames{c})
+                    % split analog channel group into separate channels
+                    newNames = td.listAnalogChannelsInGroupByColumn(chNames{c});
+
+                    for k = 1:numel(newNames)
+                        % use specified channel names
+                        chNamesExpanded{iBasis} = newNames{k};
+                        iBasis = iBasis + 1;
+                    end
+                else
+                    chNamesExpanded{iBasis} = chNames{c};
+                    iBasis = iBasis+1;
+                end
+                
+                if isempty(timeDelta)
+                    timeDelta = td.getAnalogTimeDelta(chNames{c});
+                end
+            end
+            
             
             pset = PopulationTrajectorySet();
             pset.datasetName = td.datasetName;
@@ -349,11 +373,11 @@ classdef PopulationTrajectorySetBuilder
             pset.timeUnitName = td.timeUnitName;
             pset.timeUnitsPerSecond = td.timeUnitsPerSecond;
             pset.dataSources = {td};
-            pset.basisDataSourceIdx = onesvec(numel(chNames));
-            pset.basisDataSourceChannelNames = chNames;
+            pset.basisDataSourceIdx = onesvec(numel(chNamesExpanded));
+            pset.basisDataSourceChannelNames = chNamesExpanded;
             
             % don't want spiking filter to add padding
-            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', p.Results.timeDelta);
+            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', timeDelta);
             
             pset = pset.setConditionDescriptor(td.conditionInfo);
             pset = pset.setAlignDescriptorSet(td.alignInfoSet);
