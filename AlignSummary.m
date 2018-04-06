@@ -1330,6 +1330,7 @@ classdef AlignSummary
             p.addParameter('markOutlineAlpha', 0.6, @isscalar)
             p.addParameter('markSize', 8, @isscalar);
             p.addParameter('intervalAlpha', 1, @isscalar);
+            p.addParameter('intervalSize', 8, @isscalar);
             p.addParameter('showInLegend', true, @islogical);
 
             p.addParameter('showRanges', false, @islogical);
@@ -1444,7 +1445,7 @@ classdef AlignSummary
 
                     % first plot range interval and suppress from legend
                     if p.Results.showRanges
-                        errorThickness = p.Results.markSize * 0.5;
+                        errorThickness = p.Results.intervalSize * 0.5;
                         errorAppear = app;
                         errorAppear.Color = AppearanceSpec.desaturateColor(errorAppear.Color, 0.5);
                         h = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intRangeLoc, D, ...
@@ -1456,7 +1457,7 @@ classdef AlignSummary
 
                     % then plot interval
                     hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
-                        app, p.Results.markSize, p.Results.intervalAlpha, ...
+                        app, p.Results.intervalSize, p.Results.intervalAlpha, ...
                         'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'style', p.Results.style, ...
                         'clipping', p.Results.clipping);
 
