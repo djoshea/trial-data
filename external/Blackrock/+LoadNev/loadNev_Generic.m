@@ -47,6 +47,7 @@ spikeData.timestamp = double(data.Data.Spikes.TimeStamp) / 30.0;
 spikeData.electrode = data.Data.Spikes.Electrode;
 spikeData.unit = data.Data.Spikes.Unit;
 spikeData.waveform = data.Data.Spikes.Waveform;
+spikeData.waveformScaleBy = 0.25;
 
 eventData.timestamp = double(data.Data.SerialDigitalIO.TimeStamp) / 30.0;
 eventData.code = data.Data.SerialDigitalIO.UnparsedData;

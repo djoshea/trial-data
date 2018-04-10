@@ -12,7 +12,6 @@ def.prefix = 'unit';
 assignargs(def, varargin);
 
 nTrials = length(Q);
-[spikeMaps waveforms] = deal(cell(nTrials,1));
 
 if excludeZeroUnit
 	filterInds = spikeData.unit > 0;
@@ -26,6 +25,10 @@ if excludeZeroUnit
 end
 
 prog = ProgressBar(nTrials, 'Segmenting spike times');
+
+nSpikes = numel(spikeData.electrode);
+trialInd = zeros(nSpikes, 1, 'uint32');
+times = nan(nSpikes, 1);
 for iq = 1:nTrials
     prog.update(iq);
     
@@ -37,43 +40,58 @@ for iq = 1:nTrials
     % add window extensions to the CerebusInfo struct
     Q(iq).CerebusInfo.spikeWindowPre = spikeWindowPre;
     Q(iq).CerebusInfo.spikeWindowPost = spikeWindowPost;
+    
+    Q(iq).CerebusInfo.waveformScaleBy = spikeData.waveformScaleBy;
 
     % grab spike data and waveforms, subtract time offset
-    spikeInds = spikeData.timestamp >= startTime & spikeData.timestamp <= endTime;
-	times = spikeData.timestamp(spikeInds) - zeroTime;
-	electrode = spikeData.electrode(spikeInds);
-	unit = spikeData.unit(spikeInds);
-	waveforms = spikeData.waveform(:, spikeInds);
+    mask = spikeData.timestamp >= startTime & spikeData.timestamp <= endTime;
+    trialInd(mask) = iq;
+    times(mask) = spikeData.timestamp(mask) - zeroTime;
+end
+prog.finish();
+    
+debug('Splitting spike times and waveforms\n');
+mask = trialInd > 0;
+trialInd = trialInd(mask);
+times = times(mask);
+electrode = spikeData.electrode(mask);
+unit = spikeData.unit(mask);
+waveforms = spikeData.waveform(:, mask);
 
-    % get unit ratings by spike (these can change over time due to sorting epochs)
-    if isfield(spikeData, 'rating')
-        rating = spikeData.rating(spikeInds);
-    end
+[pairs, ~, idxPair] = unique([makecol(electrode) makecol(uint16(unit))], 'rows');
+nPairs = size(pairs, 1);
 
-	% build map from 'elec#.unit#' to spike times and to waveforms
-	spikeMaps{iq} = containers.Map('ValueType', 'any', 'KeyType', 'char');
-	waveformMaps{iq} = containers.Map('ValueType', 'any', 'KeyType', 'char');
-    if isfield(spikeData, 'rating')
-        ratingMaps{iq} = containers.Map('ValueType', 'any', 'KeyType', 'char');
-    end
+% here we get clever in the name of efficiency, using accum array to
+% group the times
+times = accumarray([trialInd, idxPair], times, [nTrials, nPairs], @(x) {x});
 
-	pairs = unique([makecol(electrode) makecol(uint16(unit))], 'rows');
-    if ~isempty(pairs)
-        for ipair = 1:size(pairs,1)
+% and even more complicated, the waves keeping columns together
+nWave = size(waveforms, 1);
+trialIndMat = repmat(trialInd', [nWave 1]);
+idxPairMat = repmat(idxPair', [nWave 1]);
+waveforms = accumarray([trialIndMat(:), idxPairMat(:)], waveforms(:), [nTrials, nPairs], @(x) {reshape(x, nWave, [])});
+
+% get unit ratings by spike (these can change over time due to sorting epochs)
+if isfield(spikeData, 'rating')
+    rating = spikeData.rating(spikeInds);
+    rating = accumarray([trialInd idxPair], rating, [nTrials nPairs], @(x) {x});
+end
+	
+prog = ProgressBar(nTrials, 'Inserting segmented spike times');
+if ~isempty(pairs)
+    for iq = 1:nTrials
+        prog.update(iq);
+        for ipair = 1:nPairs
             % convert to 'elec#.unit#'
             key = LoadNev.getElecUnitStr(prefix, pairs(ipair, 1), pairs(ipair, 2));
 
-            % add spikeMaps for this electrode / unit pair 
-            matches = electrode==pairs(ipair, 1) & unit==pairs(ipair,2);
-           
-            % add this unit to the maps if it has any spikes
-            if nnz(matches) > 0
-                spikeMaps{iq}(key) = times(matches);
-                waveformMaps{iq}(key) = waveforms(:, matches);
+            if ~isempty(times{iq, ipair})
+                Q(iq).spikes.(key) = times{iq, ipair};
+                Q(iq).waves.(key) = waveforms{iq, ipair};
 
                 % add the rating of the first spike for this unit
                 if isfield(spikeData, 'rating')
-                    ratingMaps{iq}(key) = rating(find(matches,1));
+                    Q(iq).sortRatings.(key) = rating{iq, ipair}(1);
                 end
             end
         end
@@ -81,15 +99,6 @@ for iq = 1:nTrials
 end
 prog.finish();
 
-% add them to the struct array
-if ~isempty(Q)
-    [Q.(['spikes' fieldSuffix])] = deal(spikeMaps{:});
-    [Q.(['waveforms' fieldSuffix])] = deal(waveformMaps{:});
-    
-    if isfield(spikeData, 'rating')
-        [Q.(['sortRatings' fieldSuffix])] = deal(ratingMaps{:});
-    end
-end
 
 
 end
