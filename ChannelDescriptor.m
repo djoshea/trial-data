@@ -155,7 +155,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         end
                         [data{nVals==0}] = deal(missing);
                         nel = numel(data);
-                        newClass = ChannelDescriptor.cellDetermineCommonClass(data);
+                        newClass = TrialDataUtilities.Data.cellDetermineCommonClass(data);
                         data = ChannelDescriptor.cellCast(data, newClass);
                         data = cell2mat(data);
                         assert(isempty(data) || isvector(data) && numel(data) == nel);
@@ -206,7 +206,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                    newClass = memClass;
                    
                 case {cd.SCALAR, cd.DATENUM}
-                    newClass = determineCommonClass(data, memClass);
+                    newClass = TrialDataUtilities.Data.determineCommonClass(class(data), memClass);
                     data = cast(data, newClass);
                     
                 case cd.VECTOR
@@ -215,10 +215,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         if ~all(okay)
                             throwError('Data cell contents must be vectors or empty');
                         end
-                        newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
+                        newClass = TrialDataUtilities.Data.cellDetermineCommonClass(data, memClass); 
                         data = ChannelDescriptor.cellCast(data, newClass);
                     else
-                        newClass = ChannelDescriptor.determineCommonClass(data, memClass);
+                        newClass = TrialDataUtilities.Data.determineCommonClass(class(data), memClass);
                         if strcmp(newClass, 'logical')
                             data(isnan(data)) = false;
                         end
@@ -236,10 +236,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         if ~all(okay)
                             throwError('Data cell contents must be numeric');
                         end
-                        newClass = ChannelDescriptor.cellDetermineCommonClass(data, memClass); 
+                        newClass = TrialDataUtilities.Data.cellDetermineCommonClass(data, memClass); 
                         data = ChannelDescriptor.cellCast(data, newClass);
                     else
-                        newClass = ChannelDescriptor.determineCommonClass(data, memClass);
+                        newClass = TrialDataUtilities.Data.determineCommonClass(class(data), memClass);
                         if strcmp(newClass, 'logical')
                             data(isnan(data)) = false;
                         end
@@ -267,15 +267,6 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             
             cd.originalDataClassByField{iF} = newClass;
             
-            function newClass = determineCommonClass(data, memClass)
-                convertedData = cast(data, memClass);
-                if ~isempty(data) && ~isequal(convertedData, data)
-                    newClass = class(data);
-                else
-                    newClass = memClass;
-                end
-            end
-       
             function throwError(varargin)
                 error(['Error in channel %s, field %d: ' varargin{1}], cd.name, fieldIdx, varargin{2:end});
             end
@@ -600,46 +591,6 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     end
 
     methods(Static) % Utility methods
-        function newClass = cellDetermineCommonClass(data, origClass)
-            if nargin > 1
-                newClass = origClass;
-            else
-                newClass = '';
-            end
-            for iV = 1:numel(data)
-                newClass = ChannelDescriptor.determineCommonClass(data{iV}, newClass);
-            end
-        end
-        
-        function newClass = determineCommonClass(data, origClass)
-            if nargin > 1
-                newClass = origClass;
-            else
-                newClass = '';
-            end
-            
-            if isempty(data), return; end
-            if iscell(data)
-                newClass = 'cell';
-                return;
-            end
-                    
-            if all(isnan(data(:))) && strcmp(newClass, 'logical')
-                return;
-            end
-            
-            if isempty(newClass)
-                newClass = class(data);
-            else
-                if ~isa(data, newClass)
-                    convertedData = cast(data, newClass);
-                    if ~isequal(convertedData, data)
-                        newClass = class(data);
-                    end
-                end
-            end
-        end
-        
         function cls = getCellElementClass(dataCell)
             if isempty(dataCell)
                 cls = 'double';

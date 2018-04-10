@@ -1,4 +1,4 @@
-function [td, numMerged] = mergeNevTrialsIntoTrialData(td, Q, varargin)
+function [td, numMerged, empty] = mergeNevTrialsIntoTrialData(td, Q, varargin)
 % given a Q struct returned by loadNevNoSerial and a ChannelReach trial data instance,
 % merge the spikes from the nev into the trial data with the same unit
 % names. spikes from the td will not be deleted, but they will be
@@ -15,6 +15,7 @@ p.parse(varargin{:});
 includeSpikes = p.Results.overwriteSpikes;
 includeWaveforms = p.Results.includeWaveforms;
 
+empty = [];
 array = p.Results.array;
 
 % align td to Q based on computed delay periods
@@ -27,6 +28,8 @@ waveData = struct();
 
 td = td.reset();
 nevShort = cellvec(nTD);
+
+waveformScaleBy = Q(1).CerebusInfo.waveformScaleBy;
 
 convertName = @(dotName) strrep(dotName, '.', '_');
 
@@ -43,7 +46,11 @@ for iQ = 1:numel(Q)
     q = Q(iQ);
     iR = qMatchInTD(iQ);
     mergedMask(iR) = true;
-    units = q.spikesRaw.keys;
+    if isempty(q.spikes)
+        units = {};
+    else
+        units = fieldnames(q.spikes);
+    end
     
     tOffsetQ = 0;
 
@@ -60,9 +67,9 @@ for iQ = 1:numel(Q)
             waveData.(chName) = cellvec(nTD);
         end
             
-        spikeData.(chName){iR} = q.spikesRaw(units{iK}) - tOffsetQ;
+        spikeData.(chName){iR} = q.spikes.(units{iK}) - tOffsetQ;
         if includeWaveforms
-            waveData.(chName){iR} = q.waveformsRaw(units{iK});
+            waveData.(chName){iR} = q.waves.(units{iK});
         end
     end
    
@@ -100,6 +107,7 @@ tdMask = removenan(qMatchInTD);
 
 if includeSpikes
     units = fieldnames(spikeData);
+    
     prog = ProgressBar(numel(units), 'Adding spike data to TrialData');
     for iU = 1:numel(units)
         chName = strrep(units{iU}, 'unit', array);
@@ -109,16 +117,28 @@ if includeSpikes
             nonEmpty = find(~cellfun(@isempty, wd), 1);
             if isempty(nonEmpty)
                 wd = [];
+                waveClass = 'int16';
             else
                 % swap dims of each waveform array (samples along dim 2)
                 wd = cellfun(@(x) x', wd, 'UniformOutput', false);
                 nWave = size(wd{nonEmpty}, 2);
                 wavetvec = (-10 : nWave-11) / 30;
+                waveClass = class(wd{nonEmpty(1)});
             end
-            td = td.addOrUpdateSpikeChannel(chName, spikeData.(units{iU}), 'mask', tdMask, 'waveforms', wd, 'waveformsTime', wavetvec);
+            
+            waveLimsFrom = double([intmin(waveClass) intmax(waveClass)]);
+            waveLimsTo = waveLimsFrom * waveformScaleBy;
+            
+            td = td.addOrUpdateSpikeChannel(chName, spikeData.(units{iU}), 'mask', tdMask, ...
+                'waveforms', wd, 'waveformsTime', wavetvec, ...
+                'waveformsScaleFromLims', waveLimsFrom, ...
+                'waveformsScaleToLims', waveLimsTo);
+            
+            waveData.(units{iU}) = [];
         else
             td = td.addOrUpdateSpikeChannel(chName, spikeData.(units{iU}), 'mask', tdMask);
         end
+        spikeData.(units{iU}) = [];
     end
     prog.finish();
 end
@@ -142,7 +162,8 @@ for iG = 1:numel(nsxGroupNames)
         td = td.addOrUpdateAnalog(grpName, grp.data, grp.time, 'mask', tdMask, 'units', grp.units, ...
             'scaleFromLims', grp.scaleFromLims, 'scaleToLims', grp.scaleToLims, ...
             'dataInMemoryScale', true);
-    end        
+    end    
+    nsxGroupData.(grpName) = [];
 end
 
 prog.finish();

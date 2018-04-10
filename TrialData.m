@@ -4757,6 +4757,8 @@ classdef TrialData
             p.addParameter('waveforms', [], @iscell);
             p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
             p.addParameter('waveformsField', sprintf('%s_waveforms', unitStr), @ischar);
+            p.addParameter('waveformsScaleFromLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('waveformsScaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('sortQuality', NaN, @isscalar); % numeric scalar metric of sort quality
             p.addParameter('sortMethod', '', @ischar);
             p.addParameter('sortQualityEachTrial', [], @isvector);
@@ -4782,7 +4784,10 @@ classdef TrialData
             channelData = {spikes};
             
             if ~isempty(p.Results.waveforms)
-                cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime);
+                waveClass = TrialDataUtilities.Data.cellDetermineCommonClass(p.Results.waveforms);
+                cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime, ...
+                    'dataClass', waveClass, 'scaleFromLims', p.Results.waveformsScaleFromLims, ...
+                    'scaleToLims', p.Results.waveformsScaleToLims);
                 channelData{end+1} = makecol(p.Results.waveforms);
             end
             
@@ -4982,11 +4987,16 @@ classdef TrialData
             % otherwise create channel
             p = inputParser();
             p.addParameter('mask', ~cellfun(@isempty, times), @isvector);
-            p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('waveforms', [], @iscell);
-            p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
+            p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
+            p.addParameter('waveformsScaleFromLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('waveformsScaleToLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('sortQuality', NaN, @isscalar); % numeric scalar metric of sort quality
+            p.addParameter('sortMethod', '', @ischar);
             p.addParameter('sortQualityByTrial', [], @isvector); % nTrials x 1 vector of per-trial ratings
+            p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
+           
             p.parse(varargin{:});
             
             mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
@@ -5010,7 +5020,9 @@ classdef TrialData
                     'isAligned', p.Results.isAligned, 'waveforms', waves, ...
                     'blankingRegions', p.Results.blankingRegions, ...
                     'sortQualityByTrial', p.Results.sortQualityByTrial, ...
-                    'waveformsTime', p.Results.waveformsTime);
+                    'waveformsTime', p.Results.waveformsTime, ...
+                    'waveformsScaleFromLims', p.Results.waveformsScaleFromLims, ...
+                    'waveformsScaleToLims', p.Results.waveformsScaleToLims);
             end
         end
         
