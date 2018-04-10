@@ -528,6 +528,15 @@ classdef TrialDataConditionAlign < TrialData
         function td = dropChannels(td, names)
             names = wrapCell(names);
             
+            % don't remove special channels
+            names = setdiff(names, td.listSpecialChannels());
+            
+            % don't remove channels that don't exist
+            names = intersect(names, td.listChannels());
+            if isempty(names)
+                return;
+            end
+            
             % check whether any of the alignInfo events and error if so
             for iA = 1:td.nAlign
                 alignEvents = td.alignInfoSet{iA}.getEventList();

@@ -1715,7 +1715,7 @@ classdef TrialData
             % first hold onto the to-be-removed channel descriptors
             cds = cellvec(numel(names));
             partialGroupNames = cellvec(numel(names));
-            inGroup = falsevec(numel(names)); % analog channel in a group
+            [inGroupPartial, inGroupWhole] = falsevec(numel(names)); % analog channel in a group
             isGroup = falsevec(numel(names));
             for i = 1:numel(names)
                 cds{i} = td.channelDescriptorsByName.(names{i});
@@ -1723,9 +1723,9 @@ classdef TrialData
                     groupName = cds{i}.primaryDataField;
                     if ismember(groupName, names)
                         % already included as a whole group, skip it
-                        continue;
+                        inGroupWhole(i) = true;
                     else
-                        inGroup(i) = true;
+                        inGroupPartial(i) = true;
                         partialGroupNames{i} = groupName;
                     end
                 elseif isa(cds{i}, 'AnalogChannelGroupDescriptor')
@@ -1737,7 +1737,7 @@ classdef TrialData
             % remove whole groups first 
             if any(isGroup)
                 td = td.dropAnalogChannelGroup(names(isGroup));
-                cds = cds(~isGroup);
+                cds = cds(~isGroup & ~inGroupWhole);
 %                 inGroup = inGroup(~isGroup);
 %                 partialGroupNames = partialGroupNames(~isGroup);
             end
