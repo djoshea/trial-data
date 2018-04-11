@@ -93,7 +93,7 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
                 lookup.scaleLims = nsxData(nsxIndex).scaleLims{idxWithinNsx};
                 lookup.units = getCheckUnits(signalName, nsxData, nsxIndex, idxWithinNsx);
             else
-                warning('Could not find NSx channel %s', signalName);
+                debug('Could not find NSx channel %s\n', signalName);
                 continue;
             end
             
@@ -121,7 +121,7 @@ function analogLookup = buildAnalogLookup(analogInfo, nsxData, varargin)
             end
             
             if ~any(found)
-                warning('Could not find any NSx channels in group %s', groupName);
+                debug('Could not find any NSx channels in group %s\n', groupName);
                 continue;
             else
                 ids = ids(found);
