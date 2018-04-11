@@ -6,7 +6,7 @@ function newClass = cellDetermineCommonClass(data, origClass)
     end
     nonEmpty = ~cellfun(@isempty, data);
     if ~any(nonEmpty)
-        newClass = '';
+        newClass = origClass;
     else
         classes = cellfun(@class, data(nonEmpty), 'UniformOutput', false);
         newClass = TrialDataUtilities.Data.determineCommonClass(classes{:}, newClass);
