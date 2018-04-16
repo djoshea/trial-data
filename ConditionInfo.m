@@ -740,6 +740,11 @@ classdef ConditionInfo < ConditionDescriptor
                         for iV = 1:nValues % loop over each value in value list
                             valsThis = valueStruct(iV).(fields{iF});
                             
+                            if isempty(valsThis)
+                                % empty is a wildcard match
+                                continue;
+                            end
+                            
                             % check whether value list has sublists within
                             % and flatten them if so
                             if ci.attributeNumeric(attrIdx(iF))
@@ -764,7 +769,13 @@ classdef ConditionInfo < ConditionDescriptor
                             ci.AttributeValueBinsAutoQuantiles}
                         % match against bins. valueStruct.attr is nBins x 2 bin edges
                         for iV = 1:nValues
-                            matchesThis = matchAgainstBins(attrVals, valueStruct(iV).(fields{iF}));
+                            valsThis = valueStruct(iV).(fields{iF});
+                            
+                            if isempty(valsThis)
+                                % empty is a wildcard match
+                                continue;
+                            end
+                            matchesThis = matchAgainstBins(attrVals, valsThis);
                             mask(:, iV) = mask(:, iV) & matchesThis;
                             whichField(isnan(whichField(:, iV)) & ~matchesThis) = iF;
                         end
