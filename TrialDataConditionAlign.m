@@ -88,6 +88,8 @@ classdef TrialDataConditionAlign < TrialData
         alignInfoActive % alignInfo currently active
 
         alignSummaryActive % alignSummary currently active 
+        
+        conditionDescriptor % conditionInfo reduced to conditionDescriptor
     end
 
     % Properties which read through to AlignInfo
@@ -115,6 +117,10 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function v = get.nAlign(td)
             v = numel(td.alignInfoSet);
+        end
+        
+        function cd = get.conditionDescriptor(td)
+            cd = ConditionDescriptor.fromConditionDescriptor(td.conditionInfo.fixAllValueLists);
         end
     end
     
