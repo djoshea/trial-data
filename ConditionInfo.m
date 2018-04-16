@@ -916,7 +916,8 @@ classdef ConditionInfo < ConditionDescriptor
                 % fetch other details as well, units, and numeric status
                 for iA = 1:ci.nAttributes
                     ci.attributeUnits{iA} = td.getChannelUnitsPrimary(ci.attributeNames{iA});
-                    ci.attributeNumeric(iA) = td.isChannelScalar(ci.attributeNames{iA});
+                    ci = ci.setAttributeNumeric(iA, td.isChannelScalar(ci.attributeNames{iA}));
+%                     ci.attributeNumeric(iA) = td.isChannelScalar(ci.attributeNames{iA});
                 end
                 
                 ci = ci.fixAttributeValues();

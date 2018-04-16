@@ -571,7 +571,7 @@ classdef ConditionDescriptor
                 attr = p.Results.attributes;
             end
             ci.assertHasAttribute(attr);
-            attr = unique(attr);
+            attr = unique(attr, 'stable');
             ci = ci.removeAttributesFromAxes(attr);
             
             valueList = p.Results.valueList;
@@ -612,6 +612,62 @@ classdef ConditionDescriptor
             ci = ci.notifyConditionsChanged();
         end
         
+        function ci = replaceAxis(ci, idx, varargin)
+            ci.warnIfNoArgOut(nargout);
+
+            p = inputParser;
+            p.addOptional('attributes', {}, @(x) ischar(x) || iscellstr(x));
+            p.addParameter('name', '', @ischar);
+            p.addParameter('valueList', {}, @(x) true);
+            p.parse(varargin{:});
+
+            if ~iscell(p.Results.attributes)
+                attr = {p.Results.attributes};
+            else
+                attr = p.Results.attributes;
+            end
+            ci.assertHasAttribute(attr);
+            attr = unique(attr, 'stable');
+            
+            ci = ci.removeAttributesFromAxes(attr, 'ignoreAxes', idx);
+            
+            valueList = p.Results.valueList;
+            if ~isempty(valueList) && ~isstruct(valueList)
+                assert(numel(attr) == 1, 'Must specify valueList as struct for multi-attribute axes');
+                for iV = 1:numel(valueList)
+                    if iscell(valueList)
+                        val = valueList{iV};
+                    else
+                        val = valueList(iV);
+                    end
+                    valueStruct(iV).(attr{1}) = val; %#ok<AGROW>
+                end
+                valueList = valueStruct;
+            end
+
+            % create a grouping axis
+            ci.axisAttributes{idx} = makecol(attr);
+            ci.axisValueListsManual{idx} = valueList;
+            ci.axisValueListsAsStringsManual{idx} = {};
+            ci.axisValueListsAsStringsManual{idx} = {};
+            ci.axisValueListsAsStringsShortManual{idx} = {};
+            ci.axisRandomizeModes(idx) = ci.AxisOriginal;
+            ci.axisRandomizeWithReplacement(idx) = false;
+            ci.axisRandomizeResampleFromList{idx} = [];
+            
+            valueListMode = ci.getAttributeValueListMode(attr);
+            if all(ismember(valueListMode, [ci.AttributeValueListAuto, ci.AttributeValueBinsAutoUniform,  ci.AttributeValueBinsAutoQuantiles]))
+                % all attributes are auto, make the axis auto too
+                ci.axisValueListsOccupiedOnly(idx) = true;
+            else
+                % some attributes have been manually specified, so make the
+                % axis default to auto all
+                ci.axisValueListsOccupiedOnly(idx) = false;
+            end
+            ci = ci.notifyConditionsChanged();
+        end
+            
+        
         function ci = maskAxes(ci, mask)
             ci.warnIfNoArgOut(nargout);
             
@@ -625,6 +681,10 @@ classdef ConditionDescriptor
             ci.axisValueListsOccupiedOnly = ci.axisValueListsOccupiedOnly(mask);
             
             ci = ci.notifyConditionsChanged();
+        end
+        
+        function ci = permuteAxes(ci, mask)
+            ci = ci.maskAxes(mask);
         end
         
         function ci = removeAxis(ci, axisSpec)
@@ -657,7 +717,13 @@ classdef ConditionDescriptor
             ci = ci.notifyConditionsChanged();
         end
         
-        function ci = removeAttributesFromAxes(ci, namesOrIdx)
+        function ci = removeAttributesFromAxes(ci, namesOrIdx, varargin)
+            p = inputParser();
+            p.addParameter('ignoreAxes', [], @(x) isvector(x)); % added for replaceAxis
+            p.parse(varargin{:});
+            
+            ignoreAxes = TensorUtils.vectorIndicesToMask(p.Results.ignoreAxes, ci.nAxes);
+            
             ci.warnIfNoArgOut(nargout);
             attrIdx = ci.getAttributeIdx(namesOrIdx);
             attrNames = ci.attributeNames(attrIdx);
@@ -671,7 +737,7 @@ classdef ConditionDescriptor
             for iAI = 1:numel(attrIdx)
                 iA = attrIdx(iAI);
                 iX = whichAxis(iA);
-                if isnan(iX)
+                if isnan(iX) || ignoreAxes(iX)
                     continue;
                 end
                 
@@ -1994,6 +2060,17 @@ classdef ConditionDescriptor
         function ci = setAttributeNumeric(ci, attr, tf)
             ci.warnIfNoArgOut(nargout);
             iAttr = ci.assertHasAttribute(attr);
+            
+            % check that attribute value lists are vectors not cells
+            valueList = ci.getAttributeValueList(iAttr);
+            if ~isempty(valueList)
+                if tf
+                    assert(~iscell(valueList), 'Attribute %s has manual value list that is not numeric vector which is required for numeric attributes', attr);
+                else
+                    assert(iscell(valueList), 'Attribute %s has manual value list that is not cell which is required for numeric attributes', attr);
+                end
+            end
+            
             ci.attributeNumeric(iAttr) = tf;
             ci = ci.notifyConditionsChanged();
         end  
@@ -3069,7 +3146,285 @@ classdef ConditionDescriptor
                 'asStrings', cat(1, axisValueListsAsStrings{:}), ...
                 'asStringsShort', cat(1, axisValueListsAsStringsShort{:}));
         end
-        
+    end
+    
+    methods(Static) % expansion to match up multiple ConditionDescriptors
+        function [cdNew, cdSubstantivelyModified] = expandToMatch(cdList, varargin)
+            p = inputParser();
+            p.addParameter('expandValueLists', true, @islogical);
+            p.parse(varargin{:});
+            
+            % all axis value lists need to be manual
+            nC = numel(cdList);
+            for iC = 1:nC
+                cdList{iC}.assertAllAxisValueListsManual();
+            end
+            
+            %% first, generate the expanded axis attributes
+            % we need to end up every attribute in every axis across the cdList in the
+            % final expanded list of axes
+            
+            % start with the axes attributes on first cd
+            axisAttr = cdList{1}.axisAttributes;
+            
+            for iC = 2:nC
+                cdNew = cdList{iC};
+                axisAttrNew = cdNew.axisAttributes;
+                
+                for iA = 1:cdNew.nAxes
+                    thisAxisAttr = axisAttrNew{iA};
+                    
+                    iAx = findAxesContainingAllAttr(axisAttr, thisAxisAttr);
+                    
+                    if isempty(iAx)
+                        % no axis contains ALL these attributes
+                        % first check whether any axis contains ANY of these axis
+                        iAx = findAxesContainingAnyAttr(axisAttr, thisAxisAttr);
+                        
+                        if numel(iAx) == 0
+                            % there is no axis contianing any of these other attributes
+                            % so we just create a new axis at the end which will take all of these attributes
+                            axisAttr{end+1, 1} = thisAxisAttr; %#ok<SAGROW>
+                            
+                        elseif numel(iAx) == 1
+                            % this is exactly one axis that has some of these attributes, so we can just add the missing
+                            % attributes to this axis. the axis value lists will later ensure that the conditions themselves do not change
+                            axisAttr{iAx} = union(axisAttr{iAx}, thisAxisAttr, 'stable');
+                            
+                        else
+                            % these attributes are split over multiple existing axes, which is confusing and maybe
+                            % impossible to deal with correctly, so we won't handle it for now
+                            error('Attributes {%s} of axis %d of input %d are found partially on multiple axes in expanded ConditionDescriptor. This is not supported', ...
+                                TrialDataUtilities.String.strjoin(thisAxisAttr, ','), iA, iC);
+                        end
+                    else
+                        % there is an axis that containe all these attributes
+                        
+                    end
+                end
+            end
+            
+            %% second, adapt each condition descriptor to the expanded axes
+            
+            % for each cd, we have to add additional axes to match the final axis list, but we
+            % want to preserve the axis value lists. when an attribute is added to an existing axis
+            % or to a new axis, we have to set its value list appropriately. if the attribute
+            % is not filtered by this cd, it should be assigned a wildcard ( [] ) scalar value list.
+            % if the attribute is filtered, by this cd, then the value list should be set to the
+            % filtered value list.
+            
+            nAxes = numel(axisAttr);
+            cdNew = cdList;
+            attrAddedToAxes = cell(nC, nAxes); % list of attributes added to axes in each cd
+            cdSubstantivelyModified = false(nC, 1);
+            
+            for iC = 1:numel(cdList)
+                cd = cdList{iC};
+                origAxisAttr = cd.axisAttributes;
+                
+                axisPositionNew = nanvec(numel(axisAttr));
+                
+                for iA = 1:numel(axisAttr) % loop over new axes
+                    thisAxisAttr = axisAttr{iA};
+                    
+                    % find an old axis that contains any of these axis attr
+                    idxAxOrig = findAxesContainingAnyAttr(origAxisAttr, thisAxisAttr);
+                    
+                    if isempty(idxAxOrig)
+                        % add these as a new axis, set the value list to a scalar:
+                        % either wildcard or set to the current attribute value list
+                        [cdNew{iC}, axisPositionNew(iA)] = addNewAxis(cdNew{iC}, thisAxisAttr);
+                        attrAddedToAxes{iC, iA} = thisAxisAttr;
+                        cdSubstantivelyModified(iC) = true;
+                        
+                    elseif numel(idxAxOrig) == 1
+                        % axis either has some or all of the attributes
+                        % add missing attributes to this axis with the appropriaite values
+                        axisPositionNew(iA) = idxAxOrig;
+                        
+                        % we call this even if all attr are present to ensure that the order of axisAttr
+                        % is set to match across ceList{:}
+                        [cdNew{iC}, attrAdded] = addMissingAttributesToAxis(cdNew{iC}, thisAxisAttr, idxAxOrig);
+                        attrAddedToAxes{iC, iA} = attrAdded;
+                        if ~isempty(attrAdded)
+                            cdSubstantivelyModified(iC) = true;
+                        end
+                    end
+                end
+                
+                % adjust the attribute orders to match
+                cdNew{iC} = cdNew{iC}.permuteAxes(axisPositionNew);
+            end
+            
+            if p.Results.expandValueLists
+                %% third expand the value list sizes to match
+                % do expansion via matched attributes:
+                % we do our best to clone the value list in place. e.g. if cd{1} has an axis
+                % {attrA x attrB} with (5 x 3 values) in it and cd{2} had an axis {attrA} with 5
+                % values, then cdNew{2} will now have an axis {attrA, attrB} where attrB is a wildcard.
+                % then we could clone the 5 values 3 times when we add the new value list.
+                % but the 5 x 3 values could be in any order, and we might have only a subset of them.
+                % so what we'll do is take the {attrA, attrB} value list, and for each value in that list
+                % match it by only attrA into cd{2}'s {attrA} value list. If there's exactly one match,
+                % we'll replicate it for all values of attrB. We'll first handle (a) and (b), and then
+                % do this.
+                %
+                % here's a concrete example. suppose cd{1} has 1 axis with perturbDirection x perturbMagnitude with 8*3 values
+                % and cd{2} has a perturbDirection axis with 8 values and perturbMagnitude filtered == None. Then we can expand this
+                % in place to 8*3 where perturbMagnitude == None but matching perturbDirection.
+                
+                % loop over each axis
+                for iA = 1:nAxes
+                    
+                    attrThisAxis = axisAttr{iA};
+                    
+                    valueListCell = cell(nC, 1);
+                    for iC = 1:nC
+                        valueListCell{iC} = cdNew{iC}.getAxisValueList(iA);
+                    end
+                    origValueListCell = valueListCell;
+                    
+                    % build a table of which attributes were missing from each cd and were added
+                    hasAttr_AttrByC = false(numel(attrThisAxis), nC);
+                    for iAttr = 1:numel(attrThisAxis)
+                        for iC = 1:nC
+                            hasAttr_AttrByC(iAttr, iC) = ~ismember(attrThisAxis{iAttr}, attrAddedToAxes{iC, iA});
+                        end
+                    end
+                    
+                    % do the matching expansion in place, typically preserving the left most valueList where possible
+                    valueListCell = generateExpandedValueListsViaSharedMatch(valueListCell, attrThisAxis, hasAttr_AttrByC);
+                    
+                    % update the value lists and check for modifications
+                    for iC = 1:nC
+                        cdNew{iC} = cdNew{iC}.setAxisValueList(iA, valueListCell{iC});
+                        if ~isequal(valueListCell{iC}, origValueListCell{iC})
+                            cdSubstantivelyModified(iC) = true;
+                        end
+                    end
+                end
+            end
+            
+            
+            %%
+            
+            function idx = findAxesContainingAllAttr(axisAttr, thisAxisAttr)
+                mask = false(numel(axisAttr), 1);
+                for ia = 1:numel(axisAttr)
+                    if all(ismember(thisAxisAttr, axisAttr{ia}))
+                        mask(ia) = true;
+                    end
+                end
+                
+                idx = find(mask);
+            end
+            
+            function idx = findAxesContainingAnyAttr(axisAttr, thisAxisAttr)
+                mask = false(numel(axisAttr), 1);
+                for ia = 1:numel(axisAttr)
+                    if any(ismember(thisAxisAttr, axisAttr{ia}))
+                        mask(ia) = true;
+                    end
+                end
+                
+                idx = find(mask);
+            end
+            
+            function [cd, idxAxis] = addNewAxis(cd, axisAttr)
+                % adds a new axis to cd and returns the index of this new axis
+                % also set the new axis' value list to either wildcard if no attribute filter
+                % exists, or to the value list if it is filtering
+                
+                value = struct();
+                for ia = 1:numel(axisAttr)
+                    attr = axisAttr{ia};
+                    
+                    if cd.hasAttribute(attr)
+                        attrValList = cd.getAttributeValueList(attr);
+                        if iscell(attrValList) && numel(attrValList) == 1
+                            attrValList = attrValList{1};
+                        end
+                        value.(attr) = attrValList;
+                    else
+                        cd = cd.addAttribute(attr);
+                        value.(attr) = [];
+                    end
+                end
+                
+                cd = cd.addAxis(axisAttr, 'valueList', value);
+                idxAxis = cd.nAxes;
+            end
+            
+            function [cd, attrAdded] = addMissingAttributesToAxis(cd, axisAttr, idxAxOrig)
+                % this axis has some (and possibly all) of the attributes in axisAttr
+                % add the missing attributes. If missing,
+                
+                valueList = cd.getAxisValueList(idxAxOrig);
+                
+                missing = ~ismember(axisAttr, cd.axisAttributes{idxAxOrig});
+                attrAdded = axisAttr(missing);
+                
+                if any(missing)
+                    % axis does not have all of the attributes, value list should be amended
+                    % to add the missing property
+                    for ia = 1:numel(axisAttr)
+                        if missing(ia)
+                            attr = axisAttr{ia};
+                            if cd.hasAttribute(attr)
+                                attrValList = cd.getAttributeValueList(attr);
+                                if iscell(attrValList) && numel(attrValList) == 1
+                                    attrValList = attrValList{1};
+                                end
+                            else
+                                cd = cd.addAttribute(attr);
+                                attrValList = [];
+                            end
+                            [valueList(:).(axisAttr{ia})] = deal(attrValList);
+                        end
+                    end
+                end
+                
+                cd = cd.replaceAxis(idxAxOrig, axisAttr, 'valueList', valueList);
+            end
+            
+            function valueListCell = generateExpandedValueListsViaSharedMatch(valueListCell, attrList, hasAttr_AttrByC)
+                
+                C = numel(valueListCell);
+                for iC1 = 1:C
+                    for iC2 = iC1+1:C
+                        valueList1 = valueListCell{iC1};
+                        valueList2 = valueListCell{iC2};
+                        
+                        newValueList1 = cell(0, 1);
+                        newValueList2 = cell(0, 1);
+                        
+                        maskShared = hasAttr_AttrByC(:, iC1) & hasAttr_AttrByC(:, iC2);
+                        attrShared = attrList(maskShared);
+                        
+                        tbl1Shared = struct2table(keepfields(valueList1, attrShared), 'AsArray', true);
+                        tbl2Shared = struct2table(keepfields(valueList2, attrShared), 'AsArray', true);
+                        
+                        % loop over valueList1, find shared-matches in valueList2
+                        for iV1 = 1:numel(valueList1)
+                            matchIn2Mask = ismember(tbl2Shared, tbl1Shared(iV1, :));
+                            
+                            if any(matchIn2Mask)
+                                newValueList1{iV1} = repmat(valueList1(iV1), nnz(matchIn2Mask), 1);
+                                newValueList2{iV1} = valueList2(matchIn2Mask);
+                            end
+                        end
+                        
+                        valueListCell{iC1} = cat(1, newValueList1{:});
+                        valueListCell{iC2} = cat(1, newValueList2{:});
+                    end
+                end
+            end
+            
+            function s = keepfields(s, fields)
+                s = rmfield(s, setdiff(fieldnames(s), fields));
+                s = orderfields(s, intersect(fields, fieldnames(s), 'stable'));
+            end
+        end
     end
     
     methods
