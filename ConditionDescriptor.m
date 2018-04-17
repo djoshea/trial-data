@@ -784,7 +784,7 @@ classdef ConditionDescriptor
                     % array of values
                     %debug('Auto converting value list for single attribute axis\n');
                     valueCell = valueList;
-                    if ~iscell(valueCell), valueCell = num2cell(valueCell); end;
+                    if ~iscell(valueCell), valueCell = num2cell(valueCell); end
                     valueList = struct(ci.axisAttributes{idx}{1}, valueCell);
                 end
             end  
@@ -3294,6 +3294,11 @@ classdef ConditionDescriptor
                     
                     % do the matching expansion in place, typically preserving the left most valueList where possible
                     valueListCell = generateExpandedValueListsViaSharedMatch(valueListCell, attrThisAxis, hasAttr_AttrByC);
+                    
+                    empty = cellfun(@isempty, valueListCell);
+                    if any(empty)
+                        error('No matching value for overlapping axis attribute values on axis %d', iA);
+                    end
                     
                     % update the value lists and check for modifications
                     for iC = 1:nC
