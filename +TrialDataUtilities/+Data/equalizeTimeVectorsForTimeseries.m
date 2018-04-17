@@ -10,7 +10,7 @@ if timeDim ~= 1
     ndimsOrig = nanvec(N);
     for i = 1:numel(dataCell)
         [dataCell{i}, ndimsOrig(i)] = TensorUtils.shiftdimToFirstDim(dataCell{i}, timeDim);
-        assert(isvector(timeCell{i}) && size(dataCell{i}) == numel(timeCell{i}), 'timeCell must be time vector whose sizes match size(dimCell, timeDim)');
+        assert(isvector(timeCell{i}) && size(dataCell{i}, 1) == numel(timeCell{i}), 'timeCell must be time vector whose sizes match size(dimCell, timeDim)');
     end
 end
 
@@ -18,7 +18,6 @@ end
 dataCat = TensorUtils.splitAlongDimension(dataCat, 1, [], true);
 
 if timeDim ~= 1
-    ndimsOrig = nanvec(N);
     for i = 1:numel(dataCell)
         dataCell{i} = TensorUtils.unshiftdimToFirstDim(dataCat{i}, timeDim, ndimsOrig(i));
     end
