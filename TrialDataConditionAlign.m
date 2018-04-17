@@ -2134,6 +2134,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.addParameter('assumeUniformSampling', false, @islogical);
             p.addParameter('minTrials', 0, @isscalar);
@@ -2192,6 +2193,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
@@ -2204,6 +2206,45 @@ classdef TrialDataConditionAlign < TrialData
                         nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end
+            
+            % subtract these conditions piecemeal from this one
+            if ~isempty(p.Results.subtractConditionDescriptor)
+                cdSub = p.Results.subtractConditionDescriptor;
+                
+                if isa(cdSub, 'ConditionInfo')
+                    cdSub = ConditionInfo.fromConditionDescriptor(cdSub, td);
+                end
+                
+                if ~isequal(td.conditionInfo.conditionsSizeNoExpand, cdSub.conditionsSizeNoExpand) || ...
+                   ~isequal(td.conditionInfo.axisAttributes, cdSub.axisAttributes)
+                    debug('Using ConditionDescriptor.expandToMatch to match condition descriptor sizes\n');
+                    [cdMatched, cdModifiedMask] = ConditionDescriptor.expandToMatch({td.conditionDescriptor, cdSub});
+                    if cdModifiedMask(1)
+                        error('ConditionDescriptor.expandToMatch required modification of the current conditionDescriptor to match the provided subtractConditionDescriptor');
+                    end
+                    
+                    cdSub = cdMatched{2};
+                end
+                
+                % get the group means for this condition descriptor
+                [sub_meanMat, sub_semMat, sub_tvec, sub_stdMat, ~] = ...
+                    td.setConditionDescriptor(cdSub).getAnalogGroupMeans(name, ...
+                    rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
+                
+                % equalize the time vectors
+                [out, tvec] = TrialDataUtilities.Data.equalizeTimeVectorsForTimeseries({...
+                    meanMat, semMat, stdMat, sub_meanMat, sub_semMat, sub_stdMat}, ...
+                    {tvec, tvec, tvec, sub_tvec, sub_tvec, sub_tvec}, 2);
+                
+                % do the subtraction
+                meanMat = out{1} - out{4};
+                
+                % sd = sqrt(sd1^2 + sd2^2) 
+                % sem = sqrt(sem1^2 + sem2^2)
+                semMat = sqrt(out{2}.^2 + out{5}.^2);
+                stdMat = sqrt(out{3}.^2 + out{6}.^2);
+            end
+                
         end
         
         function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogGroupMeansRandomized(td, name, varargin)
@@ -4499,6 +4540,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addRequired('unitNames', @(x) isnumeric(x) || ischar(x) || iscellstr(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
             
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
@@ -4554,6 +4596,44 @@ classdef TrialDataConditionAlign < TrialData
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
                         TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
                 end
+            end
+            
+            % subtract these conditions piecemeal from this one
+            if ~isempty(p.Results.subtractConditionDescriptor)
+                cdSub = p.Results.subtractConditionDescriptor;
+                
+                if isa(cdSub, 'ConditionInfo')
+                    cdSub = ConditionInfo.fromConditionDescriptor(cdSub, td);
+                end
+                
+                if ~isequal(td.conditionInfo.conditionsSizeNoExpand, cdSub.conditionsSizeNoExpand) || ...
+                   ~isequal(td.conditionInfo.axisAttributes, cdSub.axisAttributes)
+                    debug('Using ConditionDescriptor.expandToMatch to match condition descriptor sizes\n');
+                    [cdMatched, cdModifiedMask] = ConditionDescriptor.expandToMatch({td.conditionDescriptor, cdSub});
+                    if cdModifiedMask(1)
+                        error('ConditionDescriptor.expandToMatch required modification of the current conditionDescriptor to match the provided subtractConditionDescriptor');
+                    end
+                    
+                    cdSub = cdMatched{2};
+                end
+                
+                % get the group means for this condition descriptor
+                [sub_psthMat, sub_tvec, sub_semMat, sub_stdMat, ~] = ...
+                    td.setConditionDescriptor(cdSub).getSpikeRateFilteredGroupMeans(unitNames, ...
+                    rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
+                
+                % equalize the time vectors
+                [out, tvec] = TrialDataUtilities.Data.equalizeTimeVectorsForTimeseries({...
+                    psthMat, semMat, stdMat, sub_psthMat, sub_semMat, sub_stdMat}, ...
+                    {tvec, tvec, tvec, sub_tvec, sub_tvec, sub_tvec}, 2);
+                
+                % do the subtraction
+                psthMat = out{1} - out{4};
+                
+                % sd = sqrt(sd1^2 + sd2^2) 
+                % sem = sqrt(sem1^2 + sem2^2)
+                semMat = sqrt(out{2}.^2 + out{5}.^2);
+                stdMat = sqrt(out{3}.^2 + out{6}.^2);
             end
         end
         
@@ -5308,6 +5388,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showSem', true, @islogical); % equivalent to 'errorType', 'sem'
             p.addParameter('showRandomizedQuantiles', [], @(x) isempty(x) || isvector(x));
             
+            p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
+            
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
             %p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.addParameter('axh', gca, @ishandle);
@@ -5326,7 +5408,8 @@ classdef TrialDataConditionAlign < TrialData
                     td.useAlign(iAlign).getSpikeRateFilteredGroupMeans(unitNames, ...
                     'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
                     'spikeFilter', sf, ...
-                    'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials);
+                    'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials, ...
+                    'subtractConditionDescriptor', p.Results.subtractConditionDescriptor);
             
                 if numel(tvecCell{iAlign}) > 1
                     [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...
@@ -6510,6 +6593,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
             
             p.addParameter('label', '', @ischar); 
             p.KeepUnmatched = true;
@@ -6525,6 +6609,7 @@ classdef TrialDataConditionAlign < TrialData
                     'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                     'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                     'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
+                    'subtractConditionDescriptor', p.Results.subtractConditionDescriptor, ...
                     'timeDelta', p.Results.timeDelta, ...
                     'timeReference', p.Results.timeReference, ...
                     'binAlignmentMode', p.Results.binAlignmentMode, ...

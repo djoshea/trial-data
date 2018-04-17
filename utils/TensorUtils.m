@@ -1488,7 +1488,7 @@ classdef TensorUtils
             
         end
         
-        function c = splitAlongDimension(t, dim, nPerCell)
+        function c = splitAlongDimension(t, dim, nPerCell, squeezeDims)
            % c = splitAlongDimension(t, dim, nPerCell)
            % wrapper around mat2cell that splits t along dimension t so
            % that size(c) == [numel(nPerCell) 1] and size(c{i}, dim) == nPerCell(i)
@@ -1497,8 +1497,11 @@ classdef TensorUtils
            % nPerCell is omitted, will be ones(size(t, dim))
            
            args = TensorUtils.cellvec(ndims(t));
-           if nargin < 3
+           if nargin < 3 || isempty(nPerCell)
                nPerCell = arrayfun(@(dim) TensorUtils.onesvec(size(t, dim)), dim, 'UniformOutput', false);
+           end
+           if nargin < 4 
+               squeezeDims = false;
            end
            if ~iscell(nPerCell)
                nPerCell = {nPerCell};
@@ -1515,6 +1518,10 @@ classdef TensorUtils
            end
            
            c = mat2cell(t, args{:});
+           
+           if squeezeDims
+               c = cellfun(@(x) TensorUtils.squeezeDims(x, dim), c, 'UniformOutput', false);
+           end
         end
         
         function out = splitAlongDimensionByIndex(t, dim, which)
