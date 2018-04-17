@@ -2134,6 +2134,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.addParameter('assumeUniformSampling', false, @islogical);
             p.addParameter('minTrials', 0, @isscalar);
@@ -2192,6 +2193,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa('ConditionDescriptor',x));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
@@ -2204,6 +2206,29 @@ classdef TrialDataConditionAlign < TrialData
                         nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
             end
+            
+            % subtract these conditions piecemeal from this one
+            if ~isempty(p.Results.subtractConditionDescriptor)
+                cdSub = p.Results.subtractConditionDescriptor;
+                
+                if isa(cdSub, 'ConditionInfo')
+                    cdSub = ConditionInfo.fromConditionDescriptor(cdSub, td);
+                end
+                
+                if ~isequal(td.conditionInfo.conditionsSizeNoExpand, cdSub.conditionsSizeNoExpand) || ...
+                   ~isequal(td.conditionInfo.axisAttributes, cdSub.axisAttributes)
+                    debug('Using ConditionDescriptor.expandToMatch to match condition descriptor sizes\n');
+                    [cdMatched, cdModifiedMask] = ConditionDescriptor.expandToMatch({td.conditionDescriptor, cdSub});
+                    if cdModifiedMask(1)
+                        error('ConditionDescriptor.expandToMatch required modification of the current conditionDescriptor to match the provided subtractConditionDescriptor');
+                    end
+                    
+                    cdSub = cdMatched{2};
+                end
+                
+%                 [sub_meanMat, sub_semMat, tvec, stdMat, nTrialsMat]
+            end
+                
         end
         
         function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogGroupMeansRandomized(td, name, varargin)
@@ -6510,6 +6535,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa('ConditionDescriptor',x));
             
             p.addParameter('label', '', @ischar); 
             p.KeepUnmatched = true;
@@ -6525,6 +6551,7 @@ classdef TrialDataConditionAlign < TrialData
                     'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                     'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                     'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
+                    'subtractConditionDescriptor', p.Results.subtractConditionDescriptor, ...
                     'timeDelta', p.Results.timeDelta, ...
                     'timeReference', p.Results.timeReference, ...
                     'binAlignmentMode', p.Results.binAlignmentMode, ...
