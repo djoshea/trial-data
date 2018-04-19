@@ -24,7 +24,12 @@ classdef SaveArrayIndividualized < handle
             
             % create the directory as path/name
             fullPath = GetFullPath(locationName);
-            mkdirRecursive(fullPath);
+            
+            if exist(fullPath, 'dir')
+                TrialDataUtilities.Data.SaveArrayIndividualized.clearLocationContents(fullPath);
+            else
+                mkdirRecursive(fullPath);
+            end
             
             if ~isempty(p.Results.message)
                 str = p.Results.message;
@@ -298,6 +303,15 @@ classdef SaveArrayIndividualized < handle
             partitionsNew = union(partitionsSave, partitionsLink);
             TrialDataUtilities.Data.SaveArrayIndividualized.writePartitionList(locationNameSave, partitionsNew);
         end
+        
+        function clearLocationContents(locationName)
+            if exist(locationName, 'dir')
+                delete(fullfile(locationName, 'el*.mat'));
+                delete(TrialDataUtilities.Data.SaveArrayIndividualized.generateCountFileName(locationName));
+                delete(TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionListFileName(locationName));
+            end
+        end
+                
     end
     
     methods(Static, Hidden)
