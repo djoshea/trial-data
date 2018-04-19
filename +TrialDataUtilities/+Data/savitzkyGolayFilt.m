@@ -49,9 +49,9 @@ DIM = p.Results.dim;
 
 T = p.Results.samplingIntervalMs;
 if isempty(T)
-    scale = -1;
+    scale = (-1)^DN;
 else
-    scale = -1 / (T/1000)^DN;
+    scale = (-1 / (T/1000))^DN;
 end
 
 % Check if the input arguments are valid

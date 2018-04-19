@@ -611,6 +611,15 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
 
+    % Copying settings from another tdca
+    methods
+        function td = setupLike(td, tdOther)
+            td.warnIfNoArgOut(nargout);
+            td = td.setConditionDescriptor(tdOther.conditionDescriptor);
+            td = td.setAlignDescriptorSet(tdOther.alignInfoSet);
+        end
+    end
+    
     % ConditionInfo control
     methods
         % parameters that are either scalar or strings
@@ -2486,8 +2495,9 @@ classdef TrialDataConditionAlign < TrialData
             % data will be in units / second, checking .timeUnitsPerSecond
             % in order to normalize appropriately
             p = inputParser;
-            p.addParameter('delta', [], @isscalar);
-            p.addParameter('interpolationMethod', 'pchip', @ischar);
+            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('resampleMethod', 'interp', @ischar); % valid modes are filter, average, repeat , interp   
             p.addParameter('smoothing', NaN, @(x) isnan(x) || (isscalar(x) && mod(x, 2) == 1));
             p.addParameter('smoothingMs', NaN, @isscalar); % 
             p.addParameter('differentiationOrder', 1, @isscalar);
@@ -2497,10 +2507,21 @@ classdef TrialDataConditionAlign < TrialData
             if td.hasAnalogChannelGroup(name)
                 % fetch as group, rather than single channel
                 [data, time, delta] = td.getAnalogChannelGroupUniformlySampled(name, ...
-                    'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
-            else
+                    'timeDelta', p.Results.delta, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'resampleMethod', p.Results.resampleMethod, ...
+                    'ensureUniformSampling', true);
+                
+            elseif iscellstr(name)
+                [data, time, delta] = td.getAnalogMultiCommonTimeUniformlySampled(name, ...
+                    'timeDelta', p.Results.timeDelta, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'resampleMethod', p.Results.resampleMethod, ...
+                    'ensureUniformSampling', true);
+                
+            elseif ischar(name)
                 [data, time, delta] = td.getAnalogUniformlySampled(name, ...
-                    'delta', p.Results.delta, 'method', p.Results.interpolationMethod);
+                    'timeDelta', p.Results.timeDelta, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'resampleMethod', p.Results.resampleMethod, ...
+                    'ensureUniformSampling', true);
             end
             
             diffData = cellvec(td.nTrials);
@@ -2529,7 +2550,12 @@ classdef TrialDataConditionAlign < TrialData
                 minSmoothingSamples, minSmoothingMs);
             
 %             w = -1 / (delta / td.timeUnitsPerSecond) ^ p.Results.order;
-            prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', name);
+            if iscell(name)
+                nameStr = 'channels';
+            else
+                nameStr = name;
+            end
+            prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', nameStr);
             for iT = 1:td.nTrials
                 prog.update(iT);
                 if isempty(data{iT})
@@ -3050,7 +3076,7 @@ classdef TrialDataConditionAlign < TrialData
             % across all trials.
             
             p = inputParser;
-            p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
@@ -3114,6 +3140,11 @@ classdef TrialDataConditionAlign < TrialData
                     dataCell{iT} = permute(dataCell{iT}, [2 3 4 1]);
                 end
             end
+        end
+        
+        function [dataUnif, timeUnif, delta] = getAnalogMultiCommonTimeUniformlySampled(td, name, varargin)
+            [dataUnif, timeUnif] = td.getAnalogMultiCommonTime(name, varargin{:}, 'ensureUniformSampling', true);
+            delta = TrialData.computeDeltaFromTimes(timeUnif);
         end
         
         function [dataByCondition, timeByCondition] = getAnalogMultiCommonTimeGrouped(td, names, varargin)
