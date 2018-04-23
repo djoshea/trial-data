@@ -112,6 +112,8 @@ classdef SaveArrayIndividualized < handle
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x));
             p.addParameter('loadAllPartitions', false, @islogical);
+            p.addParameter('ignoreMissingPartitions', false, @islogical);
+            
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
@@ -136,7 +138,11 @@ classdef SaveArrayIndividualized < handle
                 end
                 found = ismember(partitions, partitionsAvailable);
                 if any(~found)
-                    error('Partitions %s not found. Partitions found: %s', strjoin(partitions(~found), ', '), strjoin(partitionsAvailable, ', '));
+                    if ~p.Results.ignoreMissingPartitions
+                        error('Partitions %s not found. Partitions found: %s', strjoin(partitions(~found), ', '), strjoin(partitionsAvailable, ', '));
+                    else
+                        partitions = partitions(found);
+                    end
                 end
             end
             
