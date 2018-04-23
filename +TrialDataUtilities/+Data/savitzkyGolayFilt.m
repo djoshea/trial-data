@@ -118,3 +118,9 @@ end
 
 % scale according to differentiation and sampling order
 y = scale * y;
+
+end
+
+function str = generatemsgid(mne)
+    str = ['savitzyGolayFilt:' mne];
+end
