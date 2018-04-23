@@ -196,6 +196,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % if specified, we can skip the resampling step which makes this quick
     uniformSampling = p.Results.assumeUniformSampling && all(timeDelta == origDelta);
     
+    err = timeDelta / 1000;
     for i = 1:N % loop over trials
         if ~trialValid(i), continue; end
 %         if mod(i, 100) && p.Results.showProgress, prog.update(i); end
@@ -206,7 +207,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
                 if uniformSampling
                     % just figure out where to insert this into the matrix,
                     % no need for resampling
-                    indTake = timeCell{i, g} >= tvec(indPutStart(i, g)) & timeCell{i,g} <= tvec(indPutStop(i, g));
+                    indTake = timeCell{i, g} + err >= tvec(indPutStart(i, g)) & timeCell{i,g} <= tvec(indPutStop(i, g)) + err;
                     mat(i, indPutStart(i,g):indPutStop(i,g), :, g) = dataCell{i,g}(indTake, :);
                 else
                     mask = ~all(isnan(dataCell{i, g}), 2);

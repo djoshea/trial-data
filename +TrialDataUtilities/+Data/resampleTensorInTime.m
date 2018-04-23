@@ -44,8 +44,16 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     tMin = p.Results.tMin;
     tMax = p.Results.tMax;
     [tMinCalc, tMaxCalc] = p.Results.binAlignmentMode.getTimeLimitsForRebinning(min(time), max(time), origDelta, timeDelta, timeReference);
-    if isempty(tMin), tMin = tMinCalc; end
-    if isempty(tMax), tMax = tMaxCalc; end
+    if isempty(tMin)
+        tMin = tMinCalc;
+    else
+        tMin = TrialDataUtilities.Data.removeSmallTimeErrors(tMin, timeDelta, timeReference);
+    end
+    if isempty(tMax)
+        tMax = tMaxCalc; 
+    else
+        tMax = TrialDataUtilities.Data.removeSmallTimeErrors(tMax, timeDelta, timeReference);
+    end
     
     timeNew = (tMin:timeDelta:tMax)';
     nDimsOrig = ndims(data);
