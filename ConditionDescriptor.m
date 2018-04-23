@@ -2547,6 +2547,8 @@ classdef ConditionDescriptor
                 end
                 
                 valueListByAxes{iX} = makecol(valueListByAxes{iX}(:));
+                
+                valueListByAxes{iX} = orderfields(valueListByAxes{iX}, ci.axisAttributes{iX});
             end
 
             function values = buildAutoValueListForAttributeSet(attributes)
@@ -2693,10 +2695,12 @@ classdef ConditionDescriptor
                     end
                 end
                 
+                % ensure field ordering matches
+                valueLists{iX} = makecol(orderfields(valueLists{iX}, attr));
                 strCell{iX} = arrayfun(@(v) TrialDataUtilities.Data.structToString(v, ...
                     separator, 'includeFieldNames', ~shortNames, 'fieldNameSubstitutions', displayAsLookup,  'suffixByField', unitsLookup, ...
                     'logicalNotPrefix', p.Results.logicalNotPrefix), ...
-                    makecol(valueLists{iX}), ...
+                    valueLists{iX}, ...
                    'UniformOutput', false);
 
                 % append randomization indicator when axis is randomized
@@ -3184,7 +3188,7 @@ classdef ConditionDescriptor
                         if numel(iAx) == 0
                             % there is no axis contianing any of these other attributes
                             % so we just create a new axis at the end which will take all of these attributes
-                            axisAttr{end+1, 1} = thisAxisAttr; %#ok<SAGROW>
+                            axisAttr{end+1, 1} = thisAxisAttr; %#ok<AGROW>
                             
                         elseif numel(iAx) == 1
                             % this is exactly one axis that has some of these attributes, so we can just add the missing

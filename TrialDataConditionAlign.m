@@ -1368,6 +1368,25 @@ classdef TrialDataConditionAlign < TrialData
         end
     end
 
+    methods(Hidden)
+        function cdSub = expandConditionDescriptorForSubtraction(td, cdSub)
+            if isa(cdSub, 'ConditionInfo')
+                cdSub = ConditionInfo.fromConditionDescriptor(cdSub, td);
+            end
+
+            if ~isequal(td.conditionInfo.conditionsSizeNoExpand, cdSub.conditionsSizeNoExpand) || ...
+               ~isequal(td.conditionInfo.axisAttributes, cdSub.axisAttributes)
+                debug('Using ConditionDescriptor.expandToMatch to match condition descriptor sizes\n');
+                [cdMatched, cdModifiedMask] = ConditionDescriptor.expandToMatch({td.conditionDescriptor, cdSub});
+                if cdModifiedMask(1)
+                    error('ConditionDescriptor.expandToMatch required modification of the current conditionDescriptor to match the provided subtractConditionDescriptor');
+                end
+
+                cdSub = cdMatched{2};
+            end
+        end
+    end
+    
     % AlignInfo control
     methods
         function td = initializeAlignInfo(td)
@@ -2215,22 +2234,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % subtract these conditions piecemeal from this one
             if ~isempty(p.Results.subtractConditionDescriptor)
-                cdSub = p.Results.subtractConditionDescriptor;
-                
-                if isa(cdSub, 'ConditionInfo')
-                    cdSub = ConditionInfo.fromConditionDescriptor(cdSub, td);
-                end
-                
-                if ~isequal(td.conditionInfo.conditionsSizeNoExpand, cdSub.conditionsSizeNoExpand) || ...
-                   ~isequal(td.conditionInfo.axisAttributes, cdSub.axisAttributes)
-                    debug('Using ConditionDescriptor.expandToMatch to match condition descriptor sizes\n');
-                    [cdMatched, cdModifiedMask] = ConditionDescriptor.expandToMatch({td.conditionDescriptor, cdSub});
-                    if cdModifiedMask(1)
-                        error('ConditionDescriptor.expandToMatch required modification of the current conditionDescriptor to match the provided subtractConditionDescriptor');
-                    end
-                    
-                    cdSub = cdMatched{2};
-                end
+                cdSub = td.expandConditionDescriptorForSubtraction(p.Results.subtractConditionDescriptor);
                 
                 % get the group means for this condition descriptor
                 [sub_meanMat, sub_semMat, sub_tvec, sub_stdMat, ~] = ...
@@ -2329,6 +2333,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
@@ -2344,7 +2349,30 @@ classdef TrialDataConditionAlign < TrialData
                     [meanMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), ...
                         stdMat(iC, :, :)] = nanMeanSemMinCount(dCell{iC}, 1, minTrials, p.Results.minTrialFraction);
                 end
-            end 
+            end
+            
+            % subtract these conditions piecemeal from this one
+            if ~isempty(p.Results.subtractConditionDescriptor)
+                cdSub = td.expandConditionDescriptorForSubtraction(p.Results.subtractConditionDescriptor);
+                
+                % get the group means for this condition descriptor
+                [sub_meanMat, sub_semMat, sub_tvec, ~, sub_stdMat] = ...
+                    td.setConditionDescriptor(cdSub).getAnalogMultiGroupMeans(nameCell, ...
+                    rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
+                
+                % equalize the time vectors
+                [out, tvec] = TrialDataUtilities.Data.equalizeTimeVectorsForTimeseries({...
+                    meanMat, semMat, stdMat, sub_meanMat, sub_semMat, sub_stdMat}, ...
+                    {tvec, tvec, tvec, sub_tvec, sub_tvec, sub_tvec}, 2);
+                
+                % do the subtraction
+                meanMat = out{1} - out{4};
+                
+                % sd = sqrt(sd1^2 + sd2^2) 
+                % sem = sqrt(sem1^2 + sem2^2)
+                semMat = sqrt(out{2}.^2 + out{5}.^2);
+                stdMat = sqrt(out{3}.^2 + out{6}.^2);
+            end
          end
          
          function [meanMat, semMat, tvec, nTrialsMat, stdMat, alignIdx] = ...
@@ -2562,9 +2590,9 @@ classdef TrialDataConditionAlign < TrialData
                     continue;
                 end
                 
-                if nnz(~isnan(data{iT})) < smoothing
+                if any(sum(~isnan(data{iT}), 1) < smoothing)
                     % too few samples
-                    diffData{iT} = nan(size(time{iT}));
+                    diffData{iT} = nan(size(data{iT}));
                 else
                     diffData{iT} = TrialDataUtilities.Data.savitzkyGolayFilt( ...
                         data{iT}, 'polynomialOrder', p.Results.polynomialOrder, 'differentiationOrder', p.Results.differentiationOrder, ...
@@ -4628,22 +4656,7 @@ classdef TrialDataConditionAlign < TrialData
             
             % subtract these conditions piecemeal from this one
             if ~isempty(p.Results.subtractConditionDescriptor)
-                cdSub = p.Results.subtractConditionDescriptor;
-                
-                if isa(cdSub, 'ConditionInfo')
-                    cdSub = ConditionInfo.fromConditionDescriptor(cdSub, td);
-                end
-                
-                if ~isequal(td.conditionInfo.conditionsSizeNoExpand, cdSub.conditionsSizeNoExpand) || ...
-                   ~isequal(td.conditionInfo.axisAttributes, cdSub.axisAttributes)
-                    debug('Using ConditionDescriptor.expandToMatch to match condition descriptor sizes\n');
-                    [cdMatched, cdModifiedMask] = ConditionDescriptor.expandToMatch({td.conditionDescriptor, cdSub});
-                    if cdModifiedMask(1)
-                        error('ConditionDescriptor.expandToMatch required modification of the current conditionDescriptor to match the provided subtractConditionDescriptor');
-                    end
-                    
-                    cdSub = cdMatched{2};
-                end
+                cdSub = td.expandConditionDescriptorForSubtraction(p.Results.subtractConditionDescriptor);
                 
                 % get the group means for this condition descriptor
                 [sub_psthMat, sub_tvec, sub_semMat, sub_stdMat, ~] = ...
