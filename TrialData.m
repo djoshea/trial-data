@@ -750,6 +750,7 @@ classdef TrialData
             p = inputParser();
             p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x));
             p.addParameter('loadAllPartitions', false, @islogical);
+            p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.parse(varargin{:});
             % strip extension
             %             [path, name, ext] = fileparts(location);
@@ -774,7 +775,8 @@ classdef TrialData
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
                 [td.data, partitionMeta] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg, ...
-                    'partitions', p.Results.partitions, 'loadAllPartitions', p.Results.loadAllPartitions);
+                    'partitions', p.Results.partitions, 'loadAllPartitions', p.Results.loadAllPartitions, ...
+                    'ignoreMissingPartitions', p.Results.ignoreMissingPartitions);
 
                 % add channel descriptors in partitionMeta, overwriting existing channels if overlapping (used for partitionWaveforms)
                 partitions = fieldnames(partitionMeta);
@@ -2455,7 +2457,7 @@ classdef TrialData
                 cd = td.getAnalogChannelDescriptor(name);
                 timeField = cd.timeField;
             else
-                if isempty(td)
+                if isempty(td)n
                     error('%s is not an analog channel or analog channel group', name);
                 end
             end
@@ -2469,7 +2471,7 @@ classdef TrialData
             elseif isfield(td.data, name)
                 timeField = name;
             else
-                error('%s is not an analog channel or time field');
+                error('%s is not an analog channel or time field', name);
             end
 
             time = {td.data.(timeField)}';
@@ -2809,7 +2811,7 @@ classdef TrialData
             if nameIndividualChannels
                 for iCh = 1:numel(chNames)
                     % build a channel descriptor for the data
-                    if ~isempty(p.Results.unitsByChannel)
+                    if isempty(p.Results.unitsByChannel)
                         chUnits = units;
                     else
                         chUnits = p.Results.unitsByChannel{iCh};
@@ -4333,6 +4335,7 @@ classdef TrialData
             p.addOptional('values', '', @(x) true);
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.addParameter('like', '', @ischar);
+            p.addParameter('units', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -4365,6 +4368,10 @@ classdef TrialData
                 cd = ParamChannelDescriptor.buildFromValues(name, values);
             end
             cd = cd.rename(name);
+            
+            if ~ismember('units', p.UsingDefaults)
+                cd = cd.setPrimaryUnits(p.Results.units);
+            end
             
             td = td.addChannel(cd, {values}, p.Unmatched);
         end

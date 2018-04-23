@@ -49,8 +49,13 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
            [~, array] = ContinuousNeuralChannelGroupDescriptor.parseTypeArray(cd.name);
         end
        
-        function cdIndividual = buildIndividualSubChannel(cd, name, index)
-            cdIndividual = ContinuousNeuralChannelDescriptor.buildSharedMatrixColumnAnalog(name, cd.name, index, cd.timeField, cd.unitsByField{1}, cd.unitsByField{2}, ...
+        function cdIndividual = buildIndividualSubChannel(cd, name, index, units)
+            if nargin < 4
+                units = cd.unitsByField{1};
+            end
+            
+            cdIndividual = ContinuousNeuralChannelDescriptor.buildSharedMatrixColumnAnalog(name, cd.name, ...
+                index, cd.timeField, units, cd.unitsByField{2}, ...
                 'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
                 'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
         end
