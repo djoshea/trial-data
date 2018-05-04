@@ -4864,7 +4864,8 @@ classdef TrialData
             p = inputParser();
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('waveforms', [], @iscell);
-            p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
+            p.addParameter('blankingRegions', {}, @(x) isempty(x) || iscell(x)); % nTrials x 1 cell of nIntervals x 2 matrices
+            p.addParameter('storeBlankingRegions', true, @islogical); % actually mark the blanking regions so that they will 
             p.addParameter('sortQualityByTrial', [], @(x) isempty(x) || isvector(x)); % nTrials x 1 vector of per-trial ratings
             p.KeepUnmatched = true; % we don't want to capture a fieldMask because this would necessitate thinking about the logic of whether to apply the blanking
             p.parse(varargin{:});
@@ -4943,6 +4944,8 @@ classdef TrialData
                 end
             end
             
+            % start with empty
+            blankingExisting = cellvec(td.nTrials);
             if ~isempty(p.Results.blankingRegions)
                 blanking = p.Results.blankingRegions;
                 
@@ -5007,9 +5010,14 @@ classdef TrialData
                     end
                 end
                 
-                % and add the blanking info as the last channel data
-                channelData = cat(1, channelData, {blanking});
-                channelFieldMask(end+1) = true;
+                if p.Results.storeBlankingRegions
+                    % and add the blanking info as the last channel data
+                    channelData = cat(1, channelData, {blanking});
+                    channelFieldMask(end+1) = true;
+                else
+                    channelData = cat(1, channelData, {{}});
+                    channelFieldMask(end+1) = false;
+                end
             else
                 if cd.hasBlankingRegions
                     channelData = cat(1, channelData, {{}});
@@ -5161,6 +5169,11 @@ classdef TrialData
             %
             % intervalCell is nTrials x 1 cell with nIntervals(iT) x 2 matrices inside
             
+            p = inputParser();
+            p.addParameter('storeBlankingRegions', true, @islogical); % mark as blanked these regions to prevent PSTHs from filtering over them
+            p.addParameter('isAligned', true, @islogical);
+            p.parse(varargin{:});
+            
             td.warnIfNoArgOut(nargout);
             
             if ischar(name)
@@ -5174,11 +5187,6 @@ classdef TrialData
                 td.assertHasChannel(name);
                 cd = td.channelDescriptorsByName.(name);
                 assert(isa(cd, 'SpikeChannelDescriptor'));
-                
-                p = inputParser();
-                p.addParameter('isAligned', true, @islogical);
-                p.KeepUnmatched = true;
-                p.parse(varargin{:});
                 
                 % need to request all spike times
                 [rawWaves, ~, rawTimes] = td.getRawSpikeWaveforms(name);
@@ -5200,11 +5208,12 @@ classdef TrialData
                     offsets = td.getTimeOffsetsFromZeroEachTrial();
                     intervalCell = cellfun(@plus, intervalCell, num2cell(offsets), 'UniformOutput', false);
                 end
-                
+                               
                 % setSpikeChannel will take care of blanking the waveforms
                 % be sure we specify that the data are no longer aligned
                 td = td.setSpikeChannel(name, rawTimes, 'isAligned', false, ...
-                    'blankingRegions', intervalCell, 'waveforms', rawWaves);
+                    'blankingRegions', intervalCell, 'storeBlankingRegions', p.Results.storeBlankingRegions, ...
+                    'waveforms', rawWaves);
             end
         end
         

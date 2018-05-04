@@ -107,11 +107,11 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         
         function cd = addWaveformsField(cd, waveField, varargin)
             p = inputParser;
-            p.addParamValue('time', [], @isvector);
-            p.addParamValue('units', 'uV', @ischar);
-            p.addParamValue('scaleFromLims', [], @isvector);
-            p.addParamValue('scaleToLims', [], @isvector);
-            p.addParamValue('dataClass', '', @ischar);
+            p.addParameter('time', [], @isvector);
+            p.addParameter('units', 'uV', @ischar);
+            p.addParameter('scaleFromLims', [], @(x) isvector(x) || isempty(x));
+            p.addParameter('scaleToLims', [], @(x) isvector(x) || isempty(x));
+            p.addParameter('dataClass', '', @ischar);
             p.parse(varargin{:});
             
             if nargin < 2 || isempty(waveField)
