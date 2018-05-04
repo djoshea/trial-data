@@ -1435,6 +1435,10 @@ classdef AlignInfo < AlignDescriptor
 
             p.addParameter('shadeStartStopInterval', false, @islogical);
             p.addParameter('shadeOutsideStartStopInterval', false, @islogical);
+            
+            p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showIntervals', true, @islogical);
+            
             p.addParameter('fullTimeLimits', [], @isnumeric);
             p.parse(varargin{:});
 
@@ -1489,90 +1493,94 @@ classdef AlignInfo < AlignDescriptor
 
 
             % plot intervals
-            hIntervals = cell(ad.nIntervals, 1);
-            nOccurByInterval = ad.intervalMaxCounts;
-            [intStartData, intStopData] = ad.getAlignedIntervalData();
-            for iInterval = 1:ad.nIntervals
-                if ~ad.intervalShowOnData(iInterval), continue; end
-                % gather interval locations
-                % nOccur x nTrials set of start, stop by in interval
-                [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N));
+            if p.Results.showIntervals
+                hIntervals = cell(ad.nIntervals, 1);
+                nOccurByInterval = ad.intervalMaxCounts;
+                [intStartData, intStopData] = ad.getAlignedIntervalData();
+                for iInterval = 1:ad.nIntervals
+                    if ~ad.intervalShowOnData(iInterval), continue; end
+                    % gather interval locations
+                    % nOccur x nTrials set of start, stop by in interval
+                    [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N));
 
-                for iTrial = 1:N
-                    % filter by the time window specified (for this trial)
-                    tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
-                    tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
+                    for iTrial = 1:N
+                        % filter by the time window specified (for this trial)
+                        tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
+                        tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
 
-                    % constrain the time window to the interval being
-                    % plotted as defined by tvec. not valid if it lies entirely outside
-                    % the interval for this trial defined by start/stopByTrial
-                    valid = ~isnan(tStart) & ~isnan(tStop);
-                    valid(tStart > stopByTrial(iTrial)) = false;
-                    valid(tStop < startByTrial(iTrial)) = false;
+                        % constrain the time window to the interval being
+                        % plotted as defined by tvec. not valid if it lies entirely outside
+                        % the interval for this trial defined by start/stopByTrial
+                        valid = ~isnan(tStart) & ~isnan(tStop);
+                        valid(tStart > stopByTrial(iTrial)) = false;
+                        valid(tStop < startByTrial(iTrial)) = false;
 
-                    if ~any(valid), continue; end
+                        if ~any(valid), continue; end
 
-                    tStart(tStart < startByTrial(iTrial)) = startByTrial(iTrial);
-                    tStop(tStop > stopByTrial(iTrial)) = stopByTrial(iTrial);
+                        tStart(tStart < startByTrial(iTrial)) = startByTrial(iTrial);
+                        tStop(tStop > stopByTrial(iTrial)) = stopByTrial(iTrial);
 
-                    intStart(:, iTrial) = tStart;
-                    intStop(:, iTrial) = tStop;
-                end
+                        intStart(:, iTrial) = tStart;
+                        intStop(:, iTrial) = tStop;
+                    end
 
-                app = ad.intervalAppear{iInterval};
+                    app = ad.intervalAppear{iInterval};
 
-                hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
-                    app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
-                    'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', p.Results.intervalMinWidth);
+                    hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
+                        app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                        'intervalHeight', p.Results.tickHeight, 'intervalMinWidth', p.Results.intervalMinWidth);
 
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
+                    if p.Results.showInLegend
+                        TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
+                    else
+                        TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
+                    end
                 end
             end
 
-            % plot marks
-            % grab information about the mark times relative to the trial
-            nOccurByMark = ad.markMaxCounts;
-            markData = ad.getAlignedMarkData();
+            if p.Results.showMarks
+                % plot marks
+                % grab information about the mark times relative to the trial
+                nOccurByMark = ad.markMaxCounts;
+                markData = ad.getAlignedMarkData();
 
-            hMarks = cell(ad.nMarks, 1);
-            for iMark = 1:ad.nMarks
-                if ~ad.markShowOnData(iMark), continue; end
-                % gather mark locations
-                % nOccur x N
-                markLoc = nan(nOccurByMark(iMark), N);
+                hMarks = cell(ad.nMarks, 1);
+                for iMark = 1:ad.nMarks
+                    if ~ad.markShowOnData(iMark), continue; end
+                    % gather mark locations
+                    % nOccur x N
+                    markLoc = nan(nOccurByMark(iMark), N);
 
-                for t = 1:N
-                    % get the mark times on this trial
-                    tMark = markData{iMark}(trialIdx(t), :);
+                    for t = 1:N
+                        % get the mark times on this trial
+                        tMark = markData{iMark}(trialIdx(t), :);
 
-                    % filter by the time window specified (for this trial)
-                    maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(t);
-                    tMark(maskInvalid) = NaN;
+                        % filter by the time window specified (for this trial)
+                        maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(t);
+                        tMark(maskInvalid) = NaN;
 
-                    if all(isnan(tMark))
-                        % none found in this time window for this condition
-                        continue;
+                        if all(isnan(tMark))
+                            % none found in this time window for this condition
+                            continue;
+                        end
+
+                        markLoc(:, t) = tMark;
                     end
 
-                    markLoc(:, t) = tMark;
-                end
+                    app = ad.markAppear{iMark};
 
-                app = ad.markAppear{iMark};
+                    % plot mark and provide legend hint
+                    hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
+                        p.Results.markAlpha, 'tickWidth', p.Results.markTickWidth, ...
+                        'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
+                        'tickHeight', p.Results.tickHeight);
 
-                % plot mark and provide legend hint
-                hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
-                    p.Results.markAlpha, 'tickWidth', p.Results.markTickWidth, ...
-                    'xOffset', tOffsetZero, 'yOffset', yOffsetTop, ...
-                    'tickHeight', p.Results.tickHeight);
-
-                if p.Results.showInLegend
-                    TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
-                else
-                    TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
+                    if p.Results.showInLegend
+                        TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
+                        TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
+                    else
+                        TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark});
+                    end
                 end
             end
         end

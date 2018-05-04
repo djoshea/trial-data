@@ -13,11 +13,17 @@ function [outData] = exportForSorting(td, outDir, varargin)
 p = inputParser;
 % p.addParamValue('artifactThresh', Inf, @isscalar);
 % p.addParamValue('conserveMemory', true, @islogical);
-p.addParamValue('maxUnits', 4, @isscalar);
-p.addParamValue('lockoutMs', 1.6, @isscalar);
-p.addParamValue('spikeChannelList', {}, @iscellstr); % if specified, restrict the export to a specific set of spike Channels 
-p.addParamValue('writeToDisk', true, @islogical);
+p.addParameter('maxUnits', 4, @isscalar);
+p.addParameter('lockoutMs', 1.6, @isscalar);
+p.addParameter('spikeChannelList', {}, @iscellstr); % if specified, restrict the export to a specific set of spike Channels 
+p.addParameter('writeToDisk', true, @islogical);
 p.parse(varargin{:});
+
+if exist('alphabet', 'file') ~= 2 || ...
+        exist('createWaveformsStruct', 'file') ~= 2 || ...
+        exist('generateSortsAndPreviews', 'file') ~= 2
+    error('Please add mksort directory to path');
+end
 
 if ~isa(td, 'TrialDataConditionAlign')
     warning('Provide TrialDataConditionAlign instance for condition info');
