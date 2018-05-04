@@ -4945,7 +4945,6 @@ classdef TrialData
             end
             
             % start with empty
-            blankingExisting = cellvec(td.nTrials);
             if ~isempty(p.Results.blankingRegions)
                 blanking = p.Results.blankingRegions;
                 
@@ -4956,10 +4955,12 @@ classdef TrialData
                 % unalign the blanking regions specified
                 blanking = cellfun(@plus, blanking, num2cell(offsets), 'UniformOutput', false);
                 
-                % add field if not found
+                % add field if not found (and we're storing the regions)
                 if ~cd.hasBlankingRegions
-                    cd = cd.addBlankingRegionsField();
-                    td.channelDescriptorsByName.(name) = cd;
+                    if p.Results.storeBlankingRegions
+                        cd = cd.addBlankingRegionsField();
+                        td.channelDescriptorsByName.(name) = cd;
+                    end
                     
                     blanking = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blanking);
                 else
@@ -5015,8 +5016,10 @@ classdef TrialData
                     channelData = cat(1, channelData, {blanking});
                     channelFieldMask(end+1) = true;
                 else
-                    channelData = cat(1, channelData, {{}});
-                    channelFieldMask(end+1) = false;
+                    if cd.hasBlankingRegions
+                        channelData = cat(1, channelData, {{}});
+                        channelFieldMask(end+1) = false;
+                    end
                 end
             else
                 if cd.hasBlankingRegions
@@ -5260,8 +5263,8 @@ classdef TrialData
             
             if p.Results.combine
                 % combine the intervals in multiple units
-                intervalCellByUnit = cellvec(numel(unitNames));
-                for iU = 1:numel(unitNames)
+                intervalCellByUnit = cellvec(numel(unitName));
+                for iU = 1:numel(unitName)
                     intervalCellByUnit{iU} = intervalCell(:, iU);
                 end
                 intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCellByUnit{:});

@@ -509,6 +509,17 @@ classdef TrialDataConditionAlign < TrialData
     end
     
     methods % Low-level add and remove channels. Probably don't want to use addChannel directly
+        function name = generateTemporaryChannelName(td, start)
+            if nargin < 2 || isempty(start)
+                start = 'temporary';
+            end
+            
+            name = matlab.lang.makeUniqueStrings(...
+                    matlab.lang.makeValidName(start, 'ReplacementStyle', 'delete'), ...
+                    fieldnames(td.data));
+        end
+                    
+        
         function td = addChannel(td, varargin)
             td.warnIfNoArgOut(nargout);
             td = addChannel@TrialData(td, varargin{:});
@@ -1694,11 +1705,20 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
             
-            p.addParameter('eventStart', [as 'Start'], @ischar);
-            p.addParameter('eventStop', [as 'Stop'], @ischar);
+            p.addParameter('eventStart', '', @ischar);
+            p.addParameter('eventStop', '', @ischar);
             p.parse(varargin{:});
             
             td.warnIfNoArgOut(nargout);
+            
+            if isempty(p.Results.eventStart)
+                eventStart = [as 'Start'];
+            end
+            eventStart = td.generateTemporaryChannelName(eventStart);
+            if isempty(p.Results.eventStop)
+                eventStop = [as 'Stop'];
+            end
+            eventStop = td.generateTemporaryChannelName(eventStop);
             
             % pull out start and stop times for each occurrence on each trial
             if ~iscell(intervalCell)
@@ -1718,11 +1738,11 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            td = td.addEvent(p.Results.eventStart, starts);
-            td = td.addEvent(p.Results.eventStop, stops);
+            td = td.addEvent(eventStart, starts);
+            td = td.addEvent(eventStop, stops);
             
             extra = rmfield(p.Results, {'eventStart', 'eventStop'});
-            td = td.interval(p.Results.eventStart, p.Results.eventStop, 'as', as, extra);
+            td = td.interval(eventStart, eventStop, 'as', as, extra);
         end
             
         function td = removeInterval(td, varargin)
@@ -4729,6 +4749,11 @@ classdef TrialDataConditionAlign < TrialData
         end
                
         function [snr, range, noise]  = getSpikeChannelSNR(td, unitName, varargin)
+            
+            p = inputParser();
+            p.addParameter('quantile', 1, @isscalar);
+            p.parse(varargin{:});
+            
             % options same as getSpikeRateFilteredGroupMeansEachAlign
             [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, varargin{:});
             
@@ -5598,8 +5623,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('useShortLabels', true, @islogical);
             
             % shade start:stop intervals in gray to show valid time interval
-            p.addParameter('shadeValidIntervals', false, @islogical);
-            p.addParameter('shadeInvalidIntervals', false, @islogical);
+            p.addParameter('shadeStartStopInterval', false, @islogical);
+            p.addParameter('shadeOutsideStartStopInterval', false, @islogical);
+            p.addParameter('shadeBlankingRegions', false, @islogical);
             p.addParameter('markShowOnData', true, @islogical);
             p.addParameter('intervalShowOnData', true, @islogical);
             
@@ -5825,6 +5851,14 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
+            % if we're shading blanking regions, we create a temporary interval to hold them
+            if p.Results.shadeBlankingRegions
+                blankRegions = td.getSpikeBlankingRegions(unitNames, 'combine', true);
+                app = AppearanceSpec('Color', [0.7 0.7 0.7]);
+                td = td.intervalManual(blankRegions, 'Blanking Regions', ...
+                    'appear', app, 'showOnData', true, 'showOnAxis', false);
+            end
+            
             if ~p.Results.quick
                 % draw marks and intervals on each raster
                 if p.Results.annotateAboveEachCondition
@@ -5877,8 +5911,8 @@ classdef TrialDataConditionAlign < TrialData
                                 'tickHeight', p.Results.tickHeight, ...
                                 'intervalMinWidth', p.Results.intervalMinWidth, ...
                                 'axh', axh, 'intervalAlpha', p.Results.intervalAlpha, ...
-                                'shadeStartStopInterval', p.Results.shadeValidIntervals, ...
-                                'shadeOutsideStartStopInterval', p.Results.shadeInvalidIntervals, ...
+                                'shadeStartStopInterval', p.Results.shadeStartStopInterval, ...
+                                'shadeOutsideStartStopInterval', p.Results.shadeOutsideStartStopInterval, ...
                                 'fullTimeLimits', tLimitsByAlign(iAlign, :), ...
                                 'markAlpha', p.Results.markAlpha, 'markTickWidth', p.Results.markTickWidth);
                         end
