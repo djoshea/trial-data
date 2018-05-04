@@ -2,9 +2,11 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
 
     p = inputParser();
     p.addParameter('keepUnsortedUnit', false, @islogical);
-    p.addParamValue('useAlignedWaves', true, @islogical); % may make repeat sorting impossible since wave data may be dropped
-    p.addParamValue('sortMethod', 'mksort', @ischar); % what to specify as the sort method, for reference only
+    p.addParameter('useAlignedWaves', true, @islogical); % may make repeat sorting impossible since wave data may be dropped
+    p.addParameter('sortMethod', 'mksort', @ischar); % what to specify as the sort method, for reference only
+    p.addParameter('scaleWaveforms', true, @islogical);
     p.parse(varargin{:});
+    scaleWaveforms = p.Results.scaleWaveforms;
 
     % Load sorts structure, figure out which channels are worth including
     loadVar = load(fullfile(handSortPath, 'sorts.mat'));
@@ -65,6 +67,19 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
         else
             waves = w.waves;
         end
+        
+        % bring waveforms back to int16 using 0.25 scaling factor
+        if scaleWaveforms
+            waveFromLims = [-32768 32767];
+            waveToLims = waveFromLims * 0.25;
+            
+            waves = int16(round(waves * 4));
+        else
+            waveFromLims = [];
+            waveToLims = [];
+        end
+           
+        
         nWaveSamples = size(waves, 1);
         waveTvec = w.waveformsTime;
         if numel(waveTvec) > nWaveSamples
@@ -93,7 +108,8 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
             sortQuality = round(nanmean(ratingsByTrial), 1);
             
             td = td.addSpikeChannel(spikeChName, spikesByTrial, 'waveforms', wavesByTrial,...
-                'waveformsTime', waveTvec, 'sortQuality', sortQuality, ...
+                'waveformsTime', waveTvec, 'waveformsScaleFromLims', waveFromLims, 'waveformsScaleToLims', waveToLims, ...
+                'sortQuality', sortQuality, ...
                 'sortMethod', p.Results.sortMethod, 'sortQualityEachTrial', ratingsByTrial, ...
                 'updateValidOnly', false); 
         end
