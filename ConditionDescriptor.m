@@ -21,6 +21,8 @@ classdef ConditionDescriptor
         attributeValueListIsManual
         allAttributeValueListsManual
         allValueListsManual % true if all attribute lists and axis lists are manually (not automatically determined)
+        
+        attributeValueListIsBinned
     end
         
     % the following properties are computed dynamically on the fly as they
@@ -406,6 +408,10 @@ classdef ConditionDescriptor
         
         function tf = get.attributeValueListIsManual(ci)
             tf = ismember(ci.attributeValueModes, [ci.AttributeValueListManual, ci.AttributeValueBinsManual]);
+        end
+        
+        function tf = get.attributeValueListIsBinned(ci)
+            tf = ismember(ci.attributeValueModes, [ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles]);
         end
         
         function tf = get.allAttributeValueListsManual(ci)
@@ -2065,7 +2071,7 @@ classdef ConditionDescriptor
             valueList = ci.getAttributeValueList(iAttr);
             if ~isempty(valueList)
                 if tf
-                    assert(~iscell(valueList), 'Attribute %s has manual value list that is not numeric vector which is required for numeric attributes', attr);
+                    assert(~iscell(valueList) || ci.attributeValueListIsBinned(iAttr), 'Attribute %s has manual value list that is not numeric vector which is required for numeric attributes', attr);
                 else
                     assert(iscell(valueList), 'Attribute %s has manual value list that is not cell which is required for numeric attributes', attr);
                 end

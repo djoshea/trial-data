@@ -336,6 +336,9 @@ classdef PopulationTrajectorySetBuilder
             if nargin < 2
                 chNames = td.listAnalogChannels();
             end
+            if ischar(chNames)
+                chNames = {chNames};
+            end
             p = inputParser();
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.parse(varargin{:});

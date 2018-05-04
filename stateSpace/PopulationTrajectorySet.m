@@ -6660,8 +6660,8 @@ classdef PopulationTrajectorySet
                 mask = pset.basisValid(basisIdx);
                 basisIdx = basisIdx(mask);
             end
-
-            [trials_NbyTAbyCbyR, nTrials_NbyC, tvec, avec] = pset.arrangeNbyTAbyCbyTrials(varargin{:});
+            
+            [trials_NbyTAbyCbyR, nTrials_NbyC, tvec, avec] = pset.arrangeNbyTAbyCbyR(varargin{:});
 
             if ~pset.hasDataByTrial
                 % retrieve means excluding trial manually
@@ -6682,13 +6682,13 @@ classdef PopulationTrajectorySet
                 % nAlign cellvec with N x C x T --> N x C x TA --> N x TA x C
                 dataMeanTensor = permute(cat(3, pset.dataMean{:}), [1 3 2]);
 
-                % A x N x C --> TA x N x C --> N x TA x C
-                dataNTrials = permute(repmat(max(pset.dataNTrials, [], 1), [sum(pset.nTimeDataMean) 1 1]), [2 1 3]);
+                % N x C --> N x 1 x C
+                dataNTrials_Nx1xC = permute(pset.dataNTrials, [1 3 2]);
 
-                dataSumTensor = dataMeanTensor .* dataNTrials;
+                dataSumTensor = bsxfun(@times, dataMeanTensor, dataNTrials_Nx1xC);
 
                 % compute new mean by taking Sum - Sampled Trial / (Ntrials - 1)
-                meansExcluding_NbyTAbyCbyR = bsxfun(@rdivide, bsxfun(@minus, dataSumTensor, trials_NbyTAbyCbyR), dataNTrials-1);
+                meansExcluding_NbyTAbyCbyR = bsxfun(@rdivide, bsxfun(@minus, dataSumTensor, trials_NbyTAbyCbyR), dataNTrials_Nx1xC-1);
             end
         end
 
