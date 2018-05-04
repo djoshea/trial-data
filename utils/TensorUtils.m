@@ -59,7 +59,6 @@ classdef TensorUtils
             end
         end
 
-
     end
         
     
@@ -1524,6 +1523,56 @@ classdef TensorUtils
            end
         end
         
+        function c = splitIntoBlocks(t, dims, nPerDim, squeezeDims)
+            if nargin < 4
+                squeezeDims = false;
+            end
+            
+            args = TensorUtils.cellvec(ndims(t));
+            
+            assert(numel(nPerDim) == numel(dims), 'nPerCell must be vector if dim is scalar or cell with one element per dim');
+            for iDim = 1:ndims(t)
+                [tf, which] = ismember(iDim, dims);
+                s = size(t, iDim);
+                if tf
+                    nthis = nPerDim(which);
+                    nreps = floor(s / nthis);
+                    last = rem(s, nthis);
+                    if last == 0
+                        args{iDim} = repmat(nthis, nreps, 1);
+                    else
+                        args{iDim} = [repmat(nthis, nreps, 1); last];
+                    end
+                else
+                    args{iDim} = s;
+                end
+            end
+            
+            c = mat2cell(t, args{:});
+            
+            if squeezeDims
+                c = cellfun(@(x) TensorUtils.squeezeDims(x, dim), c, 'UniformOutput', false);
+            end
+        end
+       
+        
+        function t = blockfun(t, blockSz, fn, asTensor)
+            % simpler version of matlab's blockproc that works in n-d
+            if nargin < 4 
+                asTensor = false;
+            end
+            
+            t = TensorUtils.splitIntoBlocks(t, 1:numel(blockSz), blockSz);
+            t = cellfun(fn, t, 'UniformOutput', false);
+            if asTensor
+                t = cell2mat(t);
+            end
+        end
+
+        function t = blockMean(t, blockSz)
+            t = TensorUtils.blockfun(t, blockSz, @(x) mean(x(:), 'omitnan'), true);
+        end
+        
         function out = splitAlongDimensionByIndex(t, dim, which)
             % undoes catWhich, at each position along dim, places that
             % slice of t into out{which}
@@ -1568,7 +1617,11 @@ classdef TensorUtils
                 t = nanmin(t, [], dims(iD));
             end
         end
-
+        
+        function r = nanrangeMultiDim(t, dims)
+            r = TensorUtils.nanmaxMultiDim(t, dims) - TensorUtils.nanminMultiDim(t, dims);
+        end
+            
         function idxTensor = findNAlongDim(t, dim, N, direction)
             % idxTensor = findNAlongDim(t, dim, N, direction)
             % finds the first/last N non-zero values in t along dimension t
@@ -1639,7 +1692,34 @@ classdef TensorUtils
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
             % will compute the mean in slices along dims 2 and 3. the
             % result will have size s1 x 1 x 1 x s4
-            t = TensorUtils.mapSlicesInPlace(@(slice) std(slice(:), varargin{:}), dims, t);
+            t = TensorUtils.mapSlicesInPlace(@(slice) std(slice(:), varargin{:}, 'omitnan'), dims, t);
+        end
+        
+        function t = nanstdMultiDim(t, dims, varargin)
+            % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3]) 
+            % will compute the mean in slices along dims 2 and 3. the
+            % result will have size s1 x 1 x 1 x s4
+            t = TensorUtils.mapSlicesInPlace(@(slice) nanstd(slice(:), varargin{:}, 'omitnan'), dims, t);
+        end
+        
+        function t = zscoreMultiDim(t, alongDims)
+            % for each subscript in dimension(s) alongDims, computes the mean 
+            % along all other dimensions and subtracts it. this ensures
+            % that the mean along any slice in alongDims will have zero
+            % mean. Then normalizes by the std along all other dimensions.
+            t = TensorUtils.centerSlicesSpanningDimension(t, alongDims);
+            stdTensor = TensorUtils.nanstdMultiDim(t, alongDims);
+            t = bsxfun(@rdivide, t, stdTensor);
+        end
+        
+        function t = zscoreSoftMultiDim(t, alongDims, denomOffset)
+            % for each subscript in dimension(s) alongDims, computes the mean 
+            % along all other dimensions and subtracts it. this ensures
+            % that the mean along any slice in alongDims will have zero
+            % mean. Then normalizes by the std along all other dimensions.
+            t = TensorUtils.centerSlicesSpanningDimension(t, alongDims);
+            stdTensor = TensorUtils.nanstdMultiDim(t, alongDims) + denomOffset;
+            t = bsxfun(@rdivide, t, stdTensor);
         end
         
         function [y, group] = buildAnovanInputs(valueCell, namesAlongAxes)
@@ -1778,16 +1858,6 @@ classdef TensorUtils
             % mean.
             mu =  TensorUtils.nanmeanMultiDim(t, alongDims);
             t = bsxfun(@minus, t, mu);
-        end
-        
-        function t = zscoreAlongDimension(t, alongDims)
-            % for each subscript in dimension(s) alongDims, computes the mean 
-            % along all other dimensions and subtracts it. this ensures
-            % that the mean along any slice in alongDims will have zero
-            % mean. Then normalizes by the std along all other dimensions.
-            t = TensorUtils.centerSlicesSpanningDimension(t, alongDims);
-            stdTensor = TensorUtils.stdMultiDim(t, alongDims);
-            t = bsxfun(@rdivide, t, stdTensor);
         end
         
         function t = rescaleIntervalToInterval(t, varargin)
@@ -1979,5 +2049,6 @@ classdef TensorUtils
                 d(d > clipAt(2)) = replace(2);
             end  
         end
+       
     end
 end
