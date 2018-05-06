@@ -4583,7 +4583,7 @@ classdef TrialDataConditionAlign < TrialData
             tvec = makecol(tvec);
             
             % now we need to nan out the regions affected by blanking
-            blankingIntervals = td.getSpike(unitNames);
+            blankingIntervals = td.getSpikeBlankingRegions(unitNames, 'combine', p.Results.combine);
             [rates, tvec] = TrialDataUtilities.SpikeData.markNanBlankedIntervals(...
                 blankingIntervals, rates, tvec, 'padding', [sf.preWindow sf.postWindow]);
         end
@@ -5090,10 +5090,13 @@ classdef TrialDataConditionAlign < TrialData
                     wavesRem = {};
                 end
                 
-                if td.hasSpikeChannel(keepAs)
-                    td = td.appendSpikesToSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem);
-                else
-                    td = td.addSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem, 'waveformsTime', waveTvec);
+                notEmpty = ~cellfun(@isempty, timesRem);
+                if any(notEmpty)
+                    if td.hasSpikeChannel(keepAs)
+                        td = td.appendSpikesToSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem);
+                    else
+                        td = td.addSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem, 'waveformsTime', waveTvec);
+                    end
                 end
             end
                 
@@ -5145,6 +5148,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alpha', 0.2, @isscalar);
             p.addParameter('color', [], @(x) true);
             p.addParameter('colormap', [], @(x) isa(x, 'function_handle') || ismatrix(x) || isempty(x));
+            p.addParameter('colorByCondition', false, @islogical); % if false, color by unit, if true color by condition
             p.addParameter('showThreshold', false, @islogical);
             p.addParameter('showMean', false, @islogical);
             p.addParameter('clickable', false, @islogical); % add interactive clicking to identify waveforms
@@ -5157,31 +5161,52 @@ classdef TrialDataConditionAlign < TrialData
             end
             nUnits = numel(unitName);
             
-            if ~isempty(p.Results.color)
-               colormap = AppearanceSpec.convertColor(p.Results.color);
-            elseif isa(p.Results.colormap, 'function_handle')
-                colormap = p.Results.colormap(numel(unitName));
-            elseif ~isempty(p.Results.colormap) && ismatrix(p.Results.colormap)
-                colormap = repmat(p.Results.colormap, ceil(nUnits / size(p.Results.colormap, 1)), 1);
-%             elseif nUnits == 1
-%                 colormap = [0 0 0];
-            else
-%                 colormap = distinguishable_colors(nUnits, {'w', 'k'});
-                % cbrewer set 1 with gray removed
-                if nUnits < 8
-                    colormap = [0.894 0.102 0.11;0.216 0.494 0.722;0.302 0.686 0.29;0.596 0.306 0.639;1 0.498 0;1 1 0.2;0.651 0.337 0.157;0.969 0.506 0.749];
-                else
-                    colormap = distinguishable_colors(nUnits, {'w'});
-                end
-            end
+            if ~p.Results.colorByCondition
             
-            colormap = TrialDataUtilities.Plotting.expandWrapColormap(colormap, nUnits);
-           
-            hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(numel(unitName));
-            [wavesCell, waveTvec, waveTimeCell] = td.getSpikeWaveforms(unitName, 'combine', false);
+                if ~isempty(p.Results.color)
+                    colormap = AppearanceSpec.convertColor(p.Results.color);
+                elseif isa(p.Results.colormap, 'function_handle')
+                    colormap = p.Results.colormap(nUnits);
+                elseif ~isempty(p.Results.colormap) && ismatrix(p.Results.colormap)
+                    colormap = repmat(p.Results.colormap, ceil(nUnits / size(p.Results.colormap, 1)), 1);
+                    %             elseif nUnits == 1
+                    %                 colormap = [0 0 0];
+                else
+                    %                 colormap = distinguishable_colors(nUnits, {'w', 'k'});
+                    % cbrewer set 1 with gray removed
+                    if nUnits < 8
+                        colormap = [0.894 0.102 0.11;0.216 0.494 0.722;0.302 0.686 0.29;0.596 0.306 0.639;1 0.498 0;1 1 0.2;0.651 0.337 0.157;0.969 0.506 0.749];
+                    else
+                        colormap = distinguishable_colors(nUnits, {'w'});
+                    end
+                end
+            
+                colormap = TrialDataUtilities.Plotting.expandWrapColormap(colormap, nUnits);
                 
-            for iU = 1:nUnits
-                wavesMat = cat(1, wavesCell{:, iU});
+                nPlotGroups = nUnits;
+                [wavesByTrialUnit, waveTvec, waveTimeCell] = td.getSpikeWaveforms(unitName, 'combine', false);
+                groupNames = unitName;
+                
+                wavesCell = cellvec(nUnits);
+                for iU = 1:nUnits
+                    wavesCell{iU} = cat(1, wavesByTrialUnit{:, iU});
+                end
+                
+            else
+                % plot colored by condition
+                colormap = td.conditionColors;
+                nPlotGroups = td.nConditions;
+                
+                [wavesGrouped, waveTvec, waveTimeCell] = td.getSpikeWaveformsGrouped(unitName, 'combine', true);
+                wavesCell = cellfun(@(x) cat(1, x{:}), wavesGrouped, 'UniformOutput', false);
+                waveTvec = repmat({waveTvec}, nPlotGroups, 1);
+                groupNames = td.conditionNamesShort;
+            end
+           
+            hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nPlotGroups);
+                
+            for iU = 1:nPlotGroups
+                wavesMat = wavesCell{iU};
                 % wavesmat is nSpikes x nSamples;
                 
                 if clickable
@@ -5214,14 +5239,21 @@ classdef TrialDataConditionAlign < TrialData
                 
                 h = plot(waveTvec{iU}, wavesMat', 'Color', colormap(iU, :));
                 TrialDataUtilities.Plotting.setLineOpacity(h, p.Results.alpha);
-                TrialDataUtilities.Plotting.showFirstInLegend(h, unitName{iU});
+                TrialDataUtilities.Plotting.showFirstInLegend(h, groupNames{iU});
                 
                 if clickable
                     % generate description for each waveform
                     waveDesc = cellvec(size(wavesMat, 1));
-                    for iW = 1:size(wavesMat, 1)
-                        waveDesc{iW} = sprintf('Unit %s\nTrial %d\nTime %s', unitName{iU}, whichTrial(iW), ...
-                            td.alignInfoActive.buildStringForOffsetFromZero(timeInTrial(iW)));
+                    if p.Results.colorByCondition
+                        for iW = 1:size(wavesMat, 1)
+                            waveDesc{iW} = sprintf('Unit %s\nTrial %d\nTime %s', unitName{iU}, whichTrial(iW), ...
+                                td.alignInfoActive.buildStringForOffsetFromZero(timeInTrial(iW)));
+                        end
+                    else
+                        for iW = 1:size(wavesMat, 1)
+                            waveDesc{iW} = sprintf('Condition %s\nTrial %d\nTime %s', groupNames{iU}, whichTrial(iW), ...
+                                td.alignInfoActive.buildStringForOffsetFromZero(timeInTrial(iW)));
+                        end
                     end
                     TrialDataUtilities.Plotting.makeClickableShowDescription(h, waveDesc);
                 end
