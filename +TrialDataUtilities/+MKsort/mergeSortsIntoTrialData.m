@@ -121,16 +121,25 @@ function td = mergeSortsIntoTrialData(td, handSortPath, varargin)
 end
 
 function ratingsByTrial = convertRatingsByEpochToRatingsByTrial(unit, ratings, offsetsByTrial)
+    RATING_ZERO_UNIT = 5;
     ratingsByTrial = nanvec(numel(offsetsByTrial));
     for iR = 1:numel(ratings)
         if isempty(ratings(iR).epoch)
-            ratingsByTrial(:) = ratings(iR).ratings(unit);
+            if unit > 0
+                ratingsByTrial(:) = ratings(iR).ratings(unit);
+            else
+                ratingsByTrial(:) = RATING_ZERO_UNIT;
+            end
         else
             tStart = ratings(iR).epoch(1);
             tStop = ratings(iR).epoch(2);
             trialMask = offsetsByTrial >= tStart & offsetsByTrial <= tStop;
-            ratingsByTrial(trialMask) = ratings(iR).ratings(unit);
-        end  
+            if unit > 0
+                ratingsByTrial(trialMask) = ratings(iR).ratings(unit);
+            else
+                ratingsByTrial(trialMask) = RATING_ZERO_UNIT;
+            end
+        end
     end
 end
 
