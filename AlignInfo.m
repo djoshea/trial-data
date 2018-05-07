@@ -941,6 +941,97 @@ classdef AlignInfo < AlignDescriptor
     end
 
     methods % Time-Aligning data transformations
+        function [rawTimesMask, indFirst, indLast, sampleDelta] = getAlignedTimesMask(ad, rawTimes, varargin)
+            p = inputParser();
+            p.addOptional('includePadding', false, @islogical);
+            p.addParameter('isAligned', false, @islogical); % true means times already are relative to zero
+            p.addParameter('singleTimepointTolerance', NaN, @isscalar); % acceptable tolerance to take sample when start == stop, NaN --> 2 * sampling rate
+            p.addParameter('edgeTolerance', NaN, @isscalar); % acceptable tolerance to be within the interval, NaN --> 1e-6 * sampling rate
+            p.parse(varargin{:});
+            
+            includePadding = p.Results.includePadding;
+            singleTimepointTolerance = p.Results.singleTimepointTolerance;
+            edgeTolerance = p.Results.edgeTolerance;
+            
+            sampleDelta = TrialData.computeDeltaFromTimes(rawTimes);
+            if isnan(singleTimepointTolerance)
+                singleTimepointTolerance = 2 * sampleDelta;
+            end
+            if isnan(edgeTolerance)
+                edgeTolerance = 1e-6 * sampleDelta;
+            end
+            
+             % filter the times within the window
+            if includePadding
+                start = ad.timeInfoValid.startPad;
+                stop = ad.timeInfoValid.stopPad;
+            else
+                start = ad.timeInfoValid.start;
+                stop = ad.timeInfoValid.stop;
+            end
+            if p.Results.isAligned
+                % add in time zero to unalign the incoming times
+                offsets = ad.timeInfoValid.zero;
+            else
+                offsets = zeros(ad.nTrials, 1);
+            end
+            
+            valid = ad.valid; %#ok<*PROPLC>
+            
+            if iscell(rawTimes)
+                % nTrials x J cell of vectors
+                assert(size(rawTimes, 1) == ad.nTrials, 'rawTimes cell vector length must match nTrials');
+                J = size(rawTimes, 2);
+                rawTimesMask = cell(size(rawTimes));
+            else
+                % nTrials x T matrix of time
+                assert(ismatrix(rawTimes) && size(rawTimes, 1) == ad.nTrials, 'Size(1) must match nTrials');
+                J = 1;
+                rawTimesMask = false(size(rawTimes));
+            end
+            
+            [indFirst, indLast] = deal(nan(ad.nTrials, J));
+            for i = 1:ad.nTrials
+                if valid(i)
+                    for j = 1:J
+                        if iscell(rawTimes)
+                            raw = rawTimes{i, j};
+                        else
+                            raw = rawTimes(i, :)';
+                        end
+                        raw = raw + offsets(i); 
+                        rawMask = false(numel(raw), 1);
+                        
+                        if (stop(i) - start(i)) < edgeTolerance && (stop(i) - start(i)) > -edgeTolerance % second clause is just in case somehow stop ends up pre-start
+                            % only one timepoint requested, get the closest
+                            % point if it's nearby  
+                            % provided that the sampling time is within the
+                            % trial start:stop boundaries
+                            if singleTimepointTolerance > 0 && start(i) + edgeTolerance >= ad.timeInfoValid.trialStart(i) && ...
+                                    stop(i) - edgeTolerance <= ad.timeInfoValid.trialStop(i)
+                                
+                                [closestTime, closestIdx] = min(abs(raw - start(i)));
+                                rawMask(closestIdx) = closestTime < singleTimepointTolerance;
+                            end
+                        else
+                            % for time intervals, take only that interval
+                            rawMask = raw >= start(i) - edgeTolerance & raw <= stop(i) + edgeTolerance;
+                        end
+                        
+                        if iscell(rawTimes)
+                            rawTimesMask{i, j} = rawMask;
+                        else
+                            rawTimesMask(i, :) = rawMask;
+                        end
+                        if any(rawMask)
+                            indFirst(i, j) = find(rawMask, 1, 'first');
+                            indLast(i, j) = find(rawMask, 1, 'last');
+                        end
+                    end
+                end
+            end
+        end
+        
         function [alignedTimes, rawTimesMask] = getAlignedTimesMatrix(ad, rawTimesMatrix, includePadding, beforeStartReplaceStart, afterStopReplaceStop)
             if nargin < 3
                 includePadding = false;
@@ -996,72 +1087,38 @@ classdef AlignInfo < AlignDescriptor
         % value and the closest sample in time will be taken provided it is
         % within singleTimepointTolerance of the provided value
         function [alignedTimes, rawTimesMask] = getAlignedTimesCell(ad, rawTimesCell, varargin)
+            
             p = inputParser();
             p.addOptional('includePadding', false, @islogical);
-            p.addParameter('singleTimepointTolerance', 0, @isscalar);
+            p.addParameter('isAligned', false, @islogical); % true means times already are relative to zero
+            p.addParameter('singleTimepointTolerance', NaN, @isscalar); % acceptable tolerance to take sample when start == stop, NaN --> 2 * sampling rate
+            p.addParameter('edgeTolerance', NaN, @isscalar); % acceptable tolerance to be within the interval, NaN --> 1e-6 * sampling rate
             p.parse(varargin{:});
 
-            singleTimepointTolerance = p.Results.singleTimepointTolerance;
-            
             if isempty(rawTimesCell)
                 alignedTimes = rawTimesCell;
                 rawTimesMask = rawTimesCell;
                 return;
+            end
+            
+            if ~p.Results.isAligned
+                % subtract off time zero to align the incoming times
+                offsets = ad.timeInfoValid.zero;
+            else
+                offsets = zeros(ad.nTrials, 1);
             end
 
             assert(size(rawTimesCell, 1) == ad.nTrials, 'Size must match nTrials');
 
             J = size(rawTimesCell(:, :), 2);
             
-            % filter the spikes within the window and recenter on zero
-            if p.Results.includePadding
-                start = ad.timeInfoValid.startPad;
-                stop = ad.timeInfoValid.stopPad;
-            else
-                start = ad.timeInfoValid.start;
-                stop = ad.timeInfoValid.stop;
-            end
-            zero = ad.timeInfoValid.zero;
-
-            [alignedTimes, rawTimesMask] = deal(cell(size(rawTimesCell)));
-            valid = ad.valid; %#ok<*PROPLC>
+            rawTimesMask = ad.getAlignedTimesMask(rawTimesCell, p.Results);
+            
+            alignedTimes = cell(size(rawTimesCell));
             for i = 1:ad.nTrials
-                if valid(i)
-                    for j = 1:J
-                        raw = rawTimesCell{i, j};
-                        if (stop(i) - start(i)) < eps && (stop(i) - start(i)) > -eps % second clause is just in case somehow stop ends up pre-start
-                            % only one timepoint requested, get the closest
-                            % point if it's nearby  
-                            % provided that the sampling time is within the
-                            % trial start:stop boundaries
-                            if singleTimepointTolerance > 0 && start(i) >= ad.timeInfoValid.trialStart(i) && stop(i) <= ad.timeInfoValid.trialStop(i)
-                                rawTimesMask{i} = falsevec(numel(raw));
-                                [closestTime, closestIdx] = min(abs(raw - start(i)));
-
-                                if isnan(singleTimepointTolerance)
-                                    % if a single timepoint is requested, grab the closest
-                                    % sample in time provided it's within tolerance of the
-                                    % requested time.
-                                    % if no tolerance is provided, set it as twice the average
-                                    % sampling rate
-
-                                    singleTimepointTolerance = 2* nanmean(cellfun(@(times) nanmean(diff(times)), rawTimesCell));
-                                end
-                                rawTimesMask{i,j}(closestIdx) = closestTime < singleTimepointTolerance;
-                            end
-                        else
-                            % for time intervals, take only that interval
-                            rawTimesMask{i,j} = raw >= start(i) & raw <= stop(i);
-                        end
-                        alignedTimes{i,j} = raw(rawTimesMask{i,j}) - zero(i);
-                    end
-                else
-                    % here we select nothing along first dim to ensure that
-                    % the result is cat' able
-                    for j = 1:J
-                        alignedTimes{i, j} = zeros(0, 1, 'like', rawTimesCell{i, j});
-                        rawTimesMask{i, j} = false(size(rawTimesCell{i, j}, 1), 1);
-                    end
+                for j = 1:J
+                    % subtract off the zero if needed
+                    alignedTimes{i,j} = rawTimesCell{i, j}(rawTimesMask{i, j}) - offsets(i);
                 end
             end
         end
@@ -1132,7 +1189,7 @@ classdef AlignInfo < AlignDescriptor
            stopRel = stop - zero;
         end
 
-         function [startRel, stopRel] = getStartStopRelativeToZeroByTrialWithPadding(ad)
+        function [startRel, stopRel] = getStartStopRelativeToZeroByTrialWithPadding(ad)
            ad.assertApplied();
            [start, stop, zero] = ad.getStartStopZeroByTrialWithPadding();
            startRel = start - zero;
@@ -1212,7 +1269,7 @@ classdef AlignInfo < AlignDescriptor
 
     end
 
-    methods % Drawing on data
+    methods % Drawing on single trial data
         function [hMarks, hIntervals] = drawOnDataByTrial(ad, varargin)
             % annotate data time-series with markers according to the labels indicated
             % by this align descriptor. Similar to AlignSummary's version

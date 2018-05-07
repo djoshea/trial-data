@@ -4867,6 +4867,8 @@ classdef TrialData
             p.addParameter('blankingRegions', {}, @(x) isempty(x) || iscell(x)); % nTrials x 1 cell of nIntervals x 2 matrices
             p.addParameter('storeBlankingRegions', true, @islogical); % actually mark the blanking regions so that they will 
             p.addParameter('sortQualityByTrial', [], @(x) isempty(x) || isvector(x)); % nTrials x 1 vector of per-trial ratings
+            p.addParameter('waveformsInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
+            
             p.KeepUnmatched = true; % we don't want to capture a fieldMask because this would necessitate thinking about the logic of whether to apply the blanking
             p.parse(varargin{:});
             
@@ -4909,10 +4911,10 @@ classdef TrialData
                 nSpikesWave = cellfun(@(w) size(w, 1), newWaves);
                 assert(all(isequaln(nSpikesProvided, nSpikesWave)), 'Number of spikes in each trial must match number of waveforms');
                 
-%                 % undo scaling
-%                 if p.Results.waveformsAreScaled
-%                     newWaves = cd.unscaleWaveforms(newWaves);
-%                 end
+                % undo scaling and convert back to memory scale
+                if ~p.Results.waveformsInMemoryScale
+                    newWaves = cd.unscaleWaveforms(newWaves);
+                end
                 
             else
                 % no waveforms provided
@@ -5523,6 +5525,7 @@ classdef TrialData
         function [wavesCell, waveTvec, timesCell, whichUnitCell] = getRawSpikeWaveforms(td, unitName, varargin)
             p = inputParser();
             p.addParameter('combine', false, @islogical);
+            p.addParameter('applyScaling', true, @islogical);
             p.parse(varargin{:});
             
             if ischar(unitName)
@@ -5563,8 +5566,11 @@ classdef TrialData
                     wavefield = cd.waveformsField;
                     assert(~isempty(wavefield), 'Unit %s does not have waveforms', ch);
                     waveInner(:, iV) = {td.data.(wavefield)}';
-                    % scale to appropriate units
-                    waveInner(:, iV) = cd.scaleWaveforms(waveInner(:, iV));
+                    
+                    if p.Results.applyScaling
+                        % scale to appropriate units
+                        waveInner(:, iV) = cd.scaleWaveforms(waveInner(:, iV));
+                    end
                     waveTvecInner = makecol(cd.waveformsTime);
                     
                     % check number of timepoints
@@ -6239,12 +6245,17 @@ classdef TrialData
         end
         
         function [td, trialsUpdated, fieldsUpdated] = setChannelData(td, name, valueCell, varargin)
+            % this will replace each trial's entire data, rather than just the aligned window
             % note that by default, updateValidOnly is true, meaning that
             % the values on invalid trials will not be updated
             % trialsUpdated is a mask indicating which trials were changed
             % (or cleared)
             % fieldsUpdated is a mask indicating which of the data fields
             % were updated as well
+            %
+            % data passed into setChannelData should already be in memory data type and scale, 
+            % so the caller should handle any access to memory conversion
+            %
             p = inputParser();
             p.addParameter('fieldMask', [], @islogical);
             p.addParameter('clearForInvalid', false, @islogical);

@@ -1942,6 +1942,52 @@ classdef TrialDataConditionAlign < TrialData
             end
             offsets(~td.valid, :) = NaN;
         end
+        
+        function [dataRaw, timesRaw] = replaceDataWithinAlignWindow(td, dataRaw, timesRaw, dataAligned, timesAligned, varargin)
+            % data/timesRaw are taken from the full and unaligned. data/timesAligned are aligned within the current alignment window
+            % and should be spliced in over top of the align window in dataRaw to yield data/times (which will be unaligned)
+            p = inputParser();
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('isAligned', true, @islogical); % timesAligned already relative to current zero
+            p.parse(varargin{:});
+            
+            assert(iscell(timesRaw) && isvector(timesRaw) && numel(timesRaw) == td.nTrials);
+            assert(iscell(dataRaw) && numel(dataRaw) == td.nTrials);
+            assert(iscell(dataAligned) && numel(dataAligned) == td.nTrials);
+            assert(iscell(timesAligned) && isvector(timesAligned) && numel(timesAligned) == td.nTrials);
+            
+            [~, indFirst, indLast] = td.alignInfoActive.getAlignedTimesMask(...
+                timesRaw, 'includePadding', p.Results.includePadding);
+            
+            alignedTimesMask = td.alignInfoActive.getAlignedTimesMask(...
+                timesAligned, 'includePadding', p.Results.includePadding, 'isAligned', p.Results.isAligned); % already zero-relative?
+            if p.Results.isAligned
+                offsets = td.getTimeOffsetsFromZeroEachTrial();
+            else
+                offsets = zeros(td.nTrials, 1);
+            end
+            
+            for iT = 1:td.nTrials
+                if ~isnan(indFirst(iT))
+                    dpre = dataRaw{iT}(1:indFirst(iT), :, :, :, :);
+                    tpre = timesRaw{iT}(1:indFirst(iT), :, :, :, :);
+                    
+                    dmid = dataAligned{iT}(alignedTimesMask{iT}, :, :, :, :, :);
+                    tmid = timesAligned{iT}(alignedTimesMask{iT}, :, :, :, :, :) + offsets(iT);
+                    
+                    dpost = dataRaw{iT}(indLast(iT)+1:end, :, :, :, :);
+                    tpost = timesRaw{iT}(indLast(iT)+1:end, :, :, :, :);
+                    
+                    dataRaw{iT} = cat(1, dpre, dmid, dpost);
+                    timesRaw{iT} = cat(1, tpre, tmid, tpost);
+                else
+                    % select empty row so the result is cat1-able
+                    dataRaw{iT} = dataRaw{iT}([], :, :, :, :);
+                    timesRaw{iT} = timesRaw{iT}([], :, :, :, :);
+                end
+            end
+        end
+
     end
 
     % Analog channel access
@@ -5053,6 +5099,36 @@ classdef TrialDataConditionAlign < TrialData
     end
     
     methods % spike modification
+        function td = setSpikeChannelWithinAlignWindow(td, unitName, newTimes, varargin)
+            p = inputParser();
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('waveforms', [], @iscell);
+            p.addParameter('waveformsInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
+            p.parse(varargin{:});
+            
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(unitName);
+            cd = td.channelDescriptorsByName.(unitName);
+            assert(isa(cd, 'SpikeChannelDescriptor'));
+            
+            hasWaves = ~isempty(p.Results.waveforms);
+            if hasWaves
+               [wavesRaw, ~, timesRaw] = td.getRawSpikeWaveforms(unitName);
+               
+               [waves, times] = td.replaceDataWithinAlignWindow(wavesRaw, timesRaw, ...
+                   p.Results.waveforms, newTimes, 'includePadding', p.Results.includePadding);
+            else
+                timesRaw = td.getRawSpikeTimes(unitName);
+                
+                times = td.replaceDataWithinAlignWindow(timesRaw, timesRaw, ...
+                   newTimes, newTimes, 'includePadding', p.Results.includePadding);
+                waves = [];
+            end
+            
+            td = td.setSpikeChannel(unitName, times, 'waveforms', waves, ...
+                'waveformsInMemoryScale', p.Results.waveformsInMemoryScale);
+        end
+        
         function td = maskSpikeChannelSpikes(td, unitName, mask, varargin)
             p = inputParser();
             p.addParameter('keepRemovedSpikesAs', '', @ischar);
@@ -5072,7 +5148,8 @@ classdef TrialDataConditionAlign < TrialData
             
             hasWaves = cd.hasWaveforms;
             if hasWaves
-                [wavesOrig, waveTvec] = td.getSpikeWaveforms(unitName);
+                % maintain in memory scale to save time
+                [wavesOrig, waveTvec] = td.getSpikeWaveforms(unitName, 'applyScaling', false);
                 waves = wavesOrig;
                 waves(notEmpty) = cellfun(@(w, m) w(m, :), waves(notEmpty), mask(notEmpty), 'UniformOutput', false);
             else
@@ -5100,7 +5177,8 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
                 
-            td = td.setSpikeChannel(unitName, times, 'isAligned', true, 'waveforms', waves);
+            td = td.setSpikeChannelWithinAlignWindow(unitName, times, 'waveforms', waves, ...
+                'waveformsInMemoryScale', true);
         end
         
         function td = appendSpikesToSpikeChannel(td, unitName, newTimes, varargin)
@@ -5114,7 +5192,7 @@ classdef TrialDataConditionAlign < TrialData
             cd = td.channelDescriptorsByName.(unitName);
             
             times = td.getSpikeTimes(unitName);
-            times = cellfun(@(t1, t2) cat(1, t1, t2), times, newTimes, 'UniformOutput', false);
+            times = cellfun(@(t1, t2) sort(cat(1, t1, t2)), times, newTimes, 'UniformOutput', false);
             
             hasWaves = cd.hasWaveforms;
             if hasWaves
@@ -6172,6 +6250,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('markShowInLegend', false, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 8, @isscalar);
+            %% 
             p.addParameter('markOutline', true, @islogical);
             p.addParameter('markOutlineAlpha', 1, @isscalar);
             

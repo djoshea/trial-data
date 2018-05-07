@@ -8,28 +8,46 @@ p.addOptional('unitNames', td.listSpikeChannels, @iscellstr);
 p.addOptional('minChannels', 5, @isscalar);
 p.addOptional('minFracChannels', 0, @isscalar);
 p.addOptional('timeWindow', 0.1, @isscalar);
+p.addParameter('keepRemovedSpikes', false, @islogical);
+p.addParameter('checkUnitNames', td.listSpikeChannels, @iscellstr);            
+
 p.parse(varargin{:});
+
 
 unitNames = p.Results.unitNames;
 if isempty(unitNames)
     unitNames = td.listSpikeChannels();
 end
 
-C = numel(unitNames);
+checkUnitNames = p.Results.checkUnitNames;
+if isempty(checkUnitNames)
+    checkUnitNames = td.listSpikeChannels();
+end
 
-threshC = max(p.Results.minChannels, ceil(p.Results.minFracChannels * C));
+nC = numel(unitNames);
+nOC = numel(checkUnitNames);
 
-prog = ProgressBar(C, 'Scanning channels for shared artifact');
+processed = false(nC, nOC);
+
+threshC = max(p.Results.minChannels, ceil(p.Results.minFracChannels * nC));
+
+prog = ProgressBar(nC, 'Scanning channels for shared artifact');
 
 td = td.reset();
 
 % nTrials x C cell of spike times
-data = td.getRawSpikeTimes(td.listSpikeChannels());
+dataCheck = td.getSpikeTimes(checkUnitNames);
+
+if ~isequal(checkUnitNames, unitNames)
+    data = td.getSpikeTimes(unitNames);
+else
+    data = dataCheck;
+end
 artifactCounts = nan(size(data));
 timeWindowHalf = p.Results.timeWindow / 2;
 matchCounts = cellfun(@(times) zeros(size(times)), data, 'UniformOutput', false);
     
-for c = 1:C
+for c = 1:nC
     unitName = unitNames{c};
     prog.update(c, 'Scanning %s for shared artifacts', unitName);
     
@@ -42,8 +60,13 @@ for c = 1:C
         thisTrial = data{t, c};
         
         if ~isempty(thisTrial)
-            for oc = c+1:C
-                thisTrialOC = data{t, oc};
+            for oc = 1:nOC
+                if processed(c, oc), continue; end
+                
+                checkName = checkUnitNames{oc};
+                if isequal(checkName, unitName), continue; end
+                
+                thisTrialOC = dataCheck{t, oc};
 
                 % detect my matches on this other channel, i.e. whether i have
                 % a matching spike within timeWindow/2 of each of my spikes
@@ -52,9 +75,17 @@ for c = 1:C
                     maskHasMatch = minDist' <= timeWindowHalf;
                     % increment count for this channel
                     matchCounts{t, c} = matchCounts{t, c} + maskHasMatch;
+                    
+                    % check if we can count this for the reverse direcition too, where we were removing
+                    % spikes from unitName <--> checkName 
                     % increment count for other channel
-                    matchCounts{t, oc}(idxOC(maskHasMatch)) = matchCounts{t, oc}(idxOC(maskHasMatch)) + 1;
-                end 
+                    [tf1, idx_check_in_unit] = ismember(checkName, unitNames);
+                    [tf2, idx_unit_in_check] = ismember(unitName, checkUnitNames);
+                    if tf1 && tf2
+                        matchCounts{t, idx_check_in_unit}(idxOC(maskHasMatch)) = matchCounts{t, idx_check_in_unit}(idxOC(maskHasMatch)) + 1;
+                        processed(idx_check_in_unit, idx_unit_in_check) = true;
+                    end
+                end
             end
 
             maskKeep{t} = matchCounts{t, c} < threshC; 
@@ -63,8 +94,18 @@ for c = 1:C
         end
         artifactCounts(t, c) = nnz(~maskKeep{t});
     end
+    processed(c, :) = true;
 %     progI.finish();
+
+    debug('%d artifacts in %s\n', sum(artifactCounts(:, c)), unitName);
     
-    td = td.maskSpikeChannelSpikesRaw(unitName, maskKeep);    
+    if p.Results.keepRemovedSpikes
+        [a,e] = SpikeChannelDescriptor.parseArrayElectrodeUnit(unitName);
+        keepAs = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(a, e, 255);
+    else
+        keepAs = '';
+    end
+
+    td = td.maskSpikeChannelSpikes(unitName, maskKeep, 'keepRemovedSpikes', keepAs);    
 end
 prog.finish();

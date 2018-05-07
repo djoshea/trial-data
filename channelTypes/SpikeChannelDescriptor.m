@@ -156,23 +156,65 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
         
+        function data = convertDataCellOnAccess(cd, fieldIdx, data)
+            % cast to access class, also do scaling upon request
+            % (cd.scaleFromLims -> cd.scaleToLims)
+            data = convertDataCellOnAccess@ChannelDescriptor(cd, fieldIdx, data);
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+        end
+        
+        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
+            data = convertDataSingleOnAccess@ChannelDescriptor(cd, fieldIdx, data);
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+        end
+        
+        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+            data = convertAccessDataCellToMemory@ChannelDescriptor(cd, fieldIdx, data);
+        end
+        
+        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+            data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
+        end
         
         function waveData = scaleWaveforms(cd, waveData)
-            % waveData is either matrix or cell of matrices
-            dtype = cd.accessClassByField{2};
-            if isempty(cd.waveformsScaleFromLims) || isempty(cd.waveformsScaleToLims)
-                scaleFn = @(x) cast(x, dtype);
-            else
-                fromDelta = cd.waveformsScaleFromLims(2) - cd.waveformsScaleFromLims(1);
-                toDelta = cd.waveformsScaleToLims(2) - cd.waveformsScaleToLims(1);
-                
-                % convert to dtype and scale
-                scaleFn = @(x) (cast(x, dtype) - cd.waveformsScaleFromLims(1)) / fromDelta * toDelta + cd.waveformsScaleToLims(1);
-            end
             if iscell(waveData)
-                waveData = cellfun(scaleFn, waveData, 'UniformOutput', false);
+                waveData = cd.convertDataCellOnAccess(2, waveData);
             else
-                waveData = scaleFn(waveData);
+                waveData = cd.convertDataSingleOnAccess(2, waveData);
+            end
+%             % waveData is either matrix or cell of matrices
+%             dtype = cd.accessClassByField{2};
+%             if isempty(cd.waveformsScaleFromLims) || isempty(cd.waveformsScaleToLims)
+%                 scaleFn = @(x) cast(x, dtype);
+%             else
+%                 fromDelta = cd.waveformsScaleFromLims(2) - cd.waveformsScaleFromLims(1);
+%                 toDelta = cd.waveformsScaleToLims(2) - cd.waveformsScaleToLims(1);
+%                 
+%                 % convert to dtype and scale
+%                 scaleFn = @(x) (cast(x, dtype) - cd.waveformsScaleFromLims(1)) / fromDelta * toDelta + cd.waveformsScaleToLims(1);
+%             end
+%             if iscell(waveData)
+%                 waveData = cellfun(scaleFn, waveData, 'UniformOutput', false);
+%             else
+%                 waveData = scaleFn(waveData);
+%             end
+        end
+        
+        function waveData = unscaleWaveforms(cd, waveData)
+            if iscell(waveData)
+                waveData = cd.convertAccessDataCellToMemory(2, waveData);
+            else
+                waveData = cd.convertAccessDataSingleToMemory(2, waveData);
             end
         end
         
