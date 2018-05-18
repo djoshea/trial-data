@@ -4583,7 +4583,7 @@ classdef TrialDataConditionAlign < TrialData
             tvec = makecol(tvec);
             
             % now we need to nan out the regions affected by blanking
-            blankingIntervals = td.getSpike(unitNames);
+            blankingIntervals = td.getSpikeBlankingRegions(unitNames);
             [rates, tvec] = TrialDataUtilities.SpikeData.markNanBlankedIntervals(...
                 blankingIntervals, rates, tvec, 'padding', [sf.preWindow sf.postWindow]);
         end
