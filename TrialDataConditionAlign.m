@@ -6045,10 +6045,11 @@ classdef TrialDataConditionAlign < TrialData
             
             if ~p.Results.quick
                 % only include conditions with at least 1 trial
-                mask = trialCounts(conditionIdx(2:end)) > 0;
+                mask = trialCounts(conditionIdx) > 0;
                 au = AutoAxis(axh);
                 au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
                     conditionNames(mask), 'color', colors(mask, :));
+                mask = trialCounts(conditionIdx(2:end)) > 0;
                 set(axh, 'YTick', flipud(yDividersByCondition(mask)));
             else
                 mask = trialCounts(conditionIdx) > 0;

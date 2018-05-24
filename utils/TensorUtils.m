@@ -1621,7 +1621,7 @@ classdef TensorUtils
         function r = nanrangeMultiDim(t, dims)
             r = TensorUtils.nanmaxMultiDim(t, dims) - TensorUtils.nanminMultiDim(t, dims);
         end
-            
+        
         function idxTensor = findNAlongDim(t, dim, N, direction)
             % idxTensor = findNAlongDim(t, dim, N, direction)
             % finds the first/last N non-zero values in t along dimension t

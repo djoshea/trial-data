@@ -954,6 +954,9 @@ classdef AlignInfo < AlignDescriptor
             edgeTolerance = p.Results.edgeTolerance;
             
             sampleDelta = TrialData.computeDeltaFromTimes(rawTimes);
+            if isnan(sampleDelta)
+                sampleDelta = 1; % can't leave as none
+            end
             if isnan(singleTimepointTolerance)
                 singleTimepointTolerance = 2 * sampleDelta;
             end

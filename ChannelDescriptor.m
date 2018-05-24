@@ -302,7 +302,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 % be NaN for invalid trials when setting channel data
                 % trials missing values will have a single Nan
                 nanMask = cellfun(@(x) isscalar(x) && isnan(x), data);
-                data = cell2mat(data(~nanMask));
+                if any(~nanMask)
+                    data = cell2mat(data(~nanMask));
+                else
+                    data = zeros(0, 1);
+                end
                 data = TensorUtils.inflateMaskedTensor(data, 1, ~nanMask);
             end
         end
