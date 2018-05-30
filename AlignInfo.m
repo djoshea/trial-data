@@ -362,9 +362,9 @@ classdef AlignInfo < AlignDescriptor
             else
                 % grab the event times for all needed events
                 [eventData, eventCounts] = ad.getEventTimesFn(td, eventList);
-  
+
             end
-            
+
             if ~isfield(eventData, 'TrialStart')
                 error('Missing event field TrialStart');
 %                 eventData.TrialStart = nanvec(td.nTrials);
@@ -647,12 +647,12 @@ classdef AlignInfo < AlignDescriptor
                 t.startPad = nanmax(t.startPad, times);
                 t.start = t.startPad + padPre;
             end
-            
+
             % mark trials invalid if start > stop
             maskInvalid = valid & t.start > t.stop;
             valid(maskInvalid) = false;
             [t.invalidCause{maskInvalid}] = deal(sprintf('Start event after stop event after truncation'));
-            
+
 
             % mark trials as invalid if startPad:stopPad includes any invalidateEvents
             for i = 1:length(ad.invalidateEvents)
@@ -731,7 +731,7 @@ classdef AlignInfo < AlignDescriptor
                     ad.getEventIndexedTimeMatrix(ad.markEvents{i}, ...
                     ad.markEventsIndex{i}, ad.markOffsets(i), ad.timeInfo.zero);
             end
-            
+
             c = ad.odc;
             c.markData = markData;
             c.markCounts = markCounts;
@@ -948,14 +948,14 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('singleTimepointTolerance', NaN, @isscalar); % acceptable tolerance to take sample when start == stop, NaN --> 2 * sampling rate
             p.addParameter('edgeTolerance', NaN, @isscalar); % acceptable tolerance to be within the interval, NaN --> 1e-6 * sampling rate
             p.parse(varargin{:});
-            
+
             includePadding = p.Results.includePadding;
             singleTimepointTolerance = p.Results.singleTimepointTolerance;
             edgeTolerance = p.Results.edgeTolerance;
-            
+
             sampleDelta = TrialData.computeDeltaFromTimes(rawTimes);
             if isnan(sampleDelta)
-                sampleDelta = 1; % can't leave as none
+                sampleDelta = 1;
             end
             if isnan(singleTimepointTolerance)
                 singleTimepointTolerance = 2 * sampleDelta;
@@ -963,7 +963,7 @@ classdef AlignInfo < AlignDescriptor
             if isnan(edgeTolerance)
                 edgeTolerance = 1e-6 * sampleDelta;
             end
-            
+
              % filter the times within the window
             if includePadding
                 start = ad.timeInfoValid.startPad;
@@ -978,9 +978,9 @@ classdef AlignInfo < AlignDescriptor
             else
                 offsets = zeros(ad.nTrials, 1);
             end
-            
+
             valid = ad.valid; %#ok<*PROPLC>
-            
+
             if iscell(rawTimes)
                 % nTrials x J cell of vectors
                 assert(size(rawTimes, 1) == ad.nTrials, 'rawTimes cell vector length must match nTrials');
@@ -992,7 +992,7 @@ classdef AlignInfo < AlignDescriptor
                 J = 1;
                 rawTimesMask = false(size(rawTimes));
             end
-            
+
             [indFirst, indLast] = deal(nan(ad.nTrials, J));
             for i = 1:ad.nTrials
                 if valid(i)
@@ -1002,17 +1002,17 @@ classdef AlignInfo < AlignDescriptor
                         else
                             raw = rawTimes(i, :)';
                         end
-                        raw = raw + offsets(i); 
+                        raw = raw + offsets(i);
                         rawMask = false(numel(raw), 1);
-                        
+
                         if (stop(i) - start(i)) < edgeTolerance && (stop(i) - start(i)) > -edgeTolerance % second clause is just in case somehow stop ends up pre-start
                             % only one timepoint requested, get the closest
-                            % point if it's nearby  
+                            % point if it's nearby
                             % provided that the sampling time is within the
                             % trial start:stop boundaries
                             if singleTimepointTolerance > 0 && start(i) + edgeTolerance >= ad.timeInfoValid.trialStart(i) && ...
                                     stop(i) - edgeTolerance <= ad.timeInfoValid.trialStop(i)
-                                
+
                                 [closestTime, closestIdx] = min(abs(raw - start(i)));
                                 rawMask(closestIdx) = closestTime < singleTimepointTolerance;
                             end
@@ -1020,7 +1020,7 @@ classdef AlignInfo < AlignDescriptor
                             % for time intervals, take only that interval
                             rawMask = raw >= start(i) - edgeTolerance & raw <= stop(i) + edgeTolerance;
                         end
-                        
+
                         if iscell(rawTimes)
                             rawTimesMask{i, j} = rawMask;
                         else
@@ -1034,7 +1034,7 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
         end
-        
+
         function [alignedTimes, rawTimesMask] = getAlignedTimesMatrix(ad, rawTimesMatrix, includePadding, beforeStartReplaceStart, afterStopReplaceStop)
             if nargin < 3
                 includePadding = false;
@@ -1090,7 +1090,7 @@ classdef AlignInfo < AlignDescriptor
         % value and the closest sample in time will be taken provided it is
         % within singleTimepointTolerance of the provided value
         function [alignedTimes, rawTimesMask] = getAlignedTimesCell(ad, rawTimesCell, varargin)
-            
+
             p = inputParser();
             p.addOptional('includePadding', false, @islogical);
             p.addParameter('isAligned', false, @islogical); % true means times already are relative to zero
@@ -1103,7 +1103,7 @@ classdef AlignInfo < AlignDescriptor
                 rawTimesMask = rawTimesCell;
                 return;
             end
-            
+
             if ~p.Results.isAligned
                 % subtract off time zero to align the incoming times
                 offsets = ad.timeInfoValid.zero;
@@ -1114,9 +1114,9 @@ classdef AlignInfo < AlignDescriptor
             assert(size(rawTimesCell, 1) == ad.nTrials, 'Size must match nTrials');
 
             J = size(rawTimesCell(:, :), 2);
-            
+
             rawTimesMask = ad.getAlignedTimesMask(rawTimesCell, p.Results);
-            
+
             alignedTimes = cell(size(rawTimesCell));
             for i = 1:ad.nTrials
                 for j = 1:J
@@ -1125,7 +1125,7 @@ classdef AlignInfo < AlignDescriptor
                 end
             end
         end
-        
+
         function intervalCell = getAlignedIntervalCell(ad, intervalCell, includePadding)
             % take data in interval cell (nTrials x 1) with nIntervals x 2
             % start stop matrices inside
@@ -1133,7 +1133,7 @@ classdef AlignInfo < AlignDescriptor
                 includePadding = false;
             end
             assert(size(intervalCell, 1) == ad.nTrials);
-            
+
             if includePadding
                 start = ad.timeInfoValid.startPad;
                 stop = ad.timeInfoValid.stopPad;
@@ -1179,7 +1179,7 @@ classdef AlignInfo < AlignDescriptor
 %             alignedData(nonEmpty) = cellfun(@(data, mask) data(mask(1:size(data, 1)), :, :, :), ...
 %                 makecol(dataCell(nonEmpty)), makecol(rawTimesMask(nonEmpty)), ...
 %                 'UniformOutput', false);
-            
+
             alignedData = cellfun(@(data, mask) data(mask(1:size(data, 1)), :, :, :), ...
                 makecol(dataCell), makecol(rawTimesMask), ...
                 'UniformOutput', false);
@@ -1227,7 +1227,7 @@ classdef AlignInfo < AlignDescriptor
             if nargin < 5
                 includePadding = false;
             end
-            
+
             if ischar(markIdx)
                 markIdx = ad.findMarkByString(markIdx);
             end
@@ -1396,7 +1396,7 @@ classdef AlignInfo < AlignDescriptor
             else
                 hIntervals = {};
             end
-            
+
             if p.Results.showMarks
                 % plot marks
                 hMarks = cell(ad.nMarks, 1);
@@ -1455,7 +1455,7 @@ classdef AlignInfo < AlignDescriptor
                         hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
                             p.Results.markSize, 'alpha', p.Results.markAlpha, 'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
                             'outline', p.Results.markOutline, 'outlineAlpha', p.Results.markOutlineAlpha);
-                        
+
                         if p.Results.showInLegend
                             TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
                             TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
@@ -1495,10 +1495,10 @@ classdef AlignInfo < AlignDescriptor
 
             p.addParameter('shadeStartStopInterval', false, @islogical);
             p.addParameter('shadeOutsideStartStopInterval', false, @islogical);
-            
+
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
-            
+
             p.addParameter('fullTimeLimits', [], @isnumeric);
             p.parse(varargin{:});
 
@@ -1529,7 +1529,7 @@ classdef AlignInfo < AlignDescriptor
                     TrialDataUtilities.Plotting.hideInLegend(h);
                 end
             end
-            
+
             if p.Results.shadeOutsideStartStopInterval
                 fullTimeLimits = p.Results.fullTimeLimits;
                 if isempty(fullTimeLimits)
