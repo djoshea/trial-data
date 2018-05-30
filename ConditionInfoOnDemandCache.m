@@ -13,10 +13,13 @@ classdef ConditionInfoOnDemandCache < ConditionDescriptorOnDemandCache
         conditionMembership
         conditionMembershipRaw
         listByConditionRaw
+        listByConditionWeightsRaw
         listByCondition
+        listByConditionWeights
+        
         invalidCause
     end
-    
+
     methods
         function flush(c)
             flush@ConditionDescriptorOnDemandCache(c);

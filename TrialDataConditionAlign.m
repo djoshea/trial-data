@@ -47,6 +47,7 @@ classdef TrialDataConditionAlign < TrialData
         
         nConditions
         listByCondition
+        listByConditionWeights
         nTrialsByCondition
         conditionIdx
         conditionSubs
@@ -691,6 +692,16 @@ classdef TrialDataConditionAlign < TrialData
             out = cellfun(fn, dataByGroup, 'UniformOutput', false);
         end
         
+        function [means, sem, std, nTrials, totalWeights] = computeGroupMeansWeighted(td, data, minTrials, minTrialFraction)
+            deal(nan(td.nConditions, numel(tvec), nUnits));
+            for iC = 1:td.nConditions
+                if ~isempty(rateCell{iC})
+                    [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
+                        TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
+                end
+            end
+        end
+        
         function td = setConditionDescriptor(td, cd)
             td.warnIfNoArgOut(nargout);
             
@@ -1227,7 +1238,7 @@ classdef TrialDataConditionAlign < TrialData
         end
         
         % filter trials that are valid based on ConditionInfo
-        function td = filterValidTrialsConditionInfo(td, varargin)
+        function td = selectValidTrialsConditionInfo(td, varargin)
             td.warnIfNoArgOut(nargout);
             td = td.selectTrials(td.conditionInfo.valid);
         end
@@ -1239,7 +1250,8 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             % no need to copy, filteredBy already copies the conditionInfo
             td.conditionInfo = td.conditionInfo.filteredByAttribute(varargin{:});
-            td = td.filterValidTrialsConditionInfo();
+            td = td.postUpdateConditionInfo();
+%             td = td.filterValidTrialsConditionInfo();
         end
 
         % filter trials based on matching attribute values, 
@@ -1249,7 +1261,28 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             % no need to copy, filteredBy already copies the conditionInfo
             td.conditionInfo = td.conditionInfo.filteredByAttributeStruct(varargin{:});
-            td = td.filterValidTrialsConditionInfo();
+            td = td.postUpdateConditionInfo();
+%             td = td.filterValidTrialsConditionInfo();
+        end
+        
+        % manual setting of condition membership
+        function td = setConditionMembershipManual(td, conditionMembership, reasonInvalid, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            if nargin < 3
+                reasonInvalid = {};
+            end
+            
+            td.conditionInfo = td.conditionInfo.fixAllAxisValueLists();
+            td.conditionInfo = td.conditionInfo.setConditionMembershipManual(conditionMembership, reasonInvalid, varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+            
+        function td = setConditionMembershipManualFn(ci, conditionMembershipFn, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            td.conditionInfo = td.conditionInfo.setConditionMembershipManualFn(conditionMembershipFn, varargin{:});
+            td = td.postUpdateConditionInfo();
         end
 
         function tdCell = getTrialDataByCondition(td)
@@ -1351,6 +1384,10 @@ classdef TrialDataConditionAlign < TrialData
         
         function v = get.listByCondition(td)
             v = td.conditionInfo.listByCondition;
+        end
+        
+        function v = get.listByConditionWeights(td)
+            v = td.conditionInfo.listByConditionWeights;
         end
         
         function v = get.nTrialsByCondition(td)
