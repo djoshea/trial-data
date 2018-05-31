@@ -202,15 +202,17 @@ classdef TensorUtils
             % slice at a time.
 
             [resultCell{1:nargout}] = TensorUtils.mapSlices(fn, spanDim, varargin{:});
-            nonSpanDims = TensorUtils.otherDims(size(resultCell{1}), spanDim, ndims(varargin{1}));
-            varargout = cellfun(@(r) TensorUtils.reassemble(r, nonSpanDims, ndims(varargin{1})), ...
-                resultCell, 'UniformOutput', false);
+%             nonSpanDims = TensorUtils.otherDims(size(resultCell{1}), spanDim, ndims(varargin{1}));
+            
+            varargout = cellfun(@cell2mat, resultCell, 'UniformOutput', false);
+%             varargout = cellfun(@(r) TensorUtils.reassemble(r, nonSpanDims, ndims(varargin{1})), ...
+%                 resultCell, 'UniformOutput', false);
 
-            for iV = 1:numel(varargin)
-                if ~iscell(varargin{iV})
-                    varargout{iV} = cell2mat(varargout{iV});
-                end
-            end
+%             for iV = 1:numel(varargin)
+%                 if ~iscell(varargin{iV})
+%                     varargout{iV} = cell2mat(varargout{iV});
+%                 end
+%             end
         end
 
         function varargout = mapFromAxisLists(fn, axisLists, varargin)
@@ -803,46 +805,49 @@ classdef TensorUtils
             tCell = TensorUtils.selectEachAlongDimension(t, dim, true);
         end
 
-        function t = reassemble(tCell, dim, nd)
-            % given a tCell in the form returned by selectEachAlongDimension
-            % dim is the dimension embedded within each slice
-            % return the original tensor
-
-            %             if nargin < 3
-            %                 nd = ndims(tCell);
-            %             end
-            szOuter = size(tCell);
-            szOuter = [szOuter ones(1, nd - length(szOuter))];
-            szInner = size(tCell{1});
-            szInner = [szInner ones(1, nd - length(szInner))];
-
-            % dimMask(i) true i
-            dimMask = false(nd, 1);
-            dimMask(dim) = true;
-
-            % compute size of result t
-            % use outerDims when its in dim, innerDims when it isn't
-            szT = nan(1, ndims(tCell));
-            szT(dimMask) = szOuter(dimMask);
-            szT(~dimMask) = szInner(~dimMask);
-
-            % rebuild t by grabbing the appropriate element from tCell
-            %subs = TensorUtils.containingSubscripts(szT);
-            t = TensorUtils.mapToSizeFromSubs(szT, @getElementT, true);
-
-            function el = getElementT(varargin)
-                [innerSubs, outerSubs] = deal(varargin);
-                % index with dim into tt, non-dim into tt{i}
-                [outerSubs{~dimMask}] = deal(1);
-                [innerSubs{dimMask}] = deal(1);
-                tEl = tCell{outerSubs{:}};
-                if iscell(tEl)
-                    el = tEl{innerSubs{:}};
-                else
-                    el = tEl(innerSubs{:});
-                end
-            end
-        end
+        % it is unclear to me now what this function did, that is not already done by cell2mat.
+%         function t = reassemble(tCell, dim, nd)
+%             % given a tCell in the form returned by selectEachAlongDimension
+%             % return the original tensor. So if tCell is size 3 x 1 x 1 x 6 and tCell{:} is 1 x 4 x 5 x 1,
+%             % the output will be 3 x 4 x 5 x 6 with element i,j,k,l drawn from tCell{i,1,1,l}(1,j,k,1)
+%             % dim is the dimensions that tCell spans, the other dimensions are spanned by each individual tCell{i}
+%             
+% 
+%             %             if nargin < 3
+%             %                 nd = ndims(tCell);
+%             %             end
+%             szOuter = size(tCell);
+%             szOuter = [szOuter ones(1, nd - length(szOuter))];
+%             szInner = size(tCell{1});
+%             szInner = [szInner ones(1, nd - length(szInner))];
+% 
+%             % dimMask(i) true i
+%             dimMask = false(nd, 1);
+%             dimMask(dim) = true;
+% 
+%             % compute size of result t
+%             % use outerDims when its in dim, innerDims when it isn't
+%             szT = nan(1, ndims(tCell));
+%             szT(dimMask) = szOuter(dimMask);
+%             szT(~dimMask) = szInner(~dimMask);
+% 
+%             % rebuild t by grabbing the appropriate element from tCell
+%             %subs = TensorUtils.containingSubscripts(szT);
+%             t = TensorUtils.mapToSizeFromSubs(szT, @getElementT, true);
+% 
+%             function el = getElementT(varargin)
+%                 [innerSubs, outerSubs] = deal(varargin);
+%                 % index with dim into tt, non-dim into tt{i}
+%                 [outerSubs{~dimMask}] = deal(1);
+%                 [innerSubs{dimMask}] = deal(1);
+%                 tEl = tCell{outerSubs{:}};
+%                 if iscell(tEl)
+%                     el = tEl{innerSubs{:}};
+%                 else
+%                     el = tEl(innerSubs{:});
+%                 end
+%             end
+%         end
 
         function vec = flatten(t)
             vec = TensorUtils.makecol(t(:));
@@ -1664,14 +1669,16 @@ classdef TensorUtils
             r = TensorUtils.nanmaxMultiDim(t, dims) - TensorUtils.nanminMultiDim(t, dims);
         end
 
-        function t = quantileMultiDim(t, p, dim, pAlongDim)
+        function t = quantileMultiDim(t, p, dim, placeAlongDim)
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3])
             % will compute the mean in slices along dims 2 and 3. the
             % result will have size s1 x 1 x 1 x s4
             if nargin < 4
-                pAlongDim = dim(1);
+                placeAlongDim = dim(1);
             end
-            t = TensorUtils.mapSlicesInPlace(@(slice) quantile(slice(:), p), dims, t);
+            % quantile returns row vectors, so we orient them along placeAlongDim
+            shift = -placeAlongDim + 2;
+            t = TensorUtils.mapSlicesInPlace(@(slice) shiftdim(quantile(slice(:), p), shift), dim, t);
         end
 
         function idxTensor = findNAlongDim(t, dim, N, direction)

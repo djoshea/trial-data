@@ -4832,17 +4832,41 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function [snr, range, noise]  = getSpikeChannelSNR(td, unitName, varargin)
-
+            % take range = max - min (or e.g. 0.0.25, 0.975 quantile) and noise = max (or 0.95 quantile) s.e.m.
             p = inputParser();
-            p.addParameter('quantile', 1, @isscalar);
+            p.addParameter('noiseQuantile', 1, @isscalar);
+            p.addParameter('rangeQuantile', 1, @(x) isscalar(x) || numel(x) == 2); % either width of centered quantile band (e.g. 0.95 --> 0.025 to 0.975) or [low high]
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
+            
+            nq = p.Results.noiseQuantile;
+            rq = p.Results.rangeQuantile;
+            if isscalar(rq)
+                rq = [(1-rq)/2 1-(1-rq)/2];
+            end
 
             % options same as getSpikeRateFilteredGroupMeansEachAlign
-            [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, varargin{:});
+            [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, p.Unmatched);
 
-            noise = squeeze(TensorUtils.nanmaxMultiDim(semMat, [1 2]));
-            range = squeeze(TensorUtils.nanmaxMultiDim(psthMat, [1 2]) - TensorUtils.nanminMultiDim(psthMat, [1 2]));
+            noise = squeeze(TensorUtils.quantileMultiDim(semMat, nq, [1 2]));
+            range = squeeze(diff(TensorUtils.quantileMultiDim(psthMat, rq, [1 2]), 1, 1));
             snr = range ./ noise;
+        end
+        
+        function [snr, range, noise]  = getSpikeChannelSNROverConditions(td, unitName, varargin)
+            % take range = max - min over conditions at each time and noise = max s.e.m. at each time
+            % then take quantile of these snr values over time
+            p = inputParser();
+            p.addParameter('quantile', 0.95, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            q = p.Results.quantile;
+            [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, p.Unmatched);
+            range = max(psthMat,[],1, 'omitnan') - min(psthMat,[],1, 'omitnan');
+            noise = max(semMat, [], 1, 'omitnan');
+            snr = range ./ noise;
+            snr = quantile(snr, q);
         end
 
         function tbl = getSpikeChannelSNRTable(td, varargin)
@@ -4853,6 +4877,9 @@ classdef TrialDataConditionAlign < TrialData
             s = struct('snr', num2cell(snr), 'range', num2cell(range), 'noise', num2cell(noise));
             tbl = struct2table(s, 'RowNames', units, 'AsArray', true);
         end
+        
+        %   overConditions: at each time, take max - min over conditions at each time, and noise = max s.e.m at each time, then ratio, and take 
+            
 
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
                 getSpikeRateFilteredGroupMeansRandomized(td, unitNames, varargin)
@@ -4943,13 +4970,13 @@ classdef TrialDataConditionAlign < TrialData
             [psthMat, tvec, semMat, stdMat, nTrialsMat] = getSpikeRateFilteredGroupMeans(td, varargin{:});
         end
 
-        function [snr, range, noise] = getSpikeRateFilteredSNR(td, varargin)
-            % range / max(sem)
-            [psthMat, ~, semMat] = getPSTH(td, varargin{:});
-            noise = nanmax(semMat(:));
-            range = nanmax(psthMat(:)) - nanmin(psthMat(:));
-            snr = range / noise;
-        end
+%         function [snr, range, noise] = getSpikeRateFilteredSNR(td, varargin)
+%             % range / max(sem)
+%             [psthMat, ~, semMat] = getPSTH(td, varargin{:});
+%             noise = nanmax(semMat(:));
+%             range = nanmax(psthMat(:)) - nanmin(psthMat(:));
+%             snr = range / noise;
+%         end
 
         function timesCellofCells = getSpikeTimesGrouped(td, unitName, varargin)
             timesCell = td.getSpikeTimes(unitName, varargin{:});
