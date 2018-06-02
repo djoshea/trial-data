@@ -4806,15 +4806,47 @@ classdef TrialDataConditionAlign < TrialData
                 cdSub = td.expandConditionDescriptorForSubtraction(p.Results.subtractConditionDescriptor);
 
                 % get the group means for this condition descriptor
-                [sub_psthMat, sub_tvec, sub_semMat, sub_stdMat, ~] = ...
-                    td.setConditionDescriptor(cdSub).getSpikeRateFilteredGroupMeans(unitNames, ...
-                    rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
-
-                % equalize the time vectors
-                [out, tvec] = TrialDataUtilities.Data.equalizeTimeVectorsForTimeseries({...
-                    psthMat, semMat, stdMat, sub_psthMat, sub_semMat, sub_stdMat}, ...
-                    {tvec, tvec, tvec, sub_tvec, sub_tvec, sub_tvec}, 2);
-
+                if p.Results.eachAlign
+                    [sub_psthMat, sub_tvec, sub_semMat, sub_stdMat, ~, sub_whichAlign] = ...
+                        td.setConditionDescriptor(cdSub).getSpikeRateFilteredGroupMeansEachAlign(unitNames, ...
+                        rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
+                    
+                    % split by align, equalize time vectors for each align,
+                    % and recombine
+                    psthMat = TensorUtils.splitAlongDimensionByIndex(psthMat, 2, whichAlign);
+                    sub_psthMat = TensorUtils.splitAlongDimensionByIndex(sub_psthMat, 2, sub_whichAlign);
+                    tvec = TensorUtils.splitAlongDimensionByIndex(tvec, 1, whichAlign);
+                    sub_tvec = TensorUtils.splitAlongDimensionByIndex(sub_tvec, 1, sub_whichAlign);
+                    semMat = TensorUtils.splitAlongDimensionByIndex(semMat, 2, whichAlign);
+                    sub_semMat = TensorUtils.splitAlongDimensionByIndex(sub_semMat, 2, sub_whichAlign);
+                    stdMat = TensorUtils.splitAlongDimensionByIndex(stdMat, 2, whichAlign);
+                    sub_stdMat = TensorUtils.splitAlongDimensionByIndex(sub_stdMat, 2, sub_whichAlign);
+                    
+                    V = 6;
+                    nA = numel(psthMat);
+                    outByAlign = cell(V, nA);
+                    tvecByAlign = cell(nA, 1);
+                    for iA = 1:numel(psthMat)
+                        [outByAlign(:, iA), tvecByAlign{iA}] = TrialDataUtilities.Data.equalizeTimeVectorsForTimeseries({...
+                            psthMat{iA}, semMat{iA}, stdMat{iA}, sub_psthMat{iA}, sub_semMat{iA}, sub_stdMat{iA}}, ...
+                            {tvec{iA}, tvec{iA}, tvec{iA}, sub_tvec{iA}, sub_tvec{iA}, sub_tvec{iA}}, 2);
+                    end
+                    out = cell(V, 1);
+                    for i = 1:V
+                        out{i} = cat(2, outByAlign{i, :});
+                    end
+                    tvec = cat(1, tvecByAlign{:});
+                else
+                    [sub_psthMat, sub_tvec, sub_semMat, sub_stdMat] = ...
+                        td.setConditionDescriptor(cdSub).getSpikeRateFilteredGroupMeans(unitNames, ...
+                        rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
+                    
+                    % equalize the time vectors
+                    [out, tvec] = TrialDataUtilities.Data.equalizeTimeVectorsForTimeseries({...
+                        psthMat, semMat, stdMat, sub_psthMat, sub_semMat, sub_stdMat}, ...
+                        {tvec, tvec, tvec, sub_tvec, sub_tvec, sub_tvec}, 2);
+                end
+                
                 % do the subtraction
                 psthMat = out{1} - out{4};
 
@@ -4848,6 +4880,10 @@ classdef TrialDataConditionAlign < TrialData
             % options same as getSpikeRateFilteredGroupMeansEachAlign
             [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, p.Unmatched);
 
+            % single trial estimated average values don't count
+            psthMat(semMat == 0) = NaN;
+            semMat(semMat == 0) = NaN;
+            
             noise = squeeze(TensorUtils.quantileMultiDim(semMat, nq, [1 2]));
             range = squeeze(diff(TensorUtils.quantileMultiDim(psthMat, rq, [1 2]), 1, 1));
             snr = range ./ noise;
