@@ -1534,13 +1534,30 @@ classdef TrialData
             tf = ~cd.collectAsCellByField(1);
         end
         
-        function td = setChannelMeta(td, name, meta)
+        function td = setChannelMetaKey(td, name, key, value)
             td.warnIfNoArgOut(nargout);
-            td.channelDescriptorsByName.(name).meta = meta;
+            assert(ischar(key), 'Key must be string');
+            
+            if ~isstruct(td.channelDescriptorsByName.(name).meta)
+                td.channelDescriptorsByName.(name).meta = struct(key, value);
+            else
+                td.channelDescriptorsByName.(name).meta.(key) = value;
+            end
         end
         
         function meta = getChannelMeta(td, name)
             meta = td.channelDescriptorsByName.(name).meta;
+            if isempty(meta)
+                meta = struct();
+            end
+        end
+        
+        function value = getChannelMetaKey(td, name, key)
+            if isstruct(td.channelDescriptorsByName.(name).meta) && isfield(td.channelDescriptorsByName.(name).meta, key)
+                value = td.channelDescriptorsByName.(name).meta.(key);
+            else
+                value = [];
+            end
         end
         
         function names = listChannels(td)
