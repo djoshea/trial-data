@@ -760,6 +760,10 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = colorByAttributes(td, varargin)
             td.warnIfNoArgOut(nargout);
+            
+            % add any needed attributes to condition info
+            td = td.addAttribute(varargin{1});
+            
             td.conditionInfo = td.conditionInfo.colorByAttributes(varargin{:});
         end
 
@@ -3128,8 +3132,8 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
                     tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baseline = tdBaseline.getAnalogChannelGroupMeanOverTimeEachTrial(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
-                data = cellfun(@(data, baseline) bsxfun(@minus, data, baseline), data, num2cell(baseline), 'UniformOutput', false);
+                baseline = tdBaseline.getAnalogChannelGroupMeanOverTimeEachTrial(groupName, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                data = cellfun(@(data, baseline) bsxfun(@minus, data, baseline), data, TensorUtils.splitAlongDimension(baseline, 1), 'UniformOutput', false);
             end
 
             % subtract manual offset from each trial
@@ -3468,7 +3472,8 @@ classdef TrialDataConditionAlign < TrialData
 
         function [means, tvec] = getAnalogChannelGroupMeanOverTimeEachTrial(td, name, varargin)
             [data, tvec] = td.getAnalogChannelGroup(name, varargin{:});
-            means = TensorUtils.inflateMaskedTensor(cellfun(@(x) nanmean(x, 1), data(td.valid), 'UniformOutput', false), 1, td.valid);
+            meansValid = cellfun(@(x) nanmean(x, 1), data(td.valid), 'UniformOutput', false);
+            means = TensorUtils.inflateMaskedTensor(cat(1, meansValid{:}), 1, td.valid, NaN);
         end
 
         function [meansCell, tvec] = getAnalogChannelGroupMeanOverTimeEachTrialGrouped(td, name, varargin)
@@ -6664,15 +6669,16 @@ classdef TrialDataConditionAlign < TrialData
                                 dzvec = dataC{iTrial}(:, 3);
 
                                 if ~isempty(dxvec) && ~isempty(dyvec) && ~isempty(dzvec)
-                                    if p.Results.alpha < 1
-                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline3(dxvec, dyvec, dzvec, ...
-                                           'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                           'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
-                                    else
-                                        plotArgs = app(iCond).getPlotArgs();
-                                        hData{iCond, iAlign}(iTrial) = plot3(axh, dxvec, dyvec, dzvec, '-', ...
-                                            plotArgs{:}, p.Results.plotOptions{:});
-                                    end
+% %                                     if p.Results.alpha < 1
+% %                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline3(dxvec, dyvec, dzvec, ...
+% %                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+% %                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+% %                                     else
+                                    plotArgs = app(iCond).getPlotArgs();
+                                    hData{iCond, iAlign}(iTrial) = plot3(axh, dxvec, dyvec, dzvec, '-', ...
+                                        plotArgs{:}, p.Results.plotOptions{:});
+                                    hData{iCond, iAlign}(iTrial).Color(4) = p.Results.alpha;
+%                                     end
                                 end
                             end
 
