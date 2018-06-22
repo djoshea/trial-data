@@ -75,6 +75,11 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     % tMin so that we end up with the right samples
     timeUniform = (tMin:origDelta:tMax)';
     
+    origClass = class(data);
+    if ~ismember(class(data), {'single', 'double'})
+        data = single(data);
+    end
+    
     switch p.Results.resampleMethod
         case 'filter'
             if ~p.Results.uniformlySampled
@@ -147,6 +152,10 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
 %             
         otherwise
             error('Unknown resampleMethod %s', p.Results.resampleMethod)
+    end
+    
+    if ~strcmp(origClass, class(data))
+        data = cast(data, origClass);
     end
     
     data = TensorUtils.unshiftdimToFirstDim(data, timeDim, nDimsOrig);
