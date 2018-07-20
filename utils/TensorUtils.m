@@ -670,6 +670,7 @@ classdef TensorUtils
         end
 
         function tCell = nestedRegroupAlongDimension(t, dimSets)
+            % this forms cells of cells of cells of ... of tensors
             assert(iscell(dimSets), 'dimSets must be a cell array of dimension sets');
 
             dimSets = TensorUtils.makecol(cellfun(@TensorUtils.makecol, dimSets, 'UniformOutput', false));
@@ -805,6 +806,44 @@ classdef TensorUtils
             tCell = TensorUtils.selectEachAlongDimension(t, dim, true);
         end
 
+        function out = splitAlongDimensionBySubscripts(t, dim, outSz, subs)
+            % given an n-dimensional tensor t, split t into a cell with size outsz
+            % each cell at location (s1, s2, ...) will contain a piece of t selected along dimension dim taking all 
+            % slices t(..., i, ...) where subs(i, :) == (s1, s2, ...). Sort of like accumarray except concatenating over slices
+            % where any subs(i, :) is NaN or 0, this slice of t will be discarded
+            
+            assert(size(subs, 1) == size(t, dim), 'Number of rows of subs must match size of t along dim');
+            assert(size(subs, 2) == numel(outSz), 'Number of elements in outSz should match number of columns in subs');
+            otherDims = TensorUtils.otherDims(size(t), dim);
+            szT = size(t);
+            
+            mask = ~any(isnan(subs) | subs == 0, 2);
+            if any(~mask)
+                t = TensorUtils.selectAlongDimension(t, dim, mask);
+                subs = subs(mask, :);
+            end
+            
+            C = size(subs, 2);
+            subsExp = nan(numel(t), C);
+            for iC = 1:C
+                colOrient = TensorUtils.orientSliceAlongDims(subs(:, iC), dim);
+                subcolExp = TensorUtils.repmatAlongDims(colOrient, otherDims, szT(otherDims));
+                subsExp(:, iC) = subcolExp(:);
+            end
+            
+            outSz = TensorUtils.expandScalarSize(outSz);
+            
+            % must be sorted to preserve order in accumarray
+            [subsSorted,subSortIdx] = sortrows(subsExp,[2,1]);
+            out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x});
+            
+            % reshape out{:} back to tensors 
+            szInnerArgs = num2cell(szT);
+            szInnerArgs{dim} = [];
+            out = cellfun(@(x) reshape(x, szInnerArgs{:}), out, 'UniformOutput', false);
+        end
+        
+        
         % it is unclear to me now what this function did, that is not already done by cell2mat.
 %         function t = reassemble(tCell, dim, nd)
 %             % given a tCell in the form returned by selectEachAlongDimension
@@ -902,7 +941,13 @@ classdef TensorUtils
 
             paddedCell = cellfun(padFn, TensorUtils.makecol(varargin), 'UniformOutput', false);
         end
-
+        
+        function paddedCell = expandToSameSize(varargin)
+            nd = max(cellfun(@ndims, varargin));
+            dims = 1:nd;
+            paddedCell = TensorUtils.expandToSameSizeAlongDims(dims, varargin{:});
+        end
+        
         function out = catPad(dim, varargin)
             % works like cat, except pads each element to be the same size
             % along dimension dim before concatenating
@@ -1621,6 +1666,9 @@ classdef TensorUtils
         end
 
         function out = splitAlongDimensionByIndex(t, dim, which)
+            % see splitBySubscripts which handles subscripts for which instead of linear indices
+            % and is dramatically faster using accumarray
+            
             % undoes catWhich, at each position along dim, places that
             % slice of t into out{which}
 
