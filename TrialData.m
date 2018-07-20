@@ -3340,7 +3340,7 @@ classdef TrialData
         
         function emptySlice = getAnalogChannelGroupEmptySlice(td, groupName, varargin)
             sz = td.getAnalogChannelGroupSize(groupName);
-            emptySlice = nan([0 sz(2:end)]);
+            emptySlice = nan([0 sz]);
         end
         
         function [data, time] = getAnalogChannelGroupRaw(td, groupName, varargin)
@@ -4580,6 +4580,8 @@ classdef TrialData
                 end
             elseif isa(cd, 'AnalogChannelDescriptor')
                 values = td.getAnalogSample(chName);
+            elseif isa(cd, 'EventChannelDescriptor')
+                values = td.getEventFirst(chName);
             else
                 error('Only valid for parameter or analog channels');
             end
