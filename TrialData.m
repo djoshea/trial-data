@@ -5451,6 +5451,11 @@ classdef TrialData
             td = td.dropChannelFields(wavefields(mask));
         end
         
+        function td = dropSpikeChannels(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.dropChannels(td.listSpikeChannels());
+        end
+        
         function td = maskSpikeChannelSpikesRaw(td, unitName, mask, varargin)
             td.warnIfNoArgOut(nargout);
             assert(isvector(mask) && numel(mask) == td.nTrials);

@@ -550,6 +550,7 @@ classdef StateSpaceProjection
             
             % project single trial data if any
             if pset.simultaneous && ~isempty(pset.dataByTrial) && p.Results.projectSingleTrialData
+                singleTrial = true;
                 debug('Projecting single-trial data\n');
                 b.dataSources = pset.dataSources;
                 [b.dataByTrial, b.tMinByTrial, b.tMaxByTrial] = deal(cell(proj.nBasesProj, pset.nAlign));
@@ -584,6 +585,8 @@ classdef StateSpaceProjection
                 % preserve the trial lists
                 % nBases x nConditions --> nBasesProj x nConditions
                 b.trialLists = repmat(pset.trialLists(1, :), proj.nBasesProj, 1);
+            else
+                singleTrial = false;
             end
             
             % project cached single trial data if any
@@ -662,7 +665,7 @@ classdef StateSpaceProjection
             b.basisValidManual = proj.basisValidProj;
             b.basisInvalidCauseManual = proj.basisInvalidCauseProj;
             
-            if pset.simultaneous && ~isempty(pset.dataByTrial)
+            if singleTrial
                 psetProjected = b.buildManualWithSingleTrialData();
             else
                 psetProjected = b.buildManualWithTrialAveragedData();
