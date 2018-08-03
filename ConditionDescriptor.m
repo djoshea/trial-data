@@ -694,6 +694,12 @@ classdef ConditionDescriptor
         function ci = permuteAxes(ci, mask)
             ci = ci.maskAxes(mask);
         end
+        
+        function ci = transposeAxes(ci)
+            ci.warnIfNoArgOut(nargout);
+            assert(ci.nAxes == 2, 'ConditionDescriptor must have 2 axes for transpose');
+            ci = ci.permuteAxes([2 1]);
+        end
 
         function ci = removeAxis(ci, axisSpec)
             aIdx = ci.axisLookupByAttributes(axisSpec);

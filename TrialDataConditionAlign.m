@@ -1017,6 +1017,18 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo = td.conditionInfo.reshapeAxes(varargin{:});
             td = td.postUpdateConditionInfo();
         end
+        
+        function td = permuteAxes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.permuteAxes(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
+        
+        function td = transposeAxes(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.transposeAxes(varargin{:});
+            td = td.postUpdateConditionInfo();
+        end
 
         function td = flattenAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
@@ -4334,7 +4346,8 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
 
             timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine);
-            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, 'singleTimepointTolerance', 0);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, ...
+                'singleTimepointTolerance', 0);
         end
 
         function timesCell = getSpikeTimesEachAlign(td, unitNames, varargin)
@@ -4350,6 +4363,23 @@ classdef TrialDataConditionAlign < TrialData
             for iA = 1:td.nAlign
                 timesCell(:, :, iA) = td.alignInfoSet{iA}.getAlignedTimesCell(timesCellUnaligned, p.Results.includePadding, 'singleTimepointTolerance', 0);
             end
+        end
+        
+        function [timesMask, indFirst, indLast] = getSpikeTimesMask(td, unitNames, varargin)
+            p = inputParser();
+            p.addParameter('includeInvalid', true, @islogical); % if true, include a mask on the invalid trials that rejects everything
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
+
+            if p.Results.includeInvalid
+                timesRaw = td.getRawSpikeTimes(unitNames, 'combine', p.Results.combine);
+            else
+                timesRaw = td.getSpikeTimesUnaligned(unitNames, 'combine', p.Results.combine);
+            end    
+            
+            [timesMask, indFirst, indLast] = td.alignInfoActive.getAlignedTimesMask(...
+                timesRaw, 'includePadding', p.Results.includePadding, 'singleTimepointTolerance', false);    
         end
 
         %%%%%
@@ -4588,14 +4618,16 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('binWidthMs', 1, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Causal, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
             binWidth = p.Results.binWidthMs;
             binAlignmentMode = p.Results.binAlignmentMode;
 
             [~, ~, ~, tBinEdges] = td.getSpikeBinnedCounts(unitName, ...
-                'binWidthMs', binWidth, 'binAlignmentMode', binAlignmentMode);
+                'binWidthMs', binWidth, 'binAlignmentMode', binAlignmentMode, ...
+                'combine', p.Results.combine);
 
-            td.plotRaster(unitName);
+            td.plotRaster(unitName, 'combine', p.Results.combine);
             hold on;
             TrialDataUtilities.Plotting.verticalLine(tBinEdges, 'Color', grey(0.5));
             hold off;
@@ -5857,7 +5889,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('axh', gca, @ishandle);
 
-            p.addParameter('combine', false, @islogical); % combine units as -one, if false, plot spikes in different colors
+            p.addParameter('combine', false, @islogical); % combine units as -one, if false, plot spikes in different colorstds
 %             p.KeepUnmatched = true;
             p.parse(varargin{:});
 

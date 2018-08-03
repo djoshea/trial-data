@@ -43,7 +43,7 @@ function [timeCrossLow, idxCrossLow] = findThresholdCrossingsLowThenHigh(data, t
             return;
         end
         sig(idxCrossHigh : end) = Inf;
-        idxCrossLow = find(sig < lo, 1, 'last');
+        idxCrossLow = find(sig < lo, 1, 'last') + 1;
         if isempty(idxCrossLow)
             idxCrossLow = NaN;
             timeCrossLow = NaN;

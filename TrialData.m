@@ -3956,7 +3956,7 @@ classdef TrialData
             
             p = inputParser;
             p.addRequired('name', @ischar);
-            p.addRequired('times', @(x) isempty(x) || isvector(x));
+            p.addRequired('times', @(x) isempty(x) || isvector(x) || ismatrix(x));
             p.addParameter('isAligned', true, @islogical);
             p.addParameter('useExistingDataField', false, @islogical);
             p.addParameter('color', [], @(x) true);
@@ -3970,6 +3970,14 @@ classdef TrialData
                 end
                 if isscalar(times)
                     times = repmat(times, td.nTrials, 1);
+                end
+                
+                if ismatrix(times) && ~isvector(times)
+                    % assume each row is one trial and convert into cell
+                    % ignoring nans
+                    assert(size(times, 1) == td.nTrials);
+                    times = TensorUtils.splitAlongDimension(times, 1, 1);
+                    times = cellfun(@(x) makecol(removenan(x)), times, 'UniformOutput', false);
                 end
 
                 assert(numel(times) == td.nTrials, 'Times must be vector with length %d', td.nTrials);
@@ -4251,7 +4259,15 @@ classdef TrialData
             
             % sort and makecol
             if ~iscell(times)
-                times = arrayfun(@(x) x(~isnan(x)), times, 'UniformOutput', false);
+                if ismatrix(times) && ~isvector(times)
+                    % assume each row is one trial and convert into cell
+                    % ignoring nans
+                    assert(size(times, 1) == td.nTrials);
+                    times = TensorUtils.splitAlongDimension(times, 1, 1);
+                    times = cellfun(@(x) makecol(removenan(x)), times, 'UniformOutput', false);
+                else
+                    times = arrayfun(@removenan, times, 'UniformOutput', false);
+                end
             end
             times = cellfun(@(x) makecol(sort(x)), times, 'UniformOutput', false);
             

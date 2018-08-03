@@ -440,6 +440,7 @@ classdef TensorUtils
             % for selecting along dim. If dim is a vector, select is a cell array of
             % vectors to be used for selecting along dim(i)
 
+            assert(~islogical(dims), 'Arguments out of order');
             if ~iscell(masks)
                 masks = {masks};
             end
@@ -834,8 +835,12 @@ classdef TensorUtils
             outSz = TensorUtils.expandScalarSize(outSz);
             
             % must be sorted to preserve order in accumarray
-            [subsSorted,subSortIdx] = sortrows(subsExp,[2,1]);
-            out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x});
+            if size(subsExp, 2) > 1
+                [subsSorted,subSortIdx] = sortrows(subsExp,[2,1]);
+            else
+                [subsSorted,subSortIdx] = sort(subsExp);
+            end
+            out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, zeros(0, 1, 'like', t));
             
             % reshape out{:} back to tensors 
             szInnerArgs = num2cell(szT);
@@ -1602,7 +1607,16 @@ classdef TensorUtils
            for iDim = 1:ndims(t)
                [tf, which] = ismember(iDim, dim);
                if tf
-                   args{iDim} = nPerCell{which};
+                   if isscalar(nPerCell{which}) && nPerCell{which} ~= size(t, iDim)
+                       nPerCell_this = repmat(nPerCell{which}, floor(size(t, iDim) / nPerCell{which}), 1);
+                       rem = mod(size(t, iDim), nPerCell{which});
+                       if rem > 0
+                           nPerCell_this(end+1) = rem; %#ok<AGROW>
+                       end
+                       args{iDim} = nPerCell_this;
+                   else
+                       args{iDim} = nPerCell{which};
+                   end
                else
                    args{iDim} = size(t, iDim);
                end
