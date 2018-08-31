@@ -1,0 +1,295 @@
+classdef SpikeChannelArrayDescriptor < ChannelDescriptor
+    properties(Dependent)
+        hasWaveforms
+        hasSortQualityEachTrial
+        hasBlankingRegions
+        nChannels
+        array
+
+        subChNames
+    end
+
+    properties
+        % nChannels x  1 arrays corresponding to each channel
+        electrodes
+        units
+
+        waveformsField = '';
+        waveformsUnits = '';
+        waveformsScaleFromLims = [];
+        waveformsScaleToLims = [];
+        waveformsOriginalDataClass = '';
+        waveformsTime = []; % common time vector to be shared for ALL waveforms for this channel
+
+        sortQualityEachTrialField = '';
+
+        blankingRegionsField = ''; % refers to a field which conveys times where spikes from this channel are to be considered "unobserved"
+
+        sortQuality = NaN; % numeric scalar metric of sort quality
+        sortMethod = '';
+
+        spikeThreshold = NaN; % set if known, otherwise this will be estimated from the waveforms
+        
+        isColumnOfSharedMatrix = false; % this field shares a data field with other channels
+        primaryDataFieldColumnIndex = 1; % which column am I?   
+    end
+
+    methods(Access=protected)
+        function cd = SpikeChannelArrayDescriptor(name, electrodes, units)
+            cd = cd@ChannelDescriptor(name);
+            cd.electrodes = makecol(electrodes);
+            cd.units = makecol(units);
+            cd = cd.initialize();
+        end
+    end
+
+    methods % built in channel descriptor functions
+        function cd = initialize(cd)
+            cd.dataFields = {cd.name};
+            cd.elementTypeByField = cd.CELL;
+            cd.originalDataClassByField = {''};
+            cd.unitsByField = {''};
+
+            if cd.hasWaveforms
+                cd.dataFields{end+1} = cd.waveformsField;
+                cd.elementTypeByField(end+1) = cd.CELL;
+                cd.originalDataClassByField{end+1} = cd.waveformsOriginalDataClass;
+                cd.unitsByField{end+1} = cd.waveformsUnits;
+            end
+
+            if cd.hasSortQualityEachTrial
+                cd.dataFields{end+1} = cd.sortQualityEachTrialField;
+                cd.elementTypeByField(end+1) = cd.CELL;
+                cd.originalDataClassByField{end+1} = 'double';
+                cd.unitsByField{end+1} = '';
+            end
+
+            if cd.hasBlankingRegions
+                cd.dataFields{end+1} = cd.blankingRegionsField;
+                cd.elementTypeByField(end+1) = cd.CELL;
+                cd.originalDataClassByField{end+1} = 'double';
+                cd.unitsByField{end+1} = '';
+            end
+        end
+
+        % used by trial data when it needs to change field names
+        function name = suggestFieldName(cd, fieldIdx)
+            suggest = {cd.name};
+            if cd.hasWaveforms
+                suggest{end+1} = sprintf('%s_waveforms', cd.name);
+            end
+            if cd.hasSortQualityEachTrial
+                suggest{end+1} = sprintf('%s_sortQualityByTrial', cd.name);
+            end
+            if cd.hasBlankingRegions
+                suggest{end+1} = sprintf('%s_blankingRegions', cd.name);
+            end
+
+            if fieldIdx <= numel(suggest)
+                name = suggest{fieldIdx};
+            else
+                name = sprintf('%s_f%d', fieldIdx);
+            end
+        end
+
+        function cd = addWaveformsField(cd, waveField, varargin)
+            p = inputParser;
+            p.addParameter('time', [], @isvector);
+            p.addParameter('units', 'uV', @ischar);
+            p.addParameter('scaleFromLims', [], @(x) isvector(x) || isempty(x));
+            p.addParameter('scaleToLims', [], @(x) isvector(x) || isempty(x));
+            p.addParameter('dataClass', '', @ischar);
+            p.parse(varargin{:});
+
+            if nargin < 2 || isempty(waveField)
+                waveField = sprintf('%s_waveforms', cd.name);
+            end
+
+            cd.waveformsField = waveField;
+            cd.waveformsTime = p.Results.time;
+            cd.waveformsUnits = p.Results.units;
+            cd.waveformsOriginalDataClass = p.Results.dataClass;
+            cd.waveformsScaleFromLims = p.Results.scaleFromLims;
+            cd.waveformsScaleToLims = p.Results.scaleToLims;
+            cd = cd.initialize();
+        end
+
+        function cd = removeWaveformsField(cd)
+            cd.waveformsField = '';
+            cd.waveformsUnits = '';
+            cd.waveformsScaleFromLims = [];
+            cd.waveformsScaleToLims = [];
+            cd.waveformsOriginalDataClass = '';
+            cd.waveformsTime = [];
+
+            cd = cd.initialize();
+        end
+
+        function cd = addSortQualityEachTrialField(cd, field)
+            cd.warnIfNoArgOut(nargout);
+            if nargin < 2 || isempty(field)
+                field = sprintf('%s_sortQualityByTrial', cd.name);
+            end
+            cd.sortQualityEachTrialField = field;
+            cd = cd.initialize();
+        end
+
+        function cd = addBlankingRegionsField(cd, field)
+            cd.warnIfNoArgOut(nargout);
+            if nargin < 2 || isempty(field)
+                field = sprintf('%s_blankingRegions', cd.name);
+            end
+            cd.blankingRegionsField = field;
+            cd = cd.initialize();
+        end
+
+        function data = convertDataCellOnAccess(cd, fieldIdx, data)
+            % cast to access class, also do scaling upon request
+            % (cd.scaleFromLims -> cd.scaleToLims)
+            data = convertDataCellOnAccess@ChannelDescriptor(cd, fieldIdx, data);
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+        end
+
+        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
+            data = convertDataSingleOnAccess@ChannelDescriptor(cd, fieldIdx, data);
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+        end
+
+        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+            data = convertAccessDataCellToMemory@ChannelDescriptor(cd, fieldIdx, data);
+        end
+
+        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
+            if cd.hasWaveforms && fieldIdx == 2
+                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+            end
+            data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
+        end
+
+        function waveData = scaleWaveforms(cd, waveData)
+            if iscell(waveData)
+                waveData = cd.convertDataCellOnAccess(2, waveData);
+            else
+                waveData = cd.convertDataSingleOnAccess(2, waveData);
+            end
+        end
+
+        function waveData = unscaleWaveforms(cd, waveData)
+            if iscell(waveData)
+                waveData = cd.convertAccessDataCellToMemory(2, waveData);
+            else
+                waveData = cd.convertAccessDataSingleToMemory(2, waveData);
+            end
+        end
+
+        function [cd, dataFieldRenameStruct] = rename(cd, newName)
+            cd.warnIfNoArgOut(nargout);
+            % also rename _waveforms field if it matches
+            oldName = cd.name;
+            [cd, dataFieldRenameStruct] = rename@ChannelDescriptor(cd, newName);
+            if ~isempty(cd.waveformsField)
+                oldWave = cd.waveformsField;
+                if strcmp(oldWave, sprintf('%s_waveforms', oldName))
+                    newWave = sprintf('%s_waveforms', newName);
+                    dataFieldRenameStruct.(oldWave) = newWave;
+                    cd.waveformsField = newWave;
+                    cd = cd.initialize();
+                end
+            end
+        end
+
+        function array = get.array(cd)
+            array = cd.name;
+        end
+
+        function tf = get.hasWaveforms(cd)
+            tf = ~isempty(cd.waveformsField);
+        end
+
+        function tf = get.hasSortQualityEachTrial(cd)
+            tf = ~isempty(cd.sortQualityEachTrialField);
+        end
+
+        function tf = get.hasBlankingRegions(cd)
+            tf = ~isempty(cd.blankingRegionsField);
+        end
+
+        function type = getType(~)
+            type = 'spike';
+        end
+
+        function str = describe(cd)
+            str = sprintf('Array %s (%d channels)', cd.name, cd.nChannels);
+        end
+
+        function n = get.nChannels(cd)
+            n = numel(cd.electrodes);
+        end
+
+        function subChNames = get.subChNames(cd)
+            subChNames = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(cd.array, cd.electrode, cd.unit);
+        end
+
+        function cd = inferAttributesFromData(cd, varargin)
+            assert(nargout > 0, 'ChannelDescriptor is not a handle class. If the return value is not stored this call has no effect');
+
+            assert(numel(varargin) == 1, 'Spike Channel descriptor takes exactly 1 data cell');
+
+            cd.originalDataClassByField = {ChannelDescriptor.getCellElementClass(varargin{1})};
+            cd.elementTypeByField = cd.VECTOR;
+        end
+    end
+
+    methods
+        function cds = buildIndividualSubChannel(cd, uidx)
+            names = SpikeChannelDescriptor.generateNameListFromArrayElectrodeUnit(...
+                cd.array, cd.electrodes(uidx), cd.units(uidx));
+
+            if isscalar(cd.spikeThreshold)
+                thresh = repmat(cd.spikeThreshold, numel(names));
+            else
+                thresh = cd.spikeThreshold(uidx);
+            end
+            
+            args = {...
+                'waveformsField', cd.waveformsField, ...
+                'waveformsTime', cd.waveformsTime, ...
+                'waveformsUnits', cd.waveformsUnits, ...
+                'waveformsScaleFromLims', cd.waveformsScaleFromLims, ...
+                'waveformsScaleToLims', cd.waveformsScaleToLims, ...
+                'waveformsOriginalDataClass', cd.waveformsOriginalDataClass, ...
+                'sortQualityEachTrialField', cd.sortQualityEachTrialField, ...
+                'sortQuality', cd.sortQuality, ...
+                'blankingRegionsField', cd.blankingRegionsField, ...
+                'isColumnOfArray', true};
+                
+            for i = 1:numel(names)
+                cds(i) = SpikeChannelDescriptor.build(names{i}, ...
+                    'primaryDataFieldColumnIndex', uidx(i), ...
+                    'spikeThreshold', thresh(i), args{:});
+            end
+        end
+
+        function chNames = listSubChannels(cd)
+            chNames = SpikeChannelDescriptor.generateNameListFromArrayElectrodeUnit(cd.array, cd.electrodes, cd.units);
+        end
+
+        function [tf, idx] = hasSubChannel(cd, name)
+            [tf, idx] = ismember(name, cd.listSubChannels());
+        end
+    end
+
+    methods(Static)
+        function cd = build(name, electrodes, units)
+            cd = SpikeChannelArrayDescriptor(name, electrodes, units);
+        end
+    end
+
+end
