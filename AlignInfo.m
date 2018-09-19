@@ -934,8 +934,8 @@ classdef AlignInfo < AlignDescriptor
                 ad.intervalCounts = ad.intervalCounts(mask, :);
                 nMax = max(ad.intervalCounts, [], 1)';
                 for iI = 1:ad.nIntervals
-                    ad.intervalStartData{iI} = ad.intervalStartData{iI}(mask, 1:nMax(iM));
-                    ad.intervalStopData{iI} = ad.intervalStopData{iI}(mask, 1:nMax(iM));
+                    ad.intervalStartData{iI} = ad.intervalStartData{iI}(mask, 1:nMax(iI));
+                    ad.intervalStopData{iI} = ad.intervalStopData{iI}(mask, 1:nMax(iI));
                 end
             end
             
