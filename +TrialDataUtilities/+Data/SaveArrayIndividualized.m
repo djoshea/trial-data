@@ -312,9 +312,15 @@ classdef SaveArrayIndividualized < handle
         
         function clearLocationContents(locationName)
             if exist(locationName, 'dir')
-                delete(fullfile(locationName, 'el*.mat'));
-                delete(TrialDataUtilities.Data.SaveArrayIndividualized.generateCountFileName(locationName));
-                delete(TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionListFileName(locationName));
+                deleteIfPresent(fullfile(locationName, 'el*.mat'));
+                deleteIfPresent(TrialDataUtilities.Data.SaveArrayIndividualized.generateCountFileName(locationName));
+                deleteIfPresent(TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionListFileName(locationName));
+            end
+            
+            function deleteIfPresent(file)
+                if exist(file, 'file')
+                    delete(file);
+                end
             end
         end
                 

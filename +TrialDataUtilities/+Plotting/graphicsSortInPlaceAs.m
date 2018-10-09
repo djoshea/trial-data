@@ -11,6 +11,11 @@ function graphicsSortInPlaceAs(hvec)
     
     assert(isa(hvec, 'matlab.graphics.Graphics'));
     
+    mask = arrayfun(@(h) ~isa(h, 'matlab.graphics.GraphicsPlaceholder'), hvec);
+    if ~any(mask)
+        error('No non-placeholders found');
+    end
+    hvec = hvec(mask);
     ax = TrialDataUtilities.Plotting.getParentAxis(hvec(1));
     [tf, idx] = ismember(hvec, ax.Children);
     
