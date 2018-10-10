@@ -92,12 +92,12 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
     end
     
     methods(Access=protected)
-        function cd = AnalogChannelDescriptor(name, timeField)
+        function cd = AnalogChannelDescriptor(name, timeField, varargin)
             cd = cd@ChannelDescriptor(name);
             if nargin < 2
                 timeField = sprintf('%s_time', cd.name);
             end
-            
+
             cd.dataFields = {name, timeField};
             cd.originalDataClassByField = {'double', 'double'};
             cd.elementTypeByField = [cd.VECTOR, cd.VECTOR];
@@ -107,7 +107,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
     methods
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
-            cd.dataFields = {cd.primaryDataField, cd.timeField};
+            cd.dataFields = {cd.name, cd.timeField};
         end
         
         % used by trial data when it needs to change field names
@@ -131,10 +131,6 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         
         function type = getType(~)
             type = 'analog';
-        end
-
-        function fields = getDataFields(cd)
-            fields = {cd.primaryDataField, cd.timeField};
         end
 
         function str = describe(cd)

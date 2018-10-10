@@ -2,16 +2,26 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
     properties
         scaleFromLims
         scaleToLims
+        
+        % if this channel just a virtually transformed version of a
+        % different channel, what is the other channel's name?
+        transformOfGroupName char = '';
+        transformOfGroupFn = []; % function handle to apply to other channel's data
+        transformOutputSize = []; % analog channel group size 
     end
     
     properties(Dependent)
         timeField
         hasScaling
+        
+        % is this channel just a transformed version of a different channel?
+        isTransformOfOtherGroup
     end
 
     methods
         function tf = get.hasScaling(cd)
-            tf = ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims) && ~isequal(cd.scaleFromLims, cd.scaleToLims);
+            tf = ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims) ...
+                && ~isequal(cd.scaleFromLims, cd.scaleToLims);
         end
         
         function cd = withNoScaling(cd)
@@ -38,7 +48,13 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
     methods
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
-            cd.dataFields = {cd.name, cd.timeField};
+            if cd.isTransformOfOtherGroup
+                primaryField = cd.transformOfGroupName;
+            else
+                primaryField = cd.name;
+            end
+                
+            cd.dataFields = {primaryField, cd.timeField};
         end
         
         % used by trial data when it needs to change field names
@@ -64,10 +80,6 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             type = 'analogGroup';
         end
 
-        function fields = getDataFields(cd)
-            fields = {cd.name, cd.timeField};
-        end
-
         function str = describe(cd)
             if isempty(cd.unitsPrimary)
                 str = cd.name;
@@ -78,8 +90,9 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
 
         function cd = inferAttributesFromData(cd, dataCell, timeCell)
             cd.warnIfNoArgOut(nargout);
-            dataCell = {tdi.trials.(group.signalNames{1})};
                     
+            dataClass = ChannelDescriptor.getCellElementClass(dataCell);
+            timeClass = ChannelDescriptor.getCellElementClass(timeCell);
             cd.originalDataClassByField = {dataClass, timeClass};
             if strcmp(dataClass, 'cell')
                 cd.elementTypeByField = [cd.CELL, cd.VECTOR];
@@ -169,6 +182,13 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         end
     end
     
+    % transforms of other groups
+    methods 
+        function tf = get.isTransformOfOtherGroup(cd)
+            tf = ~isempty(cd.transformOfGroupName);
+        end
+    end
+    
      methods(Static)
         function cd = buildAnalogGroup(name, timeField, units, timeUnits, varargin)
             p = inputParser();
@@ -177,6 +197,9 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataClass', 'double', @ischar);
             p.addParameter('timeClass', 'double', @ischar);
+            p.addParameter('transformOfGroupName', '', @ischar);
+            p.addParameter('transformOfGroupFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            p.addParameter('transformOutputSize', [], @isvector);
             p.parse(varargin{:});
             
             if isempty(p.Results.channelDescriptor)
@@ -195,7 +218,6 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;
             
-
             % set the data and time class appropriately
             cd.originalDataClassByField = {p.Results.dataClass, p.Results.timeClass};
             cd = cd.initialize();
@@ -225,6 +247,11 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             cd.scaleToLims = p.Results.scaleToLims;
             
             cd = cd.initialize();
+        end
+        
+        function cd = buildTransformAnalogGroup(name, transformOfGroupDescriptor, transformFn)
+            cd = AnalogChannelGroupFromValues
+            
         end
     end
 
