@@ -71,49 +71,60 @@ classdef Run < LFADS.Run
     
     methods % Working with LFADS generated data with TrialData
         
-        function tdSet = loadTrialDataFromDatasetCollection(r, reload)
-            if nargin < 2 
-                reload = false;
-            end
-            if ~isempty(r.trialDataSet) && ~reload
-                tdSet = r.trialDataSet;
+        function tdSet = loadTrialDataFromDatasetCollection(r, varargin)
+            p = inputParser();
+            p.addOptional('reload', false, @islogical);
+            p.addParameter('datasetIdx', 1:r.nDatasets, @isvector);
+            p.parse(varargin{:});
+            datasetIdx = LFADS.Utils.vectorMaskToIndices(p.Results.datasetIdx);
+            
+            if ~isempty(r.trialDataSet) && ~p.Results.reload
+                tdSet = r.trialDataSet(datasetIdx);
                 return;
             end
             
-            tdSet = cell(r.nDatasets, 1);
+            tdSet = cell(numel(datasetIdx), 1);
             
-            prog = ProgressBar(r.nDatasets, 'Preparing trialData from datasets');
-            for i = 1:r.nDatasets
-                prog.update(i);
-                td = r.datasets(i).loadData();
-                tdSet{i} = r.prepareTrialDataForLFADS(td);
+            prog = ProgressBar(numel(datasetIdx), 'Preparing trialData from datasets');
+            for iiDS = 1:numel(datasetIdx)
+                prog.update(iiDS);
+                td = r.datasets(datasetIdx(iiDS)).loadTrialData();
+                tdSet{iiDS} = r.prepareTrialDataForLFADS(td);
             end
             prog.finish();
             
-            r.trialDataSet = tdSet;
+            if isequal(datasetIdx, (1:r.nDatasets)')
+                r.trialDataSet = tdSet;
+            end
         end
         
-        function tdSet = addPosteriorMeansToTrialData(r)
-            if isempty(r.trialDataSet)
-                r.loadTrialDataFromDatasetCollection(); % these will be prepared for LFADS
-            end
-            r.loadPosteriorMeans();
+        function tdSet = addPosteriorMeansToTrialData(r, varargin)
+            p = inputParser();
+            p.addParameter('datasetIdx', 1:r.nDatasets, @isvector);
+            p.addParameter('addRates', true, @islogical);
+            p.addParameter('addControllerOutputs', true, @islogical);
+            p.addParameter('addGeneratorICs', true, @islogical); 
+            p.parse(varargin{:});
+            datasetIdx = LFADS.Utils.vectorMaskToIndices(p.Results.datasetIdx);
             
-            tdSet = cellvec(r.nDatasets);
-            if isempty(r.posteriorMeans)
-                warning('Posterior means not found for run %s', r.name);
+            trialDataSet = r.loadTrialDataFromDatasetCollection('datasetIdx', datasetIdx); % these will be prepared for LFADS
+            [pms, pms_valid] = r.loadPosteriorMeans('datasetIdx', datasetIdx);
+            
+            tdSet = cellvec(numel(datasetIdx));
+            if ~all(pms_valid)
+                warning('Posterior means not found for %d runs', nnz(~pms_valid));
                 return;
             end
             
             timeField = 'posteriorMeans_time';
-            prog = ProgressBar(r.nDatasets, 'Merging posterior mean data into trialData for each dataset');
-            for i = 1:r.nDatasets
-                prog.update(i);
+            prog = ProgressBar(numel(datasetIdx), 'Merging posterior mean data into trialData for each dataset');
+            for iiDS = 1:numel(datasetIdx)
+                prog.update(iiDS);
                      
-                td =  r.trialDataSet{i};
+                td = trialDataSet{iiDS};
                 inflate = @(data) TensorUtils.inflateMaskedTensor(data, 1, td.valid); % loaded data only spans valid trials in td.data
                 inflate2 = @(data) TensorUtils.inflateMaskedTensor(data, 2, td.valid);
-                pm = r.posteriorMeans(i);
+                pm = pms(iiDS);
                 
                 % data must be nTrials x nTime x nChannels tensor
                 td = td.dropAnalogChannelGroup({'controllerOutputs', 'factors', 'generatorStates', 'rates'});
@@ -133,29 +144,59 @@ classdef Run < LFADS.Run
                 else
                     rnames = cellfun(@(n) sprintf('rate_%s', n), rnames, 'UniformOutput', false);
                 end
-                td = td.addAnalogChannelGroup('rates', rnames, ...
-                    inflate(permute(pm.rates, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
-                td = td.setChannelUnitsPrimary('rates', 'spikes / sec');
                 
-                if pm.nControllerOutputs > 0
+                if p.Results.addRates
+                    td = td.addAnalogChannelGroup('rates', rnames, ...
+                        inflate(permute(pm.rates, [3 2 1])), pm.time, 'timeField', timeField, 'units', 'spikes/sec', 'isAligned', true);
+                end
+                
+                if pm.nControllerOutputs > 0 && p.Results.addControllerOutputs
                     coNames = {}; % genNames('co', pm.nControllerOutputs)
                     td = td.addAnalogChannelGroup('controllerOutputs', coNames, ...
                         inflate(permute(pm.controller_outputs, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 end
                 
-                td = td.addVectorParamAccessAsMatrix('generatorIC', TensorUtils.splitAlongDimension(inflate2(pm.generator_ics), 2)');
+                if p.Results.addGeneratorICs
+                    td = td.addVectorParamAccessAsMatrix('generatorIC', TensorUtils.splitAlongDimension(inflate2(pm.generator_ics), 2)');
+                end
                 td = td.addVectorParamAccessAsMatrix('post_g0_mean', TensorUtils.splitAlongDimension(inflate2(pm.post_g0_mean), 2)');
                 td = td.addVectorParamAccessAsMatrix('post_g0_logvar', TensorUtils.splitAlongDimension(inflate2(pm.post_g0_logvar), 2)');
                 
-                tdSet{i} = td;
+                tdSet{iiDS} = td;
             end
-            r.trialDataSet = tdSet;
             
-            function names = genNames(pre, n)
-                names = arrayfun(@(i) sprintf('%s%i', pre, i), (1:n)', 'UniformOutput', false);
+            if isequal(datasetIdx, (1:r.nDatasets)')
+                r.trialDataSet = tdSet;
             end
         end
         
+        function exportTrainedTrialData(r, varargin)
+            p = inputParser();
+            p.addParameter('exportPath', fullfile(r.path, 'export_trialData'), @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            exportPath = p.Results.exportPath;
+            if ~exist(exportPath, 'dir')
+                mkdir(exportPath);
+            end
+            
+            fprintf('Exporting to %s\n', exportPath);
+            
+            mtp = r.loadModelTrainedParams();
+            mtp.exportToHDF5(fullfile(exportPath, 'modelTrainedParams.h5'));
+            
+            prog = LFADS.Utils.ProgressBar(r.nDatasets, 'Exporting trial data with posterior means');
+            for iDS = 1:r.nDatasets
+                prog.update(iDS);
+                dsname = r.datasetNames{iDS};
+                td_path = fullfile(exportPath, sprintf('td_%s', dsname));
+                
+                tds = r.addPosteriorMeansToTrialData('datasetIdx', iDS, p.Unmatched);
+                tds{1}.saveFast(td_path);
+            end
+            prog.finish();
+        end
+
         function tdSet = getTrialDataWithVirtualPopulationRate(r, dsIdx, W, b)
             timeField = 'posteriorMeans_time';
             
@@ -463,7 +504,6 @@ classdef Run < LFADS.Run
                         binWarned = true;
                     end
 
-
                     % GPFA is expecting data to be in a field
                     % called 'spikes'
                     [seq.spikes] = seq.y;
@@ -474,8 +514,6 @@ classdef Run < LFADS.Run
                     tid = num2cell(1:numel(seq), 1, ones(numel(seq), ...
                                                       1));
                     [seq.trialId] = tid{:};
-
-
                     tic;
                     % run GPFA with a modified version that allows you to
                     % specify an output directory
