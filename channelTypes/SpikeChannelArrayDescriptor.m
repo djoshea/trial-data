@@ -276,6 +276,33 @@ classdef SpikeChannelArrayDescriptor < ChannelDescriptor
                     'spikeThreshold', thresh(i), args{:});
             end
         end
+        
+        function cds = buildIndividualSubChannelByElectrodeUnit(cd, elec, unit)
+            uidx = nan(numel(elec), 1);
+            for iE = 1:numel(elec)
+                thisIdx = find(cd.electrodes == elec(iE) & cd.units == unit(iE));
+                if isempty(thisIdx)
+                    error('Array %s does not have electrode %d, unit %d', cd.array, elec(iE), unit(iE));
+                end
+                if numel(thisIdx) > 1
+                    error('Array %s has multiple channels with electrode %d, unit %d', cd.array, elec(iE), unit(iE));
+                end
+                
+                uidx(iE) = thisIdx;
+            end
+            
+            cds = cd.buildIndividualSubChannel(uidx);
+        end
+        
+        function ch_idx = findSubChannelByElectrodeUnit(cd, elec, unit)
+            ch_idx = nan(size(elec));
+            for iE = 1:numel(elec)
+                thisIdx = find(cd.electrodes == elec(iE) & cd.units == unit(iE));
+                if ~isempty(thisIdx)
+                    ch_idx(iE) = thisIdx;
+                end
+            end
+        end
 
         function chNames = listSubChannels(cd)
             chNames = SpikeChannelDescriptor.generateNameListFromArrayElectrodeUnit(cd.array, cd.electrodes, cd.units);
