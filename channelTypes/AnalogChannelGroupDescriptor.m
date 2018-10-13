@@ -3,19 +3,32 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         scaleFromLims
         scaleToLims
         
+        sampleSize % size of a single sample
+        
         % if this channel just a virtually transformed version of a
         % different channel, what is the other channel's name?
-        transformOfGroupName char = '';
-        transformOfGroupFn = []; % function handle to apply to other channel's data
-        transformOutputSize = []; % analog channel group size 
+        transformChannelNames cell = {};
+        
+        % function handle to apply to other channel's data
+        % function should be prepared to take arbitrary arguments using
+        % varargin
+        % but the suggested signature is:
+        % outData = fn(inData, requestedColIdx, varargin)
+        transformFn = []; 
+        
+        % 'simple': out_one_trial = fn(in_one_trial), no slicing, one
+        % transformChannel
+        % 'manual': channel does all work and accepts all data at once
+        transformFnMode = '';
     end
     
     properties(Dependent)
         timeField
+        timeUnits
         hasScaling
         
         % is this channel just a transformed version of a different channel?
-        isTransformOfOtherGroup
+        isTransformGroup
     end
 
     methods
@@ -48,8 +61,8 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
     methods
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
-            if cd.isTransformOfOtherGroup
-                primaryField = cd.transformOfGroupName;
+            if cd.isTransformGroup
+                primaryField = cd.transformChannelNames{1};
             else
                 primaryField = cd.name;
             end
@@ -73,6 +86,14 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                 f = '';
             else
                 f = cd.dataFields{2};
+            end
+        end
+        
+        function u = get.timeUnits(cd)
+            if cd.nFields < 2
+                u = '';
+            else
+                u = cd.unitsByField{2};
             end
         end
         
@@ -178,14 +199,88 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             end
             cdIndividual = AnalogChannelDescriptor.buildSharedMatrixColumnAnalog(name, cd.name, index, cd.timeField, units, cd.unitsByField{2}, ...
                 'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
-                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
+                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2}, ...
+                'transformChannelNames', cd.transformChannelNames, 'transformFn', cd.transformFn, ...
+                'transformFnMode', cd.transformFnMode);
         end
+        
+        function sz = getSampleSize(cd, td)
+            if isempty(cd.sampleSize)
+                fld = cd.dataFieldPrimary;
+                for iT = 1:td.nTrials
+                    if ~isempty(td.data(iT).(fld))
+                        sz = size(td.data(iT).(fld));
+                        sz = sz(2:end);
+                        return
+                    end
+                end
+            else
+                sz = makerow(cd.sampleSize);
+            end
+        end  
+        
+        function [dataCell, timeCell] = computeTransformDataRaw(cd, td, varargin)
+            [dataCell, timeCell] = AnalogChannelGroupDescriptor.doComputeTransformData(cd, td, varargin{:});
+        end
+         
     end
     
     % transforms of other groups
     methods 
-        function tf = get.isTransformOfOtherGroup(cd)
-            tf = ~isempty(cd.transformOfGroupName);
+        function tf = get.isTransformGroup(cd)
+            tf = ~isempty(cd.transformChannelNames);
+        end
+    end
+    
+    methods(Static)
+        function [dataCell, timeCell] = doComputeTransformData(cd, td, varargin)
+            p = inputParser();
+            p.addParameter('applyScaling', true, @islogical);
+            p.addParameter('slice', {}, @(x) true); % this is used to index specifically into each sample
+            p.addParameter('timeCell', [], @(x) true);
+            p.addParameter('sort', false, @islogical);
+            p.parse(varargin{:});
+            
+            % get raw data from trial data
+            [dataCell, timeCell] = td.getAnalogChannelGroupMulti(cd.transformChannelNames, 'raw', true, ...
+                'applyScaling', p.Results.applyScaling, 'sort', p.Results.sort);
+            
+            % use transform function
+            switch cd.transformFnMode
+                case 'simple'
+                    % simple function, call it on one trial at a time and we'll
+                    % handle the slicing
+                    args = p.Results.slice;
+                    if ~iscell(args)
+                        args = {args};
+                    end
+
+                    prog = ProgressBar(numel(dataCell), 'Computing transform analog channel on the fly');
+                    for i = 1:numel(dataCell)
+                        if ~isempty(dataCell{i})
+                            prog.update(i);
+                            dataCell{i} = cd.transformFn(dataCell{i});
+                            if ~isempty(args)
+                                dataCell{i} = dataCell{i}(:, args{:}); % take a slice through the data
+                            end
+                        end
+                    end
+                    prog.finish();
+                    timeCell = timeCell(:, 1);
+                    
+                case 'default'
+                    % more advanced function, can handle all data at once and slicing
+                    if ~isempty(p.Results.slice)
+                        args = p.Results.slice;
+                        if ~iscell(args)
+                            args = {args};
+                        end
+                    else
+                        args = {};
+                    end
+                    
+                   [dataCell, timeCell] = cd.transformFn(dataCell, 'timeCell', timeCell, 'slice', args, 'scalingApplied', scalingApplied);
+            end
         end
     end
     
@@ -197,9 +292,10 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataClass', 'double', @ischar);
             p.addParameter('timeClass', 'double', @ischar);
-            p.addParameter('transformOfGroupName', '', @ischar);
-            p.addParameter('transformOfGroupFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
-            p.addParameter('transformOutputSize', [], @isvector);
+            p.addParameter('sampleSize', [], @isvector);
+            p.addParameter('transformChannelNames', {}, @iscellstr);
+            p.addParameter('transformFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            p.addParameter('transformFnMode', '', @ischar);
             p.parse(varargin{:});
             
             if isempty(p.Results.channelDescriptor)
@@ -220,6 +316,14 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             
             % set the data and time class appropriately
             cd.originalDataClassByField = {p.Results.dataClass, p.Results.timeClass};
+            
+            cd.transformChannelNames = p.Results.transformChannelNames;
+            if ~isempty(cd.transformChannelNames)
+                assert(~isempty(p.Results.sampleSize), 'Sample size required for transform groups');
+            end
+            cd.transformFn = p.Results.transformFn;
+            cd.transformFnMode = p.Results.transformFnMode;
+            cd.sampleSize = p.Results.sampleSize;
             cd = cd.initialize();
         end
         
@@ -249,9 +353,36 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
         
-        function cd = buildTransformAnalogGroup(name, transformOfGroupDescriptor, transformFn)
-            cd = AnalogChannelGroupFromValues
+        function cd = buildTransformAnalogGroup(name, cdList, transformFn, outputSize, varargin)
+            cdo = cdList{1};
+            transformChannelNames = cellfun(@(cd) cd.name, cdList, 'UniformOutput', false);
             
+            p = inputParser();
+            p.addParameter('units', cdo.unitsPrimary, @ischar);
+            p.addParameter('scaleFromLims', cdo.scaleFromLims, @(x) isempty(x) || isvector(x));
+            p.addParameter('scaleToLims', cdo.scaleToLims, @(x) isempty(x) || isvector(x));
+            p.addParameter('dataClass', cdo.originalDataClassByField{1}, @ischar);
+            p.addParameter('timeClass', cdo.originalDataClassByField{2}, @ischar);
+            p.addParameter('transformFnMode', '', @ischar);
+            
+            p.parse(varargin{:});
+            
+            if isempty(p.Results.transformFnMode) 
+                % determine automatically whether the transform fn is
+                % simple
+                if nargin(transformFn) == 1
+                    transformFnMode = 'simple';
+                else
+                    transformFnMode = 'default';
+                end
+            else
+                transformFnMode = p.Results.transformFnMode;
+            end
+            
+            cd = AnalogChannelGroupDescriptor.buildAnalogGroup(name, cdo.timeField, p.Results.units, cdo.timeUnits, ...
+                'transformChannelNames', transformChannelNames, 'transformFn', transformFn, ...
+                'transformFnMode', transformFnMode, ...
+                'sampleSize', outputSize, rmfield(p.Results, {'units', 'transformFnMode'}));            
         end
     end
 

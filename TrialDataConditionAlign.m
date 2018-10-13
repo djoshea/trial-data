@@ -3070,7 +3070,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
             p.addParameter('interpolateMethod', 'linear', @ischar);
 
-            p.addParameter('slice', [], @(x) true); % subscript args to slice the data from each sample
+            p.addParameter('slice', {}, @(x) true); % subscript args to slice the data from each sample
             p.addParameter('averageOverSlice', false, @islogical); % average within each slice
 
             p.addParameter('linearCombinationWeights', [], @(x) true); % alternatively, take a weighted combination over samples in the slice, size should be [size of analog channel, number of weighted combinations]

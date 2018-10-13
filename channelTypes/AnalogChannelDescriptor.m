@@ -4,7 +4,23 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         scaleToLims
         
         isColumnOfSharedMatrix = false; % this field shares a data field with other channels
-        primaryDataFieldColumnIndex = 1; % which column am I?    
+        primaryDataFieldColumnIndex = 1; % which column am I?
+        
+        % if this channel just a virtually transformed version of a
+        % different channel, what is the other channel's name?
+        transformChannelNames cell = {};
+        
+        % function handle to apply to other channel's data
+        % function should be prepared to take arbitrary arguments using
+        % varargin
+        % but the suggested signature is:
+        % outData = fn(inData, requestedColIdx, varargin)
+        transformFn = []; 
+        
+        % 'simple': out_one_trial = fn(in_one_trial), no slicing, one
+        % transformChannel
+        % 'manual': channel does all work and accepts all data at once
+        transformFnMode = '';
     end
     
     properties(Dependent)
@@ -15,6 +31,8 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         timeField
         
         hasScaling
+        
+        isTransform
     end
     
     properties(Hidden)
@@ -28,6 +46,10 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             else
                 f = cd.primaryDataFieldManual;
             end
+        end
+        
+        function tf = get.isTransform(cd)
+            tf = ~isempty(cd.transformChannelNames);
         end
         
         function cd = updateGroup(cd, newGroupDescriptor)
@@ -215,6 +237,18 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
             data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
         end
+        
+        function [dataCell, timeCell] = computeTransformDataRaw(cd, td, varargin)
+            % if shared column, use the slice arg to subselect the
+            % appropriate column
+            if cd.isColumnOfSharedMatrix
+                sliceArgs = {cd.primaryDataFieldColumnIndex};
+            else
+                sliceArgs = {};
+            end
+            
+            [dataCell, timeCell] = AnalogChannelGroupDescriptor.doComputeTransformData(cd, td, 'slice', sliceArgs, varargin{:});
+        end
     end
     
      methods(Static)
@@ -225,6 +259,10 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataClass', 'double', @ischar);
             p.addParameter('timeClass', 'double', @ischar);
+            p.addParameter('transformChannelNames', {}, @iscellstr);
+            p.addParameter('transformFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
+            p.addParameter('transformFnMode', '', @ischar);
+            
             p.parse(varargin{:});
             
             if isempty(p.Results.channelDescriptor)
@@ -245,6 +283,11 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             
             % set the data and time class appropriately
             cd.originalDataClassByField = {p.Results.dataClass, p.Results.timeClass};
+            
+            cd.transformChannelNames = p.Results.transformChannelNames;
+            cd.transformFn = p.Results.transformFn;
+            cd.transformFnMode = p.Results.transformFnMode;
+            
             cd = cd.initialize();
         end
         
@@ -285,6 +328,37 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;
             cd = cd.initialize();
+        end
+        
+        function cd = buildTransformAnalogChannel(name, cdList, transformFn, varargin)
+            cdo = cdList{1};
+            transformChannelNames = cellfun(@(cd) cd.name, cdList, 'UniformOutput', false);
+            
+            p = inputParser();
+            p.addParameter('units', cdo.unitsPrimary, @ischar);
+            p.addParameter('scaleFromLims', cdo.scaleFromLims, @(x) isempty(x) || isvector(x));
+            p.addParameter('scaleToLims', cdo.scaleToLims, @(x) isempty(x) || isvector(x));
+            p.addParameter('dataClass', cdo.originalDataClassByField{1}, @ischar);
+            p.addParameter('timeClass', cdo.originalDataClassByField{2}, @ischar);
+            p.addParameter('transformFnMode', '', @ischar);
+            
+            p.parse(varargin{:});
+            
+            if isempty(p.Results.transformFnMode) 
+                % determine automatically whether the transform fn is
+                % simple
+                if nargin(transformFn) == 1
+                    transformFnMode = 'simple';
+                else
+                    transformFnMode = 'default';
+                end
+            else
+                transformFnMode = p.Results.transformFnMode;
+            end
+            
+            cd = AnalogChannelDescriptor.buildVectorAnalog(name, cdo.timeField, p.Results.units, cdo.timeUnits, ...
+                'transformChannelNames', transformChannelNames, 'transformFn', transformFn, ...
+                'transformFnMode', transformFnMode, rmfield(p.Results, {'units', 'transformFnMode'}));            
         end
         
         function tf = testChannelsShareTimeField(cdCell)

@@ -2057,9 +2057,39 @@ classdef TrialData
             td = td.addAnalog(name, varargin{:}, 'isContinuousNeural', true);
         end
         
+        function td = addAnalogTransform(td, name, fromChannelNames, transformFn, varargin)
+            % td = td.addAnalog(td, groupName, chNames, values, times)
+            % values may be cell of matrices
+            % corresponding to each trial.
+            % times may be cell of vectors or single vector (for the matrix
+            % values). Alternatively, times may be blank, and then the
+            % parameter 'timeField' can specify which time field in which
+            % to find the times for this channel
+            p = inputParser();
+            p.addParameter('units', '', @ischar);
+%             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're subclassed
+%             p.addParameter('isImage', false, @islogical); % shortcut for making image channels since they're subclassed
+            p.parse(varargin{:});
+            
+            chList = td.getChannelsReferencingFields(name);
+            if ~isempty(chList)
+                error('Channels %s already reference field %s', TrialDataUtilities.String.strjoin(chList));
+            end
+            if ~iscell(fromChannelNames)
+                fromChannelNames = {fromChannelNames};
+            end
+            td.assertHasChannel(fromChannelNames);
+            transformGroupDescriptors = td.getChannelDescriptorMulti(fromChannelNames);
+            cd = AnalogChannelDescriptor.buildTransformAnalogChannel(name, transformGroupDescriptors, transformFn, p.Results);
+            td = td.addChannel(cd, {}, 'ignoreDataFields', true);
+        end
+        
         function td = setAnalog(td, name, values, varargin)
             td.warnIfNoArgOut(nargout);
             td.assertHasChannel(name);
+            
+            cd = td.channelDescriptorsByName.(name);
+            assert(~cd.isTransform, 'Can not set tranform channels');
             
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) ||  isnumeric(x));
@@ -2562,31 +2592,42 @@ classdef TrialData
             [data, time] = deal(cell(td.nTrials, numel(name)));
             for iC = 1:numel(name)
                 cd = cds(iC);
-                if cd.isColumnOfSharedMatrix
-                    data(:, iC) = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
-                        td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
+                if cd.isTransform
+                    
+                    % now we do a transform of the data if the group is a virtual
+                    % transformation of another group. this function will handle
+                    % the slicing since it might be efficient not to compute the
+                    % elements that are not needed
+                    [data(:, iC), time(:, iC)] = cds.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
+                        'sort', p.Results.sort);
                 else
-                    data(:, iC) = {td.data.(cd.dataFields{1})}';
-                end
-                time(:, iC) = {td.data.(cd.dataFields{2})}';
-                for i = 1:td.nTrials
-                    if numel(data{i, iC}) == numel(time{i, iC}) - 1
-                        time{i, iC} = makecol(time{i, iC}(1:end-1));
+                    if cd.isColumnOfSharedMatrix
+                        data(:, iC) = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
+                            td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
                     else
-                        time{i, iC} = makecol(time{i, iC});
+                        data(:, iC) = {td.data.(cd.dataFields{1})}';
                     end
-                    data{i, iC} = makecol(data{i, iC});
-                end
-
-                if p.Results.applyScaling
-                    % do scaling and convert to double
-                    data(:, iC) = cd.convertDataCellOnAccess(1, data(:, iC));
-                end
+                    time(:, iC) = {td.data.(cd.dataFields{2})}';
                 
-                if p.Results.sort
-                    for iT = 1:td.nTrials
-                        [time{iT, iC}, idx] = sort(time{iT, iC}, 'ascend');
-                        data{iT, iC} = data{iT, iC}(idx);
+                    for i = 1:td.nTrials
+                        if numel(data{i, iC}) == numel(time{i, iC}) - 1
+                            time{i, iC} = makecol(time{i, iC}(1:end-1));
+                        else
+                            time{i, iC} = makecol(time{i, iC});
+                        end
+                        data{i, iC} = makecol(data{i, iC});
+                    end
+
+                    if p.Results.applyScaling
+                        % do scaling and convert to double
+                        data(:, iC) = cd.convertDataCellOnAccess(1, data(:, iC));
+                    end
+
+                    if p.Results.sort
+                        for iT = 1:td.nTrials
+                            [time{iT, iC}, idx] = sort(time{iT, iC}, 'ascend');
+                            data{iT, iC} = data{iT, iC}(idx);
+                        end
                     end
                 end
             end
@@ -2846,6 +2887,35 @@ classdef TrialData
                 'keepScaling', true, 'dataInMemoryScale', p.Results.dataInMemoryScale);
         end
         
+        function td = addAnalogChannelGroupTransform(td, groupName, fromGroupNames, transformFn, outputSize, varargin)
+            % td = td.addAnalog(td, groupName, chNames, values, times)
+            % values may be cell of matrices
+            % corresponding to each trial.
+            % times may be cell of vectors or single vector (for the matrix
+            % values). Alternatively, times may be blank, and then the
+            % parameter 'timeField' can specify which time field in which
+            % to find the times for this channel
+            p = inputParser();
+            p.addParameter('units', '', @ischar);
+%             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're subclassed
+%             p.addParameter('isImage', false, @islogical); % shortcut for making image channels since they're subclassed
+            p.parse(varargin{:});
+            
+            chList = td.getChannelsReferencingFields(groupName);
+            if ~isempty(chList)
+                error('Channels %s already reference field %s', TrialDataUtilities.String.strjoin(chList));
+            end
+            
+            if ~iscell(fromGroupNames)
+                fromGroupNames = {fromGroupNames};
+            end
+            td.assertHasChannel(fromGroupNames);
+            transformGroupDescriptor = td.getChannelDescriptorMulti(fromGroupNames);
+            cd = AnalogChannelGroupDescriptor.buildTransformAnalogGroup(groupName, transformGroupDescriptor, transformFn, outputSize, p.Results);
+            td = td.addChannel(cd, {}, 'ignoreDataFields', true);
+        end
+        
+        
         function td = setAnalogChannelGroupSubChannelNames(td, groupName, chNames, chIdx)
             td.warnIfNoArgOut(nargout);
             
@@ -2965,16 +3035,8 @@ classdef TrialData
         
         function sz = getAnalogChannelGroupSize(td, groupName)
             td.assertHasAnalogChannelGroup(groupName);
-            
-            for iT = 1:td.nTrials
-                if ~isempty(td.data(iT).(groupName))
-                    sz = size(td.data(iT).(groupName));
-                    sz = sz(2:end);
-                    return
-                end
-            end
-            
-            sz = 0;
+            cd = td.channelDescriptorsByName.(groupName);
+            sz = cd.getSampleSize(td);
         end
         
         function td = convertAnalogChannelGroupToNoScaling(td, groupName, varargin)
@@ -3345,16 +3407,20 @@ classdef TrialData
         
         function [data, time] = getAnalogChannelGroupRaw(td, groupName, varargin)
             p = inputParser();
+            p.addParameter('sort', false, @islogical);
+            
             p.addParameter('applyScaling', true, @islogical);
             
             % the order of operations here is:
+            % scale the data if requested
+            % do a transform of the data if this group is a virtual transform of another group
             % slice args get processed first to select into the samples
             % then the weightedCombination is used
             % then the averaging is performed
-            p.addParameter('slice', [], @(x) true); % this is used to index specifically into each sample
+            p.addParameter('slice', {}, @(x) true); % this is used to index specifically into each sample
             p.addParameter('linearCombinationWeights', [], @(x) true); % alternatively, take a weighted combination over samples in the slice, size should be [size of analog channel, number of weighted combinations]
 
-			% these apply to the weighted combination
+			% these apply to the weighted combination operation
 			p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
             p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
             p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis this enables nanmean like computations
@@ -3363,64 +3429,76 @@ classdef TrialData
             p.parse(varargin{:});
             
             td.assertHasAnalogChannelGroup(groupName);
-            
-            chList = td.listAnalogChannelsInGroup(groupName);
             cd = td.channelDescriptorsByName.(groupName);
-            timeField = cd.timeField;
             
-            data = {td.data.(groupName)}';
-            time = {td.data.(timeField)}';
-            
-            emptySlice = [];
-            for i = 1:numel(data)
-                sz = size(data{i});
-                if sz(2) >= 1
-                    emptySlice = nan([0 sz(2:end)]);
-                end
+            sliceArgs = p.Results.slice;
+            if ~isempty(sliceArgs) && ~iscell(sliceArgs)
+                sliceArgs = {sliceArgs};
             end
-            
-            for i = 1:numel(data)
-                time{i} = makecol(time{i});
-                if isempty(data{i}), time{i} = nan(0, 1); continue; end
+            sampleSize = cd.getSampleSize(td);
+            emptySlice = nan([0 sampleSize]);
+              
+            if cd.isTransformGroup
+                % now we do a transform of the data if the group is a virtual
+                % transformation of another group. this function will handle
+                % the slicing since it might be efficient not to compute the
+                % elements that are not needed
+                [data, time] = cd.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
+                    'slice', sliceArgs, 'sort', p.Results.sort);
                 
-                % this situation can happen if a channel sharing the time
-                % vector with this channel is set and this trial was
-                % invalid when it was set.
-                if isempty(time{i}), data{i} = emptySlice; continue; end
-                assert(size(data{i}, 1) == numel(time{i}), 'Number of timepoints in data on trial %d does not match time', i);
-                assert(isempty(chList) || size(data{i}, 2) == numel(chList), 'Number of channels on trial %d does not match channel count', i);
-            end
-            
-            % do scaling and convert to double
-            if p.Results.applyScaling
-                data = cd.convertDataCellOnAccess(1, data);
-                emptySlice = cd.convertDataCellOnAccess(1, emptySlice);
-            end
-            
-            if ~isempty(p.Results.slice)
-                % take a slice through the data
-                args = p.Results.slice;
-                if ~iscell(args)
-                    args = {args};
-                end
+            else
+                % fetch the data directly
+                cd = td.channelDescriptorsByName.(groupName);
+                timeField = cd.timeField;
+                dataField = cd.dataFieldPrimary;
+
+                data = {td.data.(dataField)}';
+                time = {td.data.(timeField)}';
+
                 for i = 1:numel(data)
-                    if ~isempty(data{i})
-                        data{i} = data{i}(:, args{:});
+                    time{i} = makecol(time{i});
+                    if isempty(data{i}), time{i} = nan(0, 1); continue; end
+
+                    % this situation can happen if a channel sharing the time
+                    % vector with this channel is set and this trial was
+                    % invalid when it was set.
+                    if isempty(time{i}), data{i} = emptySlice; continue; end
+                    assert(size(data{i}, 1) == numel(time{i}), 'Number of timepoints in data on trial %d does not match time', i);
+                    assert(size(data{i}, 2) == prod(sampleSize), 'Number of channels on trial %d does not match channel count', i);
+                end
+
+                % do scaling and convert to double
+                if p.Results.applyScaling
+                    data = cd.convertDataCellOnAccess(1, data);
+                    emptySlice = cd.convertDataCellOnAccess(1, emptySlice);
+                end
+
+                if ~isempty(p.Results.slice)
+                    % take a slice through the data
+                    for i = 1:numel(data)
+                        if ~isempty(data{i})
+                            data{i} = data{i}(:, sliceArgs{:});
+                        end
+                    end
+                    emptySlice = emptySlice(:, sliceArgs{:});
+                end
+                
+                if p.Results.sort
+                    for iT = 1:td.nTrials
+                        [time{iT}, idx] = sort(time{iT}, 'ascend');
+                        data{iT} = data{iT}(idx);
                     end
                 end
-				emptySlice = emptySlice(:, args{:});
             end
         
             if ~isempty(p.Results.linearCombinationWeights)
-                sliceSize = size(emptySlice);
-                sliceSize = sliceSize(2:end);
                 % linearCombinationWeights  is size(slice) by nCombinations
                 weights = p.Results.linearCombinationWeights;
-                szWeights = TensorUtils.sizeNDims(weights, numel(sliceSize) + 1);
-                assert(TensorUtils.compareSizeVectors(szWeights(1:numel(sliceSize)), sliceSize), 'Size of linearCombination weights must be [%s nCombinations]', vec2str(sliceSize));
-                nCombinations = szWeights(numel(sliceSize) + 1);
+                szWeights = TensorUtils.sizeNDims(weights, numel(sampleSize) + 1);
+                assert(TensorUtils.compareSizeVectors(szWeights(1:numel(sampleSize)), sampleSize), 'Size of linearCombination weights must be [%s nCombinations]', vec2str(sampleSize));
+                nCombinations = szWeights(numel(sampleSize) + 1);
                 
-                weightsNewByOld = reshape(weights, [prod(sliceSize) nCombinations])';
+                weightsNewByOld = reshape(weights, [prod(sampleSize) nCombinations])';
                 
                 prog = ProgressBar(numel(data), 'Computing weighted combinations of analog channel group');
                 for i = 1:numel(data)
@@ -3444,6 +3522,41 @@ classdef TrialData
                 for i = 1:numel(data)
                     if ~isempty(data{i})
                         data{i} = nanmean(data{i}(:, :), 2);
+                    end
+                end
+            end
+        end
+        
+        function [dataCell, timeCell] = getAnalogChannelGroupMulti(td, groupNames, varargin)
+            % [dataCell, timeCell] = getAnalogChannelGroupMulti(td, chNames, varargin)
+            % data and time are cell(nTrials, nChannels)
+            % groupNames may include analog channels too
+            p = inputParser();
+            p.addParameter('raw', false, @islogical);
+            
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            if ischar(groupNames)
+                 groupNames = {groupNames};
+            end
+            
+            % build nTrials x nChannels cell of data/time vectors
+            C = numel(groupNames);
+            [dataCell, timeCell] = deal(cell(td.nTrials, C));
+            for c = 1:C
+                gname = groupNames{c};
+                if td.hasAnalogChannelGroup(gname)
+                    if p.Results.raw
+                        [dataCell(:, c), timeCell(:, c)] = td.getAnalogChannelGroupRaw(gname);
+                    else
+                        [dataCell(:, c), timeCell(:, c)] = td.getAnalogChannelGroup(gname, p.Unmatched);
+                    end
+                elseif td.hasAnalogChannel(gname)
+                    if p.Results.raw
+                        [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(gname);
+                    else
+                        [dataCell(:, c), timeCell(:, c)] = td.getAnalog(gname, p.Unmatched);
                     end
                 end
             end
@@ -3563,6 +3676,8 @@ classdef TrialData
             
             td.warnIfNoArgOut(nargout);
             td.assertHasAnalogChannelGroup(groupName);
+            cd = td.channelDescriptorsByName.(groupName);
+            assert(~cd.isTransformGroup, 'Cannot modify transform groups');
             
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x) && ~ischar(x));
