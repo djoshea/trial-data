@@ -129,7 +129,8 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
     methods
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
-            cd.dataFields = {cd.name, cd.timeField};
+            
+            cd.dataFields = {cd.primaryDataField, cd.timeField};
         end
         
         % used by trial data when it needs to change field names
