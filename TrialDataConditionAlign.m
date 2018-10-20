@@ -1137,6 +1137,9 @@ classdef TrialDataConditionAlign < TrialData
         function td = setAttributeValueList(td, attrName, valueList, varargin)
             td.warnIfNoArgOut(nargout);
             td = td.addAttribute(attrName);
+            if td.isChannelCategorical(attrName)
+                valueList = categorical(valueList);
+            end
             td.conditionInfo = td.conditionInfo.setAttributeValueList(attrName, valueList, varargin{:});
             td = td.postUpdateConditionInfo();
         end
@@ -6396,7 +6399,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('markOutlineAlpha', 1, @isscalar);
 
 
-            p.addParameter('intervalShowOnData', true, @islogical);
+            p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalShowOnAxis', true, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
 

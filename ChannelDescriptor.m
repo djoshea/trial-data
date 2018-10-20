@@ -59,6 +59,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         isStringByField
         isVectorByField
         isScalarByField
+        isNumericScalarByField
         
         % indicates whether a given field is shareable between multiple
         % channels. If a field is marked as shareable, it will be copied
@@ -157,7 +158,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         nel = numel(data);
                         newClass = TrialDataUtilities.Data.cellDetermineCommonClass(data, class(missing));
                         data = ChannelDescriptor.cellCast(data, newClass);
-                        data = cell2mat(data);
+                        data = cat(1, data{:});
                         assert(isempty(data) || isvector(data) && numel(data) == nel);
                     end
                 end
@@ -180,7 +181,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             % possible to convert data to memClass, data will be converted.
             % If not, then memClass will be updated to reflect the change.
             % For example, if memClass is single and data(i) = uint16(1),
-            % data(i) will be converted to double(1). However, if memClass
+            % data(i) will be converted to single(1). However, if memClass
             % is uint16 and data(i) = double(1.5), then memClass will be changed to
             % double. This will not change any other data set on this field
             % in the TrialData instance, but this preexisting data will be
@@ -207,7 +208,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     
                 case {cd.SCALAR, cd.DATENUM}
                     newClass = TrialDataUtilities.Data.determineCommonClass(class(data), memClass);
-                    data = cast(data, newClass);
+                    data = ChannelDescriptor.icast(data, newClass);
                     
                 case cd.VECTOR
                     if cd.collectAsCellByField(iF) && iscell(data)
@@ -219,10 +220,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         data = ChannelDescriptor.cellCast(data, newClass);
                     else
                         newClass = TrialDataUtilities.Data.determineCommonClass(class(data), memClass);
-                        if strcmp(newClass, 'logical')
-                            data(isnan(data)) = false;
-                        end
-                        data = cast(data, newClass);
+%                         if strcmp(newClass, 'logical')
+%                             data(isnan(data)) = false;
+%                         end
+                        data = ChannelDescriptor.icast(data, newClass);
                     end
                     
                     if cd.collectAsCellByField(iF) && iscell(data)
@@ -240,10 +241,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         data = ChannelDescriptor.cellCast(data, newClass);
                     else
                         newClass = TrialDataUtilities.Data.determineCommonClass(class(data), memClass);
-                        if strcmp(newClass, 'logical')
-                            data(isnan(data)) = false;
-                        end
-                        data = cast(data, newClass);
+%                         if strcmp(newClass, 'logical')
+%                             data(isnan(data)) = false;
+%                         end
+                        data = ChannelDescriptor.icast(data, newClass);
                     end
                     
                 case cd.STRING
@@ -270,14 +271,13 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             function throwError(varargin)
                 error(['Error in channel %s, field %d: ' varargin{1}], cd.name, fieldIdx, varargin{2:end});
             end
-            
         end
         
         function data = convertDataSingleOnAccess(cd, fieldIdx, data)
             memClass = cd.memoryClassByField{fieldIdx};
             accClass = cd.accessClassByField{fieldIdx};
             if ~strcmp(memClass, accClass)
-                data = cast(data, accClass);
+                data = ChannelDescriptor.icast(data, accClass);
             end
         end
         
@@ -301,9 +301,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 % because of the way missingValue works, empty trials will
                 % be NaN for invalid trials when setting channel data
                 % trials missing values will have a single Nan
-                nanMask = cellfun(@(x) isscalar(x) && isnan(x), data);
+                nanMask = cellfun(@(x) isscalar(x) && ismissing(x), data);
                 if any(~nanMask)
-                    data = cell2mat(data(~nanMask));
+                    data = cat(1, data{~nanMask});
                 else
                     data = zeros(0, 1);
                 end
@@ -315,7 +315,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             memClass = cd.memoryClassByField{fieldIdx};
             accClass = cd.accessClassByField{fieldIdx};
             if ~strcmp(memClass, accClass)
-                data = cast(data, memClass);
+                data = ChannelDescriptor.icast(data, memClass);
             end
         end
         
@@ -327,7 +327,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             memClass = cd.memoryClassByField{fieldIdx};
             accClass = cd.accessClassByField{fieldIdx};
             if ~strcmp(memClass, accClass)
-                data = cellfun(@(a) cast(a, memClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
+                data = cellfun(@(a) ChannelDescriptor.icast(a, memClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
             end
         end
         
@@ -344,6 +344,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                             c{iF} = 'single';
                         elseif ismember(memClass{iF}, {'logical'})
                             c{iF} = 'logical';
+                        elseif ismember(memClass{iF}, {'categorical'})
+                            c{iF} = 'categorical';
+                        elseif ismember(memClass{iF}, {'string'})
+                            c{iF} = 'string';
                         else
                             c{iF} = 'double';
                         end
@@ -532,7 +536,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     if strcmp(accClasses{iF}, 'logical')
                         vals{iF} = false;
                     end
-                    vals{iF} = cast(vals{iF}, accClasses{iF});
+                    vals{iF} = ChannelDescriptor.icast(vals{iF}, accClasses{iF});
                     
                 end
             end
@@ -567,6 +571,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]);
         end
         
+        function tf = get.isNumericScalarByField(cd)
+            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]) & ...
+                ismember(cd.accessClassByField, {'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'uint64', 'int64', 'double', 'single'});
+        end
+        
         function tf = get.isVectorByField(cd)
             tf = ismember(cd.elementTypeByField, cd.VECTOR);
         end
@@ -598,6 +607,19 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     end
     
     methods(Static) % Utility methods
+        function data = icast(data, newClass)
+            if ~isa(data, newClass)
+                if strcmp(newClass, 'logical') 
+                    data(isnan(data)) = false;
+                    data = logical(data);
+                elseif strcmp(newClass, 'categorical')
+                    data = categorical(data);
+                else
+                    data = cast(data, newClass);
+                end
+            end
+        end
+            
         function data = scaleData(data, scaleFromLims, scaleToLims)
             if isempty(scaleFromLims) || isempty(scaleToLims)
                 return;
@@ -635,12 +657,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         
         function data = cellCast(data, newClass)
             for i = 1:numel(data)
-                if ~isa(data{i}, newClass)
-                    if strcmp(newClass, 'logical')
-                        data{i}(isnan(data{i})) = false;
-                    end
-                    data{i} = cast(data{i}, newClass);
-                end
+                data{i} = ChannelDescriptor.icast(data{i}, newClass);
             end
         end
     end

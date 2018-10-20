@@ -9,6 +9,8 @@ function newClass = determineCommonClass(varargin)
 
     if ismember('cell', uclasses)
         newClass = 'cell';
+    elseif ismember('categorical', uclasses)
+        newClass = 'categorical';
     elseif ismember('double', uclasses)
         newClass = 'double';
     elseif ismember('single', uclasses)

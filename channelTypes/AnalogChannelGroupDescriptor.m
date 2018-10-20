@@ -279,7 +279,7 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                         args = {};
                     end
                     
-                   [dataCell, timeCell] = cd.transformFn(dataCell, 'timeCell', timeCell, 'slice', args, 'scalingApplied', scalingApplied);
+                   [dataCell, timeCell] = cd.transformFn(dataCell, timeCell, 'slice', args, 'scalingApplied', p.Results.applyScaling);
             end
         end
     end

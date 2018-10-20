@@ -471,15 +471,21 @@ classdef TensorUtils
             inflatedSize(dims) = nInflatedVec;
 
             if nargin < 4
-                if iscell(maskedTensor)
+                if iscellstr(maskedTensor) %#ok<ISCLSTR>
+                    fillWith = {''};
+                elseif iscell(maskedTensor)
                     fillWith = {[]};
                 elseif isstruct(maskedTensor)
                     flds = fieldnames(maskedTensor);
                     args = cell(numel(flds)*2, 1);
                     args(1:2:end) = flds;
                     fillWith = struct(args{:});
+                elseif islogical(maskedTensor)
+                    fillWith = false;
                 else
-                    fillWith = NaN;
+                    val = maskedTensor(1);
+                    val(1) = missing;
+                    fillWith = val;
                 end
             end
             if ischar(fillWith)

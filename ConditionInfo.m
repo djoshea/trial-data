@@ -678,10 +678,7 @@ classdef ConditionInfo < ConditionDescriptor
                         valueList(end+1) = NaN;
                     end
                 end
-            elseif iscellstr(vals)
-                % include empty values in the list if found
-                %                 emptyMask = cellfun(@isempty, vals);
-                %                 vals = vals(~emptyMask);
+            elseif iscellstr(vals) || iscategorical(vals) || isstring(vals)
                 valueList = unique(vals);
             else
                 valueList = TrialDataUtilities.Data.uniqueCellTol(vals);
@@ -746,8 +743,12 @@ classdef ConditionInfo < ConditionDescriptor
                     else
                         % convert populated list to cellstr
                         if ~iscell(valueList{i})
-                            valueListAsStrings{i} = arrayfun(@(x) [num2str(x), unitsStr], valueList{i}, 'UniformOutput', false);
+                            if isstring(valueList{i}) || iscategorical(valueList{i})
+                            valueListAsStrings{i} = arrayfun(@char, valueList{i}, 'UniformOutput', false);
+                            else
+                                valueListAsStrings{i} = arrayfun(@(x) [num2str(x), unitsStr], valueList{i}, 'UniformOutput', false);
                             %                             valueListAsStrings{i} = arrayfun(@(x) num2str(x), valueList{i}, 'UniformOutput', false);
+                            end
                         elseif iscellstr(valueList{i})
                             valueListAsStrings{i} = valueList{i}; % cellfun(@(x) [x, unitsStr], valueList{i}, 'UniformOutput', false);
                             %                             valueListAsStrings{i} = [valueList{i}, unitsStr];
@@ -851,7 +852,7 @@ classdef ConditionInfo < ConditionDescriptor
                                 end
                             else
                                 % non-numeric
-                                if ~iscellstr(valsThis) && ~ischar(valsThis)
+                                if iscell(valsThis) && ~iscellstr(valsThis) && ~ischar(valsThis)
                                     valsThis = [valsThis{:}];
                                 end
                             end
@@ -888,8 +889,8 @@ classdef ConditionInfo < ConditionDescriptor
         function values = getAttributeValues(ci, name)
             idx = ci.getAttributeIdx(name);
             values = ci.values(:, idx);
-            if ci.attributeNumeric(idx)
-                values = cell2mat(values);
+            if ci.attributeAsVector(idx)
+                values = cat(1, values{:});
             end
         end
 
@@ -1024,7 +1025,8 @@ classdef ConditionInfo < ConditionDescriptor
                 % fetch other details as well, units, and numeric status
                 for iA = 1:ci.nAttributes
                     ci.attributeUnits{iA} = td.getChannelUnitsPrimary(ci.attributeNames{iA});
-                    ci = ci.setAttributeNumeric(iA, td.isChannelScalar(ci.attributeNames{iA}));
+                    ci = ci.setAttributeNumeric(iA, td.isChannelNumericScalar(ci.attributeNames{iA}));
+                    ci = ci.setAttributeAsVector(iA, td.isChannelScalar(ci.attributeNames{iA}));
 %                     ci.attributeNumeric(iA) = td.isChannelScalar(ci.attributeNames{iA});
                 end
 
@@ -1070,9 +1072,11 @@ classdef ConditionInfo < ConditionDescriptor
                     assert(numel(vals) == numel(mat));
                     ci.values(:, i) = num2cell(mat);
                     %                     ci.attributeNumeric(i) = true;
+                elseif ci.attributeAsVector(i)
+                    % nothing to do for categorical or strings
                 else
                     % replace empty and NaN with '' (NaN for strings)
-                    nanMask = cellfun(@(x) any(isnan(x)), vals);
+                    nanMask = cellfun(@(x) any(ismissing(x)), vals);
                     vals(nanMask) = {''};
 
                     %                     ci.attributeNumeric(i) = false;
@@ -1116,7 +1120,7 @@ classdef ConditionInfo < ConditionDescriptor
                 % since we won't be requesting them
                 p = inputParser;
                 p.KeepUnmatched = true;
-                p.addParameter('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x));
+                p.addParameter('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x) || iscategorical(x));
                 p.parse(varargin{:});
 
                 if ismember('values', p.UsingDefaults)
@@ -1135,9 +1139,15 @@ classdef ConditionInfo < ConditionDescriptor
                 % critical to update attribute numeric here!
                 if iscell(vals)
                     ci.attributeNumeric(iAttr) = false;
+                    ci.attributeAsVector(iAttr) = false;
                     ci.values(:, iAttr) = vals;
                 else
-                    ci.attributeNumeric(iAttr) = true;
+                    ci.attributeAsVector(iAttr) = true;
+                    if iscategorical(vals) || isstring(vals)
+                        ci.attributeNumeric(iAttr) = false;
+                    else
+                        ci.attributeNumeric(iAttr) = true;
+                    end
                     ci.values(:, iAttr) = num2cell(vals);
                 end
 

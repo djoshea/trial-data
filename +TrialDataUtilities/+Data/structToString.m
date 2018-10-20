@@ -64,6 +64,12 @@ function str = structToString(s, varargin)
                 vstr = mat2str(v, 3);
             end
             str = [prefix, vstr, suffix];
+        elseif iscategorical(v)
+            if isscalar(v)
+                str = [prefix char(v)];
+            else
+                str = [prefix '[' strjoin(arrayfun(@char, v, 'UniformOutput', false), ', ') ']'];
+            end
         elseif iscellstr(v)
             str = [prefix, '{', strjoin(v, [suffix ',']), '}'];
         else

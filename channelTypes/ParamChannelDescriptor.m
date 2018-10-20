@@ -103,15 +103,18 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.STRING;
         end
         
-        function cd = buildScalarParam(name, units)
+        function cd = buildScalarParam(name, dataClass, units)
             cd = ParamChannelDescriptor(name);
-            if nargin > 1
+            if nargin < 2
+                dataClass = 'double';
+            end
+            if nargin > 2
                 assert(ischar(units), 'Units must be string');
                 cd.unitsByField = {units};
             else
                 cd.unitsByField = {''};
             end
-            cd.originalDataClassByField = {'double'};
+            cd.originalDataClassByField = {dataClass};
             cd.elementTypeByField = cd.SCALAR;
         end
         
@@ -120,27 +123,34 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.catAlongFirstDimByField = true;
         end 
         
-        function cd = buildVectorParam(name, units)
+        function cd = buildVectorParam(name, dataClass, units)
             cd = ParamChannelDescriptor(name);
-            if nargin > 1
+            if nargin < 2
+                dataClass = 'double';
+            end
+                
+            if nargin > 2
                 assert(ischar(units), 'Units must be string');
                 cd.unitsByField = {units};
             else
                 cd.unitsByField = {''};
             end
-            cd.originalDataClassByField = {'double'};
+            cd.originalDataClassByField = {dataClass};
             cd.elementTypeByField = cd.VECTOR;
         end 
         
-        function cd = buildNumericParam(name, units)
+        function cd = buildNumericParam(name, dataClass, units)
             cd = ParamChannelDescriptor(name);
-            if nargin > 1
+            if nargin < 2
+                dataClass = 'double';
+            end
+            if nargin > 2
                 assert(ischar(units), 'Units must be string');
                 cd.unitsByField = {units};
             else
                 cd.unitsByField = {''};
             end
-            cd.originalDataClassByField = {'double'};
+            cd.originalDataClassByField = {dataClass};
             cd.elementTypeByField = cd.NUMERIC;
         end 
         

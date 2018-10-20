@@ -109,6 +109,7 @@ classdef ConditionDescriptor
     properties(SetAccess=protected, Hidden)
         attributeUnits = {}; % A x 1 cellstr array of units associated with each attribute, used for generating names
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value?
+        attributeAsVector = []; % A x 1 logical array : is this attribute collectible as a vector
         attributeValueListsManual = {}; % A x 1 cell array of permitted values (or cells of values) for this attribute
         attributeValueBinsManual = {}; % A x 1 cell array of value Nbins x 2 value bins to use for numeric lists
         attributeValueBinsAutoCount % A x 1 numeric array of Nbins to use when auto computing the bins, NaN if not in use
@@ -1922,6 +1923,7 @@ classdef ConditionDescriptor
             p.addParameter('valueListDisplayAs', {}, @(x) isempty(x) || iscellstr(x));
             p.addParameter('valueBins', {}, @(x) isnumeric(x) || iscell(x));
             p.addParameter('numeric', false, @islogical);
+            p.addParameter('asVector', false, @islogical);
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
 
@@ -1938,6 +1940,7 @@ classdef ConditionDescriptor
             else
                 ci.attributeNumeric(iAttr) = isnumeric(valueList) || islogical(valueList);
             end
+            ci.attributeAsVector(iAttr) = p.Results.asVector;
             ci.attributeDisplayAsManual{iAttr} = p.Results.displayAs;
 
             if isempty(valueList)
@@ -2027,6 +2030,7 @@ classdef ConditionDescriptor
             ci.attributeUnits = ci.attributeUnits(mask);
             ci.attributeDisplayAsManual = ci.attributeDisplayAsManual(mask);
             ci.attributeNumeric = ci.attributeNumeric(mask);
+            ci.attributeAsVector = ci.attributeAsVector(mask);
             ci.attributeValueListsManual = ci.attributeValueListsManual(mask);
             ci.attributeValueLists = ci.attributeValueLists(mask);
             ci.attributeValueListsAsStrings = ci.attributeValueListsAsStrings(mask);
@@ -2075,17 +2079,25 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
             iAttr = ci.assertHasAttribute(attr);
 
+            ci.attributeNumeric(iAttr) = tf;
+            ci = ci.notifyConditionsChanged();
+        end
+        
+        function ci = setAttributeAsVector(ci, attr, tf)
+            ci.warnIfNoArgOut(nargout);
+            iAttr = ci.assertHasAttribute(attr);
+
             % check that attribute value lists are vectors not cells
             valueList = ci.getAttributeValueList(iAttr);
             if ~isempty(valueList)
                 if tf
-                    assert(~iscell(valueList) || ci.attributeValueListIsBinned(iAttr), 'Attribute %s has manual value list that is not numeric vector which is required for numeric attributes', attr);
+                    assert(~iscell(valueList) || ci.attributeValueListIsBinned(iAttr), 'Attribute %s has manual value list that is not numeric vector which is required for as vector attributes', attr);
                 else
-                    assert(iscell(valueList), 'Attribute %s has manual value list that is not cell which is required for numeric attributes', attr);
+                    assert(iscell(valueList), 'Attribute %s has manual value list that is not cell which is required for as vector attributes', attr);
                 end
             end
 
-            ci.attributeNumeric(iAttr) = tf;
+            ci.attributeAsVector(iAttr) = tf;
             ci = ci.notifyConditionsChanged();
         end
 
@@ -2186,6 +2198,7 @@ classdef ConditionDescriptor
             iAttr = ci.getAttributeIdx(name);
             ci.attributeValueBinsManual{iAttr} = binsCell;
             ci.attributeNumeric(iAttr) = true;
+            ci.attributeAsVector(iAttr) = true;
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = NaN;
             ci.attributeValueBinsAutoModes(iAttr) = NaN;
@@ -2201,6 +2214,7 @@ classdef ConditionDescriptor
 
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeNumeric(iAttr) = true;
+            ci.attributeAsVector(iAttr) = true;
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = nBins;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoUniform;
@@ -2218,6 +2232,7 @@ classdef ConditionDescriptor
             iAttr = ci.assertHasAttribute(name);
             ci.attributeValueBinsManual{iAttr} = [];
             ci.attributeNumeric(iAttr) = true;
+            ci.attributeAsVector(iAttr) = true;
             ci.attributeValueListsManual{iAttr} = {};
             ci.attributeValueBinsAutoCount(iAttr) = nQuantiles;
             ci.attributeValueBinsAutoModes(iAttr) = ci.AttributeValueBinsAutoQuantiles;
@@ -2245,7 +2260,7 @@ classdef ConditionDescriptor
             separator = p.Results.separator;
 
             if ci.nAxes == 0
-                values = {structToString(ci.conditions)};
+                values = {TrialDataUtilities.Data.structToString(ci.conditions)};
             else
                 valueLists = ci.generateAxisValueListsAsStrings(p.Results);
                 values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
@@ -2505,9 +2520,9 @@ classdef ConditionDescriptor
                     valueList = valueLists{iA};
 
                     % flatten any subgroupings of values in the value list
-                    if ci.attributeNumeric(iA) && iscell(valueList)
+                    if ci.attributeAsVector(iA) && iscell(valueList)
                         valueList = [valueList{:}];
-                    elseif ~ci.attributeNumeric(iA) && ~iscellstr(valueList) && ~ischar(valueList)
+                    elseif ~ci.attributeAsVector(iA) && ~iscellstr(valueList) && ~ischar(valueList)
                         valueList = [valueList{:}];
                     end
                     % wrap in cell to avoid scalar expansion
@@ -2841,7 +2856,7 @@ classdef ConditionDescriptor
                         if ci.attributeNumeric(i)
                             valueList{i} = NaN;
                         else
-                            valueList{i} = {'?'};
+                            valueList{i} = {missing};
                         end
                 end
                 valueList{i} = makecol(valueList{i});
@@ -2885,6 +2900,8 @@ classdef ConditionDescriptor
                                     valueList{i} = arrayfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
                                 end
                             end
+                        elseif ci.attributeAsVector(i)
+                            valueList{i} = arrayfun(@char, valueList{i}, 'UniformOutput', false);
                         else
                             % non-numeric, can leave as is unless...
                             if ~iscellstr(valueList{i})

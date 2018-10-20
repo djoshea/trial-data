@@ -382,6 +382,14 @@ classdef TrialData
                     
                     valueCell = {data.(fld)}';
                     [chd, valueCell] = chd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell);
+                    
+                    if ~iscell(valueCell)
+                        % nTrials x 1 vectors were num2cell'd inside
+                        % assignIntoStructArray, byt nTrials x nValues
+                        % param channels presented an issue
+                        assert(size(valueCell, 1) == numel(data));
+                        valueCell = mat2cell(valueCell, ones(numel(data), 1), size(valueCell, 2));
+                    end
                     data = TrialDataUtilities.Data.assignIntoStructArray(data, fld, valueCell);
                 end
                 channelDescriptorsByName.(names{iChannel}) = chd;
@@ -1059,24 +1067,25 @@ classdef TrialData
                 else
                     groupsNamedMask = false(size(groups));
                 end
-                    
+                for iG = 1:numel(groups)
+                    if ~groupsNamedMask(iG)
+                        sz = td.getAnalogChannelGroupSize(groups{iG});
+                        tcprintf('inline', '{bright blue}%s {none}(%s), ', groups{iG}, ...
+                        TrialDataUtilities.String.strjoin(sz, ','));
+                    end
+                end
+                if any(~groupsNamedMask)
+                    fprintf('\n');
+                end
                 for iG = 1:numel(groups)
                     if groupsNamedMask(iG)
                         sz = td.getAnalogChannelGroupSize(groups{iG});
-                        tcprintf('inline', '  {bright blue}%s{none} (%s): \{%s\}\n', groups{iG}, ...
+                        tcprintf('inline', '{bright blue}%s{none} (%s): \{%s\}\n', groups{iG}, ...
                             TrialDataUtilities.String.strjoin(sz, ','), ...
                             TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                     end
                 end
-                for iG = 1:numel(groups)
-                    if ~groupsNamedMask(iG)
-                        sz = td.getAnalogChannelGroupSize(groups{iG});
-                        tcprintf('inline', '  {bright blue}%s {none}(%s)\n', groups{iG}, ...
-                        TrialDataUtilities.String.strjoin(sz, ','));
-                    end
-                end
             end
-            
         end
         
         function disp(td)
@@ -1532,6 +1541,16 @@ classdef TrialData
         function tf = isChannelScalar(td, name)
             cd = td.channelDescriptorsByName.(name);
             tf = ~cd.collectAsCellByField(1);
+        end
+        
+        function tf = isChannelCategorical(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            tf = ~cd.collectAsCellByField(1) && strcmp(cd.accessClassByField{1}, 'categorical');
+        end
+        
+        function tf = isChannelNumericScalar(td, name)
+            cd = td.channelDescriptorsByName.(name);
+            tf = cd.isNumericScalarByField(1);
         end
         
         function td = setChannelMetaKey(td, name, key, value)
@@ -2901,6 +2920,8 @@ classdef TrialData
 %             p.addParameter('isImage', false, @islogical); % shortcut for making image channels since they're subclassed
             p.parse(varargin{:});
             
+            td.warnIfNoArgOut(nargout);
+            
             chList = td.getChannelsReferencingFields(groupName);
             if ~isempty(chList)
                 error('Channels %s already reference field %s', TrialDataUtilities.String.strjoin(chList));
@@ -2915,6 +2936,39 @@ classdef TrialData
             td = td.addChannel(cd, {}, 'ignoreDataFields', true);
         end
         
+        function td = addAnalogChannelGroupAffineTransform(td, groupName, fromGroupNames, WinByOut, bOut, varargin)
+            % creates a virtual transform analog channel group that
+            % performs an affine transform of another group, as:
+            % out = outputFn(in * W + b)
+            
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addParameter('outputFn', @(x) x, @(fn) isa(fn, 'function_handle')); % pointwise nonlinearity applied after
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [transformFn, szOut] = TrialDataUtilities.Transform.buildAnalogAffineTransformFn(WinByOut, bOut, 'outputFn', p.Results.outputFn);
+            
+            td = td.addAnalogChannelGroupTransform(groupName, fromGroupNames, transformFn, szOut, p.Unmatched);
+        end
+        
+        function td = addAnalogChannelGroupSliceTransform(td, groupName, fromGroupNames, sliceArgs, varargin)
+            % creates a virtual transform analog channel group that
+            % performs an affine transform of another group, as:
+            % out = outputFn(in * W + b)
+            
+            td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addParameter('outputFn', @(x) x, @(fn) isa(fn, 'function_handle')); % pointwise nonlinearity applied after
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [transformFn, szOut] = TrialDataUtilities.Transform.buildAnalogSliceTransformFn(sliceArgs);
+            
+            td = td.addAnalogChannelGroupTransform(groupName, fromGroupNames, transformFn, szOut, p.Unmatched);
+        end
         
         function td = setAnalogChannelGroupSubChannelNames(td, groupName, chNames, chIdx)
             td.warnIfNoArgOut(nargout);
@@ -4500,6 +4554,8 @@ classdef TrialData
                     values = repmat({values}, td.nTrials, 1);
                 elseif numel(values) == 1
                     values = repmat(values, td.nTrials, 1);
+                else
+                    values = makecol(values);
                 end
                 
                 assert(numel(values) == td.nTrials, 'Values must be vector with length %d', td.nTrials);
@@ -4533,8 +4589,8 @@ classdef TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            cd = ParamChannelDescriptor.buildScalarParam(name, p.Results.units);
             values = p.Results.values;
+            cd = ParamChannelDescriptor.buildScalarParam(name, class(values), p.Results.units);
             td = td.addParam(name, values, 'channelDescriptor', cd, ...
                 p.Unmatched);
         end
@@ -4548,8 +4604,13 @@ classdef TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
-            cd = ParamChannelDescriptor.buildVectorParamAccessAsMatrix(name, p.Results.units);
             values = p.Results.values;
+            if iscell(values)
+                dataClass = ChannelDescriptor.getCellElementClass(values);
+            else
+                dataClass = class(values);
+            end
+            cd = ParamChannelDescriptor.buildVectorParamAccessAsMatrix(name, dataClass, p.Results.units);
             
             if isnumeric(values)
                 values = TensorUtils.splitAlongDimension(values, 1);
