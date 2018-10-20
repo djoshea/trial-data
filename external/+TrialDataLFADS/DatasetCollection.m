@@ -46,23 +46,25 @@ classdef DatasetCollection < LFADS.DatasetCollection
             
             p = inputParser();
             p.addOptional('reload', false, @islogical);
+            p.addParameter('datasetIdx', 1:dc.nDatasets, @isvector);
             p.parse(varargin{:});
+            datasetIdx = LFADS.Utils.vectorMaskToIndices(p.Results.datasetIdx);
             
             if ~isempty(dc.trialDataSet) && ~p.Results.reload
-                tdSet = dc.trialDataSet;
-                maskLoad = cellfun(@isempty, tdSet);
-            else
-                tdSet = cell(dc.nDatasets, 1);
-                maskLoad = true(dc.nDatasets, 1);
+                tdSet = dc.trialDataSet(datasetIdx);
+                return;
             end
             
-            if any(maskLoad)
-                prog = ProgressBar(dc.nDatasets, 'Loading trialData for each dataset');
-                for i = 1:dc.nDatasets
-                    prog.update(i);
-                    tdSet{i} = dc.datasets(i).loadData(maskLoad(i)); % will cache in their trialData field
-                end
-                prog.finish();
+            tdSet = cell(numel(datasetIdx), 1);
+            prog = ProgressBar(numel(datasetIdx), 'Loading trialData for each dataset');
+            for iiDS = 1:numel(datasetIdx)
+                prog.update(iiDS);
+                tdSet{iiDS} = dc.datasets(datasetIdx(iiDS)).loadData(p.Results.reload); % will cache in their trialData field
+            end
+            prog.finish();
+            
+            if isequal(datasetIdx, (1:dc.nDatasets)')
+                dc.trialDataSet = tdSet;
             end
         end
     end

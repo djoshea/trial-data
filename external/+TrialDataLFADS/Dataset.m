@@ -37,6 +37,8 @@ classdef Dataset < LFADS.Dataset
             if isempty(ds.trialData) || reload
                 td = TrialData.loadFast(ds.path);
                 td = TrialDataConditionAlign(td);
+                td.datasetName = ds.name;
+                td = td.setMetaKey('datasetPath', ds.path);
                 ds.trialData = td;
             end
                 
