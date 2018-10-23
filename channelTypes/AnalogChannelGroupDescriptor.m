@@ -282,6 +282,18 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                    [dataCell, timeCell] = cd.transformFn(dataCell, timeCell, 'slice', args, 'scalingApplied', p.Results.applyScaling);
             end
         end
+        
+        function [tf, idx] = hasSubChannel(cd, name)
+            if ischar(name)
+                names = {names};
+            end
+            tf = false(numel(names), 1);
+            idx = nan(numel(names), 1);
+            for iN = 1:numel(names)
+                if contains(names{iN}, '(')
+                    [ch, idx] = cd
+            end
+        end
     end
     
      methods(Static)

@@ -478,18 +478,16 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             end
         end
         
-        %         function vec = getMissingValuesForMultipleTrials(cd, n, fieldnum)
-        %             if nargin < 3
-        %                 fieldnum = 1;
-        %             end
-        %             missing = cd.missingValueByField{fieldnum};
-        %             if cd.collectAsCellByField(fieldnum)
-        %                 vec = repmat({missing}, n, 1);
-        %             else
-        %                 vec = repmat(missing, n, 1);
-        %             end
-        %         end
-        
+        function [tf, idx] = hasSubChannel(~, name)
+            % overwritten by subclasses
+            if ischar(name)
+                tf = false;
+                idx = NaN;
+            else
+                tf = false(numel(name), 1);
+                idx = nan(numel(name), 1);
+            end
+        end
     end
     
     methods(Sealed)
@@ -658,6 +656,19 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function data = cellCast(data, newClass)
             for i = 1:numel(data)
                 data{i} = ChannelDescriptor.icast(data{i}, newClass);
+            end
+        end
+        
+        function [ch, idx] = parseIndexedChannelName(name)
+            % if it is a name like analogGroup(5), make a sub channel
+            % channelDescriptor for analogGroup referring to column 5
+            tokens = regexp(name, '(?<ch>[\w_]+)\((?<idx>\d+)\)', 'names');
+            if isempty(tokens)
+                ch = name;
+                idx = NaN;
+            else
+                ch = tokens.ch;
+                idx = str2double(tokens.idx);
             end
         end
     end

@@ -1040,7 +1040,7 @@ classdef TrialData
             str = '{yellow}Spike: {none}';
 
             % display spike channel arrays
-            arrays = td.listSpikeChannelArrayDescriptors();
+            arrays = td.listSpikeArrayChannelDescriptors();
             for iA = 1:numel(arrays)
                 cd = td.channelDescriptorsByName.(arrays{iA});
                 if cd.hasWaveforms
@@ -1492,16 +1492,22 @@ classdef TrialData
             end
         end
 
-        function tf = hasChannel(td, name)
+        function tf = hasChannel(td, name, includeImplicit)
+            if nargin < 3
+                includeImplicit = true;
+            end
             tf = ismember(name, td.channelNames);
         end
 
-        function assertHasChannel(td, name)
+        function assertHasChannel(td, name, includeImplicit)
+            if nargin < 3
+                includeImplicit = true;
+            end
             if ischar(name)
                 ch = td.parseIndexedAnalogChannelName(name);
-                assert(td.hasChannel(ch), 'TrialData does not have channel %s', name);
+                assert(td.hasChannel(ch, includeImplicit), 'TrialData does not have channel %s', name);
             elseif iscellstr(name)
-                tf = td.hasChannel(name);
+                tf = td.hasChannel(name, includeImplicit);
                 missing = name(~tf);
                 assert(all(tf), 'Trial data does not have channels %s', TrialDataUtilities.String.strjoin(missing, ','));
             else
@@ -5496,65 +5502,30 @@ classdef TrialData
             p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
 
-            if ischar(unitNames)
-                 [~, ~, timesField, timesFieldColIdx, cdArray] = getSpikeChannelInfo(td, name)
+            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nUnits] = td.getSpikeChannelMultiAccessInfo(unitNames);
+            nFields = numel(fieldList);
+            timesCellByUnit = cell(td.nTrials, nUnits);
+            for iF = 1:nFields
+                fld = fieldList{1};
+                col = colIdxEachField{iF};
+                idx = assignIdxEachField{iF};
 
-                [field, col] = getFieldIndex(unitNames);
-                timesCell = {td.data.(field)}';
-            elseif iscell(unitNames) || isnumeric(unitNames)
-                nUnits = numel(unitNames);
-
-                if isnumeric(unitNames)
-                    unitNames = td.lookupSpikeChannelByIndex(unitNames);
-                end
-
-                timesCellByUnit = cell(td.nTrials, nUnits);
-                for iU = 1:nUnits
-                    if ischar(unitNames{iU})
-                        fld = getField(unitNames{iU});
-                        timesCellByUnit(:, iU) = cellfun(@makecol, {td.data.(fld)}', 'UniformOutput', false);
-                    elseif iscellstr(unitNames{iU})
-                        % combine inner units of nested cellstr
-                        timesSub = cell(td.nTrials, numel(unitNames{iU}));
-                        for iU2 = 1:numel(unitNames{iU})
-                            fld = getField(unitNames{iU}{iU2});
-                            timesSub(:, iU2) = cellfun(@makecol, {td.data.(fld)}', 'UniformOutput', false);
-                        end
-                        for iT = 1:td.nTrials
-                            timesCellByUnit{iT, iU} = cat(1, timesSub{iT, :});
-                        end
-
-                    else
-                        error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
-                    end
-                end
-
-                if p.Results.combine
-                    timesCell = cellvec(td.nTrials);
-                    for iT = 1:td.nTrials
-                        timesCell{iT} = cat(1, timesCellByUnit{iT, :});
-                    end
+                if fieldIsArray(iF)
+                    catData = cat(1, td.data.(fld));
                 else
-                    timesCell = timesCellByUnit;
+                    catData = {td.data.(fld)}';
+                end
+                timesCellByUnit(:, idx) = catData(:, col);
+            end
+
+            if p.Results.combine
+                timesCell = cellvec(td.nTrials);
+                for iT = 1:td.nTrials
+                    timesCell{iT} = cat(1, timesCellByUnit{iT, :});
                 end
             else
-                error('Unsupported unit name argument');
+                timesCell = timesCellByUnit;
             end
-            timesCell = cellfun(@makecol, timesCell, 'UniformOutput', false);
-
-            function [field, col] = getField(unitName)
-                if td.hasSpikeChannel(unitName)
-                    field = unitName;
-
-                elseif td.hasEventChannel(unitName)
-                    field = unitName;
-                elseif td.hasAnalogChannelOrGroup(unitName)
-                    field = td.getAnalogTimeField(unitName);
-                else
-                    error('Unit name %s is not a valid spike or event field', unitName);
-                end
-            end
-
         end
 
         function timesCell = getSpikeTimes(td, unitNames, varargin)
@@ -5909,7 +5880,7 @@ classdef TrialData
     end
 
     methods % Spike array channel methods
-        function td = addSpikeChannelArray(td, arrayName, varargin)
+        function td = addSpikeArrayChannel(td, arrayName, varargin)
             td.warnIfNoArgOut(nargout);
 
             p = inputParser();
@@ -5959,7 +5930,7 @@ classdef TrialData
                 spikes = cell(td.nTrials, nUnits);
             end
 
-            cd = SpikeChannelArrayDescriptor.build(arrayName, electrodes, units);
+            cd = SpikeArrayChannelDescriptor.build(arrayName, electrodes, units);
             cd.sortQuality = p.Results.sortQuality;
             cd.sortMethod = p.Results.sortMethod;
 
@@ -6022,18 +5993,18 @@ classdef TrialData
     methods % spike channel listing by arrays
         % there are two types of spike channels:
         %   direct: those with their own SpikeChannelDescriptor directly in channelDescriptors
-        %   indirect: those that are part of a SpikeChannelArrayDescriptor
+        %   indirect: those that are part of a SpikeArrayChannelDescriptor
         % these functions below try to seamlessly blend the two so they are indistiguishable to the end user
 
-        function names = listSpikeChannelArrayDescriptors(td)
-            % internal use only, return SpikeChannelArrayDescriptors in
+        function names = listSpikeArrayChannelDescriptors(td)
+            % internal use only, return SpikeArrayChannelDescriptors in
             % table
             channelDescriptors = td.getChannelDescriptorArray();
             if isempty(channelDescriptors)
                 names = {};
                 return;
             end
-            mask = arrayfun(@(cd) isa(cd, 'SpikeChannelArrayDescriptor'), channelDescriptors);
+            mask = arrayfun(@(cd) isa(cd, 'SpikeArrayChannelDescriptor'), channelDescriptors);
             names = {channelDescriptors(mask).name}';
         end
 
@@ -6056,9 +6027,9 @@ classdef TrialData
             end
 
             if p.Results.includeArrayChannels
-                % each array will have a SpikeChannelArrayDescriptor in the
+                % each array will have a SpikeArrayChannelDescriptor in the
                 % table, we enumerate their channels and concatenate
-                arrays = td.listSpikeChannelArrayDescriptors();
+                arrays = td.listSpikeArrayChannelDescriptors();
                 arrayNames = cellfun(@(array) td.channelDescriptorsByName.(array).listSubChannels(), arrays, 'UniformOutput', false);
                 names = cat(1, names{:}, arrayNames{:});
             end
@@ -6068,102 +6039,154 @@ classdef TrialData
             tf = ismember(name, td.listSpikeChannels(varargin{:}));
         end
 
-        function [assignIdxEachField, fieldList, colIdxEachField] = getSpikeChannelMultiAccessInfo(td, names)
+        function [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nUnits] = getSpikeChannelMultiAccessInfo(td, names)
             % internal method for arranging efficient access to multiple
-            % array or non array spike fields at once
-            % fieldList is K x 1 cellstr
+            % array or non array spike fields at once. also supports
+            % event channels and analog channels (marked as the time samples)
+            %
+            % K is the number of separate fields that need to be accessed
+            % assignIdx is K x 1 cell of vectors of indices into names
+            %   indicating which requested channel is located according to
+            %   the corresponding location in fieldList and colIdxEachField
+            %
+            % fieldList is K x 1 cellstr of these fields
+            %
             % colIdxEachField is K x 1 cell of vectors of column indices
-            % assignIdx is K x 1 cell of vectors of indices where the
-            % corresponding field should be assigned to match names
 
-            iF = 1;
-            found = falsevec(numel(names), 1);
-            [assignIdxEachField, fieldList, colIdxEachField] = deal({});
+            if isnumeric(names)
+                names = {names};
+            end
+            if ischar(names)
+                names = {names};
+            end
+            [fieldsByName, fieldIsArrayByName, colByName] = deal(cell(numel(names), 1));
+
+            % first lookup by names
             for iN = 1:numel(names)
                 name = names{iN};
+                if isnumeric(names)
+                    % global index
+                    unitNames = td.lookupSpikeChannelByIndex(unitNames);
+                end
                 if isfield(td.channelDescriptorsByName, name)
                     cd = td.channelDescriptorsByName.(name);
                     if isa(cd, 'SpikeChannelDescriptor') || isa(cd, 'EventChannelDescriptor')
-                        fieldList{iF, 1} = cd.dataFieldPrimary;
-                        colIdxEachField{iF, 1} = cd.primaryDataFieldColumnIndex;
-                        assignIdxEachField{iF, 1} = iN;
+                        fieldsByName{iN} = {cd.dataFieldPrimary};
+                        colByName{iN} = cd.primaryDataFieldColumnIndex;
+                        fieldIsArrayByName{iN} = false;
+
                     elseif isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')
-                        fieldList{iF, 1} = cd.timeField;
-                        colIdxEachField{iF, 1} = 1;
-                        assignIdxEachField{iF, 1} = iN;
-                    else
-                        error('ChannelDescrip
-                    found
-                end
-            end
+                        % refers to
+                        fieldsByName{iN} = cd.timeField;
+                        colByName{iN} = 1;
+                        fieldIsArrayByName{iN} = false;
 
+                    elseif isa(cd, 'SpikeArrayChannelDescriptor')
+                        % refers to array directly, include all channels
+                        fieldsByName{iN} = repmat({cd.dataFieldPrimary}, cd.nChannels, 1);
+                        colByName{iN} = (1:cd.nChannels)';
+                        fieldIsArrayByName{iN} = true(cd.nChannels, 1);
+                    else
+                        error('Channel type %s not supported', class(cd));
+                    end
                 else
-                    % check for 'array(idx)' name
-                    [tf, array, ch_idx] = td.parseIndexedSpikeArrayChannelName(name);
-                    if ~tf
-                        [array, elec, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(name);
-                        needChIdxLookup = true;
+                    if contains(name, '(')
+                        % parse array(idx) channel name
+                        [tf, array, chidx] = td.parseIndexedSpikeArrayChannelName(name);
+                        if ~tf
+                            error('Channel %s was not not found or parsed successfully', name);
+                        end
+                        if ~isfield(td.channelDescriptorsByName, array)
+                            error('Channel %s not found', array);
+                        end
+                        cd = td.channelDescriptorsByName.(array);
+                        if ~isa(cd, 'SpikeArrayChannelDescriptor')
+                            error('Channel %s is not a spike array channel', array);
+                        end
                     else
-                        needChIdxLookup = false;
+                        % parse as arrayElec_unit name
+                        [array, electrode, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(name);
+                        if isempty(array)
+                            error('Channel %s was not not found or parsed successfully', name);
+                        end
+                        if ~isfield(td.channelDescriptorsByName, array)
+                            error('Channel %s not found', array);
+                        end
+                        cd = td.channelDescriptorsByName.(array);
+                        if ~isa(cd, 'SpikeArrayChannelDescriptor')
+                            error('Channel %s is not a spike array channel', array);
+                        end
+                        chidx = cd.findSubChannelByElectrodeUnit(electrode, unit);
+                        if isnan(chidx)
+                            error('Channel %s not found within array %s', name, array);
+                        end
                     end
-
                     if ~isfield(td.channelDescriptorsByName, array)
-                        error('Spike channel %s and spike channel array %s not found', name, array);
-                    end
-                    cdArray = td.channelDescriptorsByName.(array);
-                    if needChIdxLookup
-                        ch_idx = cdArray.findSubChannelByElectrodeUnit(elec, unit);
+                        error('Channel %s not found', array);
                     end
 
-
-
+                    fieldsByName{iN} = repmat({cd.dataFieldPrimary}, numel(chidx), 1);
+                    colByName{iN} = chidx;
+                    fieldIsArrayByName{iN} = true(numel(chidx), 1);
                 end
             end
 
-
+            [catFields, whichName] = TensorUtils.catWhich(1, fieldsByName{:});
+            catCols = cat(1, colByName{:});
+            catFieldIsArray = cat(1, fieldIsArrayByName{:});
+            [fieldList, exemplarEntry, whichUniqueField] = unique(catFields);
+            [assignIdxEachField, colIdxEachField] = deal(cell(numel(fieldList), 1));
+            fieldIsArray = false(numel(fieldList), 1);
+            for iF = 1:numel(fieldList)
+                assignIdxEachField{iF} = whichName(whichUniqueField == iF);
+                colIdxEachField{iF} = catCols(whichUniqueField == iF);
+                fieldIsArray(iF) = catFieldIsArray(exemplarEntry(iF));
+            end
+            nUnits = numel(whichName);
         end
 
-        function [cd, array, timesField, timesFieldColIdx, cdArray] = getSpikeChannelInfo(td, name)
-            % internal method for helping access spike channels by name
-            if isfield(td.channelDescriptorsByName, name)
-                cd = td.channelDescriptorsByName.(name);
-                if ~isa(cd, 'Sp ikeChannelDescriptor')
-                    error('Channel %s is not a spike channel', name);
-                end
-                array = cd.array;
-                cdArray = [];
-
-            else
-                % check for 'array(idx)' name
-                [tf, array, ch_idx] = td.parseIndexedSpikeArrayChannelName(name);
-                if tf
-                    if ~isfield(td.channelDescriptorsByName, array)
-                        error('Spike channel %s and spike channel array %s not found', name, array);
-                    end
-                    cdArray = td.channelDescriptorsByName.(array);
-                    if ~isa(cdArray, 'SpikeChannelArrayDescriptor')
-                        error('Channel %s is not a spike array channel', name);
-                    end
-
-                    cd = cdArray.buildIndividualSubChannel(ch_idx);
-                else
-                    [array, elec, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(name);
-                    if ~isfield(td.channelDescriptorsByName, array)
-                        error('Spike channel %s and spike channel array %s not found', name, array);
-                    end
-                    cdArray = td.channelDescriptorsByName.(array);
-                    if ~isa(cdArray, 'SpikeChannelArrayDescriptor')
-                        error('Channel %s is not a spike array channel', name);
-                    end
-
-                    cd = cdArray.buildIndividualSubChannelByElectrodeUnit(elec, unit);
-                end
-            end
-
-            timesField = cd.dataFieldPrimary;
-            timesFieldColIdx = cd.primaryDataFieldColumnIndex;
-        end
-
+        % this was replaced by getSpikeChannelMultiAccessInfo
+%         function [cd, array, timesField, timesFieldColIdx, cdArray] = getSpikeChannelInfo(td, name)
+%             % internal method for helping access spike channels by name
+%             if isfield(td.channelDescriptorsByName, name)
+%                 cd = td.channelDescriptorsByName.(name);
+%                 if ~isa(cd, 'Sp ikeChannelDescriptor')
+%                     error('Channel %s is not a spike channel', name);
+%                 end
+%                 array = cd.array;
+%                 cdArray = [];
+%
+%             else
+%                 % check for 'array(idx)' name
+%                 [tf, array, ch_idx] = td.parseIndexedSpikeArrayChannelName(name);
+%                 if tf
+%                     if ~isfield(td.channelDescriptorsByName, array)
+%                         error('Spike channel %s and spike channel array %s not found', name, array);
+%                     end
+%                     cdArray = td.channelDescriptorsByName.(array);
+%                     if ~isa(cdArray, 'SpikeArrayChannelDescriptor')
+%                         error('Channel %s is not a spike array channel', name);
+%                     end
+%
+%                     cd = cdArray.buildIndividualSubChannel(ch_idx);
+%                 else
+%                     [array, elec, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(name);
+%                     if ~isfield(td.channelDescriptorsByName, array)
+%                         error('Spike channel %s and spike channel array %s not found', name, array);
+%                     end
+%                     cdArray = td.channelDescriptorsByName.(array);
+%                     if ~isa(cdArray, 'SpikeArrayChannelDescriptor')
+%                         error('Channel %s is not a spike array channel', name);
+%                     end
+%
+%                     cd = cdArray.buildIndividualSubChannelByElectrodeUnit(elec, unit);
+%                 end
+%             end
+%
+%             timesField = cd.dataFieldPrimary;
+%             timesFieldColIdx = cd.primaryDataFieldColumnIndex;
+%         end
+%
         function [tf, array, idx] = parseIndexedSpikeArrayChannelName(td, name) %#ok<INUSL>
             % if name is a normal spike channel, do nothing
             % if it is a name like spikeArray(5), make a sub channel
@@ -6175,6 +6198,7 @@ classdef TrialData
                 array = '';
                 idx = [];
             else
+                tf = true;
                 array = tokens.ch;
                 idx = str2double(tokens.idx);
             end

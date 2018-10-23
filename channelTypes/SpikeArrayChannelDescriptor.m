@@ -1,4 +1,4 @@
-classdef SpikeChannelArrayDescriptor < ChannelDescriptor
+classdef SpikeArrayChannelDescriptor < ChannelDescriptor
     properties(Dependent)
         hasWaveforms
         hasSortQualityEachTrial
@@ -35,7 +35,7 @@ classdef SpikeChannelArrayDescriptor < ChannelDescriptor
     end
 
     methods(Access=protected)
-        function cd = SpikeChannelArrayDescriptor(name, electrodes, units)
+        function cd = SpikeArrayChannelDescriptor(name, electrodes, units)
             cd = cd@ChannelDescriptor(name);
             cd.electrodes = makecol(electrodes);
             cd.units = makecol(units);
@@ -309,13 +309,16 @@ classdef SpikeChannelArrayDescriptor < ChannelDescriptor
         end
 
         function [tf, idx] = hasSubChannel(cd, name)
+            if contains(name, '(')
+                [array, chidx] = SpikeChannelDescriptor.parseArrayElectrodeUnit
+                [array, electrode, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(
             [tf, idx] = ismember(name, cd.listSubChannels());
         end
     end
 
     methods(Static)
         function cd = build(name, electrodes, units)
-            cd = SpikeChannelArrayDescriptor(name, electrodes, units);
+            cd = SpikeArrayChannelDescriptor(name, electrodes, units);
         end
     end
 
