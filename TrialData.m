@@ -140,12 +140,12 @@ classdef TrialData
 
             % request channel descriptors for both special params and regular channels
             specialParams = makecol(tdi.getSpecialParamChannelDescriptors());
-            specialNames = {specialParams.name};
+            specialNames = string({specialParams.name}');
             regularChannels = makecol(tdi.getChannelDescriptors('suppressWarnings', p.Results.suppressWarnings));
             if isempty(regularChannels)
-                regularNames = {};
+                regularNames = string([]);
             else
-                regularNames = {regularChannels.name};
+                regularNames = string({regularChannels.name}');
             end
 
             % check for reserved channel names
@@ -200,7 +200,7 @@ classdef TrialData
 
             % request channel descriptors for both special params and regular channels
             newChannels = makecol(tdi.getNewChannelDescriptors());
-            maskRemove = ismember({newChannels.name}, td.listChannels());
+            maskRemove = ismember({newChannels.name}, td.listChannels('includeNamedSubChannels', false));
             newChannels = newChannels(~maskRemove);
             td = td.addChannels(newChannels);
 
@@ -314,6 +314,8 @@ classdef TrialData
             [td.data, td.channelDescriptorsByName] = td.validateDataInternal(td.data, td.channelDescriptorsByName, varargin{:});
 
             td = td.fixCheckAnalogDataMatchesTimeVectors();
+
+            td = td.fixAnalogChannelGroups();
         end
 
         function [data, channelDescriptorsByName] = validateDataInternal(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
@@ -403,9 +405,8 @@ classdef TrialData
 
             td = td.reset();
 
-            analogCh = td.listAnalogChannels();
-            [groupNames, channelsByGroup] = td.listAnalogChannelGroups();
-            analogChNotInGroup = setdiff(analogCh, cat(1, channelsByGroup{:}));
+            [groupNames, ~, channelsByGroup] = td.listAnalogChannelGroups();
+            analogChNotInGroup = td.listAnalogChannels('includeNamedSubChannels', false);
 
             globalOkay = true;
 
@@ -414,7 +415,7 @@ classdef TrialData
             timeFields = cellvec(nTotal);
             isGroup = falsevec(nTotal);
             groupIdx = nanvec(nTotal);
-            memoryClass = cellvec(nTotal);
+            [memoryClass, primaryChannelName] = stringvec(nTotal);
             for iA = 1:numel(analogChNotInGroup)
                 ch = analogChNotInGroup{iA}; %#ok<*PROP>
                 cd = td.channelDescriptorsByName.(ch);
@@ -422,6 +423,7 @@ classdef TrialData
                 timeFields{iA} = cd.timeField;
                 isGroup(iA) = false;
                 memoryClass{iA} = cd.memoryClassByField{1};
+                primaryChannelName{iA} = ch;
             end
 
             i0 = numel(analogChNotInGroup);
@@ -433,6 +435,7 @@ classdef TrialData
                 isGroup(i0+iA) = true;
                 groupIdx(i0+iA) = iA;
                 memoryClass{i0+iA} = cd.memoryClassByField{1};
+                primaryChannelName{iA} = groupNames{iA};
             end
 
             prog = ProgressBar(nTotal, 'Checking sample count vs. times for analog channels');
@@ -515,44 +518,108 @@ classdef TrialData
                 if any(resort)
                     warning('%d trials have duplicate or non-monotonically increasing timestamps for %s. Fixing by deleting non-montonic samples.', nnz(resort), dataField);
 
-                    if isGroup(iA)
-                        td = td.copyRenameSharedChannelFields(channelsByGroup{groupIdx(iA)}, [false true]);
-                        timeField = td.channelDescriptorsByName.(channelsByGroup{groupIdx(iA)}{1}).timeField; % update post rename
-                    else
-                        td = td.copyRenameSharedChannelFields(dataFields{iA}, [false true]);
-                        timeField = td.channelDescriptorsByName.(dataFields{iA}).timeField; % update post rename
+                    % sort all affected channels so that the shared time field can be preserved
+                    [channelsSharingTime, whichField] = td.getChannelsReferencingFields(timeField);
+                    if any(whichField ~= 2)
+                        error('Time field shared with another channel but not as time field');
                     end
 
+                    [timeSorted, timeSortIdx] = cellfun(@getTimeSorted, timeData(resort), 'UniformOutput', false);
+
+                    for iF = 1:numel(channelsSharingTime)
+                        cdShared = td.channelDescriptorsByName.(channelsSharingTime{iF});
+
+                        if ~(isa(cdShared, 'AnalogChannelGroupDescriptor') || isa(cdShared, 'AnalogChannelDescriptor')) || cdShared.isTransform
+                            continue;
+                        end
+
+                        dataField = cdShared.dataFieldPrimary;
+                        dataSorted = cellfun(@sortData, {td.data(resort).(dataField)}', timeSortIdx, 'UniformOutput', false);
+                        td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, dataSorted, resort);
+                    end
+                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, timeSorted, resort);
+%
+%
+%                     if isGroup(iA)
+%                         td = td.copyRenameSharedChannelFields(primaryChannelName{iA}, [false true]);
+%                         timeField = td.channelDescriptorsByName.(primaryChannelName{iA}).timeField; % update post rename
+%                     else
+%                         td = td.copyRenameSharedChannelFields(primaryChannelName{iA}, [false true]);
+%                         timeField = td.channelDescriptorsByName.(primaryChannelName{iA}).timeField; % update post rename
+%                     end
+
                     % use the time vectors with small errors removed
-                    [timeInsert, dataInsert] = cellfun(@resortTimeDedup, timeData(resort), {td.data(resort).(dataField)}', 'UniformOutput', false);
-                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, timeInsert, resort);
-                    td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, dataInsert, resort);
+%                     [timeInsert, dataInsert] = cellfun(@resortTimeDedup, timeData(resort), {td.data(resort).(dataField)}', 'UniformOutput', false);
+%                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, timeInsert, resort);
+%                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataField, dataInsert, resort);
                 end
 
             end
             prog.finish();
 
-            function [time, data] = resortTimeDedup(time, data)
+            function [time, sortIdx] = getTimeSorted(time)
                 time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, 0);
-                [time, idx] = unique(time, 'last');
-                data = data(idx, :, :, :, :);
+                [time, sortIdx] = unique(time, 'last');
             end
+
+            function data = sortData(data, sortIdx)
+                data = data(sortIdx, :, :, :, :, :, :, :, :);
+            end
+
+%             function [time, data] = resortTimeDedup(time, data)
+%                 time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, 0);
+%                 [time, idx] = unique(time, 'last');
+%                 data = data(idx, :, :, :, :);
+%             end
         end
 
-        function td = fixOrphanedAnalogChannelGroups(td)
+        function td = fixAnalogChannelGroups(td)
+            % first, this function sets the sample size of each analog
+            % channel group correctly in the descriptor
+            %
+            % this function finds analog channels that are part of an
+            % analog channel group but that have their own descriptor
+            % it then incorporates this channels info into the
+            % AnalogChannelGroupDescriptor directly.
+            % This is a change made on 20181023
+
             td.warnIfNoArgOut(nargout);
 
+            % first identify any channels missing size information
             groups = td.listAnalogChannelGroups();
-            chList = td.listAnalogChannels();
+            for iG = 1:numel(groups)
+                gcd = td.channelDescriptorsByName.(groups(iG));
+                if isempty(gcd.sampleSize)
+                    sz = ChannelDescriptor.getCellElementSize({td.data.(gcd.dataFieldPrimary)}');
+                    gcd.sampleSize = sz(2:end);
+                    td.channelDescriptorsByName.(groups(iG)) = gcd;
+                end
+            end
 
-            for iC = 1:numel(chList)
-                groupName = td.getAnalogChannelGroupName(chList{iC});
-                if ~isempty(groupName) && ~ismember(groupName, groups)
-                    % add missing group
-                    cdSub = td.getChannelDescriptor(chList{iC});
-                    cdGroup = cdSub.buildGroupChannelDescriptor();
-                    td = td.addChannel(cdGroup, {}, 'ignoreDataFields', true, 'ignoreExisting', true);
-                    groups = union(groups, cdGroup.name);
+            % first fix or incorporate each analog channel descriptor
+            candidates = td.listAnalogChannels('includeNamedSubChannels', false);
+            cds = td.getChannelDescriptor(candidates);
+            for iA = 1:numel(candidates)
+                if cds(iA).isColumnOfSharedMatrix
+                    if ~ismember(cds(iA).primaryDataField, groups)
+                        % add missing group with sample size info
+                        sz = ChannelDescriptor.getCellElementSize({td.data.(cds(iA).primaryDataField)}');
+                        gcd = cds(iA).buildGroupChannelDescriptor('sampleSize', sz(2:end));
+
+                        td = td.addChannel(gcd, {}, 'ignoreDataFields', true, 'ignoreExisting', true);
+                        groups = union(groups, gcd.name);
+                    else
+                        % set this channel's name within existing group
+                        parent = cds(iA).primaryDataField;
+                        gcd = td.channelDescriptorsByName.(parent);
+                        if isempty(gcd.sampleSize)
+                            sz = ChannelDescriptor.getCellElementSize({td.data.(cds(iA).dataFieldPrimary)}');
+                            gcd.sampleSize = sz(2:end);
+                        end
+                        gcd = gcd.setSubChannelInfo(cds(iA).primaryDataFieldColumnIndex, cds(iA).name, cds(iA).unitsPrimary);
+                        td.channelDescriptorsByName.(parent) = gcd;
+                    end
+                    td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, cds(iA).name);
                 end
             end
         end
@@ -584,27 +651,20 @@ classdef TrialData
     % Faster saving
     methods
         function list = expandChannelListGroups(td, list, keepGroupNamesInList)
-            if ischar(list)
-                list = {list};
-            end
+            list = string(list);
             if nargin < 3
                 keepGroupNamesInList = true;
             end
-
-            mask = false(numel(list), 1);
-            for iF = 1:numel(list)
-                cd = td.channelDescriptorsByName.(list{iF});
-                if isa(cd, 'AnalogChannelGroupDescriptor')
-                    mask(iF) = true;
-                end
-            end
+            mask = td.hasAnalogChannelGroup(list);
 
             groups = unique(list(mask));
-            subCh = cellfun(@(grp) td.listAnalogChannelsInGroup(grp), groups, 'UniformOutput', false);
+            subCh = arrayfun(@(grp) td.listAnalogChannelsInGroup(grp), groups, 'UniformOutput', false);
             if ~keepGroupNamesInList
                 list = list(~mask);
             end
-            list = union(list, cat(1, subCh{:}));
+            if ~isempty(subCh)
+                list = union(list, cat(1, subCh{:}));
+            end
         end
 
         function list = listFieldsReferencedExclusivelyByChannels(td, channels, ignoreSubChannels)
@@ -644,8 +704,8 @@ classdef TrialData
             % separate partition from the spike data
 
             p = inputParser();
-            p.addParameter('partitions', struct(), @isstruct);
-            p.addParameter('partitionWaveforms', false, @islogical);
+            p.addParameter('partitions', td.saveFastPartitionInfo, @isstruct);
+            p.addParameter('partitionWaveforms', td.saveFastPartitionWaveforms, @islogical);
             p.parse(varargin{:});
 
             data = td.data;
@@ -665,7 +725,7 @@ classdef TrialData
             if p.Results.partitionWaveforms
                 assert(~ismember('waveforms', partitionNames), 'Parttition named waveforms reserved for partitionWaveforms');
 
-                spikeCh = td.listSpikeChannels();
+                spikeCh = [td.listSpikeChannels('includeArraySubChannels', false); td.listExplicitSpikeArrays()];
                 if ~isempty(spikeCh)
                     wavefields = cellvec(numel(spikeCh));
                     cdWithWaveforms = struct();
@@ -756,7 +816,8 @@ classdef TrialData
 
         function td = loadFast(location, varargin)
             p = inputParser();
-            p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x));
+            p.addParameter('maxTrials', Inf, @isscalar);
+            p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('loadAllPartitions', false, @islogical);
             p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.parse(varargin{:});
@@ -780,9 +841,14 @@ classdef TrialData
                 loaded = load(fullfile(location, 'td.mat'));
                 td = loaded.td;
 
+                if ~isinf(p.Results.maxTrials)
+                    td = td.selectTrials(1:p.Results.maxTrials);
+                end
+
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
-                [td.data, partitionMeta] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, 'message', msg, ...
+                [td.data, partitionMeta] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
+                    'message', msg, 'maxElements', p.Results.maxTrials, ...
                     'partitions', p.Results.partitions, 'loadAllPartitions', p.Results.loadAllPartitions, ...
                     'ignoreMissingPartitions', p.Results.ignoreMissingPartitions);
 
@@ -869,7 +935,7 @@ classdef TrialData
             td = TrialData(tdi, 'suppressWarnings', true);
         end
 
-        function td = buildForAnalogChannelGroupTensor(groupName, chNames, data, time, varargin)
+        function td = buildForAnalogChannelGroupTensor(groupName, data, time, varargin)
             % data is nTrials x T x C, time is T x 1
             p = inputParser();
             p.addParameter('timeUnitName', 'ms', @ischar);
@@ -898,11 +964,10 @@ classdef TrialData
             stop = repmat(max(time) + pad, nTrials, 1);
 
             td = TrialData.buildEmptyWithTrialStartTrialEnd(start, stop, 'timeUnitName', p.Results.timeUnitName);
-            td = td.addAnalogChannelGroup(groupName, chNames, data, time, p.Unmatched);
+            td = td.addAnalogChannelGroup(groupName, data, time, p.Unmatched);
         end
 
     end
-
 
     methods(Static)
         function delta = computeDeltaFromTimes(time)
@@ -977,7 +1042,7 @@ classdef TrialData
                 return;
             end
 
-            chListEach = cellfun(@(td) td.listChannels(), varargin, 'UniformOutput', false);
+            chListEach = cellfun(@(td) td.listChannels('includeNamedSubChannels', false), varargin, 'UniformOutput', false);
             chListAll = chListEach{1};
             for i = 2:numel(varargin)
                 chListAll = union(chListAll, chListEach{i});
@@ -1017,30 +1082,29 @@ classdef TrialData
         end
 
         function printChannelInfo(td)
+            % split param and event channels by display group
+            [paramDisplayGroups, paramChannelsByGroup, paramChannelsNotInGroup] = td.listParamChannelDisplayGroups();
+            [eventDisplayGroups, eventChannelsByGroup, eventChannelsNotInGroup] = td.listEventChannelDisplayGroups();
+
             % parse analog channels into grouped and non grouped
-            analogCh = td.listNonContinuousNeuralAnalogChannels();
-            continuousCh = td.listContinuousNeuralChannels();
-            [contGroups, contGroupChannels] = td.listContinuousNeuralChannelGroups();
-            [groups, groupChannels] = td.listAnalogChannelGroups();
-            [imgChannels, imgGroupChannels] = td.listImageChannels();
-            allGroupChannels = cat(1, groupChannels{:});
+            analogCh = td.listAnalogChannels('includeDerivedChannelTypes', false, 'includeNamedSubChannels', false);
+            continuousCh = td.listContinuousNeuralChannels('includeGroupSubChannels', false);
+            [contGroups, ~, contGroupChannels] = td.listContinuousNeuralChannelGroups();
+            [groups, ~, groupChannels] = td.listAnalogChannelGroups('includeDerivedChannelTypes', false);
+            [imgChannels, ~, imgGroupChannels] = td.listImageChannels();
 
-            % then remove cont neural groups from analog groups
-            [groups, idx] = setdiff(groups, [contGroups; imgChannels]);
-            groupChannels = groupChannels(idx);
 
-            analogChNonGroup = setdiff(analogCh, allGroupChannels);
-            continuousChNonGroup = setdiff(continuousCh, allGroupChannels);
-
-            tcprintf('inline', '{yellow}Param: {none}%s\n', TrialDataUtilities.String.strjoin(td.listParamChannels(), ', '));
-            tcprintf('inline', '{yellow}Event: {none}%s\n', TrialDataUtilities.String.strjoin(td.listEventChannels(), ', '));
-            tcprintf('inline', '{yellow}Analog: {none}%s\n', TrialDataUtilities.String.strjoin(analogChNonGroup, ', '));
-            printGroups(groups, groupChannels);
+            tcprintf('inline', '{yellow}Param: {none}%s\n', TrialDataUtilities.String.strjoin(paramChannelsNotInGroup, ', '));
+            printDisplayGroups(paramDisplayGroups, paramChannelsByGroup);
+            tcprintf('inline', '{yellow}Event: {none}%s\n', TrialDataUtilities.String.strjoin(eventChannelsNotInGroup, ', '));
+            printDisplayGroups(eventDisplayGroups, eventChannelsByGroup);
+            tcprintf('inline', '{yellow}Analog: {none}%s\n', TrialDataUtilities.String.strjoin(analogCh, ', '));
+            printAnalogGroups(groups, groupChannels);
 
             str = '{yellow}Spike: {none}';
 
             % display spike channel arrays
-            arrays = td.listSpikeArrayChannelDescriptors();
+            arrays = td.listExplicitSpikeArrays();
             for iA = 1:numel(arrays)
                 cd = td.channelDescriptorsByName.(arrays{iA});
                 if cd.hasWaveforms
@@ -1048,9 +1112,9 @@ classdef TrialData
                 else
                     wavesStr = '';
                 end
-                str = [str, sprintf('{bright blue}%s%s{none}(%d)', arrays{iA}, wavesStr, cd.nChannels)];
+                str = [str, sprintf('{bright blue}%s{none} (%d on %d electrodes){bright blue}%s', arrays{iA}, cd.nChannels, cd.nElectrodes, wavesStr)]; %#ok<AGROW>
                 if iA < numel(arrays)
-                    str = [str, ', '];
+                    str = [str, ', ']; %#ok<AGROW>
                 end
             end
             if numel(arrays) > 0
@@ -1061,9 +1125,8 @@ classdef TrialData
             tcprintf('inline', str);
             str = '';
 
-
             % display spike channels indicating waveforms
-            spikeCh = td.listSpikeChannels('includeArrayChannels', false);
+            spikeCh = td.listSpikeChannels('includeArraySubChannels', false);
             hasWaves = td.hasSpikeWaveforms(spikeCh);
             for iS = 1:numel(spikeCh)
                 if ~hasWaves(iS)
@@ -1078,35 +1141,44 @@ classdef TrialData
             str = [str, '\n'];
             tcprintf('inline', str);
 
-            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', TrialDataUtilities.String.strjoin(continuousChNonGroup, ', '));
-            printGroups(contGroups, contGroupChannels);
+            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', TrialDataUtilities.String.strjoin(continuousCh, ', '));
+            printAnalogGroups(contGroups, contGroupChannels, false);
 
             tcprintf('inline', '{yellow}Image: {none}\n');
-            printGroups(imgChannels, imgGroupChannels);
+            printAnalogGroups(imgChannels, imgGroupChannels);
 
+            function printDisplayGroups(groups, groupChannels)
+                for iG = 1:numel(groups)
+                    sz = numel(groupChannels{iG});
+                    tcprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
+                        TrialDataUtilities.String.strjoin(sz, ','), ...
+                        TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
+                end
+            end
 
-            function printGroups(groups, groupChannels)
-                if ~isempty(groupChannels)
+            function printAnalogGroups(groups, groupChannels, showNamedSubChannels)
+                if nargin < 3
+                    showNamedSubChannels = true;
+                end
+                if ~isempty(groupChannels) && showNamedSubChannels
                     groupsNamedMask = ~cellfun(@isempty, groupChannels);
                 else
                     groupsNamedMask = false(size(groups));
+                end
+
+                for iG = 1:numel(groups)
+                    if groupsNamedMask(iG)
+                        sz = td.getAnalogChannelGroupSize(groups{iG});
+                        tcprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
+                            TrialDataUtilities.String.strjoin(sz, ','), ...
+                            TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
+                    end
                 end
                 for iG = 1:numel(groups)
                     if ~groupsNamedMask(iG)
                         sz = td.getAnalogChannelGroupSize(groups{iG});
                         tcprintf('inline', '{bright blue}%s {none}(%s), ', groups{iG}, ...
                         TrialDataUtilities.String.strjoin(sz, ','));
-                    end
-                end
-                if any(~groupsNamedMask)
-                    fprintf('\n');
-                end
-                for iG = 1:numel(groups)
-                    if groupsNamedMask(iG)
-                        sz = td.getAnalogChannelGroupSize(groups{iG});
-                        tcprintf('inline', '{bright blue}%s{none} (%s): \{%s\}\n', groups{iG}, ...
-                            TrialDataUtilities.String.strjoin(sz, ','), ...
-                            TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                     end
                 end
             end
@@ -1117,6 +1189,17 @@ classdef TrialData
             fprintf('\n');
             td.printChannelInfo();
             fprintf('\n');
+        end
+
+        function tbl = summarizeInvalidCauseAsTable(td)
+            temporary = ~td.valid & ~td.permanentlyInvalid;
+            cause = td.invalidCause;
+
+            tbl = table(cause, temporary);
+            [tbl, ~, idx] = unique(tbl);
+            nTrials = histcounts(idx, 1:(size(tbl, 1)+1))';
+            tbl = addvars(tbl, nTrials, 'Before', 'cause');
+            tbl = sortrows(tbl, 'nTrials', 'descend');
         end
 
         function td = setTrialDescriptionExtraParams(td, params)
@@ -1184,7 +1267,6 @@ classdef TrialData
             c = td.odc;
             c.valid = valid;
             c.invalidCause = cause;
-            td.odc = c;
         end
     end
 
@@ -1449,12 +1531,14 @@ classdef TrialData
         end
 
         function vals = replaceInvalidOrEmptyWithValue(td, vals, value)
+            vals = makecol(vals);
             empty = cellfun(@isempty, vals);
             vals = td.replaceMaskedValuesWithValue(vals, value, ~td.valid | empty);
         end
 
         function vals = replaceMaskedValuesWithValue(td, vals, value, mask) %#ok<INUSL>
             % (valid, :) notation is to allow vals to be high dimensional
+            assert(isequal(size(vals, 1), numel(mask)));
             if iscell(vals)
                 [vals{mask, :}] = deal(value);
             else
@@ -1474,7 +1558,6 @@ classdef TrialData
     end
 
     methods % Channel metadata access and manipulation
-
         function td = invalidateValid(td)
             td.warnIfNoArgOut(nargout);
 
@@ -1492,47 +1575,130 @@ classdef TrialData
             end
         end
 
-        function tf = hasChannel(td, name, includeImplicit)
-            if nargin < 3
-                includeImplicit = true;
+        function tf = hasChannel(td, names, varargin)
+            p = inputParser();
+            p.addParameter('includeNamedSubChannels', true, @islogical);
+            p.addParameter('includeIndexedSubChannels', true, @islogical);
+            p.addParameter('channelDescriptorClass', 'ChannelDescriptor', @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('groupChannelDescriptorClass', 'ChannelDescriptor', @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+
+            p.parse(varargin{:});
+
+            names = string(names);
+            channelList = td.listChannels('includeNamedSubChannels', p.Results.includeNamedSubChannels, ...
+                'channelDescriptorClass', p.Results.channelDescriptorClass, ...
+                'groupChannelDescriptorClass', p.Results.groupChannelDescriptorClass, ...
+                'includeDerivedChannelTypes', p.Results.includeDerivedChannelTypes);
+            tf = ismember(names, channelList);
+
+            if any(~tf) && p.Results.includeIndexedSubChannels
+                groupNames = td.listChannelGroups('channelDescriptorClass', p.Results.groupChannelDescriptorClass, ...
+                    'includeDerivedChannelTypes', p.Results.includeDerivedChannelTypes);
+                for iN = 1:numel(names)
+                    if contains(names(iN), '(')
+                        [parent, cidx] = ChannelDescriptor.parseIndexedChannelName(names(iN));
+                        if ~isnan(cidx) && ismember(parent, groupNames)
+                            nCh = td.channelDescriptorsByName.(parent).nChannels;
+                            tf(iN) = TrialDataUtilities.Data.indexInRange(cidx, nCh);
+                        end
+                    end
+                end
             end
-            tf = ismember(name, td.channelNames);
         end
 
-        function assertHasChannel(td, name, includeImplicit)
-            if nargin < 3
-                includeImplicit = true;
-            end
-            if ischar(name)
-                ch = td.parseIndexedAnalogChannelName(name);
-                assert(td.hasChannel(ch, includeImplicit), 'TrialData does not have channel %s', name);
-            elseif iscellstr(name)
-                tf = td.hasChannel(name, includeImplicit);
-                missing = name(~tf);
-                assert(all(tf), 'Trial data does not have channels %s', TrialDataUtilities.String.strjoin(missing, ','));
+        function assertHasChannel(td, names, varargin)
+            p = inputParser();
+            p.addParameter('includeNamedSubChannels', true, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            names = string(names);
+            tf = td.hasChannel(names, p.Results, p.Unmatched);
+            if p.Results.includeNamedSubChannels
+                assert(all(tf), 'TrialData does not have channel(s) %s', strjoin(names(~tf), ','));
             else
-                error('Name must be string or cellstr');
+                assert(all(tf), ...
+                    'TrialData does not have channel(s) %s or else they are sub-channels, which are not supported for this operation', strjoin(names(~tf), ','));
             end
         end
 
-        function cd = getChannelDescriptor(td, name)
-            td.assertHasChannel(name);
-            cd = td.channelDescriptorsByName.(name);
+
+        function [parent, chidx] = findContainerChannelForSubChannel(td, names)
+            [subNames, parentNames, subChIdx] = td.listNamedSubChannels();
+            [parent, chidx] = arrayfun(@findSingle, string(names));
+
+            function [parent, chidx] = findSingle(name)
+                parent = "";
+                chidx = nan;
+                if contains(name, '(')
+                    % treat as indexed channel
+                    [p, c] = ChannelDescriptor.parseIndexedChannelName(name);
+                    if isfield(td.channelDescriptorsByName, p)
+                        cd = td.channelDescriptorsByName.(p);
+                        if cd.hasSubChannel(name)
+                            parent = string(p);
+                            chidx = c;
+                        end
+                    end
+                else
+                    [tf, idx] = ismember(name, subNames);
+                    if tf
+                        parent = parentNames(idx);
+                        chidx = subChIdx(idx);
+                    else
+                        parent = "";
+                        chidx = NaN;
+                    end
+                end
+            end
         end
 
-        function cdCell = getChannelDescriptorMulti(td, names)
-            td.assertHasChannel(names);
-            cdCell = cellfun(@(name) td.channelDescriptorsByName.(name), names, 'UniformOutput', false);
+        function cd = getChannelDescriptor(td, names)
+            if isempty(names)
+                cd = [];
+                return;
+            end
+            names = string(names);
+            subNames = [];
+
+            for iN = 1:numel(names)
+                name = names(iN);
+                if isfield(td.channelDescriptorsByName, name)
+                    cd(iN) = td.channelDescriptorsByName.(name); %#ok<AGROW>
+                elseif contains(name, '(')
+                    [ch, chidx] = ChannelDescriptor.parseIndexedChannelName(name);
+                    if isfield(td.channelDescriptorsByName, ch)
+                        gcd = td.channelDescriptorsByName.(ch);
+                        cd(iN) = gcd.buildSubChannelDescriptor(chidx); %#ok<AGROW>
+                    else
+                        error('Could not find channel %s', name);
+                    end
+                else
+                    if isempty(subNames)
+                        % compute these once on demand
+                        [subNames, parentNames, chidx] = td.listNamedSubChannels();
+                    end
+                    [tf, idx] = ismember(name, subNames);
+                    if ~tf
+                        error('Could not find channel or sub-channel %s', name);
+                    end
+                    parentCd = td.channelDescriptorsByName.(parentNames(idx));
+                    cd(iN) = parentCd.buildSubChannelDescriptor(chidx(idx)); %#ok<AGROW>
+                end
+            end
+
+            cd = makecol(cd);
         end
 
         % This Should be disabled! It is mostly a hack for fixing data
         % issues post-hoc
-        function td = setChannelDescriptor(td, name, cd)
-            td.warnIfNoArgOut(nargout);
-            td.assertHasChannel(name);
-            assert(isa(cd, 'ChannelDescriptor'));
-            td.channelDescriptorsByName.(name) = cd;
-        end
+%         function td = setChannelDescriptor(td, name, cd)
+%             td.warnIfNoArgOut(nargout);
+%             td.assertHasChannel(name);
+%             assert(isa(cd, 'ChannelDescriptor'));
+%             td.channelDescriptorsByName.(name) = cd;
+%         end
 
         function type = getChannelType(td, name)
             type = td.getChannelDescriptor(name).getType();
@@ -1569,8 +1735,13 @@ classdef TrialData
         end
 
         function tf = isChannelScalar(td, name)
-            cd = td.channelDescriptorsByName.(name);
-            tf = ~cd.collectAsCellByField(1);
+            cd = td.getChannelDescriptor(name);
+            tf = cd.isScalarByField(1);
+        end
+
+        function tf = isChannelNumericScalar(td, name)
+            cd = td.getChannelDescriptor(name);
+            tf = cd.isNumericScalarByField(1);
         end
 
         function tf = isChannelCategorical(td, name)
@@ -1609,9 +1780,92 @@ classdef TrialData
             end
         end
 
-        function names = listChannels(td)
+        function [names, channelDescriptors] = listChannels(td, varargin)
+            % this lists all channels (including groups and optionally their sub
+            % channels) matching a certain channel descriptor class (and
+            % optionally their subclasses)
+            p = inputParser();
+            p.addParameter('includeNamedSubChannels', true, @islogical);
+            p.addParameter('includeOnlyNamedSubChannels', false, @islogical);
+            p.addParameter('channelDescriptorClass', 'ChannelDescriptor', @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('groupChannelDescriptorClass', string([]), @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.parse(varargin{:});
+
             channelDescriptors = td.getChannelDescriptorArray();
-            names = {channelDescriptors.name}';
+            if isempty(channelDescriptors)
+                names = string([]);
+                return;
+            end
+
+            cdClassList = string(p.Results.channelDescriptorClass);
+            if p.Results.includeDerivedChannelTypes
+                isaMulti = @(obj) any(arrayfun(@(cls) isa(obj, cls), cdClassList));
+                mask = arrayfun(isaMulti, channelDescriptors);
+            else
+                isaMutliNonSubClass = @(obj) any(arrayfun(@(cls) strcmp(class(obj), cls), cdClassList));
+                mask = arrayfun(isaMutliNonSubClass, channelDescriptors);
+            end
+            channelDescriptors = channelDescriptors(mask);
+            names = string({channelDescriptors.name})';
+
+            if p.Results.includeNamedSubChannels || p.Results.includeOnlyNamedSubChannels
+                if nargout > 1
+                    groupChannels = td.listChannelGroups('channelDescriptorClass', p.Results.groupChannelDescriptorClass);
+                    [namesSub, ~, ~, cdsSub] = td.listNamedSubChannels(groupChannels);
+                    if p.Results.includeOnlyNamedSubChannels
+                        names = namesSub;
+                        channelDescriptors = cdsSub;
+                    else
+                        names = [names; namesSub];
+                        channelDescriptors = [channelDescriptors; cdsSub];
+                    end
+                else
+                    namesSub = td.listNamedSubChannels();
+                    if p.Results.includeOnlyNamedSubChannels
+                        names = namesSub;
+                    else
+                        names = [names; namesSub];
+                    end
+                end
+            end
+        end
+
+        function [groups, channelDescriptors, channelsByGroup] = listChannelGroups(td, varargin)
+            % this lists all channel groups
+            p = inputParser();
+            p.addParameter('channelDescriptorClass', string([]), @(x) ischar(x) || isstring(x));
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.parse(varargin{:});
+
+            if isempty(p.Results.channelDescriptorClass)
+                cdc = ["AnalogChannelGroupDescriptor", "SpikeArrayChannelDescriptor"];
+            else
+                cdc = p.Results.channelDescriptorClass;
+            end
+            [groups, channelDescriptors] = td.listChannels('channelDescriptorClass', cdc, ...
+                'includeDerivedChannelTypes', p.Results.includeDerivedChannelTypes, ...
+                'includeNamedSubChannels', false);
+            channelsByGroup = arrayfun(@(g) td.channelDescriptorsByName.(g).listNamedSubChannels(), groups, 'UniformOutput', false);
+        end
+
+        function [subNames, parentNames, subChIdx, channelDescriptors] = listNamedSubChannels(td, groupNames, varargin)
+
+            if nargin < 2
+                groupNames = td.listChannelGroups();
+            end
+
+            [subNames, subChIdx] = arrayfun(@(g) td.channelDescriptorsByName.(g).listNamedSubChannels(), groupNames, 'UniformOutput', false);
+            nSubEach = cellfun(@numel, subNames);
+            subNames = cat(1, subNames{:});
+            subChIdx = cat(1, subChIdx{:});
+
+            parentNames = arrayfun(@(g, n) repmat(g, n, 1), groupNames, nSubEach, 'UniformOutput', false);
+            parentNames = cat(1, parentNames{:});
+
+            if nargout > 3 % this is time consuming so only do if requested
+                channelDescriptors = td.getChannelDescriptor(subNames);
+            end
         end
 
         function names = listChannelsMatchingWildcard(td, varargin)
@@ -1619,7 +1873,7 @@ classdef TrialData
             for i = 1:numel(varargin)
                 varargin{i} = regexptranslate('wildcard', varargin{i});
             end
-            names = td.listChannelsMatchingRegexp(varargin{:});
+            names = td.listChannelsMatchzingRegexp(varargin{:});
         end
 
         function names = listChannelsMatchingRegexp(td, varargin)
@@ -1632,16 +1886,18 @@ classdef TrialData
             names = chList(mask);
         end
 
-        function names = listSpecialChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
+        function [names, channelDescriptors] = listSpecialChannels(td, varargin)
+            [names, channelDescriptors] = td.listChannels(varargin{:});
             mask = arrayfun(@(cd) cd.special, channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
         end
 
-        function names = listNonSpecialChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
+        function [names, channelDescriptors] = listNonSpecialChannels(td)
+            [names, channelDescriptors] = td.listChannels(varargin{:});
             mask = arrayfun(@(cd) ~cd.special, channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
         end
 
         function durations = getDurationsRaw(td)
@@ -1706,11 +1962,15 @@ classdef TrialData
             cds = makecol(cds);
         end
 
-        % channels may reference common data fields in .data to prevent
-        % data duplication. This function returns the list of channels
-        % which reference a particular data field. fields is a cellstr
-        % and nameCell is a cell of cellstr
         function [namesByField, fieldIdxEach] = getChannelsReferencingFields(td, fields)
+            % channels may reference common data fields in .data to prevent
+            % data duplication. This function returns the list of channels
+            % which reference a particular data field. fields is a cellstr
+            % and nameCell is a cell of cellstr
+            %
+            % Note: sub channels are not included. This is important for
+            % resolving conflicts
+
             if ischar(fields)
                 wasCell = false;
                 fields = {fields};
@@ -1748,7 +2008,7 @@ classdef TrialData
         % drop all channels except specified and
         function td = dropChannelsExcept(td, names)
             td.warnIfNoArgOut(nargout);
-            removeNames = setdiff(td.listChannels(), names);
+            removeNames = setdiff(td.listChannels('includeNamedSubChannels', false), names);
             td = td.dropChannels(removeNames);
         end
 
@@ -1766,11 +2026,9 @@ classdef TrialData
             groupName = groupName(td.hasAnalogChannelGroup(groupName));
 
             for iG = 1:numel(groupName)
-                chList = td.listAnalogChannelsInGroup(groupName{iG});
-
                 % first process entire groups to be removed
                 cd = td.channelDescriptorsByName.(groupName{iG});
-                td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, union(chList, groupName{iG}));
+                td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, groupName{iG});
 
                 % for the removed data channels' fields, figure out which ones
                 % aren't referenced by any other channels
@@ -1798,7 +2056,7 @@ classdef TrialData
             names = setdiff(names, td.listSpecialChannels());
 
             % don't remove channels that don't exist
-            names = intersect(names, td.listChannels());
+            names = intersect(names, td.listChannels('includeNamedSubChannels', false));
             if isempty(names)
                 return;
             end
@@ -1945,25 +2203,25 @@ classdef TrialData
         end
     end
 
-        methods
-            function saveTags = listSaveTags(td)
-                saveTags = td.getParamUnique('saveTag');
-            end
-
-            function td = selectTrialsFromSaveTag(td, saveTags)
-                td.warnIfNoArgOut(nargout);
-
-                mask = ismember(td.getParam('saveTag'), saveTags);
-                td = td.selectTrials(mask);
-            end
-
-            function td = withTrialsFromSaveTag(td, saveTags)
-                td.warnIfNoArgOut(nargout);
-
-                mask = ismember(td.getParam('saveTag'), saveTags);
-                td = td.withTrials(mask);
-            end
+    methods
+        function saveTags = listSaveTags(td)
+            saveTags = td.getParamUnique('saveTag');
         end
+
+        function td = selectTrialsFromSaveTag(td, saveTags)
+            td.warnIfNoArgOut(nargout);
+
+            mask = ismember(td.getParam('saveTag'), saveTags);
+            td = td.selectTrials(mask);
+        end
+
+        function td = withTrialsFromSaveTag(td, saveTags)
+            td.warnIfNoArgOut(nargout);
+
+            mask = ismember(td.getParam('saveTag'), saveTags);
+            td = td.withTrials(mask);
+        end
+    end
 
     methods % Analog channel methods
         function td = addAnalog(td, name, varargin)
@@ -2107,7 +2365,7 @@ classdef TrialData
         end
 
         function td = addAnalogTransform(td, name, fromChannelNames, transformFn, varargin)
-            % td = td.addAnalog(td, groupName, chNames, values, times)
+            % td = td.addAnalog(td, groupName, values, times)
             % values may be cell of matrices
             % corresponding to each trial.
             % times may be cell of vectors or single vector (for the matrix
@@ -2128,7 +2386,7 @@ classdef TrialData
                 fromChannelNames = {fromChannelNames};
             end
             td.assertHasChannel(fromChannelNames);
-            transformGroupDescriptors = td.getChannelDescriptorMulti(fromChannelNames);
+            transformGroupDescriptors = td.getChannelDescriptor(fromChannelNames);
             cd = AnalogChannelDescriptor.buildTransformAnalogChannel(name, transformGroupDescriptors, transformFn, p.Results);
             td = td.addChannel(cd, {}, 'ignoreDataFields', true);
         end
@@ -2380,20 +2638,13 @@ classdef TrialData
             td = td.setChannelData(name, {data, time}, 'fieldMask', [true false]);
         end
 
-        function tf = hasAnalogChannel(td, name, allowSubIndex)
+        function tf = hasAnalogChannel(td, name, allowSubChannel)
             if nargin < 3
-                allowSubIndex = true; % allow analogGroup(4) as name
+                allowSubChannel = true; %
             end
 
-            if td.hasChannel(name)
-                tf = isa(td.getChannelDescriptor(name), 'AnalogChannelDescriptor');
-            elseif allowSubIndex
-                % check for
-                cd = td.getAnalogChannelDescriptor(name);
-                tf = ~isempty(cd);
-            else
-                tf = false;
-            end
+            tf = td.hasChannel(name, 'includeNamedSubChannels', allowSubChannel, ...
+                'channelDescriptorClass', "AnalogChannelDescriptor", 'groupChannelDescriptor', 'AnalogChannelGroupDescriptor');
         end
 
         function assertHasAnalogChannel(td, name)
@@ -2406,122 +2657,39 @@ classdef TrialData
         end
 
         function [tf, timeField] = checkAnalogChannelsShareTimeField(td, names)
-            timeFields = cellfun(@(name) td.getAnalogChannelTimeField(name), names, 'UniformOutput', false);
+            names = string(names);
+            timeFields = arrayfun(@(name) td.getAnalogChannelTimeField(name), names);
             tf = numel(unique(timeFields)) == 1;
             if tf
-                timeField = timeFields{1};
+                timeField = timeFields(1);
             else
-                timeField = '';
+                timeField = "";
             end
         end
 
-        function names = listAnalogChannels(td)
+        function [names, cds] = listAnalogChannels(td, varargin)
             % lists analog channels that have a named entry in the
             % channelDescriptors struct. this includes lone channels as
             % well as channels in an AnalogChannelGroup that have their own
             % AnalogChannelGroup in the table
-            channelDescriptors = td.getChannelDescriptorArray();
-            if isempty(channelDescriptors)
-                names = {};
-                return;
-            end
-            mask = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+            p = inputParser();
+            p.addParameter('includeNamedSubChannels', true, @islogical);
+            p.addParameter('channelDescriptorClass', 'AnalogChannelDescriptor', @ischar);
+            p.addParameter('groupChannelDescriptorClass', 'AnalogChannelGroupDescriptor', @ischar);
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.parse(varargin{:});
+
+            [names, cds] = td.listChannels(p.Results);
         end
 
-        function names = listAnalogChannelsNonGrouped(td)
-            list = td.listAnalogChannels();
-            mask = cellfun(@(name) ~td.isAnalogChannelInGroup(name), list);
-            names = list(mask);
+        function [subNames, parentNames, subChIdx, channelDescriptors]  = listAnalogNamedSubChannels(td)
+            groups = td.listAnalogChannelGroups();
+            [subNames, parentNames, subChIdx, channelDescriptors] = td.listNamedSubChannels(groups);
         end
 
-        function names = listNonContinuousNeuralAnalogChannels(td)
-            names = setdiff(td.listAnalogChannels(), td.listContinuousNeuralChannels());
+        function [names, cds] = listAnalogChannelsNonGrouped(td, varargin)
+            [names, cds] = td.listAnalogChannels('includeNamedSubChannels', false, varargin{:});
         end
-
-        function names = listContinuousNeuralChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            if isempty(channelDescriptors)
-                names = {};
-                return;
-            end
-            mask = arrayfun(@(cd) isa(cd, 'ContinuousNeuralChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name}';
-        end
-
-        function [groupNames, channelsByGroup] = listContinuousNeuralChannelGroups(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            if isempty(channelDescriptors)
-                groupNames = {};
-                channelsByGroup = {};
-                return;
-            end
-            mask = arrayfun(@(cd) isa(cd, 'ContinuousNeuralChannelGroupDescriptor'), channelDescriptors);
-            groupNames = {channelDescriptors(mask).name}';
-
-            if nargout > 1
-                % go in and get channelsByGroup
-                chList = td.listContinuousNeuralChannels();
-
-                mask =falsevec(numel(chList));
-                idx = nanvec(numel(chList));
-                printedWarning = false;
-                for iC = 1:numel(chList)
-                    [mask(iC), myGroup] = td.isAnalogChannelInGroup(chList{iC});
-                    if mask(iC)
-                        [tf, idx(iC)] = ismember(myGroup, groupNames);
-                        if ~tf
-                            if ~printedWarning
-                                warning('Orphaned channels from analog channel group %s found. Use td.fixOrphanedAnalogChannelGroups to fix this.', myGroup);
-                            end
-                            mask(iC) = false;
-                            printedWarning = true;
-                        end
-                    end
-                end
-
-                channelsByGroup = cellvec(numel(groupNames));
-                for iG = 1:numel(groupNames)
-                    channelsByGroup{iG} = td.listAnalogChannelsInGroup(groupNames{iG});
-                end
-            end
-        end
-
-        function td = setContinuousNeuralChannelArray(td, contCh, array)
-            td.warnIfNoArgOut(nargout);
-            contCh = TrialDataUtilities.Data.wrapCell(contCh);
-
-            for iCh = 1:numel(contCh)
-                cd = td.getChannelDescriptor(contCh{iCh});
-                newName = cd.getNameWithUpdatedArray(array);
-                td = td.renameChannel(contCh{iCh}, newName);
-            end
-        end
-
-        function td = renameContinuousNeuralChannelArray(td, arrayCurrent, arrayNew)
-            td.warnIfNoArgOut(nargout);
-            contChList = td.listContinuousNeuralChannelsOnArray(arrayCurrent);
-            td = td.setContinuousNeuralChannelArray(contChList, arrayNew);
-        end
-
-        function td = setContinuousNeuralChannelType(td, contCh, type)
-            td.warnIfNoArgOut(nargout);
-            contCh = TrialDataUtilities.Data.wrapCell(contCh);
-
-            for iCh = 1:numel(contCh)
-                cd = td.getChannelDescriptor(contCh{iCh});
-                newName = cd.getNameWithUpdatedType(type);
-                td = td.renameChannel(contCh{iCh}, newName);
-            end
-        end
-
-%         function td = selectAnalogChannels(td, names)
-%             td.warnIfNoArgOut(nargout);
-%             full = td.listAnalogChannels();
-%             assert(all(ismember(names, full)), 'Missing analog channels %s', ...
-%                 TrialDataUtilities.String.strjoin(setdiff(names, full), ', '));
-%             td = td.dropChannels(setdiff(full, names));
-%         end
 
         function deltaMs = getAnalogTimeDeltaMs(td, name)
             delta = td.getAnalogTimeDelta(name);
@@ -2554,10 +2722,10 @@ classdef TrialData
 
         function timeField = getAnalogTimeField(td, name)
             if td.hasAnalogChannel(name) || td.hasAnalogChannelGroup(name)
-                cd = td.getAnalogChannelDescriptor(name);
-                timeField = cd.timeField;
+                cd = td.getChannelDescriptor(name);
+                timeField = string(cd.timeField);
             else
-                if isempty(td)n
+                if isempty(td)
                     error('%s is not an analog channel or analog channel group', name);
                 end
             end
@@ -2611,84 +2779,93 @@ classdef TrialData
             end
         end
 
-        function ch = generateIndexedAnalogChannelName(td, groupName, idx)
+        function ch = generateIndexedAnalogChannelName(~, groupName, idx)
             ch = sprintf('%s(%d)', groupName, idx);
-        end
-
-        function cd = getAnalogChannelDescriptor(td, name)
-            % grabs the channel descriptor for a given analog channel name
-            % specification
-            if ischar(name)
-                [~, ~, cd] = td.parseIndexedAnalogChannelName(name);
-            else
-                cd = cell(numel(name), 1);
-                for i = 1:numel(name)
-                    [~, ~, cd{i}] = td.parseIndexedAnalogChannelName(name{i});
-                end
-                cd = cat(1, cd{:});
-            end
         end
 
         function [data, time] = getAnalogRaw(td, name, varargin)
             p = inputParser();
             p.addParameter('sort', false, @islogical);
             p.addParameter('applyScaling', true, @islogical);
+
+            % this functionality is not used by TDCA, which implements its own logic
+            % but useful here for low level manipulations of analog
+            % channels. Primarily for incorporating into channel groups
+            p.addParameter('ensureUniformSampling', false, @islogical);
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.KeepUnmatched = false;
             p.parse(varargin{:});
 
-            cds = td.getAnalogChannelDescriptor(name);
-            assert(isa(cds, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
+            p.parse(varargin{:});
 
-            if ischar(name)
-                name = {name};
-            end
+            cd = td.getChannelDescriptor(name);
+            assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
 
-            [data, time] = deal(cell(td.nTrials, numel(name)));
-            for iC = 1:numel(name)
-                cd = cds(iC);
-                if cd.isTransform
-
-                    % now we do a transform of the data if the group is a virtual
-                    % transformation of another group. this function will handle
-                    % the slicing since it might be efficient not to compute the
-                    % elements that are not needed
-                    [data(:, iC), time(:, iC)] = cds.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
-                        'sort', p.Results.sort);
+            if cd.isTransform
+                % now we do a transform of the data if the group is a virtual
+                % transformation of another group. this function will handle
+                % the slicing since it might be efficient not to compute the
+                % elements that are not needed
+                [data, time] = cd.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
+                    'sort', p.Results.sort);
+            else
+                if cd.isColumnOfSharedMatrix
+                    data = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
+                        td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
                 else
-                    if cd.isColumnOfSharedMatrix
-                        data(:, iC) = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
-                            td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
+                    data = {td.data.(cd.dataFields{1})}';
+                end
+                time = {td.data.(cd.dataFields{2})}';
+
+                for i = 1:td.nTrials
+                    if numel(data{i}) == numel(time{i}) - 1
+                        time{i} = makecol(time{i}(1:end-1));
                     else
-                        data(:, iC) = {td.data.(cd.dataFields{1})}';
+                        time{i} = makecol(time{i});
                     end
-                    time(:, iC) = {td.data.(cd.dataFields{2})}';
+                    data{i} = makecol(data{i});
+                end
 
-                    for i = 1:td.nTrials
-                        if numel(data{i, iC}) == numel(time{i, iC}) - 1
-                            time{i, iC} = makecol(time{i, iC}(1:end-1));
-                        else
-                            time{i, iC} = makecol(time{i, iC});
-                        end
-                        data{i, iC} = makecol(data{i, iC});
-                    end
+                if p.Results.applyScaling
+                    % do scaling and convert to double
+                    data = cd.convertDataCellOnAccess(1, data);
+                end
 
-                    if p.Results.applyScaling
-                        % do scaling and convert to double
-                        data(:, iC) = cd.convertDataCellOnAccess(1, data(:, iC));
-                    end
-
-                    if p.Results.sort
-                        for iT = 1:td.nTrials
-                            [time{iT, iC}, idx] = sort(time{iT, iC}, 'ascend');
-                            data{iT, iC} = data{iT, iC}(idx);
-                        end
+                if p.Results.sort
+                    for iT = 1:td.nTrials
+                        [time{iT}, idx] = sort(time{iT}, 'ascend');
+                        data{iT} = data{iT}(idx);
                     end
                 end
             end
+
+            % this functionality is not used by TDCA, which implements its own logic
+            if p.Results.ensureUniformSampling || ~isempty(p.Results.timeDelta)
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    timeDelta = td.getAnalogTimeDelta(name);
+                end
+                [tMin, tMax] = td.getTimeStartStopEachTrialRaw();
+                time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, p.Results.timeReference);
+
+                [data, time] = TrialDataUtilities.Data.resampleDataCellInTime(data, time, 'timeDelta', timeDelta, ...
+                    'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
+                    'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax);
+            end
+        end
+
+        function time = getAnalogTime(td, name)
+            time = td.getAnalogTimeRaw(name);
         end
 
         % same as raw, except empty out invalid trials
-        function [data, time] = getAnalog(td, name)
-            [data, time] = td.getAnalogRaw(name);
+        function [data, time] = getAnalog(td, name, varargin)
+            [data, time] = td.getAnalogRaw(name, varargin{:});
             data = td.replaceInvalidOrEmptyWithValue(data, nan(0, 1));
             time = td.replaceInvalidOrEmptyWithValue(time, nan(0, 1));
         end
@@ -2703,37 +2880,6 @@ classdef TrialData
             end
         end
 
-        % replaced by ensureUniformSampling in getAnalog
-%         function [dataUnif, timeUnif, delta] = getAnalogRawUniformlySampled(td, name, varargin)
-%             p = inputParser();
-%             p.addParameter('method', 'linear', @ischar);
-%             p.addParameter('delta', [], @(x) isscalar(x) || isempty(x)); % in ms
-%             p.parse(varargin{:});
-%
-%             delta = p.Results.delta;
-%             if isempty(delta)
-%                 delta = td.getAnalogTimeDelta(name);
-%             end
-%             [data, time] = td.getAnalogRaw(name);  %#ok<*PROP>
-%
-%             [dataUnif, timeUnif] = cellvec(td.nTrials);
-%
-%             % get first and last valid sample for all trials
-%             % very important to use this in case data has NaN samples
-%             [tmins, tmaxs] = TrialDataUtilities.Data.getValidTimeExtents(time, data);
-%             for iT = 1:td.nTrials
-%                 if isempty(time{iT}) || isempty(data{iT})
-%                     continue;
-%                 end
-%                 timeUnif{iT} = (tmins(iT):delta:tmaxs(iT))';
-%                 if nnz(~isnan(data{iT})) > 5
-%                     dataUnif{iT} = interp1(time{iT}, data{iT}, timeUnif{iT}, p.Results.method);
-%                 else
-%                     dataUnif{iT} = nan(size(timeUnif{iT}));
-%                 end
-%             end
-%         end
-
         function [dataUnif, timeUnif, delta] = getAnalogUniformlySampled(td, name, varargin)
 %             [dataUnif, timeUnif, delta] = td.getAnalogRawUniformlySampled(name, varargin{:});
 %             dataUnif = td.replaceInvalidMaskWithValue(dataUnif, []);
@@ -2747,6 +2893,7 @@ classdef TrialData
             % data and time are cell(nTrials, nChannels)
             p = inputParser();
             p.addParameter('raw', false, @islogical);
+            p.addParameter('applyScaling', true, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -2761,17 +2908,97 @@ classdef TrialData
             for c = 1:C
                 prog.update(c);
                 if p.Results.raw
-                    [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(name{c});
+                    [dataCell(:, c), timeCell(:, c)] = td.getAnalogRaw(name{c}, 'applyScaling', p.Results.applyScaling);
                 else
-                    [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, p.Unmatched);
+                    [dataCell(:, c), timeCell(:, c)] = td.getAnalog(name{c}, 'applyScaling', p.Results.applyScaling, p.Unmatched);
                 end
             end
             prog.finish();
         end
+
+        function [dataCell, timeCell] = getAnalogMultiCommonTime(td, names, varargin)
+            % dataCell is cell(nTrials, 1) containing nTime x nChannels mat
+            % timeCell is cell(nTrials, 1) containing nTime x 1 vectors
+            % All data vectors will be interpolated to a
+            % common time vector independently on each trial. Use
+            % getAnalogMultiAsMatrix to register to a common time vector
+            % across all trials.
+
+            p = inputParser;
+            p.addParameter('raw', false, @islogical);
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
+
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            names = string(names);
+            [inGroup, groupName] = td.checkAnalogChannelsInSameGroup(names);
+
+            if inGroup
+                % fetch the data as a group and rearrange the signals to
+                % match the requested order
+
+                % this is a much faster way of fetching the data whole, and
+                % getAnalogChannelGroup will do the resampling
+                dataCell = cellvec(td.nTrials);
+
+                args = {groupName, 'timeDelta', p.Results.timeDelta, ...
+                    'includeEdgeBins', true, 'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched};
+                if p.Results.raw
+                    [matCell, timeCell] = td.getAnalogChannelGroupRaw(args{:});
+                else
+                    [matCell, timeCell] = td.getAnalogChannelGroup(args{:});
+                end
+
+                % then go and grab the correct columns
+                colIdx = td.getAnalogChannelColumnIdxInGroup(names);
+                prog = ProgressBar(td.nTrials, 'Slicing columns from analog channel group');
+                for iT = 1:td.nTrials
+                    prog.update(iT)
+                    dataCell{iT} = matCell{iT}(:, colIdx);
+                end
+                prog.finish();
+
+            else
+                % pick common sampling rate up front
+                timeDelta = p.Results.timeDelta;
+                if isempty(timeDelta)
+                    % use common sampling rate and upsample
+                    timeDelta = td.getAnalogTimeDelta(names); % will choose smallest sampling interval
+                    if isempty(timeDelta)
+                        timeDelta = td.alignInfoActive.minTimeDelta;
+                    end
+                end
+
+                [dataCellRaw, timeCellRaw] = td.getAnalogMulti(names, 'raw', p.Results.raw, 'timeDelta', timeDelta, ...
+                    'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
+                    'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
+
+                % interpolate to common per-trial time vector in quick insertion mode
+                % mat is nTrials x nTime
+                [dataCell, timeCell] = deal(cell(td.nTrials, 1));
+
+                for iT = 1:td.nTrials
+                    if ~td.valid(iT), continue; end
+                    % dataCell{iT} will be 1 x T x nChannels and needs to
+                    % be squeezed along dim 1
+                    [dataCell{iT}, timeCell{iT}]  = TrialDataUtilities.Data.embedTimeseriesInMatrix(...
+                        dataCellRaw(iT, :), timeCellRaw(iT, :), ...
+                        'assumeUniformSampling', true);  % since getAnalog already ensured uniform sampling
+                    assert(size(dataCell{iT}, 1) == 1);
+                    dataCell{iT} = permute(dataCell{iT}, [2 3 4 1]);
+                end
+            end
+        end
     end
 
     methods % Analog Group and multi-channel analog methods
-        function td = addAnalogChannelGroup(td, groupName, chNames, varargin)
+        function td = addAnalogChannelGroup(td, groupName, varargin)
             % td = td.addAnalog(td, groupName, chNames, values, times)
             % values may be cell of matrices
             % corresponding to each trial.
@@ -2782,24 +3009,38 @@ classdef TrialData
             p = inputParser();
             p.addOptional('values', {}, @(x) iscell(x) || isnumeric(x) || islogical(x));
             p.addOptional('times', {}, @(x) isempty(x) || ischar(x) || iscell(x) || isvector(x)); % char or time cell
-            p.addParameter('timeField', '', @ischar);
-            p.addParameter('units', '', @ischar);
-            p.addParameter('unitsByChannel', {}, @(x) isempty(x) || iscellstr(x));
-            p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're subclassed
-            p.addParameter('isImage', false, @islogical); % shortcut for making image channels since they're subclassed
             p.addParameter('isAligned', true, @islogical);
             p.addParameter('clearForInvalid', false, @islogical);
-            p.addParameter('scaleFromLims', [], @isvector);
-            p.addParameter('scaleToLims', [], @isvector);
+            p.addParameter('scaleFromLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataInMemoryScale', false, @islogical); % treat data as in memory scaling and class (don't reverse the scaling)
+            p.addParameter('raw', false, @islogical);
+
+            % provide this manually, or provide the group of fields below
+            p.addParameter('channelDescriptor', [], @(x) isempty(x) || isa(x, 'ChannelDescriptor'));
+
+            % if channelDescriptor is provided, these fields are not used:
+            p.addParameter('subChannelNames', [], @(x) isstring(x) || iscellstr(x));
+            p.addParameter('subChannelUnits', [], @(x) isstring(x) || iscellstr(x));
+            p.addParameter('sampleSize', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('timeField', '', @ischar);
+            p.addParameter('units', '', @ischar);
+            p.addParameter('unitsByChannel', {}, @(x) isempty(x) || iscellstr(x) || isstring(x));
+            p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're subclassed
+            p.addParameter('continuousNeuralElectrodes', [], @(x) true);
+            p.addParameter('isImage', false, @islogical); % shortcut for making image channels since they're subclassed
+
             p.parse(varargin{:});
+
             times = p.Results.times;
             values = p.Results.values;
             units = p.Results.units;
             isAligned = p.Results.isAligned;
 
             % create AnalogChannelDescriptors for each column?
-            nameIndividualChannels = ~isempty(chNames);
+            subChannelNames = string(p.Results.subChannelNames);
+            subChannelUnits = string(p.Results.subChannelUnits);
+            nameIndividualChannels = ~isempty(subChannelNames);
 
             td.warnIfNoArgOut(nargout);
 
@@ -2897,47 +3138,50 @@ classdef TrialData
                 error('Field %s already exists in data structure', groupName);
             end
 
+            sampleSize = p.Results.sampleSize;
+            if isempty(sampleSize)
+                sampleSize = ChannelDescriptor.getCellElementSize(values);
+                sampleSize = sampleSize(2:end);
+            end
+
             % assign an empty field
             if assignTimesIntoData
                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, []);
             end
             td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, []);
 
-            % loop over channels and create AnalogChannelDescriptors
-            opts.scaleFromLims = p.Results.scaleFromLims;
-            opts.scaleToLims = p.Results.scaleToLims;
-            opts.dataClass = ChannelDescriptor.getCellElementClass(values);
-            opts.timeClass = ChannelDescriptor.getCellElementClass(times);
+            if isempty(p.Results.channelDescriptor)
+                % loop over channels and create AnalogChannelDescriptors
+                opts.scaleFromLims = p.Results.scaleFromLims;
+                opts.scaleToLims = p.Results.scaleToLims;
+                opts.dataClass = ChannelDescriptor.getCellElementClass(values);
+                opts.timeClass = ChannelDescriptor.getCellElementClass(times);
+                opts.sampleSize = sampleSize;
 
-            % create a channel descriptor for the group as a whole
-            if p.Results.isContinuousNeural
-                cdGroup = ContinuousNeuralChannelGroupDescriptor.buildAnalogGroup(groupName, timeField, units, td.timeUnitName, opts);
-            elseif p.Results.isImage
-                cdGroup = ImageChannelDescriptor.buildImage(groupName, timeField, units, td.timeUnitName, opts);
+                % create a channel descriptor for the group as a whole
+                if p.Results.isContinuousNeural
+                    cdGroup = ContinuousNeuralChannelGroupDescriptor.buildAnalogGroup(groupName, timeField, ...
+                        p.Results.continuousNeuralElectrodes, units, td.timeUnitName, opts);
+                elseif p.Results.isImage
+                    cdGroup = ImageChannelDescriptor.buildImage(groupName, timeField, units, td.timeUnitName, opts);
+                else
+                    cdGroup = AnalogChannelGroupDescriptor.buildAnalogGroup(groupName, timeField, units, td.timeUnitName, opts);
+                end
+
+                if nameIndividualChannels
+                    cdGroup = cdGroup.setSubChannelInfo(1:numel(subChannelNames), subChannelNames, subChannelUnits);
+                end
             else
-                cdGroup = AnalogChannelGroupDescriptor.buildAnalogGroup(groupName, timeField, units, td.timeUnitName, opts);
+                cdGroup = p.Results.channelDescriptor;
             end
             td = td.addChannel(cdGroup, {}, 'ignoreDataFields', true);
-
-            if nameIndividualChannels
-                for iCh = 1:numel(chNames)
-                    % build a channel descriptor for the data
-                    if isempty(p.Results.unitsByChannel)
-                        chUnits = units;
-                    else
-                        chUnits = p.Results.unitsByChannel{iCh};
-                    end
-                    cd = cdGroup.buildIndividualSubChannel(chNames{iCh}, iCh, chUnits);
-                    td = td.addChannel(cd, {}, 'ignoreDataFields', true);
-                end
-            end
 
             % set the data and time field in td.data
             if ~assignTimesIntoData
                 times = []; % times weren't specified but copied from another channel, so there's no need to write into them in setAnalogChannelGroup
             end
             td = td.setAnalogChannelGroup(groupName, values, times, 'isAligned', isAligned, ...
-                'keepScaling', true, 'dataInMemoryScale', p.Results.dataInMemoryScale);
+                'keepScaling', true, 'dataInMemoryScale', p.Results.dataInMemoryScale, 'raw', p.Results.raw);
         end
 
         function td = addAnalogChannelGroupTransform(td, groupName, fromGroupNames, transformFn, outputSize, varargin)
@@ -2965,7 +3209,7 @@ classdef TrialData
                 fromGroupNames = {fromGroupNames};
             end
             td.assertHasChannel(fromGroupNames);
-            transformGroupDescriptor = td.getChannelDescriptorMulti(fromGroupNames);
+            transformGroupDescriptor = td.getChannelDescriptor(fromGroupNames);
             cd = AnalogChannelGroupDescriptor.buildTransformAnalogGroup(groupName, transformGroupDescriptor, transformFn, outputSize, p.Results);
             td = td.addChannel(cd, {}, 'ignoreDataFields', true);
         end
@@ -3029,96 +3273,13 @@ classdef TrialData
             end
         end
 
-        function td = addContinuousNeuralChannelGroup(td, groupName, chNames, varargin)
-            % see addAnalogChannelGroup, same signature
-            td.warnIfNoArgOut(nargout);
-            td = td.addAnalogChannelGroup(groupName, chNames, varargin{:}, 'isContinuousNeural', true);
-        end
-
-        function td = addOrUpdateAnalogChannelGroup(td, groupName, chNames, data, times, varargin)
-            % set time samples of channel group if it exists where mask is true.
-            % By default mask is non-empty cells in times
-            % otherwise create channel
+        function [groupNames, channelDescriptors, channelsByGroup] = listAnalogChannelGroups(td, varargin)
             p = inputParser();
-            p.addParameter('mask', ~cellfun(@isempty, data), @isvector);
-            %             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x));
-            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
-            p.addParameter('keepScaling', false, @islogical);
-
-            p.addParameter('dataInMemoryScale', false, @islogical);
-
-            p.addParameter('timeField', '', @ischar);
-            p.addParameter('units', '', @ischar);
-            p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
-            p.addParameter('isImage', false, @islogical);
-            p.addParameter('scaleFromLims', [], @isvector);
-            p.addParameter('scaleToLims', [], @isvector);
-
+            p.addParameter('channelDescriptorClass', 'AnalogChannelGroupDescriptor', @ischar);
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
             p.parse(varargin{:});
-            td.warnIfNoArgOut(nargout);
 
-            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.mask), td.nTrials) & td.valid;
-
-            td.warnIfNoArgOut(nargout);
-            if td.hasAnalogChannelGroup(groupName)
-                chNamesCurrent = td.listAnalogChannelsInGroup(groupName);
-                assert(isequal(chNamesCurrent, makecol(chNames)), ...
-                    'Channel names list does not match existing channel group %s', groupName);
-                td = td.setAnalogChannelGroup(groupName, data, times, 'updateMask', mask, ...
-                    'isAligned', p.Results.isAligned, 'dataInMemoryScale', p.Results.dataInMemoryScale);
-            else
-                % clear masked out cells
-                [times{~mask}] = deal([]);
-                [data{~mask}] = deal([]);
-                td = td.addAnalogChannelGroup(groupName, chNames, data, times, ...
-                    TrialDataUtilities.Data.keepfields(p.Results, {'timeField', 'units', 'isImage', 'isContinuousNeural', 'isAligned', ...
-                    'scaleFromLims', 'scaleToLims', 'dataInMemoryScale'}));
-            end
-        end
-
-        function td = addOrUpdateContinuousNeuralChannelGroup(td, groupName, chNames, data, times, varargin)
-            td.warnIfNoArgOut(nargout);
-            td = td.addOrUpdateAnalogChannelGroup(groupName, chNames, data, times, varargin{:}, 'isContinuousNeural', true);
-        end
-
-        function [groupNames, channelsByGroup] = listAnalogChannelGroups(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            if isempty(channelDescriptors)
-                groupNames = {};
-                channelsByGroup = {};
-                return;
-            end
-            mask = arrayfun(@(cd) isa(cd, 'AnalogChannelGroupDescriptor'), channelDescriptors);
-            groupNames = {channelDescriptors(mask).name}';
-
-            if nargout > 1
-                % go in and get channelsByGroup
-                chList = td.listAnalogChannels();
-
-                mask =falsevec(numel(chList));
-                idx = nanvec(numel(chList));
-                printedWarning = false;
-                for iC = 1:numel(chList)
-                    [mask(iC), myGroup] = td.isAnalogChannelInGroup(chList{iC});
-                    if mask(iC)
-                        [tf, idx(iC)] = ismember(myGroup, groupNames);
-                        if ~tf
-                            if ~printedWarning
-                                warning('Orphaned channels from analog channel group %s found. Use td.fixOrphanedAnalogChannelGroups() to fix this.', myGroup);
-                            end
-                            printedWarning = true;
-                            mask(iC) = false;
-                        end
-                    end
-                end
-                chList = chList(mask);
-                idx = idx(mask);
-
-                channelsByGroup = cellvec(numel(groupNames));
-                for iG = 1:numel(groupNames)
-                    channelsByGroup{iG} = td.listAnalogChannelsInGroup(groupNames{iG});
-                end
-            end
+            [groupNames, channelDescriptors, channelsByGroup] = td.listChannelGroups(p.Results);
         end
 
         function sz = getAnalogChannelGroupSize(td, groupName)
@@ -3141,7 +3302,7 @@ classdef TrialData
             cdGroup = td.getChannelDescriptor(groupName);
 
             chList = td.listAnalogChannelsInGroup(groupName);
-            cdCell = td.getChannelDescriptorMulti(chList);
+            cdList = td.getChannelDescriptor(chList);
 
             if ~cdGroup.hasScaling
                 % nothing to do
@@ -3167,7 +3328,7 @@ classdef TrialData
 
             % and replace all the sub channel descriptors
             if ~isempty(cdCell)
-                newCdCell = cellfun(@(cd) cd.withNoScaling(), cdCell, 'UniformOutput', false);
+                newCdCell = arrayfun(@(cd) cd.withNoScaling(), cdList, 'UniformOutput', false);
                 for i = 1:numel(newCdCell)
                     td.channelDescriptorsByName.(newCdCell{i}.name) = newCdCell{i};
                 end
@@ -3175,12 +3336,12 @@ classdef TrialData
         end
 
         function [tf, groupName] = checkAnalogChannelsInSameGroup(td, names)
-            groupNames = cellfun(@(name) td.getAnalogChannelGroupName(name), names, 'UniformOutput', false);
+            groupNames = arrayfun(@(name) td.getAnalogChannelGroupName(name), string(names));
             tf = numel(unique(groupNames)) == 1 && ~isempty(groupNames{1});
             if tf
-                groupName = groupNames{1};
+                groupName = groupNames(1);
             else
-                groupName = '';
+                groupName = "";
             end
         end
 
@@ -3198,24 +3359,28 @@ classdef TrialData
 
         function [names, colIndex] = listAnalogChannelsInGroup(td, groupName)
             td.assertHasAnalogChannelGroup(groupName);
-            chList = td.listAnalogChannels();
-            cdCell = cellvec(numel(chList));
-            mask = falsevec(numel(chList));
-            for iC = 1:numel(chList)
-                cd = td.channelDescriptorsByName.(chList{iC});
-                if cd.isColumnOfSharedMatrix && strcmp(cd.primaryDataField, groupName)
-                    mask(iC) = true;
-                    cdCell{iC} = cd;
-                end
 
-            end
-            names = chList(mask);
-            cdCell = cdCell(mask);
+            cd = td.getChannelDescriptor(groupName);
+            [names, colIndex] = cd.listNamedSubChannels();
 
-            % order them by their column index
-            colIndex = cellfun(@(cd) cd.primaryDataFieldColumnIndex, cdCell);
-            [colIndex, idx] = sort(colIndex, 'ascend');
-            names = names(idx);
+%             chList = td.listAnalogChannels();
+%             cdCell = cellvec(numel(chList));
+%             mask = falsevec(numel(chList));
+%             for iC = 1:numel(chList)
+%                 cd = td.channelDescriptorsByName.(chList{iC});
+%                 if cd.isColumnOfSharedMatrix && strcmp(cd.primaryDataField, groupName)
+%                     mask(iC) = true;
+%                     cdCell{iC} = cd;
+%                 end
+%
+%             end
+%             names = chList(mask);
+%             cdCell = cdCell(mask);
+%
+%             % order them by their column index
+%             colIndex = cellfun(@(cd) cd.primaryDataFieldColumnIndex, cdCell);
+%             [colIndex, idx] = sort(colIndex, 'ascend');
+%             names = names(idx);
         end
 
         function [namesByColumn, hasName] = listAnalogChannelsInGroupByColumn(td, groupName, colIdx, varargin)
@@ -3263,8 +3428,8 @@ classdef TrialData
             [tf, groupName] = td.checkAnalogChannelsInSameGroup(names);
             assert(tf, 'Channels are not in the same analog channel group');
 
-            cdCell = td.getChannelDescriptorMulti(names);
-            colIdx = cellfun(@(cd) cd.primaryDataFieldColumnIndex, cdCell);
+            cdList = td.getChannelDescriptor(names);
+            colIdx = arrayfun(@(cd) cd.primaryDataFieldColumnIndex, cdList);
         end
 
         function [tf, groupName] = isAnalogChannelInGroup(td, name, groupName)
@@ -3293,12 +3458,11 @@ classdef TrialData
 
         function groupName = getAnalogChannelGroupName(td, name)
             td.assertHasChannel(name);
-            cd = td.channelDescriptorsByName.(name);
-
+            cd = td.getChannelDescriptor(name);
             if ~cd.isColumnOfSharedMatrix
-                groupName = '';
+                groupName = "";
             else
-                groupName = cd.primaryDataField;
+                groupName = string(cd.primaryDataField);
             end
         end
 
@@ -3446,10 +3610,7 @@ classdef TrialData
         end
 
         function tf = hasAnalogChannelGroup(td, groupName)
-            if ~iscell(groupName)
-                groupName = {groupName};
-            end
-
+            groupName = string(groupName);
             tf = ismember(groupName, td.listAnalogChannelGroups());
         end
 
@@ -3466,13 +3627,17 @@ classdef TrialData
                 'Analog channel or channel group %s found', TrialDataUtilities.String.strjoin(groupName));
         end
 
-        function timeField = getAnalogChannelGroupTimeField(td, groupName)
-            if td.hasAnalogChannel(groupName)
-                timeField = td.getAnalogTimeField();
-            else
-                td.assertHasAnalogChannelGroup(groupName);
-                cd = td.channelDescriptorsByName.(groupName);
-                timeField = cd.timeField;
+        function timeFields = getAnalogChannelGroupTimeField(td, groupNames)
+            groupNames = string(groupNames);
+            timeFields = stringvec(numel(groupNames));
+            for iG = 1:numel(groupNames)
+                if td.hasAnalogChannel(groupNames(iG))
+                    timeFields(iG) = td.getAnalogTimeField(groupNames(iG));
+                else
+                    td.assertHasAnalogChannelGroup(groupNames(iG));
+                    cd = td.channelDescriptorsByName.(groupNames(iG));
+                    timeFields(iG) = string(cd.timeField);
+                end
             end
         end
 
@@ -3526,7 +3691,7 @@ classdef TrialData
             sampleSize = cd.getSampleSize(td);
             emptySlice = nan([0 sampleSize]);
 
-            if cd.isTransformGroup
+            if cd.isTransform
                 % now we do a transform of the data if the group is a virtual
                 % transformation of another group. this function will handle
                 % the slicing since it might be efficient not to compute the
@@ -3568,7 +3733,7 @@ classdef TrialData
                             data{i} = data{i}(:, sliceArgs{:});
                         end
                     end
-                    emptySlice = emptySlice(:, sliceArgs{:});
+                    emptySlice = emptySlice(:, sliceArgs{:}); %#ok<NASGU>
                 end
 
                 if p.Results.sort
@@ -3587,13 +3752,14 @@ classdef TrialData
                 nCombinations = szWeights(numel(sampleSize) + 1);
 
                 weightsNewByOld = reshape(weights, [prod(sampleSize) nCombinations])';
-
+                emptySlice = nan(0, nCombinations);
                 prog = ProgressBar(numel(data), 'Computing weighted combinations of analog channel group');
                 for i = 1:numel(data)
-                    if ~isempty(data{i})
-                        prog.update(i);
+                    prog.update(i);
+                    if isempty(data{i})
+                        data{i} = emptySlice;
+                    else
                         nSamplesThis = size(data{i}, 1);
-                        % 						thisSize = [nSamplesThis, sliceSize];
 
                         thisFlat = reshape(data{i}, [nSamplesThis, prod(sliceSize)]);
                         data{i} = TensorUtils.linearCombinationAlongDimension(thisFlat, 2, weightsNewByOld, ...
@@ -3608,7 +3774,9 @@ classdef TrialData
             if p.Results.averageOverSlice
                 % average the whole slice down to a single timeseries
                 for i = 1:numel(data)
-                    if ~isempty(data{i})
+                    if isempty(data{i})
+                        data{i} = nan(0, 1);
+                    else
                         data{i} = nanmean(data{i}(:, :), 2);
                     end
                 end
@@ -3765,24 +3933,27 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             td.assertHasAnalogChannelGroup(groupName);
             cd = td.channelDescriptorsByName.(groupName);
-            assert(~cd.isTransformGroup, 'Cannot modify transform groups');
+            assert(~cd.isTransform, 'Cannot modify transform groups');
 
             p = inputParser();
             p.addOptional('times', [], @(x) iscell(x) ||  ismatrix(x) && ~ischar(x));
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('keepScaling', true, @islogical); % if false, drop the scaling of the channel in memory and convert everything to access class
             p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
-            p.addParameter('updateMask', td.valid, @isvector);
-            p.addParameter('channelNames', {}, @iscellstr);
+            p.addParameter('updateMask', true(td.nTrials, 1), @isvector);
             p.addParameter('units', '', @ischar);
+            p.addParameter('raw', false, @islogical);
             p.KeepUnmatched = false;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
 
-            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.updateMask), td.nTrials) & td.valid;
+            mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.updateMask), td.nTrials);
+            if ~p.Results.raw % don't update invalid trials
+                mask = mask & td.valid;
+            end
 
-            chList = td.listAnalogChannelsInGroup(groupName);
-            nCh = numel(chList);
+            subChList = td.listAnalogChannelsInGroup(groupName);
+            nCh = numel(subChList);
 
             % check the values and convert to nTrials cellvec
             if isnumeric(values) || islogical(values)
@@ -3881,9 +4052,7 @@ classdef TrialData
             if updateTimes
                 % avoid overwriting data shared by other channels,
                 % including time field
-                if ~isempty(chList)
-                    td = td.copyRenameSharedChannelFields(chList, 2);
-                end
+                td = td.copyRenameSharedChannelFields(groupName, 2);
                 timeField = td.channelDescriptorsByName.(groupName).timeField;
             end
 
@@ -3901,10 +4070,6 @@ classdef TrialData
             td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, groupName, values, mask);
             if updateTimes
                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, times, mask);
-            end
-
-            if ~isempty(p.Results.channelNames)
-                td = td.setAnalogChannelGroupSubChannelNames(groupName, p.Results.channelNames);
             end
 
             if ~isempty(p.Results.units)
@@ -3928,15 +4093,18 @@ classdef TrialData
         function td = trimAnalogChannelGroupRaw(td, groupNames, varargin)
             td.warnIfNoArgOut(nargout);
 
-            groupNames = TrialDataUtilities.Data.wrapCell(groupNames);
-            timeFields = unique(cellfun(@(group) td.getAnalogChannelGroupTimeField(group), groupNames, 'UniformOutput', false));
+            groupNames = string(groupNames);
+            timeFields = td.getAnalogChannelGroupTimeField(groupNames);
 
-            prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
-            for i = 1:numel(timeFields)
-                prog.update(i, 'Trimming analog channels with time field %s', timeFields{i});
-                td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, varargin{:});
+            if ~isempty(timeFields)
+                timeFields = unique(timeFields);
+                prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
+                for i = 1:numel(timeFields)
+                    prog.update(i, 'Trimming analog channels with time field %s', timeFields{i});
+                    td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, varargin{:});
+                end
+                prog.finish();
             end
-            prog.finish();
         end
 
         function td = trimAnalogChannelToTrialStartEnd(td, names)
@@ -3947,15 +4115,18 @@ classdef TrialData
         function td = trimAnalogChannelRaw(td, names, varargin)
             td.warnIfNoArgOut(nargout);
 
-            names = TrialDataUtilities.Data.wrapCell(names);
-            timeFields = unique(cellfun(@(name) td.getAnalogTimeField(name), names, 'UniformOutput', false));
+            names = string(names);
+            timeFields = unique(arrayfun(@(name) td.getAnalogTimeField(name), names, 'UniformOutput', false));
 
-            prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
-            for i = 1:numel(timeFields)
-                prog.update(i, 'Trimming analog channels sharing time field %s', timeFields{i});
-                td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, varargin{:});
+            if ~isempty(timeFields)
+                timeFields = unique(timeFields);
+                prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
+                for i = 1:numel(timeFields)
+                    prog.update(i, 'Trimming analog channels sharing time field %s', timeFields{i});
+                    td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, varargin{:});
+                end
+                prog.finish();
             end
-            prog.finish();
         end
 
         function td = trimAnalogChannelTimeFieldAndReferencingChannelsRaw(td, timeField, varargin)
@@ -4003,18 +4174,18 @@ classdef TrialData
 
             % list channels that reference time field
             chList = td.getChannelsReferencingFields(timeField);
-            cdCell = td.getChannelDescriptorMulti(chList);
+            cdList = td.getChannelDescriptor(chList);
 
             % separate groups from non groups
-            maskAnalog = cellfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), cdCell);
+            maskAnalog = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), cdList);
             chListAnalog = chList(maskAnalog);
-            cdAnalog = cdCell(maskAnalog);
-            inGroup = cellfun(@(cd) cd.isColumnOfSharedMatrix, cdAnalog);
-            groupList = unique(cellfun(@(cd) cd.primaryDataField, cdAnalog(inGroup), 'UniformOutput', false));
+            cdAnalog = cdList(maskAnalog);
+            inGroup = arrayfun(@(cd) cd.isColumnOfSharedMatrix, cdAnalog);
+            groupList = unique(arrayfun(@(cd) cd.primaryDataField, cdAnalog(inGroup), 'UniformOutput', false));
             chList = chListAnalog(~inGroup);
 
-            maskGroup = cellfun(@(cd) isa(cd, 'AnalogChannelGroupDescriptor'), cdCell);
-            cdOther = cdCell(~maskAnalog & ~maskGroup);
+            maskGroup = arrayfun(@(cd) isa(cd, 'AnalogChannelGroupDescriptor'), cdList);
+            cdOther = cdList(~maskAnalog & ~maskGroup);
             if ~isempty(cdOther)
                 warning('Trimming analog time field %s referenced by other channels %s', ...
                     timeField, TrialDataUtilities.String.strjoin({cdOther.name}));
@@ -4119,36 +4290,194 @@ classdef TrialData
             samplesNotEmpty = ~cellfun(@isempty, values) & notEmpty;
             values(samplesNotEmpty) = cellfun(@(v, m) v(m, :, :, :, :, :, :, :), values(samplesNotEmpty), timesMask(samplesNotEmpty), 'UniformOutput', false);
         end
+
+        function td = incorporateAnalogChannelsIntoGroup(td, subNames, groupName, varargin)
+            p = inputParser();
+            p.addParameter('channelDescriptor', [], @(x) isempty(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('sampleSize', numel(subNames), @isvector);
+
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            td.warnIfNoArgOut(nargout);
+            cdsSub = td.getChannelDescriptor(subNames);
+            cde = cdsSub(1);
+            [data, time] = td.getAnalogMultiCommonTime(subNames, 'raw', true);
+            td = td.addAnalogChannelGroup(groupName, data, time, 'raw', true, ...
+                'isAligned', false, 'scaleFromLims', cde.scaleFromLims, 'scaleToLims', cde.scaleToLims, ...
+                p.Unmatched);
+
+            td = td.dropChannels(subNames);
+        end
+    end
+
+    methods % Continuous Neural Channels
+        function [names, channelDescriptors] = listContinuousNeuralChannels(td, varargin)
+            p = inputParser();
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.addParameter('includeNonGroupSubChannels', true, @islogical); % include those not in explicit arrays
+            p.addParameter('includeGroupSubChannels', true, @islogical); % include those in explicit arrays
+            p.addParameter('type', '', @(x) isstring(x) || ischar(x) || iscellstr(x));
+            p.addParameter('array', '', @(x) isstring(x) || ischar(x) || iscellstr(x));
+            p.addParameter('electrode', [], @(x) isvector(x));
+            p.parse(varargin{:});
+
+            % this should grab array sub channels if includeArraySubChannels
+            [names, channelDescriptors] = td.listChannels('includeNamedSubChannels', p.Results.includeGroupSubChannels, ....
+                'channelDescriptorClass', ["ContinuousNeuralChannelGroupDescriptor", "ContinuousNeuralChannelDescriptor"], 'includeDerivedChannelTypes', true);
+            mask = arrayfun(@(cd) isa(cd, 'ContinuousNeuralChannelDescriptor'), channelDescriptors);
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
+
+            mask = true(numel(names), 1);
+            if ~p.Results.includeNonGroupSubChannels
+                mask = mask & arrayfun(@(cd) cd.isColumnOfSharedMatrix, channelDescriptors);
+            end
+
+            if ~isempty(p.Results.type)
+                type = arrayfun(@(cd) string(cd.type), channelDescriptors);
+                mask = mask & ismember(type, string(p.Results.type));
+            end
+            if ~isempty(p.Results.array)
+                array = arrayfun(@(cd) string(cd.array), channelDescriptors);
+                mask = mask & ismember(array, string(p.Results.array));
+            end
+            if ~isempty(p.Results.electrode)
+                electrode = arrayfun(@(cd) cd.electrode, channelDescriptors);
+                mask = mask & ismember(electrode, p.Results.electrode);
+            end
+
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
+        end
+
+        function [names, channelDescriptors] = listContinuousNeuralChannelsOnArray(td, arrayName, varargin)
+            % [names, channelDescriptors] = getContinuousNeuralChannelsOnArray(td, arrayName)
+            [names, channelDescriptors] = td.listContinuousNeuralChannels(td, 'array', arrayName, varargin{:});
+        end
+
+        function [names, channelDescriptors] = listContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum, varargin)
+            [names, channelDescriptors] = td.listContinuousNeuralChannels(td, 'array', arrayName, 'electrode', electrodeNum, varargin{:});
+        end
+
+        function [names] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
+            % [names, units] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
+            % chName is spike channel or continuous neural channel name
+            cd = td.channelDescriptorsByName.(chName);
+            [names] = td.listContinuousNeuralChannelsOnArrayElectrode(cd.array, cd.electrode);
+        end
+
+        function [groupNames, channelDescriptors, channelsByGroup] = listContinuousNeuralChannelGroups(td, varargin)
+            p = inputParser();
+            p.addParameter('channelDescriptorClass', 'ContinuousNeuralChannelGroupDescriptor', @ischar);
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.parse(varargin{:});
+
+            [groupNames, channelDescriptors, channelsByGroup] = td.listChannelGroups(p.Results);
+        end
+
+        function [types, arrays] = listContinuousNeuralTypeArrays(td)
+            [t1, a1] = td.listExplicitContinuousNeuralArrays();
+            [t2, a2] = td.listImplicitContinuousNeuralArrays();
+            types = cat(1, t1, t2);
+            arrays = cat(1, a1, a2);
+        end
+
+        function [types, arrays] = listImplicitContinuousNeuralArrays(td)
+            [~, cds] = td.listContinuousNeuralChannels('includeGroupSubChannels', false);
+            types = arrayfun(@(cd) string(cd.type), cds);
+            arrays = arrayfun(@(cd) string(cd.array), cds);
+            rows = unique([types, arrays], 'rows');
+            types = rows(:, 1);
+            arrays = rows(:, 2);
+        end
+
+        function [types, arrays] = listExplicitContinuousNeuralArrays(td)
+            [~, cds] = td.listContinuousNeuralChannelGroups();
+            types = arrayfun(@(cd) string(cd.type), cds);
+            arrays = arrayfun(@(cd) string(cd.array), cds);
+            rows = unique([types, arrays]);
+            types = rows(:, 1);
+            arrays = rows(:, 2);
+        end
+
+        function td = incorporateContinuousNeuralChannelsIntoGroups(td)
+            td.warnIfNoArgOut(nargout);
+            [types, arrays] = td.listImplicitContinuousNeuralArrays();
+
+            [explicitTypes, explicitArrays] = td.listExplicitContinuousNeuralArrays();
+            implicitKey = arrayfun(@strcat, types, arrays);
+            explicitKey = arrayfun(@strcat, explicitTypes, explicitArrays);
+
+            bad = ismember(implicitKey, explicitKey);
+            assert(~any(bad), 'Failed. Explicit spike type_array(s) %s already exists', strjoin(implicitKey(bad), ','));
+
+            prog = ProgressBar(numel(arrays), 'Incorporating continuous neural channels');
+            for iA = 1:numel(arrays)
+                prog.update(iA, 'Incorporating continuous neural array %s_%s channels', types{iA}, arrays{iA});
+                % find elec/unit combos in this array
+                [subNames, cdsSub] = td.listContinuousNeuralChannels('type', types(iA), 'array', arrays{iA});
+                electrodes = arrayfun(@(cd) cd.electrode, cdsSub);
+                units = cdsSub(1).unitsPrimary;
+                groupName = ContinuousNeuralChannelGroupDescriptor.generateNameFromTypeArray(types{iA}, arrays{iA});
+                td = td.incorporateAnalogChannelsIntoGroup(subNames, groupName, 'isContinuousNeural', true, ...
+                    'continuousNeuralElectrodes', electrodes, 'units', units);
+            end
+            prog.finish();
+        end
+
+        function td = setContinuousNeuralChannelArray(td, contCh, array)
+            td.warnIfNoArgOut(nargout);
+            contCh = string(contCh);
+            td.assertHasChannel(contCh, false); % non-sub channels only for rename
+
+            for iCh = 1:numel(contCh)
+                cd = td.getChannelDescriptor(contCh{iCh});
+                newName = cd.getNameWithUpdatedArray(array);
+                td = td.renameChannel(contCh{iCh}, newName);
+            end
+        end
+
+        function td = renameContinuousNeuralChannelArray(td, arrayCurrent, arrayNew)
+            td.warnIfNoArgOut(nargout);
+            if td.hasChannel(arrayCurrent, false)
+            end
+            contChList = td.listContinuousNeuralChannelsOnArray(arrayCurrent);
+            td = td.setContinuousNeuralChannelArray(contChList, arrayNew);
+        end
+
+        function td = setContinuousNeuralChannelType(td, contCh, type)
+            td.warnIfNoArgOut(nargout);
+            contCh = TrialDataUtilities.Data.wrapCell(contCh);
+
+            for iCh = 1:numel(contCh)
+                cd = td.getChannelDescriptor(contCh{iCh});
+                newName = cd.getNameWithUpdatedType(type);
+                td = td.renameChannel(contCh{iCh}, newName);
+            end
+        end
+
     end
 
     methods % Image channel methods - mostly defer to AnalogChannelGroupMethods
-        function [groupNames, channelsByGroup] = listImageChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            if isempty(channelDescriptors)
-                groupNames = {};
-                return;
-            end
-            mask = arrayfun(@(cd) isa(cd, 'ImageChannelDescriptor'), channelDescriptors);
-            groupNames = {channelDescriptors(mask).name}';
+        function [groupNames, channelDescriptors, channelsByGroup] = listImageChannels(td, varargin)
+            p = inputParser();
+            p.addParameter('channelDescriptorClass', 'ImageChannelDescriptor', @ischar);
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.parse(varargin{:});
 
-            if nargout > 1
-                % go in and get channelsByGroup
-                channelsByGroup = cellvec(numel(groupNames));
-                for iG = 1:numel(groupNames)
-                    channelsByGroup{iG} = td.listAnalogChannelsInGroup(groupNames{iG});
-                end
-            end
+            [groupNames, channelDescriptors, channelsByGroup] = td.listChannelGroups(p.Results);
         end
 
         function td = addImage(td, groupName, varargin)
-            % see addAnalogChannelGroup, same signature
+            % see , same signature
             td.warnIfNoArgOut(nargout);
-            td = td.addAnalogChannelGroup(groupName, {}, varargin{:}, 'isImage', true);
+            td = td.addAnalogChannelGroup(groupName, varargin{:}, 'isImage', true);
         end
 
-        function td = addOrUpdateImage(td, groupName, chNames, data, times, varargin)
+        function td = addOrUpdateImage(td, groupName, data, times, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.addOrUpdateAnalogChannelGroup(groupName, chNames, data, times, varargin{:}, 'isImage', true);
+            td = td.addOrUpdateAnalogChannelGroup(groupName, data, times, varargin{:}, 'isImage', true);
         end
 
     end
@@ -4300,14 +4629,35 @@ classdef TrialData
             td.channelDescriptorsByName.(name).color = color;
         end
 
-        function names = listEventChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            if isempty(channelDescriptors)
-                names = {};
-                return;
-            end
-            mask = arrayfun(@(cd) isa(cd, 'EventChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+        function [names, channelDescriptors] = listEventChannels(td, varargin)
+            p = inputParser();
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.parse(varargin{:});
+
+            [names, channelDescriptors] = td.listChannels('includeNamedSubChannels', false, ...
+                'channelDescriptorClass', 'EventChannelDescriptor', ...
+                'includeDerivedChannelTypes', p.Results.includeDerivedChannelTypes);
+
+%             mask = true(numel(names), 1);
+
+%             names = names(mask);
+%             channelDescriptors = channelDescriptors(mask);
+        end
+
+        function [displayGroups, channelsByGroup, channelsNotInGroup] = listEventChannelDisplayGroups(td)
+            [names, channelDescriptors] = td.listEventChannels();
+            displayGroupsByCh = TrialDataUtilities.String.stringarrayfun(@(cd) cd.displayGroup, channelDescriptors);
+
+            [displayGroups, ~, whichGroup] = unique(displayGroupsByCh);
+            mask = arrayfun(@(grp) grp ~= "" || ismissing(grp), displayGroups);
+            channelsByGroup = arrayfun(@(gidx) names(whichGroup==gidx), (1:numel(displayGroups))', 'UniformOutput', false);
+
+            channelsNotInGroup = cat(1, channelsByGroup{~mask});
+            displayGroups = displayGroups(mask);
+            channelsByGroup = channelsByGroup(mask);
+
+            [displayGroups, isort] = sort(displayGroups);
+            channelsByGroup = channelsByGroup(isort);
         end
 
         % used mainly by AlignInfo to make sure it can access unaligned
@@ -4746,28 +5096,50 @@ classdef TrialData
             end
         end
 
-        function names = listParamChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            if isempty(channelDescriptors)
-                names = {};
-                return;
+        function [names, channelDescriptors] = listParamChannels(td, varargin)
+            p = inputParser();
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.addParameter('isScalar', false, @islogical);
+            p.addParameter('isString', false, @islogical);
+            p.parse(varargin{:});
+
+            [names, channelDescriptors] = td.listChannels('includeNamedSubChannels', false, ...
+                'channelDescriptorClass', 'ParamChannelDescriptor', ...
+                'includeDerivedChannelTypes', p.Results.includeDerivedChannelTypes);
+
+            mask = true(numel(names), 1);
+            if p.Results.isScalar
+                mask = mask & arrayfun(@(cd) cd.elementTypeByField == cd.SCALAR, channelDescriptors);
             end
-            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+            if p.Results.isString
+                mask = mask & arrayfun(@(cd) cd.elementTypeByField == cd.STRING, channelDescriptors);
+            end
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
         end
 
-        function names = listScalarParamChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.isScalar, ...
-                channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+        function [names, channelDescriptors] = listScalarParamChannels(td, varargin)
+            [names, channelDescriptors] = td.listParamChannels('isScalar', true, varargin{:});
         end
 
-        function names = getStringParamChannels(td)
-            channelDescriptors = td.getChannelDescriptorArray();
-            mask = arrayfun(@(cd) isa(cd, 'ParamChannelDescriptor') && cd.isString, ...
-                channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+        function [names, channelDescriptors]  = listStringParamChannels(td, varargin)
+            [names, channelDescriptors] = td.listParamChannels('isString', true, varargin{:});
+        end
+
+        function [displayGroups, channelsByGroup, channelsNotInGroup] = listParamChannelDisplayGroups(td)
+            [names, channelDescriptors] = td.listParamChannels();
+            displayGroupsByCh = TrialDataUtilities.String.stringarrayfun(@(cd) cd.displayGroup, channelDescriptors);
+
+            [displayGroups, ~, whichGroup] = unique(displayGroupsByCh);
+            mask = arrayfun(@(grp) grp ~= "", displayGroups);
+            channelsByGroup = arrayfun(@(gidx) names(whichGroup==gidx), (1:numel(displayGroups))', 'UniformOutput', false);
+
+            channelsNotInGroup = cat(1, channelsByGroup{~mask});
+            displayGroups = displayGroups(mask);
+            channelsByGroup = channelsByGroup(mask);
+
+            [displayGroups, isort] = sort(displayGroups);
+            channelsByGroup = channelsByGroup(isort);
         end
 
         function [ch, idx] = parseIndexedParamChannelName(td, name) %#ok<INUSL>
@@ -5016,6 +5388,7 @@ classdef TrialData
             p.addParameter('waveformsField', sprintf('%s_waveforms', unitStr), @ischar);
             p.addParameter('waveformsScaleFromLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('waveformsScaleToLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('waveformsInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
             p.addParameter('sortQuality', NaN, @isscalar); % numeric scalar metric of sort quality
             p.addParameter('sortMethod', '', @ischar);
             p.addParameter('sortQualityEachTrial', [], @isvector);
@@ -5041,11 +5414,19 @@ classdef TrialData
             channelData = {spikes};
 
             if ~isempty(p.Results.waveforms)
-                waveClass = TrialDataUtilities.Data.cellDetermineCommonClass(p.Results.waveforms);
+                waveforms = p.Results.waveforms;
+
+                waveClass = TrialDataUtilities.Data.cellDetermineCommonClass(waveforms);
                 cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime, ...
                     'dataClass', waveClass, 'scaleFromLims', p.Results.waveformsScaleFromLims, ...
                     'scaleToLims', p.Results.waveformsScaleToLims);
-                channelData{end+1} = makecol(p.Results.waveforms);
+
+                % undo scaling and convert back to memory scale
+                if ~p.Results.waveformsInMemoryScale
+                    waveforms = cd.unscaleWaveforms(waveforms);
+                end
+
+                channelData{end+1} = makecol(waveforms);
             end
 
             if ~isempty(p.Results.sortQualityEachTrial)
@@ -5297,6 +5678,7 @@ classdef TrialData
         end
 
         function td = mergeSpikeChannels(td, chList, varargin)
+            % TODO update this for spike array descriptors
             assert(iscell(chList));
             td.warnIfNoArgOut(nargout);
 
@@ -5378,11 +5760,13 @@ classdef TrialData
 
         function td = renameSpikeChannelArray(td, arrayCurrent, arrayNew)
             td.warnIfNoArgOut(nargout);
-            spikeChList = td.listSpikeChannelsOnArray(arrayCurrent);
+            spikeChList = td.listSpikeChannels('array', arrayCurrent);
             td = td.setSpikeChannelArray(spikeChList, arrayNew);
         end
 
         function td = blankSpikesInTimeIntervals(td, name, intervalCell, varargin)
+            % TODO update this for spike array descriptors
+
             % adds a blanking region to the spiking data
             % this both removes the spikes from that period of time each
             % trial, and will inform the spike rate filtering that this
@@ -5439,51 +5823,50 @@ classdef TrialData
             end
         end
 
-        function intervalCell = getRawSpikeBlankingRegions(td, unitName, varargin)
+        function intervalCell = getRawSpikeBlankingRegions(td, unitNames, varargin)
             p = inputParser();
             p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
 
-            if ischar(unitName)
-                unitName = {unitName};
+            if isnumeric(unitNames)
+                unitNames = td.lookupSpikeChannelByIndex(unitNames);
             end
-            if isnumeric(unitName)
-                unitName = td.lookupSpikeChannelByIndex(unitName);
-            end
+            unitNames = string(unitNames);
 
-            intervalCell = cell(td.nTrials, numel(unitName));
-            for iU = 1:numel(unitName)
-                if ischar(unitName{iU})
-                    cd = td.channelDescriptorsByName.(unitName{iU});
-                    fld = cd.blankingRegionsField;
-                    if ~isempty(fld)
-                        intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(makecol({td.data.(fld)}));
-                    end
-                elseif iscellstr(unitName{iU})
-                    % combine inner units of nested cellstr
-                    arg2 = cellvec(numel(unitName{iU}));
-                    mask2 = falsevec(numel(unitName{iU}));
-                    for iU2 = 1:numel(unitName{iU})
-                        cd = td.channelDescriptorsByName.(unitName{iU}{iU2});
-                        fld = cd.blankingRegionsField;
-                        if ~isempty(fld)
-                            arg2{iU2} = makecol({td.data.(fld)});
-                            mask2(iU2) = true;
-                        end
-
-                    end
-                    if any(mask2)
-                        intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(arg2{mask2});
-                    end
-                else
-                    error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
+            intervalCell = cell(td.nTrials, numel(unitNames));
+            channelDescriptors = td.getChannelDescriptor(unitNames);
+            for iU = 1:numel(unitNames)
+%                 if ischar(unitName{iU})
+                cd = channelDescriptors(iU);
+                fld = cd.blankingRegionsField;
+                if ~isempty(fld)
+                    intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(makecol({td.data.(fld)}));
                 end
+%                 elseif iscellstr(unitName{iU})
+%                     % combine inner units of nested cellstr
+%                     arg2 = cellvec(numel(unitName{iU}));
+%                     mask2 = falsevec(numel(unitName{iU}));
+%                     for iU2 = 1:numel(unitName{iU})
+%                         cd = td.channelDescriptorsByName.(unitName{iU}{iU2});
+%                         fld = cd.blankingRegionsField;
+%                         if ~isempty(fld)
+%                             arg2{iU2} = makecol({td.data.(fld)});
+%                             mask2(iU2) = true;
+%                         end
+%
+%                     end
+%                     if any(mask2)
+%                         intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(arg2{mask2});
+%                     end
+%                 else
+%                     error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
+%                 end
             end
 
             if p.Results.combine
                 % combine the intervals in multiple units
-                intervalCellByUnit = cellvec(numel(unitName));
-                for iU = 1:numel(unitName)
+                intervalCellByUnit = cellvec(numel(unitNames));
+                for iU = 1:numel(unitNames)
                     intervalCellByUnit{iU} = intervalCell(:, iU);
                 end
                 intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCellByUnit{:});
@@ -5502,7 +5885,8 @@ classdef TrialData
             p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
 
-            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nUnits] = td.getSpikeChannelMultiAccessInfo(unitNames);
+            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames);
+            nUnits = sum(nColumnsPerName);
             nFields = numel(fieldList);
             timesCellByUnit = cell(td.nTrials, nUnits);
             for iF = 1:nFields
@@ -5577,20 +5961,9 @@ classdef TrialData
         end
 
         function tf = hasSpikeWaveforms(td, unitNames)
-            if ischar(unitNames)
-                unitNames = {unitNames};
-            end
-
-            tf = falsevec(numel(unitNames));
-            for iU = 1:numel(unitNames)
-                unitName = unitNames{iU};
-                if ~td.hasSpikeChannel(unitName)
-                    tf(iU) = false;
-                else
-                    wavefield = td.channelDescriptorsByName.(unitName).waveformsField;
-                    tf(iU) = ~isempty(wavefield);
-                end
-            end
+            unitNames = string(unitNames);
+            cds = td.getChannelDescriptor(unitNames);
+            tf = arrayfun(@(cd) ~isempty(cd.waveformsField), cds);
         end
 
         function td = dropSpikeWaveforms(td, unitNames)
@@ -5623,7 +5996,8 @@ classdef TrialData
 
         function td = dropSpikeChannels(td)
             td.warnIfNoArgOut(nargout);
-            td = td.dropChannels(td.listSpikeChannels());
+            td = td.dropChannels(td.listSpikeChannels('includeArraySubChannels', false));
+            td = td.dropChannels(td.listExplicitSpikeArrays());
         end
 
         function td = maskSpikeChannelSpikesRaw(td, unitName, mask, varargin)
@@ -5714,107 +6088,75 @@ classdef TrialData
             td = td.trimSpikeChannelRaw(unitNames);
         end
 
-        function [wavesCell, waveTvec, timesCell, whichUnitCell] = getRawSpikeWaveforms(td, unitName, varargin)
+        function [wavesCell, waveTvec, timesCell, whichUnitCell] = getRawSpikeWaveforms(td, unitNames, varargin)
+            % wavesCell is nTrials x nUnits of nSpikes x nWaveTime x nWaveChannels
+            % timesCell is nTrials x nUnits
+            % if combine is true, all spikes will be interleaved
+
             p = inputParser();
             p.addParameter('combine', false, @islogical);
             p.addParameter('applyScaling', true, @islogical);
+            p.addParameter('fillMissingWithNaN', false, @islogical); % if any of the channels doesn't have waveforms, fill with nan
             p.parse(varargin{:});
 
-            if ischar(unitName)
-                single = true;
-                unitNames = {unitName};
-            else
-                if p.Results.combine
-                    single = true;
-                else
-                    single = false;
-                end
-                unitNames = unitName;
-            end
+            unitNames = string(unitNames);
 
-            nUnits = numel(unitNames);
+            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName, cdByField] = td.getSpikeChannelMultiAccessInfo(unitNames, 'waveforms');
+            nUnits = sum(nColumnsPerName);
+            nFields = numel(fieldList);
+            wavesCellByUnit = cell(td.nTrials, nUnits);
 
-            [wavesCell, timesCell] = deal(cell(td.nTrials, nUnits));
-            waveTvec = cellvec(nUnits);
-            %             sortQuality = cellvec(nUnits);
-
-            if nargout > 2
+            if nargout > 2 || p.Results.fillMissingWithNaN
                 timesCell = td.getRawSpikeTimes(unitNames, 'combine', p.Results.combine);
             end
+            for iF = 1:nFields
+                fld = fieldList(iF);
+                col = colIdxEachField{iF};
+                idx = assignIdxEachField{iF};
 
-            for iU = 1:numel(unitNames)
-                if ischar(unitNames{iU})
-                    unitName = {unitNames{iU}};
+                if isempty(fld)
+                    % no waveforms!
+                    if p.Results.fillMissingWithNan
+                        nTime = numel(cdByField(iF).waveformsTime);
+                        nWaveChan = cdByField(iF).waveformsNumChannels;
+                        waveClass = cdByField(iF).waveformsOriginalDataClass;
+
+                        % create a filler waveforms cell with nans of the
+                        % right size
+                        catData = cellfun(@(times) nan(numel(times), nTime, nWaveChan, waveClass), ...
+                            timesCell(:, col), 'UniformOutput', false);
+                    else
+                        error('Unit %s does not have waveforms', cdByField(iF).name);
+                    end
+                    wavesCellByUnit(:, idx) = catData;
+
                 else
-                    unitName = unitNames{iU};
-                end
-
-                % combine over inner cell
-                waveInner = cell(td.nTrials, numel(unitName));
-
-                for iV = 1:numel(unitName)
-                    ch = unitName{iV};
-                    cd = td.channelDescriptorsByName.(ch);
-                    wavefield = cd.waveformsField;
-                    assert(~isempty(wavefield), 'Unit %s does not have waveforms', ch);
-                    waveInner(:, iV) = {td.data.(wavefield)}';
-
-                    if p.Results.applyScaling
-                        % scale to appropriate units
-                        waveInner(:, iV) = cd.scaleWaveforms(waveInner(:, iV));
-                    end
-                    waveTvecInner = makecol(cd.waveformsTime);
-
-                    % check number of timepoints
-                    waveMat = TrialDataUtilities.Data.getFirstNonEmptyCellContents(waveInner(:, iV));
-                    if ~isempty(waveMat)
-                        nSampleWave = size(waveMat, 2);
-                        if nSampleWave < numel(waveTvecInner)
-                            warning('Waveforms have %d samples but waveformsTime has %d samples. Shortening waveforms to match', nSampleWave, numel(waveTvecInner));
-                            waveTvecInner = waveTvecInner(1:nSampleWave);
-                        elseif nSampleWave > numel(waveTvecInner)
-                            error('Waveforms have %d samples but waveformsTime has %d samples. Provide new waveform time vector', nSampleWave, numel(waveTvecInner));
-                        end
+                    % use actual waveforms
+                    if fieldIsArray(iF)
+                        catData = cat(1, td.data.(fld));
+                    else
+                        catData = {td.data.(fld)}';
                     end
 
-                    if iV == 1
-                        waveTvec{iU} = waveTvecInner;
-                    elseif ~isequal( makecol(cd.waveformsTime), waveTvec{iU})
-                        error('Wave timevectors do not match');
-                    end
+                    wavesCellByUnit(:, idx) = catData(:, col);
                 end
-
-                % combine inner cells
-                for iT = 1:td.nTrials
-                    wavesCell{iT, iU} = TensorUtils.catWhich(1, waveInner{iT, :});
+                if p.Results.applyScaling
+                   wavesCellByUnit(:, idx) = cdByField(iF).scaleWaveforms(wavesCellByUnit(:, idx));
                 end
-
-                %                 if cd.hasSortQualityEachTrial
-                %                     qualityField = cd.sortQualityEachTrialField;
-                %                     sortQuality{iU} = td.data.(qualityField)';
-                %                 else
-                %                     quality = cd.sortQuality;
-                %                     sortQuality{iU} = cellfun(@(waves) repmat(quality, size(waves,1), 1), wavesCell(:, iU), 'UniformOutput', false);
-                %                 end
             end
+
+            waveTvec = cdByField(1).waveformsTime;
 
             if p.Results.combine
-                [wavesCellCat, whichUnitCell] = cellvec(td.nTrials);
+                [wavesCell, whichUnitCell] = cellvec(td.nTrials);
                 for iT = 1:td.nTrials
-                    [wavesCellCat{iT}, whichUnitCell{iT}] = TensorUtils.catWhich(1, wavesCell{iT, :});
+                    [wavesCell{iT}, whichUnitCell{iT}] = TensorUtils.catWhich(1, wavesCellByUnit{iT, :});
                 end
-
-                wavesCell = wavesCellCat;
-
             else
-                if nargout > 4
-                    whichUnitCell = cellfun(@(x) ones(size(x), 1), wavesCell);
+                wavesCell = wavesCellByUnit;
+                if nargout > 3
+                    whichUnitCell = cellfun(@(x) ones(size(x, 1), 1), wavesCell, 'UniformOutput', false);
                 end
-            end
-
-            if single
-                % un-cellify the outputs
-                waveTvec = waveTvec{1};
             end
         end
 
@@ -5893,10 +6235,13 @@ classdef TrialData
             p.addParameter('waveformsField', sprintf('%s_waveforms', arrayName), @ischar);
             p.addParameter('waveformsScaleFromLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('waveformsScaleToLims', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('waveformsInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
             p.addParameter('sortQuality', NaN, @isscalar); % numeric scalar metric of sort quality
             p.addParameter('sortMethod', '', @ischar);
             p.addParameter('sortQualityEachTrial', [], @isvector);
             p.addParameter('blankingRegions', {}, @iscell); % nTrials x 1 cell of nIntervals x 2 matrices
+
+            p.addParameter('raw', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -5938,7 +6283,7 @@ classdef TrialData
             % this is mostly for TDCA, so that alignments info is
             % preserved
             if p.Results.isAligned
-                offsets = td.getTimeOffsetsFromZeroEachTrial();
+                offsets = td.getTimeOffsetsFromZeroEachTrial('raw', p.Results.raw);
             else
                 % consider it aligned to trial start
                 offsets = zerosvec(td.nTrials);
@@ -5953,12 +6298,19 @@ classdef TrialData
             channelData = {spikes};
 
             if ~isempty(p.Results.waveforms)
-                assert(isequal(size(p.Results.waveforms), [td.nTrials, nUnits]), 'Size of Waveforms must be nTrials x nUnits');
-                waveClass = TrialDataUtilities.Data.cellDetermineCommonClass(p.Results.waveforms);
+                waveforms = p.Results.waveforms;
+                assert(isequal(size(waveforms), [td.nTrials, nUnits]), 'Size of Waveforms must be nTrials x nUnits');
+                waveClass = TrialDataUtilities.Data.cellDetermineCommonClass(waveforms);
                 cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime, ...
                     'dataClass', waveClass, 'scaleFromLims', p.Results.waveformsScaleFromLims, ...
                     'scaleToLims', p.Results.waveformsScaleToLims);
-                channelData{end+1} = splitCellIntoTrials(p.Results.waveforms);
+
+                % undo scaling and convert back to memory scale
+                if ~p.Results.waveformsInMemoryScale
+                    waveforms = cd.unscaleWaveforms(waveforms);
+                end
+
+                channelData{end+1} = splitCellIntoTrials(waveforms);
             end
 
             if ~isempty(p.Results.sortQualityEachTrial)
@@ -5986,7 +6338,50 @@ classdef TrialData
                 channelData{end+1} = blanking;
             end
 
-            td = td.addChannel(cd, channelData);
+            td = td.addChannel(cd, channelData, 'updateValidOnly', ~p.Results.raw);
+        end
+
+        function td = incorporateSpikeChannelsIntoArrays(td, arrayNames)
+            td.warnIfNoArgOut(nargout);
+
+            if nargin < 2
+                arrayNames = td.listImplicitSpikeArrays();
+            end
+            arrayNames = string(arrayNames);
+
+            bad = td.hasExplicitSpikeArray(arrayNames);
+            assert(~any(bad), 'Failed. Explicit spike array(s) %s already exists', strjoin(arrayNames(bad), ','));
+
+            prog = ProgressBar(numel(arrayNames), 'Incorporating spike array channels');
+            for iA = 1:numel(arrayNames)
+                prog.update(iA, 'Incorporating spike array %s channels', arrayNames{iA});
+                % find elec/unit combos in this array
+                subNames = td.listSpikeChannels('array', arrayNames{iA});
+
+                hasWaves = td.hasSpikeWaveforms(subNames);
+                if any(hasWaves)
+                    if ~all(hasWaves)
+                        warning('Some but not all spike channels on array %s had waveforms; the rest will be nan-filled.', arrayNames{iA});
+                    end
+                    cd = td.getChannelDescriptor(subNames(1));
+
+                    [waveforms, waveTvec] = td.getRawSpikeWaveforms(subNames, 'combine', false, 'fillMissingWithNaN', true, 'applyScaling', false);
+                    waveArgs = {'waveforms', waveforms, 'waveformsTime', waveTvec, ...
+                        'waveformsScaleFromLims', cd.waveformsScaleFromLims, 'waveformsScaleToLims', cd.waveformsScaleToLims, ...
+                        'waveformsOriginalDataClass', cd.waveformsOriginalDataClass};
+                else
+                    waveArgs = {};
+                end
+
+                % get the times and add the array
+                [~, electrodes, units] = arrayfun(@(subname) SpikeChannelDescriptor.parseArrayElectrodeUnit(subname), string(subNames));
+                rawTimes = td.getRawSpikeTimes(subNames, 'combine', false);
+                td = td.addSpikeArrayChannel(arrayNames{iA}, electrodes, units, rawTimes, waveArgs{:});
+
+                % and drop the individual channels
+                td = td.dropChannels(subNames);
+            end
+            prog.finish();
         end
     end
 
@@ -5996,62 +6391,113 @@ classdef TrialData
         %   indirect: those that are part of a SpikeArrayChannelDescriptor
         % these functions below try to seamlessly blend the two so they are indistiguishable to the end user
 
-        function names = listSpikeArrayChannelDescriptors(td)
+        function arrays = listSpikeArrays(td)
+            arrays = cat(1, td.listExplicitSpikeArrays(), td.listImplicitSpikeArrays());
+        end
+
+        function arrays = listImplicitSpikeArrays(td)
+            channelDescriptors = td.getChannelDescriptorArray();
+            if isempty(channelDescriptors)
+                arrays = string([]);
+                return;
+            end
+            mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
+            arrays = arrayfun(@(cd) string(cd.array), channelDescriptors(mask));
+
+            arrays = unique(arrays);
+        end
+
+        function names = listExplicitSpikeArrays(td)
             % internal use only, return SpikeArrayChannelDescriptors in
             % table
             channelDescriptors = td.getChannelDescriptorArray();
             if isempty(channelDescriptors)
-                names = {};
+                names = string([]);
                 return;
             end
             mask = arrayfun(@(cd) isa(cd, 'SpikeArrayChannelDescriptor'), channelDescriptors);
-            names = {channelDescriptors(mask).name}';
+            names = string({channelDescriptors(mask).name})';
         end
 
-        function names = listSpikeChannels(td, varargin)
+        function tf = hasExplicitSpikeArray(td, arrayName)
+            tf = ismember(arrayName, td.listExplicitSpikeArrays());
+        end
+
+        function [names, channelDescriptors] = listSpikeChannels(td, varargin)
             p = inputParser();
-            p.addParameter('includeNonArrayChannels', true, @islogical);
-            p.addParameter('includeArrayChannels', true, @islogical);
+            p.addParameter('includeDerivedChannelTypes', true, @islogical);
+
+            p.addParameter('includeNonArraySubChannels', true, @islogical); % include those not in explicit arrays
+            p.addParameter('includeArraySubChannels', true, @islogical); % include those in explicit arrays
+            p.addParameter('array', '', @(x) isstring(x) || ischar(x) || iscellstr(x));
+            p.addParameter('electrode', [], @(x) isvector(x));
+            p.addParameter('unit', [], @isvector);
+            p.addParameter('excludeUnit', [], @isvector); % for convenience, match unit and exclude these
             p.parse(varargin{:});
 
-            if p.Results.includeNonArrayChannels
-                channelDescriptors = td.getChannelDescriptorArray();
-                if isempty(channelDescriptors)
-                    names = {};
-                    return;
-                end
-                mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
-                names = {channelDescriptors(mask).name}';
-            else
-                names = {};
+            % this should grab array sub channels if includeArraySubChannels
+            [names, channelDescriptors] = td.listChannels('includeNamedSubChannels', p.Results.includeArraySubChannels, ...
+                'channelDescriptorClass', ["SpikeChannelArrayDescriptor", "SpikeChannelDescriptor"], 'includeDerivedChannelTypes', true);
+            mask = arrayfun(@(cd) isa(cd, 'SpikeChannelDescriptor'), channelDescriptors);
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
+
+            mask = true(numel(names), 1);
+            if ~p.Results.includeNonArraySubChannels
+                mask = mask & arrayfun(@(cd) cd.isisColumnOfArray, channelDescriptors);
             end
 
-            if p.Results.includeArrayChannels
-                % each array will have a SpikeArrayChannelDescriptor in the
-                % table, we enumerate their channels and concatenate
-                arrays = td.listSpikeArrayChannelDescriptors();
-                arrayNames = cellfun(@(array) td.channelDescriptorsByName.(array).listSubChannels(), arrays, 'UniformOutput', false);
-                names = cat(1, names{:}, arrayNames{:});
+            if ~isempty(p.Results.array)
+                array = arrayfun(@(cd) string(cd.array), channelDescriptors);
+                mask = mask & ismember(array, string(p.Results.array));
             end
+            if ~isempty(p.Results.electrode)
+                electrode = arrayfun(@(cd) cd.electrode, channelDescriptors);
+                mask = mask & ismember(electrode, p.Results.electrode);
+            end
+            if ~isempty(p.Results.unit)
+                unit = arrayfun(@(cd) cd.unit, channelDescriptors);
+                mask = mask & ismember(unit, p.Results.unit);
+            end
+            if ~isempty(p.Results.excludeUnit)
+                unit = arrayfun(@(cd) cd.unit, channelDescriptors);
+                mask = mask & ~ismember(unit, p.Results.excludeUnit);
+            end
+
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
+        end
+
+        function [subNames, parentNames, subChIdx, channelDescriptors]  = listSpikeNamedSubChannels(td)
+            groups = td.listExplicitSpikeArrays();
+            [subNames, parentNames, subChIdx, channelDescriptors] = td.listNamedSubChannels(groups);
         end
 
         function tf = hasSpikeChannel(td, name, varargin)
             tf = ismember(name, td.listSpikeChannels(varargin{:}));
         end
 
-        function [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nUnits] = getSpikeChannelMultiAccessInfo(td, names)
+        function [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName, cdsByField] = ...
+                getSpikeChannelMultiAccessInfo(td, names, type)
             % internal method for arranging efficient access to multiple
             % array or non array spike fields at once. also supports
             % event channels and analog channels (marked as the time samples)
+            %
+            % type is either times (spike times) or waveforms (waveforms
+            % field)
             %
             % K is the number of separate fields that need to be accessed
             % assignIdx is K x 1 cell of vectors of indices into names
             %   indicating which requested channel is located according to
             %   the corresponding location in fieldList and colIdxEachField
             %
-            % fieldList is K x 1 cellstr of these fields
+            % fieldList is K x 1 strings of these fields
             %
             % colIdxEachField is K x 1 cell of vectors of column indices
+
+            if nargin < 3
+                type = 'times';
+            end
 
             if isnumeric(names)
                 names = {names};
@@ -6060,6 +6506,16 @@ classdef TrialData
                 names = {names};
             end
             [fieldsByName, fieldIsArrayByName, colByName] = deal(cell(numel(names), 1));
+            nColumnsPerName = nan(numel(names), 1);
+
+            switch type
+                case 'times'
+                    cdField = 'dataFieldPrimary';
+                case 'waveforms'
+                    cdField = 'waveformsField';
+                otherwise
+                    error('Unknown type %s', type);
+            end
 
             % first lookup by names
             for iN = 1:numel(names)
@@ -6071,24 +6527,28 @@ classdef TrialData
                 if isfield(td.channelDescriptorsByName, name)
                     cd = td.channelDescriptorsByName.(name);
                     if isa(cd, 'SpikeChannelDescriptor') || isa(cd, 'EventChannelDescriptor')
-                        fieldsByName{iN} = {cd.dataFieldPrimary};
+                        fieldsByName{iN} = {cd.(cdField)};
                         colByName{iN} = cd.primaryDataFieldColumnIndex;
                         fieldIsArrayByName{iN} = false;
 
                     elseif isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')
-                        % refers to
+                        % refers to analog channel, use timestamps as
+                        % "spikes" to make a sample time raster
                         fieldsByName{iN} = cd.timeField;
                         colByName{iN} = 1;
                         fieldIsArrayByName{iN} = false;
 
                     elseif isa(cd, 'SpikeArrayChannelDescriptor')
                         % refers to array directly, include all channels
-                        fieldsByName{iN} = repmat({cd.dataFieldPrimary}, cd.nChannels, 1);
+                        fieldsByName{iN} = repmat({cd.(cdField)}, cd.nChannels, 1);
                         colByName{iN} = (1:cd.nChannels)';
                         fieldIsArrayByName{iN} = true(cd.nChannels, 1);
                     else
                         error('Channel type %s not supported', class(cd));
                     end
+                    cdByName(iN, 1) = cd; %#ok<AGROW>
+                    nColumnsPerName(iN) = 1;
+
                 else
                     if contains(name, '(')
                         % parse array(idx) channel name
@@ -6125,24 +6585,29 @@ classdef TrialData
                         error('Channel %s not found', array);
                     end
 
-                    fieldsByName{iN} = repmat({cd.dataFieldPrimary}, numel(chidx), 1);
+                    fieldsByName{iN} = repmat({cd.(cdField)}, numel(chidx), 1);
                     colByName{iN} = chidx;
                     fieldIsArrayByName{iN} = true(numel(chidx), 1);
+                    cdByName(iN, 1) = cd; %#ok<AGROW>
+                    nColumnsPerName(iN) = numel(chidx);
                 end
             end
 
-            [catFields, whichName] = TensorUtils.catWhich(1, fieldsByName{:});
+            catFields = cat(1, fieldsByName{:});
+            catFields = string(catFields);
             catCols = cat(1, colByName{:});
             catFieldIsArray = cat(1, fieldIsArrayByName{:});
+            assignIntoList = (1:numel(catFields))';
+
             [fieldList, exemplarEntry, whichUniqueField] = unique(catFields);
             [assignIdxEachField, colIdxEachField] = deal(cell(numel(fieldList), 1));
             fieldIsArray = false(numel(fieldList), 1);
             for iF = 1:numel(fieldList)
-                assignIdxEachField{iF} = whichName(whichUniqueField == iF);
+                assignIdxEachField{iF} = assignIntoList(whichUniqueField == iF);
                 colIdxEachField{iF} = catCols(whichUniqueField == iF);
                 fieldIsArray(iF) = catFieldIsArray(exemplarEntry(iF));
+                cdsByField(iF, 1) = cdByName(exemplarEntry(iF)); %#ok<AGROW>
             end
-            nUnits = numel(whichName);
         end
 
         % this was replaced by getSpikeChannelMultiAccessInfo
@@ -6216,16 +6681,13 @@ classdef TrialData
         function info = listArrayElectrodesWithSpikeChannelsAsTable(td)
             % info is table with fields array (char) and electrode
             % (numeric)
-            names = td.listSpikeChannels();
-            cdCell = td.getChannelDescriptorMulti(names);
+            [channels, cdList] = td.listSpikeChannels();
 
-            array = cellfun(@(cd) cd.array, cdCell, 'UniformOutput', false);
-            electrode = cellfun(@(cd) cd.electrode, cdCell);
+            array = cellfun(@(cd) cd.array, cdList, 'UniformOutput', false);
+            electrode = cellfun(@(cd) cd.electrode, cdList);
 
             t = table(array, electrode);
             [info, ~, idx] = unique(t);
-
-            channels = cellfun(@(cd) cd.name, cdCell, 'UniformOutput', false);
 
             chMatch = cellvec(height(info));
             for r = 1:height(info)
@@ -6234,16 +6696,12 @@ classdef TrialData
             info.channelList = chMatch;
         end
 
-        function info = listSpikeChannelsAsTable(td)
+        function info = listSpikeChannelsAsTable(td, varargin)
             % info is table
-            names = td.listSpikeChannels();
-            cdCell = td.getChannelDescriptorMulti(names);
-
-            name = cellfun(@(cd) cd.name, cdCell, 'UniformOutput', false);
-            array = cellfun(@(cd) cd.array, cdCell, 'UniformOutput', false);
-            electrode = cellfun(@(cd) cd.electrode, cdCell);
-            unit = cellfun(@(cd) cd.unit, cdCell);
-
+            [name, cdList] = td.listSpikeChannels(varargin{:});
+            array = arrayfun(@(cd) string(cd.array), cdList);
+            electrode = arrayfun(@(cd) cd.electrode, cdList);
+            unit = arrayfun(@(cd) cd.unit, cdList);
             info = table(name, array, electrode, unit);
         end
 
@@ -6263,88 +6721,23 @@ classdef TrialData
             end
         end
 
-        function [names, units, electrodes] = listSpikeChannelsOnArray(td, arrayName)
-            % [names, channelDescriptors] = getChannelsOnArray(td, arrayName)
-            names = td.listSpikeChannels();
-            units = nanvec(numel(names));
-            electrodes = nanvec(numel(names));
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = strcmp(cd.array, arrayName);
-                units(iC) = cd.unit;
-                electrodes(iC) = cd.electrode;
-            end
-
-            names = names(mask);
-            units = units(mask);
+        function [names, cds] = listSpikeChannelsOnArray(td, arrayName, varargin)
+            [names, cds] = td.listSpikeChannels('array', arrayName, varargin{:});
         end
 
-        function [names, units] = listSpikeChannelsOnArrayElectrode(td, arrayName, electrodeNum, varargin)
-            p = inputParser();
-            p.addParameter('ignoreZeroUnit', false, @islogical);
-            p.parse(varargin{:});
-
-            % [names, channelDescriptors] = getChannelsOnArrayElectrode(td, arrayName, electrodeNum)
-            names = td.listSpikeChannels();
-            units = nanvec(numel(names));
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = any(strcmp(cd.array, arrayName)) && any(cd.electrode == electrodeNum);
-                units(iC) = cd.unit;
-            end
-
-            if p.Results.ignoreZeroUnit
-                mask = mask & units ~= 0;
-            end
-            names = names(mask);
-            units = units(mask);
+        function [names, cds] = listSpikeChannelsOnArrayElectrode(td, arrayName, electrodeNum, varargin)
+            [names, cds] = td.listSpikeChannels('array', arrayName, 'electrode', electrodeNum, varargin{:});
         end
 
-        function [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName, varargin)
+        function [names, cds] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName, varargin)
             % [names, units] = listSpikeChannelsOnSameArrayElectrodeAs(td, chName)
             % chName is spike channel or continuous neural channel name
-            cd = td.channelDescriptorsByName.(chName);
-            [names, units] = td.listSpikeChannelsOnArrayElectrode(cd.array, cd.electrode, varargin{:});
+            cd = td.getChannelDescriptor(chName);
+            [names, cds] = td.listSpikeChannelsOnArrayElectrode(cd.array, cd.electrode, varargin{:});
         end
 
-        function names = listSpikeChannelsWithUnitNumber(td, unit)
-            info = td.listSpikeChannelsAsTable();
-            names = info(ismember(info.unit, unit), :).name;
-        end
-    end
-
-    methods  % spike / continuous neural channel correspondence
-        function [names] = listContinuousNeuralChannelsOnArray(td, arrayName)
-            % [names, channelDescriptors] = getContinuousNeuralChannelsOnArray(td, arrayName)
-            names = td.listContinuousNeuralChannels();
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = strcmp(cd.array, arrayName);
-            end
-
-            names = names(mask);
-        end
-
-        function [names] = listContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
-            % [names, channelDescriptors] = getContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum)
-            names = td.listContinuousNeuralChannels();
-            mask = falsevec(numel(names));
-            for iC = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{iC});
-                mask(iC) = strcmp(cd.array, arrayName) && cd.electrode == electrodeNum;
-            end
-
-            names = names(mask);
-        end
-
-        function [names] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
-            % [names, units] = listContinuousNeuralChannelsOnSameArrayElectrodeAs(td, chName)
-            % chName is spike channel or continuous neural channel name
-            cd = td.channelDescriptorsByName.(chName);
-            [names] = td.listContinuousNeuralChannelsOnArrayElectrode(cd.array, cd.electrode);
+        function [names, cds] = listSpikeChannelsWithUnitNumber(td, unit)
+            [names, cds] = td.listSpikeChannels('unit', unit);
         end
     end
 
@@ -6360,18 +6753,22 @@ classdef TrialData
             td = td.postDataChange(fields);
         end
 
-        function offsets = getTimeOffsetsFromZeroEachTrial(td)
+        function offsets = getTimeOffsetsFromZeroEachTrial(td, varargin)
             % when adding new data to the trial, all times are stored relative
             % to the current time zero. This will be overridden in
             % TrialDataConditionAlign. This will be added automatically
             % to all new channel time data to match the offsets produced when
             % getting data
+            p = inputParser();
+            p.addParameter('raw', false, @islogical);
+            p.parse(varargin{:})
+            
             offsets = zerosvec(td.nTrials);
         end
 
         function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrialRaw(td)
-            tMinByTrial = td.getEvent('TrialStart');
-            tMaxByTrial = td.getEvent('TrialEnd');
+            tMinByTrial = td.getEventFirst('TrialStart');
+            tMaxByTrial = td.getEventFirst('TrialEnd');
         end
 
         function [tMinByTrial, tMaxByTrial] = getTimeStartStopEachTrial(td)
@@ -6536,16 +6933,6 @@ classdef TrialData
             % update channel descriptor directly
             [cd, dataFieldRenameMap] = cd.rename(newName);
 
-            if isa(cd, 'AnalogChannelGroupDescriptor')
-                % rename component channels of group first, since
-                % renameDataField will check for shared use of this channel
-                % group
-                ch = td.listAnalogChannelsInGroup(oldName);
-                for c = 1:numel(ch)
-                    td.channelDescriptorsByName.(ch{c}) = td.channelDescriptorsByName.(ch{c}).updateGroup(cd);
-                end
-            end
-
             % then rename the actual channel
             td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, oldName);
             td.channelDescriptorsByName.(newName) = cd;
@@ -6593,49 +6980,49 @@ classdef TrialData
             if nargin < 3
                 fieldMask = [];
             end
-
-            if ischar(names)
-                names = {names};
-            end
-
+            names = string(names);
             fieldsRenamed = struct();
 
-            [groupNames, singleNames] = sortOutGroups(names);
-            for iC = 1:numel(groupNames)
-                fixConflictsWithChannel(groupNames{iC}, union(groupNames, names));
-            end
-            for iC = 1:numel(singleNames)
-                fixConflictsWithChannel(singleNames{iC}, union(groupNames, names));
+            for iC = 1:numel(names)
+                fixConflictsWithChannel(names(iC), names);
             end
 
-            function [groupNames, singleNames] = sortOutGroups(names)
-                % check for analog channel groups: if one channels is included, all
-                % must be included
-                inGroup = falsevec(numel(names));
-                groupNames = cellvec(numel(names));
-                for iN = 1:numel(names)
-                    if td.hasAnalogChannelGroup(names{iN})
-                        groupNames{iN} = names{iN};
-                        inGroup(iN) = true;
-                    elseif td.hasAnalogChannel(names{iN})
-                        [inGroup(iN), groupNames{iN}] = td.isAnalogChannelInGroup(names{iN});
-                    end
-                end
-
-                if any(inGroup)
-                    groupNames = unique(groupNames(inGroup));
-                    for iG = 1:numel(groupNames)
-                        other = td.listAnalogChannelsInGroup(groupNames{iG});
-                        if ~all(ismember(other, names))
-                            error('If renaming channel fields referenced by channels in analog channel group (%s) all channels in that group must be referenced', groupNames{iG});
-                        end
-                    end
-                else
-                    groupNames = {};
-                end
-
-                singleNames = names(~inGroup);
-            end
+%             [groupNames, singleNames] = sortOutGroups(names);
+%             for iC = 1:numel(groupNames)
+%                 fixConflictsWithChannel(groupNames{iC}, union(groupNames, names));
+%             end
+%             for iC = 1:numel(singleNames)
+%                 fixConflictsWithChannel(singleNames{iC}, union(groupNames, names));
+%             end
+%
+%             function [groupNames, singleNames] = sortOutGroups(names)
+%                 % check for analog channel groups: if one channels is included, all
+%                 % must be included
+%                 inGroup = falsevec(numel(names));
+%                 groupNames = cellvec(numel(names));
+%                 for iN = 1:numel(names)
+%                     if td.hasAnalogChannelGroup(names{iN})
+%                         groupNames{iN} = names{iN};
+%                         inGroup(iN) = true;
+%                     elseif td.hasAnalogChannel(names{iN})
+%                         [inGroup(iN), groupNames{iN}] = td.isAnalogChannelInGroup(names{iN});
+%                     end
+%                 end
+%
+%                 if any(inGroup)
+%                     groupNames = unique(groupNames(inGroup));
+%                     for iG = 1:numel(groupNames)
+%                         other = td.listAnalogChannelsInGroup(groupNames{iG});
+%                         if ~all(ismember(other, names))
+%                             error('If renaming channel fields referenced by channels in analog channel group (%s) all channels in that group must be referenced', groupNames{iG});
+%                         end
+%                     end
+%                 else
+%                     groupNames = {};
+%                 end
+%
+%                 singleNames = names(~inGroup);
+%             end
 
             function fixConflictsWithChannel(chName, exclude)
                 % resolve conflicts shared between channel chName and any
@@ -6952,9 +7339,6 @@ classdef TrialData
 
             xlabel(td.getTimeAxisLabel());
             ylabel(td.getAxisLabelForChannel(name));
-
-            %             AutoAxis.replace(axh);
-
             hold(axh, 'off');
         end
     end

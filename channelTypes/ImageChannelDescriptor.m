@@ -25,5 +25,9 @@ classdef ImageChannelDescriptor < AnalogChannelGroupDescriptor
                 units, timeUnits, dataCell, timeCell, ...
                 'channelDescriptor', cd, varargin{:});
         end
+        
+        function cls = getSubChannelClass()
+            cls = '';
+        end
     end
 end

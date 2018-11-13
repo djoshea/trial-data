@@ -544,7 +544,7 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function td = dropChannels(td, names)
-            names = wrapCell(names);
+            names = string(names);
 
             % don't remove special channels
             names = setdiff(names, td.listSpecialChannels());
@@ -680,8 +680,8 @@ classdef TrialDataConditionAlign < TrialData
                 data = varargin{i};
                 assert(size(data,1) == td.nTrials, ...
                     'Data must have size nTrials along 1st dimension');
-                varargout{i} = cellfun(@(idx) data(idx,:), td.listByCondition(:), ...
-                    'UniformOutput', false);
+                varargout{i} = cellfun(@(idx) TensorUtils.selectAlongDimension(data, 1, idx, false), ...
+                    td.listByCondition(:), 'UniformOutput', false);
             end
         end
 
@@ -866,7 +866,7 @@ classdef TrialDataConditionAlign < TrialData
                     continue;
                 end
 
-                cd = td.getAnalogChannelDescriptor(name);
+                cd = td.getChannelDescriptor(name);
                 if isa(cd, 'EventChannelDescriptor')
                     % the event time will be referenced from the current
                     % zero event
@@ -1982,9 +1982,15 @@ classdef TrialDataConditionAlign < TrialData
             tMaxByTrial(~td.valid, :) = NaN;
         end
 
-        function offsets = getTimeOffsetsFromZeroEachTrial(td)
+        function offsets = getTimeOffsetsFromZeroEachTrial(td, varargin)
+            p = inputParser();
+            p.addParameter('raw', false, @islogical);
+            p.parse(varargin{:})
+            
             offsets = td.alignInfoActive.getZeroByTrial();
-            offsets(~td.valid) = NaN;
+            if ~p.Results.raw
+                offsets(~td.valid) = NaN;
+            end
         end
 
         function tf = alignIncludesFullTrial(td)
@@ -3279,7 +3285,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            assert(iscellstr(names));
+            names = string(names);
             [inGroup, groupName] = td.checkAnalogChannelsInSameGroup(names);
 
             if inGroup
@@ -4496,8 +4502,8 @@ classdef TrialDataConditionAlign < TrialData
 
         function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = getSpikeBinnedCountsGrouped(td, unitName, varargin)
             [countsMat, tvec, hasSpikes, tBinEdges] = td.getSpikeBinnedCounts(unitName, varargin{:});
-            countsGrouped = td.groupElements(countsMat);
-            hasSpikesGrouped = td.groupElements(hasSpikes);
+            countsGrouped = td.groupElementsFlat(countsMat);
+            hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
         function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = getSpikeBinnedCountsGroupedRandomized(td, unitName, varargin)
@@ -4739,40 +4745,40 @@ classdef TrialDataConditionAlign < TrialData
 
         function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGrouped(td, unitName, varargin)
             [rateCell, timeCell, hasSpikes] = td.getSpikeRateFiltered(unitName, varargin{:});
-            rateCell = td.groupElements(rateCell);
-            timeCell = td.groupElements(timeCell);
-            hasSpikesGrouped = td.groupElements(hasSpikes);
+            rateCell = td.groupElementsFlat(rateCell);
+            timeCell = td.groupElementsFlat(timeCell);
+            hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
         function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGroupedRandomized(td, unitName, varargin)
             [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
-            rateCell = td.groupElementsRandomized(rateCell);
-            timeCell = td.groupElementsRandomized(timeCell);
-            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
+            rateCell = td.groupElementsFlatRandomized(rateCell);
+            timeCell = td.groupElementsFlatRandomized(timeCell);
+            hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
         end
 
         function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGrouped(td, unitNames, varargin)
             [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
-            rateCell = td.groupElements(rates);
-            hasSpikesGrouped = td.groupElements(hasSpikes);
+            rateCell = td.groupElementsFlat(rates);
+            hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
         function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGroupedRandomized(td, unitNames, varargin)
             [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
-            rateCell = td.groupElementsRandomized(rates);
-            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
+            rateCell = td.groupElementsFlatRandomized(rates);
+            hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
         end
 
         function [rateCell, tvec, hasSpikesGrouped, alignVec] = getSpikeRateFilteredAsMatrixGroupedEachAlign(td, unitName, varargin)
             [rates, tvec, hasSpikes, alignVec] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
-            rateCell = td.groupElements(rates);
-            hasSpikesGrouped = td.groupElements(hasSpikes);
+            rateCell = td.groupElementsFlat(rates);
+            hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
         function [rateCell, tvec, hasSpikesGrouped, alignVec] = getSpikeRateFilteredAsMatrixGroupedRandomizedEachAlign(td, unitName, varargin)
             [rates, tvec, hasSpikes, alignVec] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
-            rateCell = td.groupElementsRandomized(rates);
-            hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
+            rateCell = td.groupElementsFlatRandomized(rates);
+            hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
         end
 
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
@@ -4780,7 +4786,7 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be nConditions x T matrices
             % if randomized, will be nConditions x T x nRandomized
             p = inputParser();
-            p.addRequired('unitNames', @(x) isnumeric(x) || ischar(x) || iscellstr(x));
+            p.addRequired('unitNames', @(x) isnumeric(x) || ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
@@ -5006,7 +5012,7 @@ classdef TrialDataConditionAlign < TrialData
                 prog.update(iR);
 
                 % group for this randomization
-                [rateCell, hasSpikesGrouped] = td.groupElementsRandomizedSingle(iR, rates, hasSpikes);
+                [rateCell, hasSpikesGrouped] = td.groupElementsFlatRandomizedSingle(iR, rates, hasSpikes);
 
                 % remove trials from each group that have no spikes
                 if p.Results.removeZeroSpikeTrials
@@ -5056,22 +5062,22 @@ classdef TrialDataConditionAlign < TrialData
 
         function timesCellofCells = getSpikeTimesGrouped(td, unitName, varargin)
             timesCell = td.getSpikeTimes(unitName, varargin{:});
-            timesCellofCells = td.groupElements(timesCell);
+            timesCellofCells = td.groupElementsFlat(timesCell);
         end
 
         function timesCellofCells = getSpikeTimesGroupedRandomized(td, unitName, varargin)
             timesCell = td.getSpikeTimes(unitName, varargin{:});
-            timesCellofCells = td.groupElementsRandomized(timesCell);
+            timesCellofCells = td.groupElementsFlatRandomized(timesCell);
         end
 
         function countsCell = getSpikeCountsGrouped(td, unitName)
             counts = td.getSpikeCounts(unitName);
-            countsCell = td.groupElements(counts);
+            countsCell = td.groupElementsFlat(counts);
         end
 
         function countsCell = getSpikeCountsGroupedRandomized(td, unitName)
             counts = td.getSpikeCounts(unitName);
-            countsCell = td.groupElementsRandomized(counts);
+            countsCell = td.groupElementsFlatRandomized(counts);
         end
 
         function [rates, durations, containsBlanked] = getSpikeMeanRateAllAlign(td, unitName, varargin)
@@ -5098,17 +5104,17 @@ classdef TrialDataConditionAlign < TrialData
 
         function [rateCell, durationCell, containsBlankedCell] = getSpikeMeanRateGrouped(td, unitName, varargin)
             [rates, durations, containsBlanked] = td.getSpikeMeanRate(unitName, varargin{:});
-            [rateCell, durationCell, containsBlankedCell] = td.groupElements(rates, durations, containsBlanked);
+            [rateCell, durationCell, containsBlankedCell] = td.groupElementsFlat(rates, durations, containsBlanked);
         end
 
         function [rateCell, durationCell, containsBlankedCell] = getSpikeMeanRateGroupedAllAlign(td, unitName, varargin)
             [rates, durations, containsBlanked] = td.getSpikeMeanRateAllAlign(unitName, varargin{:});
-            [rateCell, durationCell, containsBlankedCell] = td.groupElements(rates, durations, containsBlanked);
+            [rateCell, durationCell, containsBlankedCell] = td.groupElementsFlat(rates, durations, containsBlanked);
         end
 
         function rateCell = getSpikeMeanRateGroupedRandomized(td, unitName, varargin)
             rates = td.getSpikeMeanRate(unitName, varargin{:});
-            rateCell = td.groupElementsRandomized(rates);
+            rateCell = td.groupElementsFlatRandomized(rates);
         end
 
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName, varargin)
@@ -5205,7 +5211,7 @@ classdef TrialDataConditionAlign < TrialData
             % [timesCell] = getMarkAlignedSpikeTimes(td, unitName, markIdx, window)
             timesCell = td.getMarkAlignedSpikeTimes(unitName, markIdx, window);
             markCounts = td.alignInfoActive.markCountsValid;
-            [timesCellByGroup, markCountsByGroup] = td.groupElements(timesCell, markCounts);
+            [timesCellByGroup, markCountsByGroup] = td.groupElementsFlat(timesCell, markCounts);
         end
 
         function [spikeCounts, markCounts] = getMarkAlignedSpikeCounts(td, unitName, markIdx, window)
@@ -5223,7 +5229,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function [spikeCountsByGroup, markCountsByGroup] = getMarkAlignedSpikeCountsGrouped(td, unitName, markIdx, window)
             [spikeCounts, markCounts] = td.getMarkAlignedSpikeCounts(unitName, markIdx, window);
-            [spikeCountsByGroup, markCountsByGroup] = td.groupElements(spikeCounts, markCounts);
+            [spikeCountsByGroup, markCountsByGroup] = td.groupElementsFlat(spikeCounts, markCounts);
         end
 
         function td = trimSpikeChannelToCurrentAlign(td, unitNames)
@@ -5357,7 +5363,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function [wavesCell, waveTvec, timesCell] = getSpikeWaveformsGrouped(td, unitName, varargin)
             [wavesCell, waveTvec, timesCell] = td.getSpikeWaveforms(unitName, varargin{:});
-            [wavesCell, timesCell] = td.groupElements(wavesCell, timesCell);
+            [wavesCell, timesCell] = td.groupElementsFlat(wavesCell, timesCell);
         end
 
         function plotSpikeWaveforms(td, unitName, varargin)
@@ -5409,6 +5415,7 @@ classdef TrialDataConditionAlign < TrialData
                 for iU = 1:nUnits
                     wavesCell{iU} = cat(1, wavesByTrialUnit{:, iU});
                 end
+                waveTvec = repmat({waveTvec}, nUnits, 1);
 
             else
                 % plot colored by condition
@@ -5420,6 +5427,9 @@ classdef TrialDataConditionAlign < TrialData
                 waveTvec = repmat({waveTvec}, nPlotGroups, 1);
                 groupNames = td.conditionNamesShort;
             end
+            
+            cdList = td.getChannelDescriptor(unitName);
+            waveUnits = cdList(1).waveformsUnits;
 
             hMean = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nPlotGroups);
 
@@ -5499,7 +5509,7 @@ classdef TrialDataConditionAlign < TrialData
             axis tight;
 
             if ~p.Results.fast
-                AutoAxis.replaceScaleBars(gca, td.timeUnitName, td.channelDescriptorsByName.(unitName{1}).waveformsUnits);
+                AutoAxis.replaceScaleBars(gca, td.timeUnitName, waveUnits);
             else
                 box off;
             end
@@ -5902,16 +5912,14 @@ classdef TrialDataConditionAlign < TrialData
 
             % for multiple unit simultaneous plotting, can be useful for
             % looking at spike sorting issues
-            if ischar(unitNames)
-                unitNames = {unitNames};
-            end
             if isnumeric(unitNames)
                 unitNames = td.lookupSpikeChannelByIndex(unitNames);
             end
+            unitNames = string(unitNames);
+            
             if p.Results.combine
                 nUnits = 1;
                 % wrap in another cell so that loop works
-                unitNames = {unitNames};
             else
                 nUnits = numel(unitNames);
             end
@@ -5935,6 +5943,7 @@ classdef TrialDataConditionAlign < TrialData
             timePointsCell = cell(nAlignUsed, 1);
 
             if nUnits == 0
+                % special mode with no units just for visualizing marks and rasters
                 [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed, 1));
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
@@ -5952,35 +5961,32 @@ classdef TrialDataConditionAlign < TrialData
                     end
                 end
             else
-                [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed, nUnits));
-                for iUnit = 1:nUnits % plot multiple units simultaneously
-                    unitName = unitNames{iUnit};
-                    for iAlign = 1:nAlignUsed
-                        idxAlign = alignIdx(iAlign);
+                [startData, stopData] = deal(cell(nAlignUsed, nConditionsUsed));
+                for iAlign = 1:nAlignUsed
+                    idxAlign = alignIdx(iAlign);
 
-                        % get grouped spike times by alignment
-                        thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitName, 'combine', p.Results.combine);
-                        timesByAlign(iAlign, :, iUnit) = thisC(:);
+                    % get grouped spike times by alignment
+                    thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitNames, 'combine', p.Results.combine);
+                    timesByAlign(iAlign, :, :) = thisC;
 
-                        if p.Results.drawSpikeWaveforms
-                            [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitName, 'combine', p.Results.combine);
-                            wavesByAlign(iAlign, :, iUnit) = wavesC(:);
-                        end
+                    if p.Results.drawSpikeWaveforms
+                        [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitNames, 'combine', p.Results.combine);
+                        wavesByAlign(iAlign, :, iUnit) = wavesC(:);
+                    end
 
-                        % figure out time validity window for this alignment
-                        % TODO might want to update this for the selected
-                        % conditions only
-                        [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
-                        mask = start <= stop;
-                        timePointsCell{iAlign} = [start(mask); stop(mask)];
+                    % figure out time validity window for this alignment
+                    % TODO might want to update this for the selected
+                    % conditions only
+                    [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
+                    mask = start <= stop;
+                    timePointsCell{iAlign} = [start(mask); stop(mask)];
 
-                        % and store start/stop by trial in each align/condition
-                        % cell
-                        for iCond = 1:nConditionsUsed
-                            idxCond = conditionIdx(iCond);
-                            startData{iAlign, iCond, iUnit} = start(td.listByCondition{idxCond});
-                            stopData{iAlign, iCond, iUnit} = stop(td.listByCondition{idxCond});
-                        end
+                    % and store start/stop by trial in each align/condition
+                    % cell
+                    for iCond = 1:nConditionsUsed
+                        idxCond = conditionIdx(iCond);
+                        startData{iAlign, iCond} = start(td.listByCondition{idxCond});
+                        stopData{iAlign, iCond} = stop(td.listByCondition{idxCond});
                     end
                 end
             end
@@ -6222,12 +6228,12 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             if nUnits > 0
-                if iscell(unitName)
-                    unitNameStr = TrialDataUtilities.String.strjoin(unitName, ',');
+                if isstring(unitNames)
+                    unitNameStr = TrialDataUtilities.String.strjoin(unitNames, ',');
                 else
                     unitNameStr = unitName;
                 end
-                TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s Unit %s', td.datasetName, unitNameStr);
+                TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s %s', td.datasetName, unitNameStr);
             end
 
             tLims = [min(tLimitsByAlign(:)), max(tLimitsByAlign(:))];
@@ -6887,13 +6893,11 @@ classdef TrialDataConditionAlign < TrialData
 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-
-            stemName = parseIndexedAnalogChannelName(td, name);
-
+            
             % grab raw data (for marking) and grouped data (for plotting)
-            if td.hasAnalogChannel(stemName) || td.hasAnalogChannelGroup(stemName)
+            if td.hasAnalogChannel(name) || td.hasAnalogChannelGroup(name)
                 [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);
-                cd = td.getAnalogChannelDescriptor(name); % in case analogGroup(5)
+                cd = td.getChannelDescriptor(name); % in case analogGroup(5)
 
             elseif td.hasSpikeChannel(name)
                 [dataByGroup, timeByGroup] = td.getSpikeRateFilteredGrouped(name);
@@ -6917,11 +6921,13 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            [dataCell, timeCell] = td.getAnalogMultiCommonTimeGrouped({name1, name2}, p.Results);
+            names = [string(name1), string(name2)];
+            cds = td.getChannelDescriptor(names);
+            [dataCell, timeCell] = td.getAnalogMultiCommonTimeGrouped(names, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(2, ...
                 'time', timeCell(:), 'data', dataCell(:), ...
-                'axisInfoX', td.channelDescriptorsByName.(name1), ...
-                'axisInfoY', td.channelDescriptorsByName.(name2), p.Unmatched);
+                'axisInfoX', cds(1), ...
+                'axisInfoY', cds(2), p.Unmatched);
         end
 
         function plotAnalogGroupedEachTrial2DvsTime(td, name1, name2, varargin)
@@ -7060,7 +7066,7 @@ classdef TrialDataConditionAlign < TrialData
                 quantileData = [];
             end
 
-            cd = td.getAnalogChannelDescriptor(name);
+            cd = td.getChannelDescriptor(name);
             td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
                 'quantileData', quantileData, ...
@@ -7300,7 +7306,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addOptional('trialIdx', [], @(x) isnumeric(x) && isscalar(x)); % selection into all trials
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
-            p.addParameter('unitNames', td.listSpikeChannels(), @iscellstr);
+            p.addParameter('unitNames', td.listSpikeChannels(), @(x) ischar(x) || isstring(x) || iscellstr(x));
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('tickHeight', 1, @isscalar);

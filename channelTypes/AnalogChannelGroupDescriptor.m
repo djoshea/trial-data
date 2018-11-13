@@ -3,11 +3,14 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         scaleFromLims
         scaleToLims
         
+        subChannelNames string % nChannels x 1 cellstr of sub channel names
+        subChannelUnits string % nChannels x 1 cellstr of sub channel units
+        
         sampleSize % size of a single sample
         
         % if this channel just a virtually transformed version of a
         % different channel, what is the other channel's name?
-        transformChannelNames cell = {};
+        transformChannelNames string = [];
         
         % function handle to apply to other channel's data
         % function should be prepared to take arbitrary arguments using
@@ -27,8 +30,10 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         timeUnits
         hasScaling
         
+        nChannels
+        
         % is this channel just a transformed version of a different channel?
-        isTransformGroup
+        isTransform
     end
 
     methods
@@ -43,25 +48,72 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             cd.scaleFromLims = [];
             cd.scaleToLims = [];
         end
+        
+        function n = get.nChannels(cd)
+            if isempty(cd.sampleSize)
+                n = NaN;
+            else
+                n = prod(cd.sampleSize);
+            end
+        end
+        
+        function v = get.subChannelNames(cd)
+            subChannelNames = cd.getSubChannelNames(cd.subChannelNames); %#ok<*PROP>
+            if isempty(subChannelNames)
+                if ~isnan(cd.nChannels)
+                    v = repmat("", cd.nChannels, 1);
+                else
+                    v = string([]);
+                end
+            else
+                if isnan(cd.nChannels)
+                    v = string([]);
+                else
+                    v = subChannelNames(1:cd.nChannels);
+                end
+            end
+        end
+        
+        function names = getSubChannelNames(cd, namesStored) %#ok<INUSL>
+            % allows sub classes to override
+            names = namesStored;
+        end
+        
+        function v = get.subChannelUnits(cd)
+            if isempty(cd.subChannelUnits)
+                if ~isnan(cd.nChannels)
+                    v = repmat("", cd.nChannels, 1);
+                else
+                    v = string([]);
+                end
+            else
+                if isnan(cd.nChannels)
+                    v = string([]);
+                else
+                    v = cd.subChannelUnits(1:cd.nChannels);
+                end
+            end
+        end
     end
     
     methods(Access=protected)
-        function cd = AnalogChannelGroupDescriptor(name, timeField)
+        function cd = AnalogChannelGroupDescriptor(name, timeField, sampleSize)
             cd = cd@ChannelDescriptor(name);
-            if nargin < 2
+            if nargin < 2 || isempty(timeField)
                 timeField = sprintf('%s_time', cd.name);
             end
             
             cd.dataFields = {name, timeField};
             cd.originalDataClassByField = {'double', 'double'};
             cd.elementTypeByField = [cd.NUMERIC, cd.VECTOR];
+            cd.sampleSize = sampleSize;
         end
     end
         
     methods
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
-            if cd.isTransformGroup
+            if cd.isTransform
                 primaryField = cd.transformChannelNames{1};
             else
                 primaryField = cd.name;
@@ -114,6 +166,7 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                     
             dataClass = ChannelDescriptor.getCellElementClass(dataCell);
             timeClass = ChannelDescriptor.getCellElementClass(timeCell);
+            cd.sampleSize = ChannelDescriptor.getCellElementSize(dataCell);
             cd.originalDataClassByField = {dataClass, timeClass};
             if strcmp(dataClass, 'cell')
                 cd.elementTypeByField = [cd.CELL, cd.VECTOR];
@@ -141,7 +194,7 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                 end
             end
         end 
-        
+
         function data = convertDataCellOnAccess(cd, fieldIdx, data)
             % cast to access class, also do scaling upon request
             % (cd.scaleFromLims -> cd.scaleToLims)
@@ -193,15 +246,27 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
         end
         
-        function cdIndividual = buildIndividualSubChannel(cd, name, index, units)
-            if nargin < 4
-                units = cd.unitsByField{1};
+        function cdIndividual = buildIndividualSubChannel(cd, index)
+            units = cd.subChannelUnits{index};
+            name = cd.subChannelNames{index};
+            if isempty(name)
+                name = AnalogChannelGroupDescriptor.generateDefaultSubChannelName(cd, index);
             end
             cdIndividual = AnalogChannelDescriptor.buildSharedMatrixColumnAnalog(name, cd.name, index, cd.timeField, units, cd.unitsByField{2}, ...
                 'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
                 'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2}, ...
                 'transformChannelNames', cd.transformChannelNames, 'transformFn', cd.transformFn, ...
                 'transformFnMode', cd.transformFnMode);
+        end
+        
+        function cd = buildSubChannelDescriptor(cd, nameOrIdx) 
+            if isnumeric(nameOrIdx)
+                index = nameOrIdx;
+            else
+                [tf, index] = ismember(nameOrIdx, cd.subChannelNames);
+                assert(all(tf), 'Channel not found');
+            end
+            cd = cd.buildIndividualSubChannel(index);
         end
         
         function sz = getSampleSize(cd, td)
@@ -222,12 +287,30 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         function [dataCell, timeCell] = computeTransformDataRaw(cd, td, varargin)
             [dataCell, timeCell] = AnalogChannelGroupDescriptor.doComputeTransformData(cd, td, varargin{:});
         end
-         
+             
+        function [tf, idx] = hasSubChannel(cd, name)
+            [tf, idx] = ismember(string(name), cd.subChannelNames);
+        end
+        
+        function [names, chidx] = listNamedSubChannels(cd)
+            names = string(cd.subChannelNames);
+            mask = arrayfun(@(x) x ~= "", names);
+            names = names(mask);
+            chidx = find(mask);
+        end
+        
+        function cd = setSubChannelInfo(cd, chidx, names, units)
+            cd.warnIfNoArgOut(nargout);
+            assert(~isnan(cd.nChannels), 'Number of channels not manually set for AnalogChannelGroupDescriptor');
+            assert(all(TrialDataUtilities.Data.indexInRange(chidx, cd.nChannels)));
+            cd.subChannelNames(chidx) = string(names);
+            cd.subChannelUnits(chidx) = string(units);
+        end
     end
     
     % transforms of other groups
     methods 
-        function tf = get.isTransformGroup(cd)
+        function tf = get.isTransform(cd)
             tf = ~isempty(cd.transformChannelNames);
         end
     end
@@ -256,12 +339,12 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                     end
 
                     prog = ProgressBar(numel(dataCell), 'Computing transform analog channel on the fly');
-                    for i = 1:numel(dataCell)
-                        if ~isempty(dataCell{i})
-                            prog.update(i);
-                            dataCell{i} = cd.transformFn(dataCell{i});
+                    for iT = 1:numel(dataCell)
+                        if ~isempty(dataCell{iT})
+                            prog.update(iT);
+                            dataCell{iT} = cd.transformFn(dataCell{iT});
                             if ~isempty(args)
-                                dataCell{i} = dataCell{i}(:, args{:}); % take a slice through the data
+                                dataCell{iT} = dataCell{iT}(:, args{:}); % take a slice through the data
                             end
                         end
                     end
@@ -282,18 +365,6 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                    [dataCell, timeCell] = cd.transformFn(dataCell, timeCell, 'slice', args, 'scalingApplied', p.Results.applyScaling);
             end
         end
-        
-        function [tf, idx] = hasSubChannel(cd, name)
-            if ischar(name)
-                names = {names};
-            end
-            tf = false(numel(names), 1);
-            idx = nan(numel(names), 1);
-            for iN = 1:numel(names)
-                if contains(names{iN}, '(')
-                    [ch, idx] = cd
-            end
-        end
     end
     
      methods(Static)
@@ -305,13 +376,15 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             p.addParameter('dataClass', 'double', @ischar);
             p.addParameter('timeClass', 'double', @ischar);
             p.addParameter('sampleSize', [], @isvector);
-            p.addParameter('transformChannelNames', {}, @iscellstr);
+            p.addParameter('subChannelNames', [], @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('subChannelUnits', [], @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('transformChannelNames', {}, @(x) iscellstr(x) || isstring(x));
             p.addParameter('transformFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('transformFnMode', '', @ischar);
             p.parse(varargin{:});
             
             if isempty(p.Results.channelDescriptor)
-                cd = AnalogChannelGroupDescriptor(name, timeField);
+                cd = AnalogChannelGroupDescriptor(name, timeField, p.Results.sampleSize);
             else
                 cd = p.Results.channelDescriptor;
             end
@@ -329,13 +402,26 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             % set the data and time class appropriately
             cd.originalDataClassByField = {p.Results.dataClass, p.Results.timeClass};
             
-            cd.transformChannelNames = p.Results.transformChannelNames;
+            cd.transformChannelNames = string(p.Results.transformChannelNames);
             if ~isempty(cd.transformChannelNames)
                 assert(~isempty(p.Results.sampleSize), 'Sample size required for transform groups');
             end
             cd.transformFn = p.Results.transformFn;
             cd.transformFnMode = p.Results.transformFnMode;
             cd.sampleSize = p.Results.sampleSize;
+            
+            subChannelNames = string(p.Results.subChannelNames);
+            subChannelUnits = string(p.Results.subChannelUnits);
+            if isempty(p.Results.sampleSize) && ~isempty(subChannelNames)
+                cd.sampleSize = numel(subChannelNames);
+            else
+                assert(isempty(subChannelNames) || prod(cd.sampleSize) == numel(subChannelNames), 'Sub channel names must match prod(sampleSize)');
+                assert(isempty(subChannelUnits) || prod(cd.sampleSize) == numel(subChannelUnits), 'Sub channel names must match prod(sampleSize)');
+            end
+            % these fields should only be accessed after sample size is correctly set because they are autopopulated in get.subChannel* to be sampleSize long
+            cd.subChannelNames = subChannelNames;
+            cd.subChannelUnits = subChannelUnits;
+            
             cd = cd.initialize();
         end
         
@@ -366,8 +452,8 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         end
         
         function cd = buildTransformAnalogGroup(name, cdList, transformFn, outputSize, varargin)
-            cdo = cdList{1};
-            transformChannelNames = cellfun(@(cd) cd.name, cdList, 'UniformOutput', false);
+            cdo = cdList(1);
+            transformChannelNames = arrayfun(@(cd) string(cd.name), cdList);
             
             p = inputParser();
             p.addParameter('units', cdo.unitsPrimary, @ischar);
@@ -395,6 +481,16 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                 'transformChannelNames', transformChannelNames, 'transformFn', transformFn, ...
                 'transformFnMode', transformFnMode, ...
                 'sampleSize', outputSize, rmfield(p.Results, {'units', 'transformFnMode'}));            
+        end
+        
+        function name = generateDefaultSubChannelName(cd, index)
+            nCh = cd.nChannels;
+            nPad = ceil(log10(nCh));
+            name = sprintf('%s_%0*d', cd.name, nPad, index);
+        end
+        
+        function cls = getSubChannelClass()
+            cls = 'AnalogChannelDescriptor';
         end
     end
 

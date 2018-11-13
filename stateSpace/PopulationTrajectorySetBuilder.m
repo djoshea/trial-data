@@ -116,6 +116,7 @@ classdef PopulationTrajectorySetBuilder
     methods(Static)
         function pset = fromAllUnitsInTrialData(tdca, varargin)
             p = inputParser();
+            p.addParameter('channelNames', tdca.listSpikeChannels(), @(x) iscell(x) || isstring(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
             
@@ -124,7 +125,7 @@ classdef PopulationTrajectorySetBuilder
             end
             
             % each unit in TrialData becomes a basis
-            units = tdca.listSpikeChannels();
+            units = p.Results.channelNames;
             nUnits = numel(units);
             
             pset = PopulationTrajectorySet();
@@ -224,9 +225,9 @@ classdef PopulationTrajectorySetBuilder
                         chNamesThis = {chNamesThis};
                     end
                     for j = 1:numel(chNamesThis)
-                        if td.hasAnalogChannelGroup(chNamesThis{j})
+                        if tdCell{i}.hasAnalogChannelGroup(chNamesThis{j})
                             % split analog channel group into separate channels
-                            newNames = td.listAnalogChannelsInGroupByColumn(chNamesThis{j});
+                            newNames = tdCell{i}.listAnalogChannelsInGroupByColumn(chNamesThis{j});
                             
                             for k = 1:numel(newNames)
                                 % use specified channel names

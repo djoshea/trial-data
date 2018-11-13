@@ -4,9 +4,10 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         hasSortQualityEachTrial
         hasBlankingRegions
         nChannels
-        array
+        nElectrodes % number of unique electrodes
+        array string
 
-        subChNames
+        subChannelNames
     end
 
     properties
@@ -21,6 +22,9 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         waveformsOriginalDataClass = '';
         waveformsTime = []; % common time vector to be shared for ALL waveforms for this channel
 
+        waveformsNumChannels = 1;
+        waveformsInfo % used for spatial coordinates or offsets of the recorded waveforms
+       
         sortQualityEachTrialField = '';
 
         blankingRegionsField = ''; % refers to a field which conveys times where spikes from this channel are to be considered "unobserved"
@@ -39,6 +43,8 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             cd = cd@ChannelDescriptor(name);
             cd.electrodes = makecol(electrodes);
             cd.units = makecol(units);
+            
+            assert(~any(isnan(cd.electrodes) & isnan(cd.units)));
             cd = cd.initialize();
         end
     end
@@ -220,6 +226,10 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         function tf = get.hasBlankingRegions(cd)
             tf = ~isempty(cd.blankingRegionsField);
         end
+        
+        function n = get.nElectrodes(cd)
+            n = numel(unique(cd.electrodes));
+        end
 
         function type = getType(~)
             type = 'spike';
@@ -233,8 +243,8 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             n = numel(cd.electrodes);
         end
 
-        function subChNames = get.subChNames(cd)
-            subChNames = SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(cd.array, cd.electrode, cd.unit);
+        function subChannelNames = get.subChannelNames(cd)
+            subChannelNames = cd.getSubChannelNames();
         end
 
         function cd = inferAttributesFromData(cd, varargin)
@@ -248,6 +258,16 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
     end
 
     methods
+        function cd = buildSubChannelDescriptor(cd, nameOrIdx) 
+            if isnumeric(nameOrIdx)
+                index = nameOrIdx;
+            else
+                [tf, index] = ismember(nameOrIdx, cd.subChannelNames);
+                assert(all(tf), 'Channel not found');
+            end
+            cd = cd.buildIndividualSubChannel(index);
+        end
+        
         function cds = buildIndividualSubChannel(cd, uidx)
             names = SpikeChannelDescriptor.generateNameListFromArrayElectrodeUnit(...
                 cd.array, cd.electrodes(uidx), cd.units(uidx));
@@ -265,12 +285,14 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
                 'waveformsScaleFromLims', cd.waveformsScaleFromLims, ...
                 'waveformsScaleToLims', cd.waveformsScaleToLims, ...
                 'waveformsOriginalDataClass', cd.waveformsOriginalDataClass, ...
+                'waveformsNumChannels', cd.waveformsNumChannels, ...
+                'waveformsInfo', cd.waveformsInfo, ...
                 'sortQualityEachTrialField', cd.sortQualityEachTrialField, ...
                 'sortQuality', cd.sortQuality, ...
                 'blankingRegionsField', cd.blankingRegionsField, ...
                 'isColumnOfArray', true};
                 
-            for i = 1:numel(names)
+            for i = numel(names):-1:1
                 cds(i) = SpikeChannelDescriptor.build(names{i}, ...
                     'primaryDataFieldColumnIndex', uidx(i), ...
                     'spikeThreshold', thresh(i), args{:});
@@ -304,15 +326,29 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             end
         end
 
-        function chNames = listSubChannels(cd)
-            chNames = SpikeChannelDescriptor.generateNameListFromArrayElectrodeUnit(cd.array, cd.electrodes, cd.units);
+        function [names, chidx] = listNamedSubChannels(cd)
+            names = SpikeChannelDescriptor.generateNameListFromArrayElectrodeUnit(cd.array, cd.electrodes, cd.units);
+            chidx = (1:numel(names))';
         end
 
-        function [tf, idx] = hasSubChannel(cd, name)
-            if contains(name, '(')
-                [array, chidx] = SpikeChannelDescriptor.parseArrayElectrodeUnit
-                [array, electrode, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(
-            [tf, idx] = ismember(name, cd.listSubChannels());
+        function [tf, idx] = hasSubChannel(cd, names)
+            if ischar(names), names = {names}; end
+            N = numel(names);
+            tf = false(N, 1);
+            idx = nan(N, 1);
+            for iN = 1:N
+                name = names{iN};
+                if contains(name, '(')
+                    % paren indexed channel
+                    [array, chidx] = ChannelDescriptor.parseIndexedChannelName(name); %#ok<*PROPLC>
+                    tf(iN) = strcmp(array, cd.name) && TrialDataUtilities.Data.indexInRange(chidx, cd.nChannels);
+                else
+                    % arrayElec_Unit
+                    [array, elec, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(name);
+                    chidx = cd.findSubChannelByElectrodeUnit(elec, unit);
+                    tf(iN) = strcmp(array, cd.name) && TrialDataUtilities.Data.indexInRange(chidx, cd.nChannels);
+                end
+            end
         end
     end
 
@@ -320,6 +356,17 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         function cd = build(name, electrodes, units)
             cd = SpikeArrayChannelDescriptor(name, electrodes, units);
         end
+        
+        function cd = buildFromSubChNames(subChNames)
+            [array, elec, unit] = arrayfun(@(subname) SpikeChannelDescriptor.parseArrayElectrodeUnit(subname), string(subChNames));
+            name = array(1);
+            assert(all(array == name), 'Array names must be identical');
+            
+            cd = SpikeArrayChannelDescriptor.build(name, elec, unit);
+        end
+        
+        function cls = getSubChannelClass()
+            cls = 'SpikeChannelDescriptor';
+        end
     end
-
 end

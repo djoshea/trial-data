@@ -109,6 +109,7 @@ classdef SaveArrayIndividualized < handle
         function [S, partitionMeta] = loadArray(locationName, varargin)
             p = inputParser();
             p.addParameter('message', '', @ischar);
+            p.addParameter('maxElements', Inf, @isscalar);
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x));
             p.addParameter('loadAllPartitions', false, @islogical);
@@ -155,6 +156,7 @@ classdef SaveArrayIndividualized < handle
             end
             
             N = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationName);
+            N = min(N, p.Results.maxElements);
             
             if ~isempty(p.Results.message)
                 str = p.Results.message;

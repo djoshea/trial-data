@@ -819,7 +819,7 @@ classdef PopulationTrajectorySet
             if pset.simultaneous
                 tcprintf('inline', '{yellow}Simultaneous: {none}%d trials {red}(%d valid)\n', pset.nTrials, pset.nTrialsValid);
             end
-            tcprintf('inline', '{yellow}Trial Averaging: {none}at least %d and %g \% of trials for average\n', ...
+            tcprintf('inline', '{yellow}Trial Averaging: {none}at least %d and %g%% of trials for average\n', ...
                 pset.minTrialsForTrialAveraging, pset.minFractionTrialsForTrialAveraging*100);
             tcprintf('inline', '{yellow}Time Delta: {none}%g ms, {yellow}Spike Filter: {none}%s\n', ...
                 pset.timeDelta, pset.spikeFilter.getDescription);
@@ -2742,7 +2742,6 @@ classdef PopulationTrajectorySet
                 end
 
                 % this call works for unit names as well
-                chName = td.parseIndexedAnalogChannelName(chName);
                 basisUnits{iBasis} = td.getChannelUnitsPrimary(chName);
             end
 
@@ -2828,7 +2827,7 @@ classdef PopulationTrajectorySet
 
                     % currently will request either analog trials or
                     % filtered spike rates channel
-                    if src.hasAnalogChannel(chName)
+                    if src.hasAnalogChannel(chName) && ~src.hasSpikeChannel(chName)
                         % use the specs from the spikeFilter
                         [dataByTrial{iBasis, iAlign}, tvec] = src.getAnalogAsMatrix(chName, ...
                             'timeDelta', spikeFilter.timeDelta, 'resampleMethod', spikeFilter.resampleMethod, ...

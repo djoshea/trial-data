@@ -74,7 +74,7 @@ classdef ConditionInfo < ConditionDescriptor
         % nConditions x 1 cell array of idx in each condition
         listByConditionRaw
         % nConditions x 1 cell array of corresponding weights for each included trial in that condition
-        listByConditionWeightsRaw 
+        listByConditionWeightsRaw
 
         % nConditions x 1 cell array of idx in each condition
         % listByCondition IS affected by axis randomization, whereas listByConditionRaw is not
@@ -211,7 +211,7 @@ classdef ConditionInfo < ConditionDescriptor
             ci.odc = ci.odc.copy();
             ci.odc.listByCondition = v;
         end
-        
+
         function v = get.listByConditionWeightsRaw(ci)
             v = ci.odc.listByConditionWeightsRaw;
             if isempty(v)
@@ -219,12 +219,12 @@ classdef ConditionInfo < ConditionDescriptor
                 v = ci.odc.listByConditionWeightsRaw;
             end
         end
-        
+
         function ci = set.listByConditionWeightsRaw(ci, v)
             ci.odc = ci.odc.copy();
             ci.odc.listByConditionWeightsRaw = v;
         end
-        
+
         function v = get.listByConditionWeights(ci)
             v = ci.odc.listByConditionWeights;
             if isempty(v)
@@ -515,9 +515,9 @@ classdef ConditionInfo < ConditionDescriptor
             % resampling and then sort lists by attributes
             % Perform axis randomization to listByConditionRaw
             % successively along each randomized axis
-            
+
             listWithWeights = TensorUtils.listHorzCatContents(ci.listByConditionRaw, ci.listByConditionWeightsRaw);
-            
+
             listWithWeights = ci.generateSingleRandomizedListByCondition(listWithWeights, ci.randomSeed);
 
             [list, weights] = TensorUtils.listSplitContents(listWithWeights);
@@ -1120,7 +1120,7 @@ classdef ConditionInfo < ConditionDescriptor
                 % since we won't be requesting them
                 p = inputParser;
                 p.KeepUnmatched = true;
-                p.addParameter('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x) || iscategorical(x));
+                p.addParameter('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x) || iscategorical(x) || isstring(x));
                 p.parse(varargin{:});
 
                 if ismember('values', p.UsingDefaults)
@@ -1137,6 +1137,11 @@ classdef ConditionInfo < ConditionDescriptor
 
                 iAttr = ci.nAttributes;
                 % critical to update attribute numeric here!
+
+                % TODO fix this to deal with string arrays correctly
+                if isstring(vals)
+                    vals = cellstr(vals);
+                end
                 if iscell(vals)
                     ci.attributeNumeric(iAttr) = false;
                     ci.attributeAsVector(iAttr) = false;
@@ -1201,7 +1206,7 @@ classdef ConditionInfo < ConditionDescriptor
             end
             assert(iscellstr(reasonInvalid), 'Must be cellstr or string');
             reasonInvalid = makecol(reasonInvalid);
-            
+
             % clear out reasons when actually in a condition
             maskInvalidated = ~any(conditionMembership ~= 0, 2);
             reasonInvalid(~maskInvalidated) = {''};

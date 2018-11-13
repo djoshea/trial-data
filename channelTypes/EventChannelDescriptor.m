@@ -1,6 +1,7 @@
 classdef EventChannelDescriptor < ChannelDescriptor
     
     properties
+        displayGroup string = "" % solely for display purposes or logical grouping, not actual data field grouping
         color % default color used when used in a mark or interval 
     end
     
@@ -49,6 +50,10 @@ classdef EventChannelDescriptor < ChannelDescriptor
         
         function buildEventWithTagFields(name, timeUnits, tagFields)
             error('not yet implemented');
+        end
+        
+        function cls = getSubChannelClass()
+            cls = '';
         end
     end
 

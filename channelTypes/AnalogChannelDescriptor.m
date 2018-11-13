@@ -8,7 +8,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         
         % if this channel just a virtually transformed version of a
         % different channel, what is the other channel's name?
-        transformChannelNames cell = {};
+        transformChannelNames string = [];
         
         % function handle to apply to other channel's data
         % function should be prepared to take arbitrary arguments using
@@ -27,8 +27,11 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         % set this to make the data field be different from .name (the default).
         % this is only allowed for shared matrix analog signals
         primaryDataField
+        dataClass
+        timeClass
         
         timeField
+        timeUnits
         
         hasScaling
         
@@ -79,6 +82,14 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.dataFields{2} = f;
         end
         
+        function c = get.dataClass(cd)
+            c = cd.originalDataClassByField{1};
+        end
+        
+        function c = get.timeClass(cd)
+            c = cd.originalDataClassByField{2};
+        end
+        
         function tf = get.hasScaling(cd)
             tf = ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims) && ~isequal(cd.scaleFromLims, cd.scaleToLims);
         end
@@ -105,11 +116,18 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.scaleToLims = [];
         end
         
-        function cdGroup = buildGroupChannelDescriptor(cd)
+        function cdGroup = buildGroupChannelDescriptor(cd, varargin)
             cdGroup = AnalogChannelGroupDescriptor.buildAnalogGroup(cd.primaryDataField, cd.timeField, ...
                 cd.unitsByField{1}, cd.unitsByField{2}, ...
                 'scaleFromLims', cd.scaleFromLims, 'scaleToLims', cd.scaleToLims, ...
-                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2});
+                'dataClass', cd.originalDataClassByField{1}, 'timeClass', cd.originalDataClassByField{2}, varargin{:});
+            if isempty(cdGroup.sampleSize)
+                cdGroup.sampleSize = cd.primaryDataFieldColumnIndex;
+            else
+                cdGroup.sampleSize = max(cdGroup.sampleSize, cd.primaryDataFieldColumnIndex);
+            end
+               
+            cdGroup = cdGroup.setSubChannelInfo(cd.primaryDataFieldColumnIndex, cd.name, cd.unitsPrimary);
         end
     end
     
@@ -149,6 +167,14 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
                 f = '';
             else
                 f = cd.dataFields{2};
+            end
+        end
+        
+        function f = get.timeUnits(cd)
+            if cd.nFields < 2
+                f = '';
+            else
+                f = cd.unitsByField{2};
             end
         end
         
@@ -260,7 +286,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataClass', 'double', @ischar);
             p.addParameter('timeClass', 'double', @ischar);
-            p.addParameter('transformChannelNames', {}, @iscellstr);
+            p.addParameter('transformChannelNames', {}, @(x) iscellstr(x) || isstring(x));
             p.addParameter('transformFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('transformFnMode', '', @ischar);
             
@@ -285,7 +311,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             % set the data and time class appropriately
             cd.originalDataClassByField = {p.Results.dataClass, p.Results.timeClass};
             
-            cd.transformChannelNames = p.Results.transformChannelNames;
+            cd.transformChannelNames = string(p.Results.transformChannelNames);
             cd.transformFn = p.Results.transformFn;
             cd.transformFnMode = p.Results.transformFnMode;
             
@@ -333,7 +359,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         
         function cd = buildTransformAnalogChannel(name, cdList, transformFn, varargin)
             cdo = cdList{1};
-            transformChannelNames = cellfun(@(cd) cd.name, cdList, 'UniformOutput', false);
+            transformChannelNames = string(cellfun(@(cd) cd.name, cdList, 'UniformOutput', false));
             
             p = inputParser();
             p.addParameter('units', cdo.unitsPrimary, @ischar);
@@ -369,14 +395,15 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             tf = numel(unique(timeField)) == 1;
         end
         
-        function [cdCell, data] = sharedMatrixCheckConvertDataAndUpdateClass(cd, data)
-            % equivalent of
-            % checkConvertDataAndUpdateMemoryClassToMakeCompatible(cd,
-            % fieldIdx, data) but operates more effectively on groups of
-            % shared data
-            
-           
-            
+%         function [cdCell, data] = sharedMatrixCheckConvertDataAndUpdateClass(cd, data)
+%             % equivalent of
+%             % checkConvertDataAndUpdateMemoryClassToMakeCompatible(cd,
+%             % fieldIdx, data) but operates more effectively on groups of
+%             % shared data
+%         end
+
+        function cls = getSubChannelClass()
+            cls = '';
         end
     end
 

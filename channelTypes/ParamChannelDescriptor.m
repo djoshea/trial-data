@@ -1,4 +1,7 @@
 classdef ParamChannelDescriptor < ChannelDescriptor
+    properties
+        displayGroup string = "" % solely for display purposes or logical grouping, not actual data field grouping
+    end
     
     methods(Access=protected)
         function cd = ParamChannelDescriptor(varargin)
@@ -173,6 +176,10 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 units = '';
             end
             cd.unitsByField = {units};
+        end
+        
+        function cls = getSubChannelClass()
+            cls = 'ChannelDescriptor';
         end
     end
 end

@@ -3,7 +3,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         hasWaveforms
         hasSortQualityEachTrial
         hasBlankingRegions
-        array
+        array string
         electrode
         unit
     end
@@ -16,6 +16,9 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         waveformsOriginalDataClass = '';
         waveformsTime = []; % common time vector to be shared for ALL waveforms for this channel
 
+        waveformsNumChannels = 1;
+        waveformsInfo % used for spatial coordinates or offsets of the recorded waveforms
+        
         sortQualityEachTrialField = '';
 
         blankingRegionsField = ''; % refers to a field which conveys times where spikes from this channel are to be considered "unobserved"
@@ -29,7 +32,6 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         primaryDataFieldColumnIndex = 1; % which column am I? Should be 1 if not part of array
     end
     
-
 %     properties(SetAccess=protected)
 %         arrayManual = '';
 %         electrodeManual = [];
@@ -116,6 +118,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             p.addParameter('scaleFromLims', [], @(x) isvector(x) || isempty(x));
             p.addParameter('scaleToLims', [], @(x) isvector(x) || isempty(x));
             p.addParameter('dataClass', '', @ischar);
+            p.addParameter('waveformsNumChannels', 1, @isscalar);
+            p.addParameter('waveformsInfo', [], @(x) true); % used for spatial coordinates or offsets of the recorded waveforms
             p.parse(varargin{:});
 
             if nargin < 2 || isempty(waveField)
@@ -128,6 +132,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd.waveformsOriginalDataClass = p.Results.dataClass;
             cd.waveformsScaleFromLims = p.Results.scaleFromLims;
             cd.waveformsScaleToLims = p.Results.scaleToLims;
+            cd.waveformsNumChannels = p.Results.waveformsNumChannels;
+            cd.waveformsInfo = p.Results.waveformsInfo;
             cd = cd.initialize();
         end
 
@@ -138,6 +144,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd.waveformsScaleToLims = [];
             cd.waveformsOriginalDataClass = '';
             cd.waveformsTime = [];
+            cd.waveformsNumChannels = 0;
+            cd.waveformsInfo = [];
 
             cd = cd.initialize();
         end
@@ -301,6 +309,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             p.addParameter('waveformsScaleFromLims', [], @(x) isvector(x) || isempty(x));
             p.addParameter('waveformsScaleToLims', [], @(x) isvector(x) || isempty(x));
             p.addParameter('waveformsOriginalDataClass', '', @ischar);
+            p.addParameter('waveformsNumChannels', 1, @isscalar);
+            p.addParameter('waveformsInfo', [], @(x) true); % used for spatial coordinates or offsets of the recorded waveforms
             p.addParameter('sortQualityEachTrialField', '', @ischar);
             p.addParameter('sortQuality', NaN, @isscalar)
             p.addParameter('blankingRegionsField', '', @ischar);
@@ -311,11 +321,13 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             
             cd = SpikeChannelDescriptor(name);
             if ~isempty(p.Results.waveformsField)
-                cd = cd.addWaveformsField(p.Results.waveformsField, p.Results.waveformsTime, ...
+                cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime, ...
                     'units', p.Results.waveformsUnits, ...
                     'scaleFromLims', p.Results.waveformsScaleFromLims, ...
                     'scaleToLims', p.Results.waveformsScaleToLims, ...
-                    'dataClass', p.Results.waveformsOriginalDataClass);
+                    'dataClass', p.Results.waveformsOriginalDataClass, ...
+                    'waveformsNumChannels', p.Results.waveformsNumChannels, ...
+                    'waveformsInfo', p.Results.waveformsInfo);
             end
             
             if ~isempty(p.Results.sortQualityEachTrialField)
@@ -384,12 +396,12 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             if nargin < 4 || isempty(maxElectrode)
                 maxElectrode = max(99, electrode);
             end
-            nZeros = floor(log10(maxElectrode)) + 1;
+            nZeros = floor(log10(double(maxElectrode))) + 1;
             
             if isnan(electrode)
-                name = sprintf('%s%d', array, unit);
+                name = sprintf("%s%d", array, unit);
             else
-                name = sprintf('%s%0*d_%d', array, nZeros, electrode, unit);
+                name = sprintf("%s%0*d_%d", array, nZeros, electrode, unit);
             end
         end
         
@@ -398,9 +410,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 maxElectrode = max(99, max(electrodes));
             end
             
-            if ischar(arrays)
-                arrays = {arrays};
-            end
+            arrays = string(arrays);
             N = max([numel(arrays) numel(electrodes) numel(units)]);
             if numel(arrays) == 1
                 arrays = repmat(arrays, N, 1);
@@ -412,8 +422,12 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 units = repmat(units, N, 1);
             end
                
-            names = cellfun(@(a,e,u) SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(a, e, u, maxElectrode), ...
-                makecol(arrays), num2cell(makecol(electrodes)), num2cell(makecol(units)), 'UniformOutput', false);
+            names = arrayfun(@(a,e,u) SpikeChannelDescriptor.generateNameFromArrayElectrodeUnit(a, e, u, maxElectrode), ...
+                makecol(arrays), makecol(electrodes), makecol(units));
+        end
+        
+        function cls = getSubChannelClass()
+            cls = '';
         end
     end
 

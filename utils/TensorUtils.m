@@ -203,7 +203,7 @@ classdef TensorUtils
 
             [resultCell{1:nargout}] = TensorUtils.mapSlices(fn, spanDim, varargin{:});
 %             nonSpanDims = TensorUtils.otherDims(size(resultCell{1}), spanDim, ndims(varargin{1}));
-            
+
             varargout = cellfun(@cell2mat, resultCell, 'UniformOutput', false);
 %             varargout = cellfun(@(r) TensorUtils.reassemble(r, nonSpanDims, ndims(varargin{1})), ...
 %                 resultCell, 'UniformOutput', false);
@@ -480,6 +480,8 @@ classdef TensorUtils
                     args = cell(numel(flds)*2, 1);
                     args(1:2:end) = flds;
                     fillWith = struct(args{:});
+                elseif isstring(maskedTensor)
+                    fillWith = string(missing);
                 elseif islogical(maskedTensor)
                     fillWith = false;
                 else
@@ -815,21 +817,21 @@ classdef TensorUtils
 
         function out = splitAlongDimensionBySubscripts(t, dim, outSz, subs)
             % given an n-dimensional tensor t, split t into a cell with size outsz
-            % each cell at location (s1, s2, ...) will contain a piece of t selected along dimension dim taking all 
+            % each cell at location (s1, s2, ...) will contain a piece of t selected along dimension dim taking all
             % slices t(..., i, ...) where subs(i, :) == (s1, s2, ...). Sort of like accumarray except concatenating over slices
             % where any subs(i, :) is NaN or 0, this slice of t will be discarded
-            
+
             assert(size(subs, 1) == size(t, dim), 'Number of rows of subs must match size of t along dim');
             assert(size(subs, 2) == numel(outSz), 'Number of elements in outSz should match number of columns in subs');
             otherDims = TensorUtils.otherDims(size(t), dim);
             szT = size(t);
-            
+
             mask = ~any(isnan(subs) | subs == 0, 2);
             if any(~mask)
                 t = TensorUtils.selectAlongDimension(t, dim, mask);
                 subs = subs(mask, :);
             end
-            
+
             C = size(subs, 2);
             subsExp = nan(numel(t), C);
             for iC = 1:C
@@ -837,9 +839,9 @@ classdef TensorUtils
                 subcolExp = TensorUtils.repmatAlongDims(colOrient, otherDims, szT(otherDims));
                 subsExp(:, iC) = subcolExp(:);
             end
-            
+
             outSz = TensorUtils.expandScalarSize(outSz);
-            
+
             % must be sorted to preserve order in accumarray
             if size(subsExp, 2) > 1
                 [subsSorted,subSortIdx] = sortrows(subsExp,[2,1]);
@@ -847,22 +849,55 @@ classdef TensorUtils
                 [subsSorted,subSortIdx] = sort(subsExp);
             end
             out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, zeros(0, 1, 'like', t));
-            
-            % reshape out{:} back to tensors 
+
+            % reshape out{:} back to tensors
             szInnerArgs = num2cell(szT);
             szInnerArgs{dim} = [];
             out = cellfun(@(x) reshape(x, szInnerArgs{:}), out, 'UniformOutput', false);
         end
-        
-        
+
+        function out = splitAlongDimensionByIndex(t, dim, which, outSz)
+            % see splitBySubscripts which handles subscripts for which instead of linear indices
+            % and is dramatically faster using accumarray
+
+            if nargin < 4
+                outSz = max(which);
+            end
+
+            assert(numel(which) == size(t, dim), 'Number of rows of subs must match size of t along dim');
+            otherDims = TensorUtils.otherDims(size(t), dim);
+            szT = size(t);
+
+            mask = ~(isnan(which) | which == 0);
+            if any(~mask)
+                t = TensorUtils.selectAlongDimension(t, dim, mask);
+                subs = which(mask, :);
+            end
+
+            colOrient = TensorUtils.orientSliceAlongDims(which, dim);
+            subcolExp = TensorUtils.repmatAlongDims(colOrient, otherDims, szT(otherDims));
+            subsExp = subcolExp(:);
+
+            outSz = TensorUtils.expandScalarSize(outSz);
+
+            % must be sorted to preserve order in accumarray
+            [subsSorted,subSortIdx] = sort(subsExp);
+            out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, zeros(0, 1, 'like', t));
+
+            % reshape out{:} back to tensors
+            szInnerArgs = num2cell(szT);
+            szInnerArgs{dim} = [];
+            out = cellfun(@(x) reshape(x, szInnerArgs{:}), out, 'UniformOutput', false);
+        end
+
         % it is unclear to me now what this function did, that is not already done by cell2mat.
 %         function t = reassemble(tCell, dim, nd)
 %             % given a tCell in the form returned by selectEachAlongDimension
 %             % return the original tensor. So if tCell is size 3 x 1 x 1 x 6 and tCell{:} is 1 x 4 x 5 x 1,
 %             % the output will be 3 x 4 x 5 x 6 with element i,j,k,l drawn from tCell{i,1,1,l}(1,j,k,1)
 %             % dim is the dimensions that tCell spans, the other dimensions are spanned by each individual tCell{i}
-%             
-% 
+%
+%
 %             %             if nargin < 3
 %             %                 nd = ndims(tCell);
 %             %             end
@@ -870,21 +905,21 @@ classdef TensorUtils
 %             szOuter = [szOuter ones(1, nd - length(szOuter))];
 %             szInner = size(tCell{1});
 %             szInner = [szInner ones(1, nd - length(szInner))];
-% 
+%
 %             % dimMask(i) true i
 %             dimMask = false(nd, 1);
 %             dimMask(dim) = true;
-% 
+%
 %             % compute size of result t
 %             % use outerDims when its in dim, innerDims when it isn't
 %             szT = nan(1, ndims(tCell));
 %             szT(dimMask) = szOuter(dimMask);
 %             szT(~dimMask) = szInner(~dimMask);
-% 
+%
 %             % rebuild t by grabbing the appropriate element from tCell
 %             %subs = TensorUtils.containingSubscripts(szT);
 %             t = TensorUtils.mapToSizeFromSubs(szT, @getElementT, true);
-% 
+%
 %             function el = getElementT(varargin)
 %                 [innerSubs, outerSubs] = deal(varargin);
 %                 % index with dim into tt, non-dim into tt{i}
@@ -952,13 +987,13 @@ classdef TensorUtils
 
             paddedCell = cellfun(padFn, TensorUtils.makecol(varargin), 'UniformOutput', false);
         end
-        
+
         function paddedCell = expandToSameSize(varargin)
             nd = max(cellfun(@ndims, varargin));
             dims = 1:nd;
             paddedCell = TensorUtils.expandToSameSizeAlongDims(dims, varargin{:});
         end
-        
+
         function out = catPad(dim, varargin)
             % works like cat, except pads each element to be the same size
             % along dimension dim before concatenating
@@ -1685,16 +1720,7 @@ classdef TensorUtils
             t = TensorUtils.blockfun(t, blockSz, @(x) mean(x(:), 'omitnan'), true);
         end
 
-        function out = splitAlongDimensionByIndex(t, dim, which)
-            % see splitBySubscripts which handles subscripts for which instead of linear indices
-            % and is dramatically faster using accumarray
-            
-            % undoes catWhich, at each position along dim, places that
-            % slice of t into out{which}
 
-            N = max(which);
-            out = arrayfun(@(i) TensorUtils.selectAlongDimension(t, dim, which == i), (1:N)', 'UniformOutput', false);
-        end
 
     end
 
@@ -1848,6 +1874,19 @@ classdef TensorUtils
             stdTensor = TensorUtils.nanstdMultiDim(t, alongDims) + denomOffset;
             t = bsxfun(@rdivide, t, stdTensor);
         end
+
+        function ss = ssqMultiDim(t, alongDims)
+            ss = TensorUtils.nansumMultiDim(t.^2, alongDims);
+        end
+
+        function mss = msqMultiDim(t, alongDims)
+            mss = TensorUtils.nanmeanMultiDim(t.^2, alongDims);
+        end
+
+        function rms = rmsMultiDim(t, alongDims)
+            rms = sqrt(TensorUtils.nanmeanMultiDim(t.^2, alongDims));
+        end
+
 
         function [y, group] = buildAnovanInputs(valueCell, namesAlongAxes)
             % converts from tensor array of vectors into format needed for
@@ -2114,7 +2153,7 @@ classdef TensorUtils
                 fnSelect = @(c) fn(c(logicalNewByOld(iNew, :) ~= 0));
                 parts{iNew} = TensorUtils.mapSlices(fnSelect, dim, t);
             end
-            newTensor = cell2mat(cat(dim, parts{:}));  
+            newTensor = cell2mat(cat(dim, parts{:}));
         end
 
         function in = assignValueMaskedSelectionAlongDimension(in, dims, mask, value)

@@ -695,7 +695,7 @@ classdef ConditionDescriptor
         function ci = permuteAxes(ci, mask)
             ci = ci.maskAxes(mask);
         end
-        
+
         function ci = transposeAxes(ci)
             ci.warnIfNoArgOut(nargout);
             assert(ci.nAxes == 2, 'ConditionDescriptor must have 2 axes for transpose');
@@ -2082,7 +2082,7 @@ classdef ConditionDescriptor
             ci.attributeNumeric(iAttr) = tf;
             ci = ci.notifyConditionsChanged();
         end
-        
+
         function ci = setAttributeAsVector(ci, attr, tf)
             ci.warnIfNoArgOut(nargout);
             iAttr = ci.assertHasAttribute(attr);
@@ -2091,7 +2091,7 @@ classdef ConditionDescriptor
             valueList = ci.getAttributeValueList(iAttr);
             if ~isempty(valueList)
                 if tf
-                    assert(~iscell(valueList) || ci.attributeValueListIsBinned(iAttr), 'Attribute %s has manual value list that is not numeric vector which is required for as vector attributes', attr);
+                    assert(~iscell(valueList) || (numel(valueList) == 1 && ismissing(valueList{1})) || ci.attributeValueListIsBinned(iAttr), 'Attribute %s has manual value list that is not numeric vector which is required for numeric attributes', attr);
                 else
                     assert(iscell(valueList), 'Attribute %s has manual value list that is not cell which is required for as vector attributes', attr);
                 end
@@ -2116,6 +2116,10 @@ classdef ConditionDescriptor
             else
                 if ischar(valueList)
                     valueList = {valueList};
+                end
+                % TODO add string support
+                if isstring(valueList)
+                    valueList = cellstr(valueList);
                 end
                 ci.attributeValueListsManual{iAttr} = valueList;
 
@@ -2907,7 +2911,7 @@ classdef ConditionDescriptor
                             if ~iscellstr(valueList{i})
                                 % could have multiple attribute values
                                 % grouped together as one element
-                                valueList{i} = cellfun(@(vals) strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
+                                valueList{i} = cellfun(@(vals) TrialDataUtilities.String.strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
                             end
                         end
 

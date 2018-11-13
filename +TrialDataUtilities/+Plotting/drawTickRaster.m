@@ -80,15 +80,16 @@ function hLine = drawTickRaster(timesCell, varargin)
          % build line commands
         XByTrial = cell(1, nTrials);
         YByTrial = cell(1, nTrials);
+        emptyMask = cellfun(@isempty, timesCell);
         for iE = 1:nTrials 
-            if ~isempty(timesCell{iE})
+            if ~emptyMask(iE)
                 XByTrial{iE} = [repmat(makerow(timesCell{iE}), 2, 1); nan(1, numel(timesCell{iE}))];
                 YByTrial{iE} = repmat([-rowHeight*(iE-1); -rowHeight*(iE-1)-tickHeight; NaN], 1, numel(timesCell{iE}));
             end
         end
 
-        X = cell2mat(XByTrial) + p.Results.xOffset;
-        Y = cell2mat(YByTrial) + p.Results.yOffset;
+        X = cell2mat(XByTrial(~emptyMask)) + p.Results.xOffset;
+        Y = cell2mat(YByTrial(~emptyMask)) + p.Results.yOffset;
         
         % turn into columns so only one 1 is plotted
         X = X(:);
