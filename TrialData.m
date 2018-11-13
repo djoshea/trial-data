@@ -1174,12 +1174,22 @@ classdef TrialData
                             TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                     end
                 end
-                for iG = 1:numel(groups)
-                    if ~groupsNamedMask(iG)
-                        sz = td.getAnalogChannelGroupSize(groups{iG});
-                        tcprintf('inline', '{bright blue}%s {none}(%s), ', groups{iG}, ...
-                        TrialDataUtilities.String.strjoin(sz, ','));
+
+                if any(~groupsNamedMask)
+                    gstr = '  ';
+                    for iG = 1:numel(groups)
+                        if ~groupsNamedMask(iG)
+                            if any(~groupsNamedMask(iG+1:end))
+                                commaStr = ', ';
+                            else
+                                commaStr = [' ' newline];
+                            end
+                            sz = td.getAnalogChannelGroupSize(groups{iG});
+                            gstr = [gstr, sprintf('{bright blue}%s {none}(%s)%s', groups{iG}, ...
+                                TrialDataUtilities.String.strjoin(sz, ','), commaStr)]; %#ok<AGROW>
+                        end
                     end
+                    tcprintf('inline', gstr);
                 end
             end
         end
@@ -1747,11 +1757,6 @@ classdef TrialData
         function tf = isChannelCategorical(td, name)
             cd = td.channelDescriptorsByName.(name);
             tf = ~cd.collectAsCellByField(1) && strcmp(cd.accessClassByField{1}, 'categorical');
-        end
-
-        function tf = isChannelNumericScalar(td, name)
-            cd = td.channelDescriptorsByName.(name);
-            tf = cd.isNumericScalarByField(1);
         end
 
         function td = setChannelMetaKey(td, name, key, value)

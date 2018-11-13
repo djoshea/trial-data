@@ -293,8 +293,9 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         end
         
         function [names, chidx] = listNamedSubChannels(cd)
-            names = string(cd.subChannelNames);
-            mask = arrayfun(@(x) x ~= "", names);
+            names = cd.subChannelNames;
+            mask = ~cellfun(@isempty, cellstr(names));
+            names = string(names);
             names = names(mask);
             chidx = find(mask);
         end
@@ -304,7 +305,9 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             assert(~isnan(cd.nChannels), 'Number of channels not manually set for AnalogChannelGroupDescriptor');
             assert(all(TrialDataUtilities.Data.indexInRange(chidx, cd.nChannels)));
             cd.subChannelNames(chidx) = string(names);
-            cd.subChannelUnits(chidx) = string(units);
+            if ~isempty(units)
+                cd.subChannelUnits(chidx) = string(units);
+            end
         end
     end
     

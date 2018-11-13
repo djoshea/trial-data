@@ -60,7 +60,6 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         isStringByField
         isVectorByField
         isScalarByField
-        isNumericScalarByField
 
         % indicates whether a given field is shareable between multiple
         % channels. If a field is marked as shareable, it will be copied
@@ -563,10 +562,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     elseif ismember(accClasses(iF), ["string", "char"])
                         vals{iF} = string(missing);
                     else
-                        vals{iF} = cast(vals{iF}, accClasses{iF});
+                        vals{iF} = ChannelDescriptor.icast(vals{iF}, accClasses{iF});
                     end
-                    vals{iF} = ChannelDescriptor.icast(vals{iF}, accClasses{iF});
-
                 end
             end
         end
@@ -611,10 +608,6 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         function tf = get.isBooleanByField(cd)
             tf = cd.elementTypeByField == cd.BOOLEAN;
-        end
-
-        function tf = get.isNumericScalarByField(cd)
-            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]);
         end
 
         function tf = get.isShareableByField(cd)
