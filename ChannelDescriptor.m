@@ -47,6 +47,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         STRING = 5;
         DATENUM = 6;
         CELL = 7;
+        CATEGORICAL = 8;
     end
 
     properties(Dependent)
@@ -60,6 +61,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         isStringByField
         isVectorByField
         isScalarByField
+        isCategoricalByField
 
         % indicates whether a given field is shareable between multiple
         % channels. If a field is marked as shareable, it will be copied
@@ -160,6 +162,16 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         % replace empty values with missing?
                         emptyMask = arrayfun(@(x) x == "", data);
                         data(emptyMask) = string(missing());
+                    elseif ismember(cd.elementTypeByField(iF), cd.CATEGORICAL)
+                        if iscell(data)
+                            emptyMask = cellfun(@(x) isempty(x) || (isscalar(x) && ismissing(x)), data);
+                            data(emptyMask) = {categorical(missing)};
+                        end
+                        charMask = cellfun(@ischar, data);
+                        data(charMask) = cellfun(@(x) categorical(string(x)), data(charMask), 'UniformOutput', false);
+                        
+                        data = cellfun(@categorical, data);
+                        
                     else
                         missingVal = cd.missingValueByField{iF};
                         assert(isscalar(missingVal));
@@ -277,6 +289,10 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     % array waveforms. might need to be fixed if this isn't
                     % sufficient
                     newClass = TrialDataUtilities.Data.cellDetermineCommonClass(data, memClass);
+                    
+                case cd.CATEGORICAL
+                    newClass = 'categorical';
+                    data = ChannelDescriptor.icast(data, newClass);
 
                 otherwise
                     throwError('Unknown element type')
@@ -370,6 +386,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         end
                     case cd.STRING
                         c{iF} = 'string';
+                    case cd.CATEGORICAL
+                        c{iF} = 'categorical';
                     otherwise
                         c{iF} = '';
                 end
@@ -384,7 +402,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 switch cd.elementTypeByField(iF)
                     case cd.BOOLEAN
                         c{iF} = 'logical';
-                    case {cd.SCALAR, cd.VECTOR, cd.NUMERIC, cd.DATENUM}
+                    case {cd.SCALAR, cd.VECTOR, cd.NUMERIC, cd.DATENUM, cd.CELL}
                         if ~isempty(cd.originalDataClassByField{iF})
                             c{iF} = cd.originalDataClassByField{iF};
                         else
@@ -392,6 +410,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         end
                     case cd.STRING
                         c{iF} = 'string';
+                    case cd.CATEGORICAL
+                        c{iF} = 'categorical';
                     otherwise
                         c{iF} = cd.originalDataClassByField{iF};
                 end
@@ -414,8 +434,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                         c{iF} = 'double';
                     case cd.STRING
                         c{iF} = 'string';
-%                     case cd.CELL
-%                         c{iF} = 'cell';
+                    case cd.CATEGORICAL
+                        c{iF} = 'categorical';
                     otherwise
                         c{iF} = '';
                 end
@@ -547,7 +567,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
 
         function vals = get.missingValueByField(cd)
-            missingVals = {false, NaN, [], [], string(missing), NaN, []};
+            missingVals = {false, NaN, [], [], string(missing), NaN, [], categorical(missing)};
             vals = missingVals(cd.elementTypeByField);
             accClasses = string(cd.accessClassByField); % was memory class, changed to access class so that int types converted to single get filled as NaN
             for iF = 1:numel(vals)
@@ -564,7 +584,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     else
                         vals{iF} = ChannelDescriptor.icast(vals{iF}, accClasses{iF});
                     end
-                end
+                end    
             end
         end
 
@@ -592,9 +612,13 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function tf = get.isStringByField(cd)
             tf = cd.elementTypeByField == cd.STRING;
         end
+        
+        function tf = get.isCategoricalByField(cd)
+            tf = cd.elementTypeByField == cd.CATEGORICAL;
+        end
 
         function tf = get.isScalarByField(cd) % returns true for boolean and scalar including string
-            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM, cd.STRING]);
+            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM, cd.STRING, cd.CATEGORICAL]);
         end
 
         function tf = get.isNumericScalarByField(cd)

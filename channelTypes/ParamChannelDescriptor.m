@@ -47,9 +47,14 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             end
             
             if ~iscell(dataCell)
-                cd.originalDataClassByField = {class(dataCell)};               
-                if islogical(dataCell)
+                data = dataCell;
+                cd.originalDataClassByField = {class(data)};               
+                if islogical(data)
                     cd.elementTypeByField = cd.BOOLEAN;
+                elseif isstring(data)
+                    cd.elementTypeByField = cd.STRING;
+                elseif iscategorical(data)
+                    cd.elementTypeByField = cd.CATEGORICAL;
                 else
                     cd.elementTypeByField = cd.SCALAR;
                 end
@@ -88,7 +93,6 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                     cd.originalDataClassByField = {''};
                 end 
             end
-            
         end
         
     end

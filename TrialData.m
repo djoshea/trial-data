@@ -405,8 +405,8 @@ classdef TrialData
 
             td = td.reset();
 
-            [groupNames, ~, channelsByGroup] = td.listAnalogChannelGroups();
-            analogChNotInGroup = td.listAnalogChannels('includeNamedSubChannels', false);
+            [groupNames, ~, channelsByGroup] = td.listAnalogChannelGroups('includeTransformChannels', false);
+            analogChNotInGroup = td.listAnalogChannels('includeNamedSubChannels', false, 'includeTransformChannels', false);
 
             globalOkay = true;
 
@@ -706,9 +706,24 @@ classdef TrialData
             p = inputParser();
             p.addParameter('partitions', td.saveFastPartitionInfo, @isstruct);
             p.addParameter('partitionWaveforms', td.saveFastPartitionWaveforms, @islogical);
+            p.addParameter('convertCategoricals', true, @islogical);
             p.parse(varargin{:});
 
             data = td.data;
+            
+            % categoricals are super slow to load, here we convert them to
+            % char strings just to save time, since they'll be fixed during
+            % validateData on load
+            if p.Results.convertCategoricals
+                chList = td.listParamChannels('isCategorical', true);
+                
+                for iC = 1:numel(chList)
+                    fld = td.channelDescriptorsByName.(chList{iC}).dataFieldPrimary;
+                    vals = {data.(fld)}';
+                    vals = cellfun(@char, vals, 'UniformOutput', false);
+                    data = TrialDataUtilities.Data.assignIntoStructArray(data, fld, vals);
+                end
+            end
 
             keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
 
@@ -820,6 +835,7 @@ classdef TrialData
             p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('loadAllPartitions', false, @islogical);
             p.addParameter('ignoreMissingPartitions', false, @islogical);
+            p.addParameter('validate', true, @islogical);
             p.parse(varargin{:});
             % strip extension
             %             [path, name, ext] = fileparts(location);
@@ -859,6 +875,10 @@ classdef TrialData
                 end
 
                 td = td.rebuildOnDemandCache();
+                
+                if p.Results.validate
+                    td = td.validateData();
+                end
             else
                 error('Directory %s not found. Did you save with saveFast?', location);
             end
@@ -2672,7 +2692,7 @@ classdef TrialData
             end
         end
 
-        function [names, cds] = listAnalogChannels(td, varargin)
+        function [names, channelDescriptors] = listAnalogChannels(td, varargin)
             % lists analog channels that have a named entry in the
             % channelDescriptors struct. this includes lone channels as
             % well as channels in an AnalogChannelGroup that have their own
@@ -2682,15 +2702,24 @@ classdef TrialData
             p.addParameter('channelDescriptorClass', 'AnalogChannelDescriptor', @ischar);
             p.addParameter('groupChannelDescriptorClass', 'AnalogChannelGroupDescriptor', @ischar);
             p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.addParameter('includeTransformChannels', true, @islogical);
             p.parse(varargin{:});
 
-            [names, cds] = td.listChannels(p.Results);
+            [names, channelDescriptors] = td.listChannels(rmfield(p.Results, 'includeTransformChannels'));
+            
+            mask = true(numel(names), 1);
+            if ~p.Results.includeTransformChannels
+                mask = mask & arrayfun(@(cd) ~cd.isTransform, channelDescriptors);
+            end
+            
+            names = names(mask);
+            channelDescriptors = channelDescriptors(mask);
         end
 
-        function [subNames, parentNames, subChIdx, channelDescriptors]  = listAnalogNamedSubChannels(td)
-            groups = td.listAnalogChannelGroups();
-            [subNames, parentNames, subChIdx, channelDescriptors] = td.listNamedSubChannels(groups);
-        end
+%         function [subNames, parentNames, subChIdx, channelDescriptors]  = listAnalogNamedSubChannels(td)
+%             groups = td.listAnalogChannelGroups();
+%             [subNames, parentNames, subChIdx, channelDescriptors] = td.listNamedSubChannels(groups);
+%         end
 
         function [names, cds] = listAnalogChannelsNonGrouped(td, varargin)
             [names, cds] = td.listAnalogChannels('includeNamedSubChannels', false, varargin{:});
@@ -3282,9 +3311,19 @@ classdef TrialData
             p = inputParser();
             p.addParameter('channelDescriptorClass', 'AnalogChannelGroupDescriptor', @ischar);
             p.addParameter('includeDerivedChannelTypes', true, @islogical);
+            p.addParameter('includeTransformChannels', true, @islogical);
             p.parse(varargin{:});
 
-            [groupNames, channelDescriptors, channelsByGroup] = td.listChannelGroups(p.Results);
+            [groupNames, channelDescriptors, channelsByGroup] = td.listChannelGroups(rmfield(p.Results, 'includeTransformChannels'));
+            
+            mask = true(numel(groupNames), 1);
+            if ~p.Results.includeTransformChannels
+                mask = mask & ~arrayfun(@(cd) cd.isTransform, channelDescriptors);
+            end
+            
+            groupNames = groupNames(mask);
+            channelDescriptors = channelDescriptors(mask);
+            channelsByGroup = channelsByGroup(mask);
         end
 
         function sz = getAnalogChannelGroupSize(td, groupName)
@@ -4927,15 +4966,12 @@ classdef TrialData
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.addParameter('like', '', @ischar);
             p.addParameter('units', '', @ischar);
+            p.addParameter('displayGroup', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
             %name = p.Results.name;
             values = p.Results.values;
-
-            %             if td.hasChannel(name)
-            %                 warning('Overwriting existing param channel with name %s', name);
-            %             end
 
             if ~isempty(values)
                 % expand scalar values to be nTrials x 1
@@ -4961,7 +4997,8 @@ classdef TrialData
                 cd = ParamChannelDescriptor.buildFromValues(name, values);
             end
             cd = cd.rename(name);
-
+            cd.displayGroup = p.Results.displayGroup;
+            
             if ~ismember('units', p.UsingDefaults)
                 cd = cd.setPrimaryUnits(p.Results.units);
             end
@@ -5106,6 +5143,7 @@ classdef TrialData
             p.addParameter('includeDerivedChannelTypes', true, @islogical);
             p.addParameter('isScalar', false, @islogical);
             p.addParameter('isString', false, @islogical);
+            p.addParameter('isCategorical', false, @islogical);
             p.parse(varargin{:});
 
             [names, channelDescriptors] = td.listChannels('includeNamedSubChannels', false, ...
@@ -5114,11 +5152,15 @@ classdef TrialData
 
             mask = true(numel(names), 1);
             if p.Results.isScalar
-                mask = mask & arrayfun(@(cd) cd.elementTypeByField == cd.SCALAR, channelDescriptors);
+                mask = mask & arrayfun(@(cd) cd.isScalarByField(1), channelDescriptors);
             end
             if p.Results.isString
-                mask = mask & arrayfun(@(cd) cd.elementTypeByField == cd.STRING, channelDescriptors);
+                mask = mask & arrayfun(@(cd) cd.isStringByField(1), channelDescriptors);
             end
+            if p.Results.isCategorical
+                mask = mask & arrayfun(@(cd) cd.isCategoricalByField(1), channelDescriptors);
+            end
+            
             names = names(mask);
             channelDescriptors = channelDescriptors(mask);
         end
