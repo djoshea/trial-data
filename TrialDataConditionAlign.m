@@ -2357,6 +2357,7 @@ classdef TrialDataConditionAlign < TrialData
             [mat, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
                 'assumeUniformSampling', true, ... % since getAnalog already ensured uniform sampling
                 'minTrials', p.Results.minTrials, ...
+                'fixNonmonotonicTimes', false, ... % already ensured by uniform sampling
                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
         end
 
