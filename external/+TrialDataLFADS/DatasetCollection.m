@@ -62,10 +62,9 @@ classdef DatasetCollection < LFADS.DatasetCollection
                 tdSet{iiDS} = dc.datasets(datasetIdx(iiDS)).loadData(p.Results.reload); % will cache in their trialData field
             end
             prog.finish();
-            
-            if isequal(datasetIdx, (1:dc.nDatasets)')
-                dc.trialDataSet = tdSet;
-            end
+
+            % note: we don't set trialDataSet here, since it retrieves from
+            % the datasets already as a Dependent property
         end
     end
 end

@@ -3,6 +3,7 @@ function [lia, locb] = ismembertol(a, b, tol)
 
     if iscategorical(a)
         if ~iscategorical(b)
+            if ischar(b), b = {b}; end
             b = categorical(b);
         end
         [lia, locb] = ismember(a, b);

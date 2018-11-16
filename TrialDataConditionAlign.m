@@ -3401,7 +3401,6 @@ classdef TrialDataConditionAlign < TrialData
         function [dataTensor, tvec] = getAnalogChannelGroupAsTensor(td, groupName, varargin)
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('assumeUniformSampling', false, @islogical);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
             p.addParameter('interpolateMethod', 'linear', @ischar);
@@ -3901,7 +3900,7 @@ classdef TrialDataConditionAlign < TrialData
         % return aligned event times
         function timesCell = getEvent(td, name)
             timesCell = getEvent@TrialData(td, name);
-            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, false, 'singleTimepointTolerance', 0);
+            timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, false, 'singleTimepointTolerance', 0, 'edgeTolerance', 0);
         end
 
         function dCell = getEventGrouped(td, name)

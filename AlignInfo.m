@@ -957,9 +957,11 @@ classdef AlignInfo < AlignDescriptor
             singleTimepointTolerance = p.Results.singleTimepointTolerance;
             edgeTolerance = p.Results.edgeTolerance;
             
-            sampleDelta = TrialData.computeDeltaFromTimes(rawTimes);
-            if isnan(sampleDelta)
-                sampleDelta = 1;
+            if nargout > 3 || isnan(singleTimepointTolerance) || isnan(edgeTolerance)
+                sampleDelta = TrialData.computeDeltaFromTimes(rawTimes);
+                if isnan(sampleDelta)
+                    sampleDelta = 1;
+                end
             end
             if isnan(singleTimepointTolerance)
                 singleTimepointTolerance = 2 * sampleDelta;

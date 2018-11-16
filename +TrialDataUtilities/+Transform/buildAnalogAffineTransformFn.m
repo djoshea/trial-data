@@ -1,7 +1,7 @@
 function [fn, szOut] = buildAnalogAffineTransformFn(WinByOut, bOut, varargin)
     % fn = buildAnalogAffineTransformFn(WinByOut, bOut, varargin)
     p = inputParser();
-    p.addParameter('outputFn', @(x) x, @(fn) isa(fn, 'function_handle'));
+    p.addParameter('outputFn', [], @(fn) isempty(fn) || isa(fn, 'function_handle'));
     p.parse(varargin{:});
     outFn = p.Results.outputFn;
     
@@ -35,7 +35,11 @@ function  [dataCell, timeCell] = affineTransformFn(W, b, outFn, dataCell, timeCe
         if isempty(dataCell{iT}), continue; end
         nT = size(dataCell{iT}, 1);
         sz = [nT szW(2:end)];
-        dataCell{iT} = outFn(reshape(dataCell{iT}(:, :) * W, sz) + shiftdim(b, 1)); 
+        if isempty(outFn)
+            dataCell{iT} = reshape(dataCell{iT}(:, :) * W, sz) + shiftdim(b, 1); 
+        else
+            dataCell{iT} = outFn(reshape(dataCell{iT}(:, :) * W, sz) + shiftdim(b, 1)); 
+        end
     end
     
 end

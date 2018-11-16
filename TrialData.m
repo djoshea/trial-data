@@ -955,17 +955,16 @@ classdef TrialData
             td = TrialData(tdi, 'suppressWarnings', true);
         end
 
-        function td = buildForAnalogChannelGroupTensor(groupName, data, time, varargin)
+        function td = buildForAnalogChannelGroupTensor(groupName, data, varargin)
             % data is nTrials x T x C, time is T x 1
             p = inputParser();
+            p.addOptional('time', (0:size(data, 2)-1)', @(x) isempty(x) || isnumeric(x) && isvector(x));
             p.addParameter('timeUnitName', 'ms', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            if nargin < 4
-                time = (0:size(data, 2)-1)';
-            end
-
+            time = p.Results.time;
+            
             % args are name, tensor (nTrials x nTime x nChannels)
             assert(isvector(time) && isnumeric(data));
             nTrials = size(data, 1);
@@ -1825,8 +1824,12 @@ classdef TrialData
 
             cdClassList = string(p.Results.channelDescriptorClass);
             if p.Results.includeDerivedChannelTypes
-                isaMulti = @(obj) any(arrayfun(@(cls) isa(obj, cls), cdClassList));
-                mask = arrayfun(isaMulti, channelDescriptors);
+                if numel(cdClassList) > 1
+                    isaMulti = @(obj) any(arrayfun(@(cls) isa(obj, cls), cdClassList));
+                    mask = arrayfun(isaMulti, channelDescriptors);
+                else
+                    mask = arrayfun(@(cd) isa(cd, p.Results.channelDescriptorClass), channelDescriptors);
+                    end
             else
                 isaMutliNonSubClass = @(obj) any(arrayfun(@(cls) strcmp(class(obj), cls), cdClassList));
                 mask = arrayfun(isaMutliNonSubClass, channelDescriptors);
@@ -3327,7 +3330,9 @@ classdef TrialData
         end
 
         function sz = getAnalogChannelGroupSize(td, groupName)
-            td.assertHasAnalogChannelGroup(groupName);
+            % we ignore this call since it will fail anyway and it wastes a
+            % lot of time doing lokup
+            %td.assertHasAnalogChannelGroup(groupName);
             cd = td.channelDescriptorsByName.(groupName);
             sz = cd.getSampleSize(td);
         end
@@ -3654,6 +3659,7 @@ classdef TrialData
         end
 
         function tf = hasAnalogChannelGroup(td, groupName)
+            % this could be made faster
             groupName = string(groupName);
             tf = ismember(groupName, td.listAnalogChannelGroups());
         end

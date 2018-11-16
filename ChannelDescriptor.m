@@ -664,6 +664,8 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     data = logical(data);
                 elseif strcmp(newClass, 'categorical')
                     data = categorical(data);
+                elseif strcmp(newClass, 'string')
+                    data = string(data);
                 else
                     data = cast(data, newClass);
                 end

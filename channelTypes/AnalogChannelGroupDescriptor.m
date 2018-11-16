@@ -294,7 +294,7 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         
         function [names, chidx] = listNamedSubChannels(cd)
             names = cd.subChannelNames;
-            mask = ~cellfun(@isempty, cellstr(names));
+            mask = strlength(names) > 0;
             names = string(names);
             names = names(mask);
             chidx = find(mask);

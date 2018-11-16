@@ -1,14 +1,25 @@
-function cmap = blendcolors(colors, n, varargin)
+function cmap = blendcolors(colors, nOrEvalAt, varargin)
     p = inputParser();
     p.addParameter('inputSpace', 'rgb', @ischar);
-    p.addParameter('interval', [0 1], @isvector);
+    p.addParameter('locations', linspace(0, 1, size(colors, 1)), @isvector);
+    p.addParameter('interval', [], @isvector);
     p.KeepUnmatched = false;
     p.parse(varargin{:});
     interval = p.Results.interval;
+    locations = p.Results.locations;
+    if isempty(interval)
+        interval = [min(locations) max(locations)];
+    end
     
     colorLuv = TrialDataUtilities.Color.convert(sprintf('%s->Luv', p.Results.inputSpace), colors);
     
-    cmapLuv = interp1(linspace(0, 1, size(colors, 1)), colorLuv, linspace(interval(1), interval(2), n));
+    if isscalar(nOrEvalAt)
+        n = nOrEvalAt;
+        cmapLuv = interp1(locations, colorLuv, linspace(interval(1), interval(2), n));
+    else
+        evalAt = nOrEvalAt;
+        cmapLuv = interp1(locations, colorLuv, evalAt);
+    end
     
     cmap = TrialDataUtilities.Color.convert('Luv->rgb', cmapLuv);
 
