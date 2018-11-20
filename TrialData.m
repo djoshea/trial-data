@@ -856,11 +856,7 @@ classdef TrialData
             elseif exist(location, 'dir')
                 loaded = load(fullfile(location, 'td.mat'));
                 td = loaded.td;
-
-                if ~isinf(p.Results.maxTrials)
-                    td = td.selectTrials(1:p.Results.maxTrials);
-                end
-
+                
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
                 [td.data, partitionMeta] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
@@ -872,6 +868,10 @@ classdef TrialData
                 partitions = fieldnames(partitionMeta);
                 for iF = 1:numel(partitions)
                     td.channelDescriptorsByName = structMerge(td.channelDescriptorsByName, partitionMeta.(partitions{iF}).channelDescriptorsByName);
+                end
+                
+                if ~isinf(p.Results.maxTrials)
+                    td = td.selectTrials(1:p.Results.maxTrials);
                 end
 
                 td = td.rebuildOnDemandCache();
