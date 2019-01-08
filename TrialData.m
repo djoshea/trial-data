@@ -710,13 +710,13 @@ classdef TrialData
             p.parse(varargin{:});
 
             data = td.data;
-            
+
             % categoricals are super slow to load, here we convert them to
             % char strings just to save time, since they'll be fixed during
             % validateData on load
             if p.Results.convertCategoricals
                 chList = td.listParamChannels('isCategorical', true);
-                
+
                 for iC = 1:numel(chList)
                     fld = td.channelDescriptorsByName.(chList{iC}).dataFieldPrimary;
                     vals = {data.(fld)}';
@@ -856,7 +856,7 @@ classdef TrialData
             elseif exist(location, 'dir')
                 loaded = load(fullfile(location, 'td.mat'));
                 td = loaded.td;
-                
+
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
                 [td.data, partitionMeta] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
@@ -869,13 +869,13 @@ classdef TrialData
                 for iF = 1:numel(partitions)
                     td.channelDescriptorsByName = structMerge(td.channelDescriptorsByName, partitionMeta.(partitions{iF}).channelDescriptorsByName);
                 end
-                
+
                 if ~isinf(p.Results.maxTrials)
                     td = td.selectTrials(1:p.Results.maxTrials);
                 end
 
                 td = td.rebuildOnDemandCache();
-                
+
                 if p.Results.validate
                     td = td.validateData();
                 end
@@ -964,7 +964,7 @@ classdef TrialData
             p.parse(varargin{:});
 
             time = p.Results.time;
-            
+
             % args are name, tensor (nTrials x nTime x nChannels)
             assert(isvector(time) && isnumeric(data));
             nTrials = size(data, 1);
@@ -1737,7 +1737,7 @@ classdef TrialData
             % return a string describing the units of a given channel
             if ischar(name)
                 if td.hasSpikeChannel(name)
-                    units = 'spikes / sec';
+                    units = 'spikes/sec';
                 else
                     units = td.getChannelDescriptor(name).unitsPrimary;
                     if strcmp(units, 'enum') % MatUdp did this at one point
@@ -2709,12 +2709,12 @@ classdef TrialData
             p.parse(varargin{:});
 
             [names, channelDescriptors] = td.listChannels(rmfield(p.Results, 'includeTransformChannels'));
-            
+
             mask = true(numel(names), 1);
             if ~p.Results.includeTransformChannels
                 mask = mask & arrayfun(@(cd) ~cd.isTransform, channelDescriptors);
             end
-            
+
             names = names(mask);
             channelDescriptors = channelDescriptors(mask);
         end
@@ -3318,12 +3318,12 @@ classdef TrialData
             p.parse(varargin{:});
 
             [groupNames, channelDescriptors, channelsByGroup] = td.listChannelGroups(rmfield(p.Results, 'includeTransformChannels'));
-            
+
             mask = true(numel(groupNames), 1);
             if ~p.Results.includeTransformChannels
                 mask = mask & ~arrayfun(@(cd) cd.isTransform, channelDescriptors);
             end
-            
+
             groupNames = groupNames(mask);
             channelDescriptors = channelDescriptors(mask);
             channelsByGroup = channelsByGroup(mask);
@@ -5004,7 +5004,7 @@ classdef TrialData
             end
             cd = cd.rename(name);
             cd.displayGroup = p.Results.displayGroup;
-            
+
             if ~ismember('units', p.UsingDefaults)
                 cd = cd.setPrimaryUnits(p.Results.units);
             end
@@ -5166,7 +5166,7 @@ classdef TrialData
             if p.Results.isCategorical
                 mask = mask & arrayfun(@(cd) cd.isCategoricalByField(1), channelDescriptors);
             end
-            
+
             names = names(mask);
             channelDescriptors = channelDescriptors(mask);
         end
@@ -6815,7 +6815,7 @@ classdef TrialData
             p = inputParser();
             p.addParameter('raw', false, @islogical);
             p.parse(varargin{:})
-            
+
             offsets = zerosvec(td.nTrials);
         end
 

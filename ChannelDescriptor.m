@@ -623,7 +623,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
 
         function tf = get.isNumericScalarByField(cd)
             tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM]) & ...
-                ismember(cd.accessClassByField, {'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'uint64', 'int64', 'double', 'single'});
+                ismember(cd.accessClassByField, {'logical', 'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'uint64', 'int64', 'double', 'single'});
         end
 
         function tf = get.isVectorByField(cd)

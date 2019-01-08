@@ -4356,7 +4356,7 @@ classdef TrialDataConditionAlign < TrialData
 
             timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine);
             timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, ...
-                'singleTimepointTolerance', 0);
+                'singleTimepointTolerance', 0, 'edgeTolerance', 0);
         end
 
         function timesCell = getSpikeTimesEachAlign(td, unitNames, varargin)
@@ -4388,7 +4388,8 @@ classdef TrialDataConditionAlign < TrialData
             end    
             
             [timesMask, indFirst, indLast] = td.alignInfoActive.getAlignedTimesMask(...
-                timesRaw, 'includePadding', p.Results.includePadding, 'singleTimepointTolerance', false);    
+                timesRaw, 'includePadding', p.Results.includePadding, ...
+                'singleTimepointTolerance', 0, 'edgeTolerance', 0);    
         end
 
         %%%%%
