@@ -8,6 +8,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
 
     assert(td.nTrials == seg.nTrials, 'Trial counts do not match');
 
+    debug('Computing cluster centers of mass\n');
     clusterCOM = seg.dataset.computeCenterOfMassLocationByCluster();
     
     cluster_groups_keep = categorical(p.Results.cluster_groups);

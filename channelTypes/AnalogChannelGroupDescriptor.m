@@ -309,6 +309,21 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                 cd.subChannelUnits(chidx) = string(units);
             end
         end
+        
+        function cd = filterSubChannels(cd, colIdx, newSampleSize)
+            % generate an equivalent analog channel group with reduced size
+            cd.warnIfNoArgOut(nargout);
+            
+            if nargin < 3 || isempty(newSampleSize)
+                newSampleSize = numel(colIdx);
+            end
+            
+            names = cd.subChannelNames;
+            units = cd.subChannelUnits;
+            cd.sampleSize = newSampleSize;
+            cd.subChannelNames = names(colIdx);
+            cd.subChannelUnits = units(colIdx); 
+        end
     end
     
     % transforms of other groups

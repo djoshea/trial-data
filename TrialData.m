@@ -1157,10 +1157,9 @@ classdef TrialData
                     str = [str, ', ']; %#ok<AGROW>
                 end
             end
-            str = [str, '\n'];
             tcprintf('inline', str);
 
-            tcprintf('inline', '{yellow}Continuous Neural: {none}%s\n', TrialDataUtilities.String.strjoin(continuousCh, ', '));
+            tcprintf('inline', '\n{yellow}Continuous Neural: {none}%s\n', TrialDataUtilities.String.strjoin(continuousCh, ', '));
             printAnalogGroups(contGroups, contGroupChannels, false);
 
             tcprintf('inline', '{yellow}Image: {none}\n');
@@ -2048,9 +2047,7 @@ classdef TrialData
         function td = dropAnalogChannelGroup(td, groupName)
             td.warnIfNoArgOut(nargout);
 
-            if ~iscell(groupName)
-                groupName = {groupName};
-            end
+            groupName = string(groupName);
             groupName = groupName(td.hasAnalogChannelGroup(groupName));
 
             for iG = 1:numel(groupName)
@@ -2200,7 +2197,7 @@ classdef TrialData
             td = td.trimEventRaw(ev, startTimes, stopTimes);
 
             debug('Trimming spike channels\n');
-            sp = td.listSpikeChannels();
+            sp = cat(1, td.listSpikeChannels('includeArraySubChannels', false), td.listExplicitSpikeArrays());
             td = td.trimSpikeChannelRaw(sp, startTimes, stopTimes);
 
             debug('Trimming analog channels\n');
@@ -3559,24 +3556,40 @@ classdef TrialData
             end
         end
 
-        function td = removeUnnamedColumnsAnalogChannelGroup(td, groupName)
+        function td = removeUnnamedColumnsAnalogChannelGroup(td, groupName, varargin)
             td.warnIfNoArgOut(nargout);
-            [chList, colIdx] = td.listAnalogChannelsInGroup(groupName);
-
-            prog = ProgressBar(td.nTrials, 'Cleaning columns of analog channel group data');
+            [~, colIdx] = td.listAnalogChannelsInGroup(groupName);
+            td = td.filterColumnsAnalChannelGroup(groupName, colIdx, varargin{:});
+        end
+        
+        function td = removeColumnsFromAnalogChannelGroup(td, groupName, removeColIdx, varargin)
+            td.warnIfNoArgOut(nargout);
+            
+            cd = td.getChannelDescriptor(groupName);
+            colIdx = setdiff(1:cd.nChannels, removeColIdx);
+            td = td.filterColumnsAnalChannelGroup(groupName, colIdx, varargin{:});
+        end
+        
+        function td = filterColumnsAnalogChannelGroup(td, groupName, colIdx, varargin)
+            td.warnIfNoArgOut(nargout);
+        
+            p = inputParser();
+            p.addParameter('newSampleSize', [], @(x) isempty(x) || isvector(x));
+            p.parse(varargin{:});
+            
+            cd = td.getChannelDescriptor(groupName);
+            
+            prog = ProgressBar(td.nTrials, 'Filtering columns of analog channel group %s', groupName);
             for t = 1:td.nTrials
                 prog.update(t);
-                if ~isempty(td.data(t).(groupName))
-                    td.data(t).(groupName) = td.data(t).(groupName)(:, colIdx);
-                end
+                td.data(t).(groupName) = td.data(t).(groupName)(:, colIdx);
             end
             prog.finish();
 
-            % and update the channel descriptors
-            for c = 1:numel(chList)
-                td.channelDescriptorsByName.(chList{c}).primaryDataFieldColumnIndex = c;
-            end
-
+            % and update the channel descriptor
+            cd = cd.filterSubChannels(colIdx, p.Results.newSampleSize);
+            td.channelDescriptorsByName.(groupName) = cd;
+            
             td = td.postDataChange(groupName);
         end
 
@@ -5112,7 +5125,7 @@ classdef TrialData
             p.parse(varargin{:});
 
             cd = ParamChannelDescriptor.buildBooleanParam(name);
-            values = p.Results.values;
+            values = p.Results.values; 
             td = td.addParam(name, values, 'channelDescriptor', cd, ...
                 p.Unmatched);
         end
@@ -6057,16 +6070,16 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             assert(isvector(mask) && numel(mask) == td.nTrials);
 
-            td.assertHasSpikeChannel(unitName);
+            %td.assertHasSpikeChannel(unitName);
             cd = td.channelDescriptorsByName.(unitName);
 
-            times = {td.data.(unitName)}';
+            times = cat(1, td.data.(unitName));
             notEmpty = ~cellfun(@isempty, times);
             times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), mask(notEmpty), 'UniformOutput', false);
 
             hasWaves = cd.hasWaveforms;
             if hasWaves
-                waves = {td.data.(cd.waveformsField)}';
+                waves = cat(1, td.data.(cd.waveformsField));
                 waves(notEmpty) = cellfun(@(w, m) w(m, :), waves(notEmpty), mask(notEmpty), 'UniformOutput', false);
             else
                 waves = {};
@@ -6107,18 +6120,34 @@ classdef TrialData
                 startTimes(~td.valid) = NaN;
                 stopTimes(~td.valid) = NaN;
             end
-
+            
+            tf = td.hasSpikeChannel(unitNames, 'includeArraySubChannels', false) | td.hasExplicitSpikeArray(unitNames);
+            if any(~tf)
+                error('Spike channels must be explicit spike arrays or separate explicit channels: %s', strjoin(unitNames(~tf)));
+            end
+            
             prog = ProgressBar(numel(unitNames), 'Trimming spike channels');
             for iU = 1:numel(unitNames)
                 unitName = unitNames{iU};
                 prog.update(iU, 'Trimming spike channel %s', unitName);
-                assert(td.hasSpikeChannel(unitName), 'No spike channel named %s', unitName);
-                spikeField = unitName;
-                times = {td.data.(spikeField)}';
-
-                timesMask = cellvec(td.nTrials);
+                
+                cd = td.channelDescriptorsByName.(unitName);
+                spikeField = cd.dataFieldPrimary;
+                if isa(cd, 'SpikeChannelArrayDescriptor')
+                    nUnits = cd.nChannels;
+                else
+                    nUnits = 1;
+                end
+                
+                % trying this for spike arrays, will fail if empty on some
+                % trials, but this shouldn't be the cease
+                times = cat(1, td.data.(spikeField));
+                timesMask = cell(td.nTrials, nUnits);
+                
                 for iT = 1:td.nTrials
-                    timesMask{iT} = times{iT} >= startTimes(iT) & times{iT} <= stopTimes(iT);
+                    for iU = 1:nUnits
+                        timesMask{iT, iU} = times{iT, iU} >= startTimes(iT) & times{iT, iU} <= stopTimes(iT);
+                    end
                 end
 
                 maskNeedsModification = ~cellfun(@all, timesMask);
