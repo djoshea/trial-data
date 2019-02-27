@@ -1900,7 +1900,7 @@ classdef TrialData
             for i = 1:numel(varargin)
                 varargin{i} = regexptranslate('wildcard', varargin{i});
             end
-            names = td.listChannelsMatchzingRegexp(varargin{:});
+            names = td.listChannelsMatchingRegexp(varargin{:});
         end
 
         function names = listChannelsMatchingRegexp(td, varargin)
