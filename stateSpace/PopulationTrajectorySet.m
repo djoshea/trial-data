@@ -2742,7 +2742,9 @@ classdef PopulationTrajectorySet
                 end
 
                 % this call works for unit names as well
-                basisUnits{iBasis} = td.getChannelUnitsPrimary(chName);
+                % TODO undo this hack
+                basisUnits{iBasis} = 'spikes/sec';
+%                 basisUnits{iBasis} = td.getChannelUnitsPrimary(chName);
             end
 
             % convert the basis units as specified by the

@@ -6608,9 +6608,14 @@ classdef TrialData
                 end
                 if isfield(td.channelDescriptorsByName, name)
                     cd = td.channelDescriptorsByName.(name);
-                    if isa(cd, 'SpikeChannelDescriptor') || isa(cd, 'EventChannelDescriptor')
+                    if isa(cd, 'SpikeChannelDescriptor')
                         fieldsByName{iN} = {cd.(cdField)};
                         colByName{iN} = cd.primaryDataFieldColumnIndex;
+                        fieldIsArrayByName{iN} = false;
+                        
+                    elseif isa(cd, 'EventChannelDescriptor')
+                        fieldsByName{iN} = {cd.(cdField)};
+                        colByName{iN} = 1;
                         fieldIsArrayByName{iN} = false;
 
                     elseif isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')

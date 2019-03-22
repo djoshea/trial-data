@@ -45,6 +45,7 @@ classdef TrialDataConditionAlign < TrialData
     properties(Dependent, SetAccess=protected)
         attributeParams % feeds thru to .conditionInfo.attributeNames
 
+        isGrouped
         nConditions
         listByCondition
         listByConditionWeights
@@ -288,6 +289,15 @@ classdef TrialDataConditionAlign < TrialData
 
             c = td.odc;
             c.alignSummarySet = alignSummarySet;
+        end
+        
+        function alignSummarySet = buildAlignSummarySetWithTrials(td, trialIdx)
+            td = td.withTrials(trialIdx);
+            alignSummarySet = cell(td.nAlign, 1);
+            for i = 1:td.nAlign
+                alignSummarySet{i} = AlignSummary.buildFromConditionAlignInfo(td.conditionInfo, td.alignInfoSet{i});
+                alignSummarySet{i}.timeUnitName = td.timeUnitName;
+            end
         end
 
         function buildValid(td)
@@ -1138,6 +1148,7 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td = td.addAttribute(attrName);
             if td.isChannelCategorical(attrName)
+                valueList = string(valueList);
                 valueList = categorical(valueList);
             end
             td.conditionInfo = td.conditionInfo.setAttributeValueList(attrName, valueList, varargin{:});
@@ -1319,6 +1330,10 @@ classdef TrialDataConditionAlign < TrialData
 
         function v = get.conditionsAsStrings(td)
             v = td.conditionInfo.conditionsAsStrings;
+        end
+        
+        function tf = get.isGrouped(td)
+            tf = td.conditionInfo.nAxes > 0;
         end
 
         function n = get.nConditions(td)
@@ -5881,7 +5896,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('annotateUsingFirstTrialEachCondition', true, @islogical);
 
             % make room for labels using AutoAxis
-            p.addParameter('axisMarginLeft', 2.5, @isscalar);
+            p.addParameter('axisMarginLeft', [], @isscalar);
 
             p.addParameter('useShortLabels', true, @islogical);
 
@@ -5889,8 +5904,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('shadeStartStopInterval', false, @islogical);
             p.addParameter('shadeOutsideStartStopInterval', false, @islogical);
             p.addParameter('shadeBlankingRegions', false, @islogical);
-            p.addParameter('markShowOnData', true, @islogical);
-            p.addParameter('intervalShowOnData', true, @islogical);
+            p.addParameter('markShowOnData', false, @islogical);
+            p.addParameter('intervalShowOnData', false, @islogical);
 
             % if true, draw spike waveforms instead of ticks
             p.addParameter('drawSpikeWaveforms', false, @islogical);
@@ -6185,25 +6200,29 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             % setup y axis condition labels
-            colors = cat(1, td.conditionAppearances(conditionIdx).Color);
-            if p.Results.useShortLabels
-                conditionNames = td.conditionNamesShort(conditionIdx); % todo change this to multiline?
-            else
-                conditionNames = td.conditionNamesMultiline(conditionIdx);
-            end
+            if td.isGrouped
+                colors = cat(1, td.conditionAppearances(conditionIdx).Color);
+                if p.Results.useShortLabels
+                    conditionNames = td.conditionNamesShort(conditionIdx); % todo change this to multiline?
+                else
+                    conditionNames = td.conditionNamesMultiline(conditionIdx);
+                end
 
-            if ~p.Results.quick
-                % only include conditions with at least 1 trial
-                mask = trialCounts(conditionIdx) > 0;
-                au = AutoAxis(axh);
-                au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
-                    conditionNames(mask), 'color', colors(mask, :));
+                if ~p.Results.quick
+                    % only include conditions with at least 1 trial
+                    mask = trialCounts(conditionIdx) > 0;
+                    au = AutoAxis(axh);
+                    au.addLabeledSpan('y', 'span', yLimsByCondition(:, mask), 'label', ...
+                        conditionNames(mask), 'color', colors(mask, :));
 
-                mask = trialCounts(conditionIdx(2:end)) > 0;
-                set(axh, 'YTick', flipud(yDividersByCondition(mask)));
+                    mask = trialCounts(conditionIdx(2:end)) > 0;
+                    set(axh, 'YTick', flipud(yDividersByCondition(mask)));
+                else
+                    mask = trialCounts(conditionIdx) > 0;
+                    set(axh, 'YTick', flipud(yCentersByCondition(mask)), 'YTickLabels', flipud(conditionNames(mask)));
+                end
             else
-                mask = trialCounts(conditionIdx) > 0;
-                set(axh, 'YTick', flipud(yCentersByCondition(mask)), 'YTickLabels', flipud(conditionNames(mask)));
+                set(axh, 'YTick', []);
             end
 
             % setup time axis markers
@@ -6245,9 +6264,17 @@ classdef TrialDataConditionAlign < TrialData
                 set(axh, 'YLim', yLims);
             end
 
+            axisMarginLeft = p.Results.axisMarginLeft;
+            if isempty(axisMarginLeft)
+                if td.isGrouped
+                    axisMarginLeft = 2.5;
+                else
+                    axisMarginLeft = 0.5;
+                end
+            end
             if ~p.Results.quick
                 au = AutoAxis(axh);
-                au.axisMarginLeft = p.Results.axisMarginLeft; % make room for left hand side labels
+                au.axisMarginLeft = axisMarginLeft; % make room for left hand side labels
                 axis(axh, 'off');
                 au.update();
             else
@@ -6265,7 +6292,20 @@ classdef TrialDataConditionAlign < TrialData
     % Plotting Analog each trial
     methods
         function setupTimeAxis(td, varargin)
-            td.alignSummaryActive.setupTimeAutoAxis('style', 'tickBridge', varargin{:});
+            p = inputParser();
+            p.addParameter('trialIdx', [], @(x) isempty(x) || isvector(x));
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            trialIdx = p.Results.trialIdx;
+            if isempty(trialIdx)
+                alignSummaryActive = td.alignSummaryActive;
+            else
+                alignSummarySet = td.buildAlignSummarySetWithTrials(trialIdx);
+                alignSummaryActive = alignSummarySet{td.alignInfoActiveIdx};
+            end
+                
+            alignSummaryActive.setupTimeAutoAxis('style', 'tickBridge', p.Unmatched);
         end
 
         function [offsets, lims] = getAlignPlottingTimeOffsets(td, tvecCell, varargin)
@@ -7305,7 +7345,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function plotSingleTrialRaster(td, varargin)
             p = inputParser();
-            p.addOptional('trialIdx', [], @(x) isnumeric(x) && isscalar(x)); % selection into all trials
+            p.addParameter('trialIdx', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x))); % selection into all trials
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
             p.addParameter('unitNames', td.listSpikeChannels(), @(x) ischar(x) || isstring(x) || iscellstr(x));
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);

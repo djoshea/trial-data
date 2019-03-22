@@ -2093,7 +2093,7 @@ classdef ConditionDescriptor
                 if tf
                     assert(~iscell(valueList) || (numel(valueList) == 1 && ismissing(valueList{1})) || ci.attributeValueListIsBinned(iAttr), 'Attribute %s has manual value list that is not numeric vector which is required for numeric attributes', attr);
                 else
-                    assert(iscell(valueList), 'Attribute %s has manual value list that is not cell which is required for as vector attributes', attr);
+                    assert(iscell(valueList) || isstring(valueList) || iscategorical(valueList), 'Attribute %s has manual value list that is not cell which is required for as vector attributes', attr);
                 end
             end
 
@@ -2648,6 +2648,7 @@ classdef ConditionDescriptor
 
             strCell = cellvec(ci.nAxes);
             valueLists = ci.axisValueLists;
+            valueListsRaw = valueLists; % we'll modify some of the values in value list below
             randStrCell = ci.axisRandomizeModesAsStrings;
 
             % build units lookup
@@ -2718,8 +2719,8 @@ classdef ConditionDescriptor
                         if ~isempty(displayAs)
                             valuesThisAttr = ci.attributeValueLists{attrIdx(iA)};
                             for iV = 1:numel(valueLists{iX})
-                                val = valueLists{iX}(iV).(attr{iA});
-                                [tf, idx] = ismember(val, valuesThisAttr);
+                                val = valueListsRaw{iX}(iV).(attr{iA});
+                                [tf, idx] = ismemberCell(val, valuesThisAttr);
                                 assert(tf, 'Value not found in list of values for attribute %s', ci.attributeNames{iA});
                                 % substitute in the display as value
                                 valueLists{iX}(iV).(attr{iA}) = displayAs{idx};

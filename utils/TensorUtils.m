@@ -471,7 +471,7 @@ classdef TensorUtils
             inflatedSize(dims) = nInflatedVec;
 
             if nargin < 4
-                if iscellstr(maskedTensor) %#ok<ISCLSTR>
+                if iscellstr(maskedTensor)
                     fillWith = {''};
                 elseif iscell(maskedTensor)
                     fillWith = {[]};
