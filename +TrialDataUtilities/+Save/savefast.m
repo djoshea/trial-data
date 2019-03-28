@@ -49,6 +49,7 @@ function savefast(filename, varargin)
   isnum = cellfun(@(x) isa(x, 'numeric'), vars);
   
   % Append .mat if necessary
+  filename = char(filename);
   [filepath, filebase, ext] = fileparts(filename);
   if isempty(ext)
     filename = fullfile(filepath, [filebase '.mat']);

@@ -725,6 +725,7 @@ classdef TrialData
                 end
             end
 
+            location = char(location);
             keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
 
             partitionMeta = struct();
