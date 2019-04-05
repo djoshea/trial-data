@@ -23,6 +23,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     % set by factory builder methods or inferAttributesFromData
     % EACH OF THE FOLLOWING PROPERTIES MUST HAVE THE SAME SIZE (nFields x 1)
     properties(SetAccess=protected)
+        % these are fixed strings like "data" or "time" that describes what each field contains
+        fieldIds = {};
+        
         % one of the element type Constants defined below
         elementTypeByField = [];
 
@@ -35,7 +38,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         % original class() of each field, used to maintain the same type in memory .memoryClassByFIeld
         originalDataClassByField = {};
 
-        catAlongFirstDimByField = {}; % manual override specifying that values may be concatenated along dim 1, this will set collectAsCell to be false
+        catAlongFirstDimByField = []; % manual override specifying that values may be concatenated along dim 1, this will set collectAsCell to be false
     end
 
     properties(Constant, Hidden) % element type constants
@@ -112,8 +115,25 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             % gives the class a chance to reinitialize itself after the
             % user makes changes
             cd.warnIfNoArgOut(nargout);
+            
+            if isempty(cd.catAlongFirstDimByField)
+                cd.catAlongFirstDimByField = false(cd.nFields, 1);
+            end
         end
-
+        
+        function cd = validate(cd)
+            cd.warnIfNoArgOut(nargout);
+            
+            % check that all field values are okay
+            nFields = numel(cd.dataFields); %#ok<*PROP>
+            
+            assert(numel(cd.fieldIds) == nFields, 'fieldIds has wrong size');
+            assert(numel(cd.elementTypeByField) == nFields, 'elementTypeByField has wrong size');
+            assert(numel(cd.unitsByField) == nFields, 'unitsByField has wrong size');
+            assert(numel(cd.originalDataClassByField) == nFields, 'originalDataClassByField has wrong size');
+            assert(numel(cd.catAlongFirstDimByField) == nFields, 'catAlongFirstDimByField has wrong size');
+        end
+        
         % used by trial data when it needs to change field names
         function name = suggestFieldName(cd, fieldIdx)
             if fieldIdx == 1
@@ -363,7 +383,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                 data = cellfun(@(a) ChannelDescriptor.icast(a, memClass), data, 'UniformOutput', ~cd.collectAsCellByField(fieldIdx));
             end
         end
-
+        
         function c = getAccessClassByField(cd)
             % implements get.accessClassByField
             memClass = cd.getMemoryClassByField();
@@ -657,6 +677,12 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
     end
 
     methods(Static) % Utility methods
+        function cd = loadobj(s)
+            cd = builtin('loadobj', s);
+            cd = cd.initialize();
+            cd = cd.validate();
+        end
+
         function data = icast(data, newClass)
             if ~isa(data, newClass)
                 if strcmp(newClass, 'logical')

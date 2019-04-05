@@ -51,12 +51,14 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
 
     methods % built in channel descriptor functions
         function cd = initialize(cd)
+            cd.fieldIds = {'spikes'};
             cd.dataFields = {cd.name};
             cd.elementTypeByField = cd.CELL;
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
 
             if cd.hasWaveforms
+                cd.fieldIds{end+1} = 'waveforms';
                 cd.dataFields{end+1} = cd.waveformsField;
                 cd.elementTypeByField(end+1) = cd.CELL;
                 cd.originalDataClassByField{end+1} = cd.waveformsOriginalDataClass;
@@ -64,6 +66,7 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             end
 
             if cd.hasSortQualityEachTrial
+                cd.fieldIds{end+1} = 'sortQuality';
                 cd.dataFields{end+1} = cd.sortQualityEachTrialField;
                 cd.elementTypeByField(end+1) = cd.CELL;
                 cd.originalDataClassByField{end+1} = 'double';
@@ -71,6 +74,7 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             end
 
             if cd.hasBlankingRegions
+                cd.fieldIds{end+1} = 'blankingRegions';
                 cd.dataFields{end+1} = cd.blankingRegionsField;
                 cd.elementTypeByField(end+1) = cd.CELL;
                 cd.originalDataClassByField{end+1} = 'double';

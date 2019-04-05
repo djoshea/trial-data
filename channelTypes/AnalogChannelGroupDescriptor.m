@@ -23,6 +23,12 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         % transformChannel
         % 'manual': channel does all work and accepts all data at once
         transformFnMode = '';
+        
+         % if specified, this channel will be uniform (isUniform == true) and 
+        % must be constrained to have / will be trusted to have a fixed sampling rate
+        % this requires some upfront processing to ensure the samples are even
+        % bue saves time during access and resampling
+        timeDelta = []
     end
     
     properties(Dependent)
@@ -34,6 +40,8 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         
         % is this channel just a transformed version of a different channel?
         isTransform
+        
+        isUniform
     end
 
     methods
@@ -94,6 +102,10 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                 end
             end
         end
+        
+        function tf = get.isUniform(cd)
+            tf = ~isempty(cd.timeDelta);
+        end
     end
     
     methods(Access=protected)
@@ -113,15 +125,18 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
     methods
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
-            if cd.isTransform
-                primaryField = cd.transformChannelNames{1};
-            else
-                primaryField = cd.name;
+            
+            if isempty(cd.dataFields)
+                cd.dataFields = {cd.primaryDataField, cd.timeField};
             end
-                
-            cd.dataFields = {primaryField, cd.timeField};
+            
+            if isempty(cd.fieldIds)
+                cd.fieldIds = {'data', 'time'};
+            end
+            
+            cd = initialize@ChannelDescriptor(cd);
         end
-        
+
         % used by trial data when it needs to change field names
         function name = suggestFieldName(cd, fieldIdx)
             if fieldIdx == 1

@@ -49,11 +49,13 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
     methods
         function cd = initialize(cd)
             cd.dataFields = {cd.name};
+            cd.fieldIds = {'spikes'};
             cd.elementTypeByField = cd.VECTOR;
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
 
             if cd.hasWaveforms
+                cd.fieldIds{end+1} = 'waveforms';
                 cd.dataFields{end+1} = cd.waveformsField;
                 cd.elementTypeByField(end+1) = cd.NUMERIC;
                 cd.originalDataClassByField{end+1} = cd.waveformsOriginalDataClass;
@@ -61,6 +63,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
 
             if cd.hasSortQualityEachTrial
+                cd.fieldIds{end+1} = 'sortQuality';
                 cd.dataFields{end+1} = cd.sortQualityEachTrialField;
                 cd.elementTypeByField(end+1) = cd.NUMERIC;
                 cd.originalDataClassByField{end+1} = 'double';
@@ -68,6 +71,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
 
             if cd.hasBlankingRegions
+                cd.fieldIds{end+1} = 'blankingRegions';
                 cd.dataFields{end+1} = cd.blankingRegionsField;
                 cd.elementTypeByField(end+1) = cd.NUMERIC;
                 cd.originalDataClassByField{end+1} = 'double';

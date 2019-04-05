@@ -3,7 +3,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         scaleFromLims
         scaleToLims
         
-        isColumnOfSharedMatrix = false; % this field shares a data field with other channels
+        isColumnOfSharedMatrix = false; % this field shares a data field with other channels (whose name is stored in primaryDataFieldManual
         primaryDataFieldColumnIndex = 1; % which column am I?
         
         % if this channel just a virtually transformed version of a
@@ -21,6 +21,12 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         % transformChannel
         % 'manual': channel does all work and accepts all data at once
         transformFnMode = '';
+        
+        % if specified, this channel will be uniform (isUniform == true) and 
+        % must be constrained to have / will be trusted to have a fixed sampling rate
+        % this requires some upfront processing to ensure the samples are even
+        % bue saves time during access and resampling
+        timeDelta = []
     end
     
     properties(Dependent)
@@ -36,6 +42,8 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         hasScaling
         
         isTransform
+        
+        isUniform % has manually specified timeDelta
     end
     
     properties(Hidden)
@@ -44,10 +52,16 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
     
     methods
         function f = get.primaryDataField(cd)
-            if ~cd.isColumnOfSharedMatrix || isempty(cd.primaryDataFieldManual)
-                f = cd.name;
-            else
+            f = cd.getPrimaryDataField();
+        end
+        
+        function f = getPrimaryDataField(cd) % so that the get.primaryDataField can be overridden if necessary
+            if cd.isColumnOfSharedMatrix
                 f = cd.primaryDataFieldManual;
+            elseif cd.isTransform
+                f = cd.transformChannelNames{1};
+            else
+                f = cd.name;
             end
         end
         
@@ -55,13 +69,17 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             tf = ~isempty(cd.transformChannelNames);
         end
         
+        function tf = get.isUniform(cd)
+            tf = ~isempty(cd.timeDelta);
+        end
+        
         function cd = updateGroup(cd, newGroupDescriptor)
             cd.warnIfNoArgOut(nargout);
             assert(isa(newGroupDescriptor, 'AnalogChannelGroupDescriptor'));
             assert(cd.isColumnOfSharedMatrix)
-            cd.primaryDataField = newGroupDescriptor.name;
+            cd.primaryDataFieldManual = newGroupDescriptor.name;
             cd.timeField = newGroupDescriptor.timeField;
-        end  
+        end
         
         function grp = getGroupName(cd, ~)
             if cd.isColumnOfSharedMatrix
@@ -71,12 +89,12 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function cd = set.primaryDataField(cd, f)
-            assert(cd.isColumnOfSharedMatrix, 'Primary data field cannot be set unless isColumnOfSharedMatrix is set to true.');
-            assert(ischar(f) && isvector(f), 'Field name must be string');
-            cd.primaryDataFieldManual = f;
-            cd = cd.initialize();
-        end
+%         function cd = set.primaryDataField(cd, f)
+%             assert(cd.isColumnOfSharedMatrix, 'Primary data field cannot be set unless isColumnOfSharedMatrix is set to true.');
+%             assert(ischar(f) && isvector(f), 'Field name must be string');
+%             cd.primaryDataFieldManual = f;
+%             cd = cd.initialize();
+%         end
         
         function cd = set.timeField(cd, f)
             cd.dataFields{2} = f;
@@ -114,6 +132,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.originalDataClassByField{1} = 'single';
             cd.scaleFromLims = [];
             cd.scaleToLims = [];
+            cd = cd.initialize();
         end
         
         function cdGroup = buildGroupChannelDescriptor(cd, varargin)
@@ -137,10 +156,11 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             if nargin < 2
                 timeField = sprintf('%s_time', cd.name);
             end
-
+            
             cd.dataFields = {name, timeField};
             cd.originalDataClassByField = {'double', 'double'};
             cd.elementTypeByField = [cd.VECTOR, cd.VECTOR];
+            cd.initialize();
         end
     end
         
@@ -148,7 +168,15 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
             
-            cd.dataFields = {cd.primaryDataField, cd.timeField};
+            if isempty(cd.dataFields)
+                cd.dataFields = {cd.primaryDataField, cd.timeField};
+            end
+            
+            if isempty(cd.fieldIds)
+                cd.fieldIds = {'data', 'time'};
+            end
+            
+            cd = initialize@ChannelDescriptor(cd);
         end
         
         % used by trial data when it needs to change field names

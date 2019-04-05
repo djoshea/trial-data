@@ -11,10 +11,22 @@ classdef EventChannelDescriptor < ChannelDescriptor
             cd.dataFields = {cd.name};
             cd.originalDataClassByField = {'double'};
             cd.elementTypeByField = cd.VECTOR;
+            cd.fieldIds = {'times'};
+            cd.initialize();
         end
     end
     
     methods    
+        function cd = initialize(cd)
+            % check and repair internal consistency
+            cd.warnIfNoArgOut(nargout);
+            if isempty(cd.fieldIds)
+                cd.fieldIds = {'times'};
+            end
+            
+            cd = initialize@ChannelDescriptor(cd);
+        end
+        
         function type = getType(~)
             type = 'event';
         end

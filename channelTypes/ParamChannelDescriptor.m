@@ -10,10 +10,21 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.UNKNOWN;
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
+            cd.fieldIds = {'data'};
         end
     end
     
     methods
+        function cd = initialize(cd)
+            % check and repair internal consistency
+            cd.warnIfNoArgOut(nargout);
+            if isempty(cd.fieldIds)
+                cd.fieldIds = {'data'};
+            end
+            
+            cd = initialize@ChannelDescriptor(cd);
+        end
+        
         function type = getType(~)
             type = 'param';
         end
