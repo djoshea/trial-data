@@ -4472,7 +4472,7 @@ classdef TrialDataConditionAlign < TrialData
 
             % use hist c to bin the spike counts
             nUnits = size(spikeCell, 2);
-            nTrials = length(spikeCell);
+            nTrials = size(spikeCell, 1);
             countsMat = nan(nTrials, numel(tvec), nUnits);
             for iTrial = 1:nTrials
                 if valid(iTrial)
