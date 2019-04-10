@@ -300,8 +300,7 @@ classdef TensorUtils
                 if isempty(listsByDim{iL}) || numel(listsByDim{iL}) == 1 && isempty(listsByDim{iL}{1})
                     % just leave as singleton dimension, don't alter string
                     listsByDim{iL} = {''};
-                else
-                    for iV = 1:numel(listsByDim{iL})
+                else for iV = 1:numel(listsByDim{iL})
                         if isnumeric(listsByDim{iL}{iV})
                             listsByDim{iL}{iV} = num2str(listsByDim{iL}{iV});
                         end

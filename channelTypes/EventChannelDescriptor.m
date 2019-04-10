@@ -1,7 +1,6 @@
 classdef EventChannelDescriptor < ChannelDescriptor
     
     properties
-        displayGroup string = "" % solely for display purposes or logical grouping, not actual data field grouping
         color % default color used when used in a mark or interval 
     end
     
@@ -12,7 +11,7 @@ classdef EventChannelDescriptor < ChannelDescriptor
             cd.originalDataClassByField = {'double'};
             cd.elementTypeByField = cd.VECTOR;
             cd.fieldIds = {'times'};
-            cd.initialize();
+            cd = cd.initialize();
         end
     end
     
@@ -26,6 +25,11 @@ classdef EventChannelDescriptor < ChannelDescriptor
             
             cd = initialize@ChannelDescriptor(cd);
         end
+        
+        function impl = getImpl(cd)
+            impl = EventChannelImpl(cd);
+        end
+        
         
         function type = getType(~)
             type = 'event';

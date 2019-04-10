@@ -11,6 +11,10 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
         function cd = ContinuousNeuralChannelDescriptor(name, timeField)
             cd = cd@AnalogChannelDescriptor(name, timeField);
         end
+        
+        function impl = getImpl(cd)
+            impl = ContinuousNeuralChannelImpl(cd);
+        end
     end
     
     % these methods simply wrap the AnalogChannelDescriptor ones to get the

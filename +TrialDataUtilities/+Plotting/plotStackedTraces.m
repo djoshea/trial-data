@@ -42,6 +42,7 @@ p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); 
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showSpanLines', true, @islogical);
 p.addParameter('dataRangeFormat', '%.4g', @ischar);
+p.addParameter('baseline', [], @(x) true);
 p.addParameter('quick', false, @islogical);
 % p.addParameter('lineStyle', '-', @ischar);
 p.KeepUnmatched = true;

@@ -77,8 +77,16 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 cd.originalDataClassByField{end+1} = 'double';
                 cd.unitsByField{end+1} = '';
             end
+            
+            cd.catAlongFirstDimByField = false(cd.nFields, 1);
+            
+            cd = initialize@ChannelDescriptor(cd);
         end
-
+        
+        function impl = getImpl(cd)
+            impl = SpikeChannelImpl(cd);
+        end
+        
         % used by trial data when it needs to change field names
         function name = suggestFieldName(cd, fieldIdx)
             suggest = {cd.name};

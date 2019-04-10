@@ -8,6 +8,10 @@ classdef ImageChannelDescriptor < AnalogChannelGroupDescriptor
         function cd = ImageChannelDescriptor(name, timeField)
             cd = cd@AnalogChannelGroupDescriptor(name, timeField);
         end
+        
+        function impl = getImpl(cd)
+            impl = ImageChannelImpl(cd);
+        end
     end
     
     % these methods simply wrap the AnalogChannelDescriptor ones to get the

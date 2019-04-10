@@ -337,14 +337,15 @@ classdef TrialData
             for iChannel = 1:nChannels
                 name = names{iChannel};
                 chd = channelDescriptorsByName.(name);
+                impl = chd.getImpl();
 
                 % check to make sure all fields were provided as expected
-                [ok(iChannel), missing{iChannel}] = chd.checkData(data);
+                [ok(iChannel), missing{iChannel}] = impl.checkData(data);
                 chDescs{iChannel} = chd.describe();
                 required(iChannel) = chd.required;
 
                 if ~ok(iChannel)
-                    data = chd.addMissingFields(data);
+                    data = impl.addMissingFields(data);
                     if ~suppressWarnings
                         if ~chd.required
                             % fill in missing values for optional channels but
@@ -378,12 +379,13 @@ classdef TrialData
             for iChannel = 1:nChannels
                 prog.update(iChannel, 'Repairing and converting %s', names{iChannel});
                 chd = channelDescriptorsByName.(names{iChannel});
+                impl = chd.getImpl();
                 if isa(chd, 'AnalogChannelDescriptor') && chd.isColumnOfSharedMatrix, continue, end
                 for iF = 1:chd.nFields
                     fld = chd.dataFields{iF};
 
                     valueCell = {data.(fld)}';
-                    [chd, valueCell] = chd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell);
+                    [chd, valueCell] = impl.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell);
 
                     if ~iscell(valueCell)
                         % nTrials x 1 vectors were num2cell'd inside
@@ -1762,9 +1764,9 @@ classdef TrialData
             td.channelDescriptorsByName.(name) = td.getChannelDescriptor(name).setPrimaryUnits(units);
         end
 
-        function tf = isChannelScalar(td, name)
+        function tf = isChannelVectorizable(td, name)
             cd = td.getChannelDescriptor(name);
-            tf = cd.isScalarByField(1);
+            tf = cd.isVectorizableByField(1);
         end
 
         function tf = isChannelNumericScalar(td, name)
@@ -2261,6 +2263,7 @@ classdef TrialData
             p.addOptional('values', {}, @(x) iscell(x) || ismatrix(x));
             p.addOptional('times', {}, @(x) isempty(x) || ischar(x) || iscell(x) || isvector(x)); % char or time cell
             p.addParameter('timeField', '', @ischar);
+            p.addParameter('timeDelta', [], @(x) ismempty(x) || isscalar(x)); % specify this to ensure the channel is evenly sampled
             p.addParameter('units', '', @ischar);
             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're identical
             p.addParameter('isAligned', true, @islogical);
@@ -2268,7 +2271,6 @@ classdef TrialData
             p.addParameter('scaleFromLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
-
             p.parse(varargin{:});
             times = p.Results.times;
             values = p.Results.values;
@@ -2740,8 +2742,14 @@ classdef TrialData
 
             delta = nanvec(numel(name));
             for i = 1:numel(name)
-                time = td.getAnalogTime(name{i});
-                delta(i) = TrialData.computeDeltaFromTimes(time);
+                cd = td.getChannelDescriptor(name);
+                if (isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')) && cd.isUniform
+                    % trust the channel descriptor if it is a uniform channel
+                    delta(i) = cd.timeDelta;
+                else
+                    time = td.getAnalogTime(name{i});
+                    delta(i) = TrialData.computeDeltaFromTimes(time);
+                end
             end
 
             % pick good sampling rate for all channels, since we'll be
@@ -2819,7 +2827,7 @@ classdef TrialData
 
         function [data, time] = getAnalogRaw(td, name, varargin)
             p = inputParser();
-            p.addParameter('sort', false, @islogical);
+%             p.addParameter('sort', false, @islogical);
             p.addParameter('applyScaling', true, @islogical);
 
             % this functionality is not used by TDCA, which implements its own logic
@@ -2834,9 +2842,8 @@ classdef TrialData
             p.KeepUnmatched = false;
             p.parse(varargin{:});
 
-            p.parse(varargin{:});
-
             cd = td.getChannelDescriptor(name);
+            impl = cd.getImpl();
             assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
 
             if cd.isTransform
@@ -2849,7 +2856,7 @@ classdef TrialData
             else
                 if cd.isColumnOfSharedMatrix
                     data = arrayfun(@(t) t.(cd.dataFields{1})(:, cd.primaryDataFieldColumnIndex), ...
-                        td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
+                         td.data, 'UniformOutput', false, 'ErrorHandler', @(varargin) []);
                 else
                     data = {td.data.(cd.dataFields{1})}';
                 end
@@ -2866,15 +2873,15 @@ classdef TrialData
 
                 if p.Results.applyScaling
                     % do scaling and convert to double
-                    data = cd.convertDataCellOnAccess(1, data);
+                    data = impl.convertDataCellOnAccess(1, data);
                 end
 
-                if p.Results.sort
-                    for iT = 1:td.nTrials
-                        [time{iT}, idx] = sort(time{iT}, 'ascend');
-                        data{iT} = data{iT}(idx);
-                    end
-                end
+%                 if p.Results.sort % this really shouldn't be necessary if data have been validated
+%                     for iT = 1:td.nTrials
+%                         [time{iT}, idx] = sort(time{iT}, 'ascend');
+%                         data{iT} = data{iT}(idx);
+%                     end
+%                 end
             end
 
             % this functionality is not used by TDCA, which implements its own logic
@@ -2918,6 +2925,8 @@ classdef TrialData
 %             [dataUnif, timeUnif, delta] = td.getAnalogRawUniformlySampled(name, varargin{:});
 %             dataUnif = td.replaceInvalidMaskWithValue(dataUnif, []);
 %             timeUnif = td.replaceInvalidMaskWithValue(timeUnif, []);
+
+
               [dataUnif, timeUnif] = td.getAnalog(name, varargin{:}, 'ensureUniformSampling', true);
               delta = TrialData.computeDeltaFromTimes(timeUnif);
         end
@@ -4550,13 +4559,16 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
 
             p = inputParser;
-            p.addRequired('name', @ischar);
+            p.addRequired('name', @TrialDataUtilities.String.isstringlike);
             p.addRequired('times', @(x) isempty(x) || isvector(x) || ismatrix(x));
             p.addParameter('isAligned', true, @islogical);
             p.addParameter('useExistingDataField', false, @islogical);
             p.addParameter('color', [], @(x) true);
             %p.addParamValue('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
+            p.addParameter('displayGroup', '', @ischar);
+            
             p.parse(name, times, varargin{:});
+            name = char(name);
             %cd = p.Results.channelDescriptor;
 
             if ~p.Results.useExistingDataField
@@ -4596,6 +4608,7 @@ classdef TrialData
             end
 
             cd.color = p.Results.color;
+            cd.displayGroup = p.Results.displayGroup;
 
             if p.Results.useExistingDataField
                 td = td.addChannel(cd, {}, 'ignoreDataFields', true, 'ignoreExisting', true);
@@ -4734,7 +4747,7 @@ classdef TrialData
 
             for iCh = 1:numel(chList)
                 ch = chList{iCh};
-                if td.channelDescriptorsByName.(ch).isScalarByField(1)
+                if td.channelDescriptorsByName.(ch).isVectorizableByField(1)
                     eventStruct.(ch) = makecol([td.data.(ch)]);
                 else
                     eventStruct.(ch) = cellRemoveNaN(makecol({td.data.(ch)}));
@@ -4767,7 +4780,8 @@ classdef TrialData
 
             % convert to access class
             cd = td.channelDescriptorsByName.(name);
-            timesCell = cd.convertDataCellOnAccess(dataFieldIdx, timesCell);
+            impl = cd.getImpl();
+            timesCell = impl.convertDataCellOnAccess(dataFieldIdx, timesCell);
         end
 
         function times = getEventRawFirst(td, name)
@@ -5124,6 +5138,7 @@ classdef TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
+            name = char(name);
             cd = ParamChannelDescriptor.buildBooleanParam(name);
             values = p.Results.values; 
             td = td.addParam(name, values, 'channelDescriptor', cd, ...
@@ -5171,7 +5186,7 @@ classdef TrialData
 
             mask = true(numel(names), 1);
             if p.Results.isScalar
-                mask = mask & arrayfun(@(cd) cd.isScalarByField(1), channelDescriptors);
+                mask = mask & arrayfun(@(cd) cd.isVectorizableByField(1), channelDescriptors);
             end
             if p.Results.isString
                 mask = mask & arrayfun(@(cd) cd.isStringByField(1), channelDescriptors);
@@ -5234,10 +5249,11 @@ classdef TrialData
 
             [chName, colIdx] = td.parseIndexedParamChannelName(name);
             cd = td.channelDescriptorsByName.(chName);
+            impl = cd.getImpl();
 
             if isa(cd, 'ParamChannelDescriptor')
                 values = {td.data.(cd.dataFields{1})}';
-                values = cd.convertDataCellOnAccess(1, values); % convert to access data class
+                values = impl.convertDataCellOnAccess(1, values); % convert to access data class
 
                 if ~isnan(colIdx)
                     values = values(:, colIdx);
@@ -7317,6 +7333,7 @@ classdef TrialData
             td = td.copyRenameSharedChannelFields(cd.name, fieldMask);
             cd = td.channelDescriptorsByName.(name);
             dataFields = cd.dataFields;
+            impl = cd.getImpl();
 
             updateMask = updateMaskManual;
             if p.Results.updateValidOnly
@@ -7335,8 +7352,9 @@ classdef TrialData
                 % validate the overall structure of the data (scalar vs.
                 % numeric vs. vector, etc.) and update the memory class to
                 % match the data passed in (e.g. uint16 --> double)
-                [cd, valueCell{iF}] = cd.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell{iF});
-
+                [cd, valueCell{iF}] = impl.checkConvertDataAndUpdateMemoryClassToMakeCompatible(iF, valueCell{iF});
+                impl = cd.getImpl();
+                
                 if p.Results.clearForInvalid
                     % here we want the update mask to stay the same as
                     % updateMaskManual so that everything gets updated with

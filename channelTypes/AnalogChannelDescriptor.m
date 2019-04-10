@@ -89,12 +89,12 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
         end
         
-%         function cd = set.primaryDataField(cd, f)
-%             assert(cd.isColumnOfSharedMatrix, 'Primary data field cannot be set unless isColumnOfSharedMatrix is set to true.');
-%             assert(ischar(f) && isvector(f), 'Field name must be string');
-%             cd.primaryDataFieldManual = f;
-%             cd = cd.initialize();
-%         end
+        function cd = set.primaryDataField(cd, f)
+            assert(cd.isColumnOfSharedMatrix, 'Primary data field cannot be set unless isColumnOfSharedMatrix is set to true.');
+            assert(ischar(f) && isvector(f), 'Field name must be string');
+            cd.primaryDataFieldManual = f;
+            cd = cd.initialize();
+        end
         
         function cd = set.timeField(cd, f)
             cd.dataFields{2} = f;
@@ -160,7 +160,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             cd.dataFields = {name, timeField};
             cd.originalDataClassByField = {'double', 'double'};
             cd.elementTypeByField = [cd.VECTOR, cd.VECTOR];
-            cd.initialize();
+            cd = cd.initialize();
         end
     end
         
@@ -168,15 +168,14 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         function cd = initialize(cd)
             cd.warnIfNoArgOut(nargout);
             
-            if isempty(cd.dataFields)
-                cd.dataFields = {cd.primaryDataField, cd.timeField};
-            end
-            
-            if isempty(cd.fieldIds)
-                cd.fieldIds = {'data', 'time'};
-            end
+            cd.dataFields = {cd.primaryDataField, cd.timeField};
+            cd.fieldIds = {'data', 'time'};
             
             cd = initialize@ChannelDescriptor(cd);
+        end
+        
+        function impl = getImpl(cd)
+            impl = AnalogChannelImpl(cd);
         end
         
         % used by trial data when it needs to change field names
@@ -220,7 +219,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
 
         function cd = inferAttributesFromData(cd, dataCell, timeCell)
             cd.warnIfNoArgOut(nargout);
-            dataClass = ChannelDescriptor.getCellElementClass(dataCell);
+            dataClass = ChannelDescriptor.getCellElementClass(dataCell); %#ok<*PROPLC>
             timeClass = ChannelDescriptor.getCellElementClass(timeCell);
             cd.originalDataClassByField = {dataClass, timeClass};
             if strcmp(dataClass, 'cell')
@@ -243,67 +242,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             end
         end 
         
-        function data = convertDataCellOnAccess(cd, fieldIdx, data)
-            % cast to access class, also do scaling upon request
-            % (cd.scaleFromLims -> cd.scaleToLims)
-            data = convertDataCellOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
-                data = ChannelDescriptor.scaleData(data, cd.scaleFromLims, cd.scaleToLims);
-%                 scaleFromLow = cd.scaleFromLims(2);
-%                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
-%                 scaleToLow = cd.scaleToLims(2);
-%                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
-%                 data = cellfun(@(d) (d-scaleFromLow)*(scaleToRange/scaleFromRange) + scaleToLow, data, 'UniformOutput', false);
-            end
-        end
         
-        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
-            data = convertDataSingleOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
-                data = ChannelDescriptor.scaleData(data, cd.scaleFromLims, cd.scaleToLims);
-%                 scaleFromLow = cd.scaleFromLims(2);
-%                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
-%                 scaleToLow = cd.scaleToLims(2);
-%                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
-%                 data = (data-scaleFromLow)*(scaleToRange/scaleFromRange) + scaleToLow;
-            end
-        end
-        
-        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
-            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
-                data = ChannelDescriptor.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
-%                 scaleFromLow = cd.scaleFromLims(2);
-%                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
-%                 scaleToLow = cd.scaleToLims(2);
-%                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
-%                 data = cellfun(@(d) (d-scaleToLow)*(scaleFromRange/scaleToRange) + scaleFromLow, data, 'UniformOutput', false);
-            end
-            data = convertAccessDataCellToMemory@ChannelDescriptor(cd, fieldIdx, data);
-        end
-        
-        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
-            if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
-                data = ChannelDescriptor.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
-%                 scaleFromLow = cd.scaleFromLims(2);
-%                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
-%                 scaleToLow = cd.scaleToLims(2);
-%                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
-%                 data = (data-scaleToLow)*(scaleFromRange/scaleToRange) + scaleFromLow;
-            end
-            data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
-        end
-        
-        function [dataCell, timeCell] = computeTransformDataRaw(cd, td, varargin)
-            % if shared column, use the slice arg to subselect the
-            % appropriate column
-            if cd.isColumnOfSharedMatrix
-                sliceArgs = {cd.primaryDataFieldColumnIndex};
-            else
-                sliceArgs = {};
-            end
-            
-            [dataCell, timeCell] = AnalogChannelGroupDescriptor.doComputeTransformData(cd, td, 'slice', sliceArgs, varargin{:});
-        end
     end
     
      methods(Static)

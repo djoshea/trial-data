@@ -2091,6 +2091,10 @@ classdef ConditionDescriptor
             valueList = ci.getAttributeValueList(iAttr);
             if ~isempty(valueList)
                 if tf
+                    % making it into a vector
+                    if iscellstr(valueList) %#ok<ISCLSTR>
+                        valueList = string(valueList);
+                    end
                     assert(~iscell(valueList) || (numel(valueList) == 1 && ismissing(valueList{1})) || ci.attributeValueListIsBinned(iAttr), 'Attribute %s has manual value list that is not numeric vector which is required for numeric attributes', attr);
                 else
                     assert(iscell(valueList) || isstring(valueList) || iscategorical(valueList), 'Attribute %s has manual value list that is not cell which is required for as vector attributes', attr);

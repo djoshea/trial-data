@@ -16,6 +16,10 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
             cd.electrodes = makecol(electrodes);
         end
         
+        function impl = getImpl(cd)
+            impl = ContinuousNeuralChannelGroupImpl(cd);
+        end
+        
         function names = getSubChannelNames(cd, ~) 
             % allows sub classes to override
             names = arrayfun(@(elec) ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(cd.type, cd.array, elec, cd.nChannels), cd.electrodes);

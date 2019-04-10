@@ -1,8 +1,4 @@
 classdef ParamChannelDescriptor < ChannelDescriptor
-    properties
-        displayGroup string = "" % solely for display purposes or logical grouping, not actual data field grouping
-    end
-    
     methods(Access=protected)
         function cd = ParamChannelDescriptor(varargin)
             cd = cd@ChannelDescriptor(varargin{:});
@@ -23,6 +19,10 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             end
             
             cd = initialize@ChannelDescriptor(cd);
+        end
+        
+        function impl = getImpl(cd)
+            impl = ParamChannelImpl(cd);
         end
         
         function type = getType(~)

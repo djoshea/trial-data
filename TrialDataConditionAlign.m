@@ -1146,6 +1146,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = setAttributeValueList(td, attrName, valueList, varargin)
             td.warnIfNoArgOut(nargout);
+            attrName = char(attrName);
             td = td.addAttribute(attrName);
             if td.isChannelCategorical(attrName)
                 valueList = string(valueList);
@@ -1187,6 +1188,7 @@ classdef TrialDataConditionAlign < TrialData
             % td = filter(td, attr, valueList)
             % shortcut for setAttributeValueList
             td.warnIfNoArgOut(nargout);
+            attrName = char(attrName);
             td = td.setAttributeValueList(attrName, valueList);
         end
 
@@ -1507,8 +1509,8 @@ classdef TrialDataConditionAlign < TrialData
                 if iscell(ad)
                     error('Please provide alignDescriptors as successive arguments');
                 end
-                if ischar(ad)
-                    adSet{i} = AlignInfo(ad);
+                if ischar(ad) || isstring(ad)
+                    adSet{i} = AlignInfo(char(ad));
                 else
                     if isa(ad, 'AlignDescriptor')
                         % convert to AlignInfo
@@ -4505,14 +4507,15 @@ classdef TrialDataConditionAlign < TrialData
         function [countsMat, tvec, hasSpikes, tBinEdgesCell, alignVec] = getSpikeBinnedCountsEachAlign(td, unitName, varargin)
             countsCell = cellvec(td.nAlign);
             tvecCell = cellvec(td.nAlign);
-            hasSpikesMat = nan(td.nTrials, td.nAlign);
+            hasSpikesCell = cellvec(td.nAlign);
             tBinEdgesCell = cellvec(td.nAlign);
             for iA = 1:td.nAlign
-                 [countsCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA), tBinEdgesCell{iA}] =  td.useAlign(iA).getSpikeBinnedCounts(unitName. varargin{:});
+                 [countsCell{iA}, tvecCell{iA}, hasSpikesCell{iA}, tBinEdgesCell{iA}] =  td.useAlign(iA).getSpikeBinnedCounts(unitName, varargin{:});
             end
-
+            
             [countsMat, alignVec] = TensorUtils.catWhich(2, countsCell{:});
             tvec = cat(1, tvecCell{:});
+            hasSpikesMat = cat(2, hasSpikesCell{:});
             hasSpikes = any(hasSpikesMat, 2);
         end
 

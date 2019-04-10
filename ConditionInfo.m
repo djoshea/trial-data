@@ -890,7 +890,11 @@ classdef ConditionInfo < ConditionDescriptor
             idx = ci.getAttributeIdx(name);
             values = ci.values(:, idx);
             if ci.attributeAsVector(idx)
-                values = cat(1, values{:});
+                if iscellstr(values)
+                    values = string(values);
+                else
+                    values = cat(1, values{:});
+                end
             end
         end
 
@@ -1027,7 +1031,7 @@ classdef ConditionInfo < ConditionDescriptor
                     ci.attributeUnits{iA} = td.getChannelUnitsPrimary(ci.attributeNames{iA});
                     ci = ci.setAttributeNumeric(iA, td.isChannelNumericScalar(ci.attributeNames{iA}));
                     % TODO change this back to isChannelScalar
-                    ci = ci.setAttributeAsVector(iA, td.isChannelScalar(ci.attributeNames{iA}));
+                    ci = ci.setAttributeAsVector(iA, td.isChannelVectorizable(ci.attributeNames{iA}));
 %                     ci.attributeNumeric(iA) = td.isChannelScalar(ci.attributeNames{iA});
                 end
 
