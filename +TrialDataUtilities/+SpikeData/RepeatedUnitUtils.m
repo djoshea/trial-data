@@ -199,7 +199,6 @@ classdef RepeatedUnitUtils
             prog.finish();
         end
         
-        
         function [td, nRemoved] = removeSharedSpikesAdjacentElectrodesOnArray(td, array, varargin)
             % remove spikes that occur in channels in setWillRemove if they also occur in setWillKeep
             % within a window of +/- timeWindow/2 ms

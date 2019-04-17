@@ -9,6 +9,8 @@ function newClass = determineCommonClass(varargin)
 
     if ismember('cell', uclasses)
         newClass = 'cell';
+    elseif ismember('categorical', uclasses)
+        newClass = 'categorical';
     elseif ismember('double', uclasses)
         newClass = 'double';
     elseif ismember('single', uclasses)
@@ -22,7 +24,7 @@ function newClass = determineCommonClass(varargin)
         which_unsigned = ismember(unsigned_types, uclasses);
 
         if any(which_signed) || any(which_unsigned)
-            max_signed = find(which_signed, 1, 'last');
+            max_signed = fixwnd(which_signed, 1, 'last');
             max_unsigned = find(which_unsigned, 1, 'last');
 
             if any(which_signed)

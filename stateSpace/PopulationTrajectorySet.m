@@ -42,7 +42,7 @@ classdef PopulationTrajectorySet
         % Setting it to false will save space on disk
         keepComputedOnSaveFast = false;
     end
-    
+
     % Properties which determine whether specific other properties are computed or stored manually
     properties(SetAccess=?PopulationTrajectorySetBuilder)
         % There are currently four modes in which a pset can be operating:
@@ -73,7 +73,7 @@ classdef PopulationTrajectorySet
         % this is useful if the data of interest was computed manually by the user on a single trial basis in correspondence
         % with trial data objects, so that subsequent grouping operations can take
         dataByTrialManual = false
-        
+
         % is dataMean computed from dataByTrial? This must be true if dataByTrial is not present or stored with the pset. This
         % would be the case if the means are computed in some way, e.g. via a projection or concatenation operations
         dataMeanManual = false;
@@ -187,7 +187,7 @@ classdef PopulationTrajectorySet
 
         % holds randomized data (will be walked by propMeta)
         randomized
-        
+
         % holds stored data (will be walked by propMeta)
         stored
 
@@ -586,7 +586,7 @@ classdef PopulationTrajectorySet
                    trNorm = trNorm.selectBases(masksByDim{1});
                end
            end
-          
+
             % basis info
             meta.basisNames = PropertyShapeMeta({'N'}, 'char', 'group', 'basisInfo', ...
               'odc', true, 'useManualProp', 'dataInfoManual', 'depends', {'dataSources'}, ...
@@ -616,7 +616,7 @@ classdef PopulationTrajectorySet
                    end
                end
            end
-           
+
             meta.basisDataSourceIdx = PropertyShapeMeta({'N'}, 'int', 'group', 'dataSourceInfo');
             meta.basisDataSourceChannelNames = PropertyShapeMeta({'N'}, 'char', 'group', 'dataSourceInfo');
 
@@ -711,7 +711,7 @@ classdef PopulationTrajectorySet
               'useManualProp', 'dataMeanManual', ...
               'odc', true, 'translate', true, 'normalize', true, 'buildFn', 'buildDataNoiseEstimate', ...
               'depends', {'dataByTrial', 'trialLists'});
-          
+
             meta.stored = struct();
             meta.randomized = struct();
         end
@@ -748,7 +748,7 @@ classdef PopulationTrajectorySet
                 useManual = false;
             end
         end
-        
+
         function isODC = isPropODC(pset, prop)
             propMeta = pset.propMeta.(prop);
             isODC = propMeta.getAttrWithDefault('odc', false);
@@ -843,40 +843,40 @@ classdef PopulationTrajectorySet
             end
             pset = pset.invalidateDerivedProperties(props);
         end
-        
+
         function varargout = walkPropMeta(pset, applyFn, numargout, varargin)
-            % utility for applying a function over all propMeta properties 
+            % utility for applying a function over all propMeta properties
             % [out1, out2, ..., outN] = applyFn(dataRoot, propName, propMeta, pathToContainer)
             % where out# will be a struct whos form recapitualates the location of the property within pset
             % pathToRoot will be something like '', 'stored', or 'random' and follow the path down to the prop, e.g. 'stored.structWithinStored'
-            
+
             p = inputParser();
             p.addParameter('propMeta', pset.propMeta, @isstruct);
             p.parse(varargin{:});
-            
+
             propMeta = p.Results.propMeta;
-            
+
             if nargin < 3
                 numargout = min(0, nargout(applyFn));
             end
-            
+
             % walk properties in pset
             outputs = walkInner(pset, propMeta, '');
-            
+
             function outputs = walkInner(dataRoot, propMetaRoot, pathToContainer)
                 outputs = repmat({struct()}, numargout, 1);
-                
+
                 if isempty(pathToContainer)
                     containerStr = 'pset';
                 else
                     containerStr = ['pset.' pathToContainer];
                 end
- 
+
                 props = fieldnames(propMetaRoot);
                 for iP = 1:numel(props)
                     prop = props{iP};
                     propMeta = propMetaRoot.(prop);
-                    
+
                     if isstruct(propMeta)
                         % recurse on subfields
                         if isobject(dataRoot)
@@ -895,35 +895,35 @@ classdef PopulationTrajectorySet
                         end
                         [outputsThis{:}] = applyFn(dataRoot, prop, propMeta, pathToContainer);
                     end
-                   
+
                     % expand the outputs into the output struct
                     for iO = 1:numargout
                         outputs{iO}.(prop) = outputsThis{iO};
                     end
                 end
             end
-            
+
             varargout = outputs;
         end
-        
+
         function values = getValuesFromPropMeta(pset, varargin)
             p = inputParser();
             p.addOptional('propMeta', pset.propMeta, @isstruct);
             p.parse(varargin{:});
-            
+
             values = pset.walkPropMeta(@(x, varargin) x, 1, 'propMeta', p.Results.propMeta);
         end
-        
+
         function pset = walkPropMetaAssignValues(pset, newValues, propWasUpdated)
-            % replace each propMeta property value in pset with the corresponding value from newValues 
-            % if propWasUpdated is provided, it will contain nested booleans in the same form as newValues, and the 
+            % replace each propMeta property value in pset with the corresponding value from newValues
+            % if propWasUpdated is provided, it will contain nested booleans in the same form as newValues, and the
             % value will only be assigned if true.
-            
+
             if nargin < 3 || isempty(propWasUpdated)
                 propWasUpdated = true;
             end
             pset = walkInner(pset, pset.propMeta, newValues, propWasUpdated);
-            
+
             function dataRoot = walkInner(dataRoot, propMetaRoot, valueRoot, doAssignRoot)
                 props = fieldnames(propMetaRoot);
                 for iP = 1:numel(props)
@@ -940,7 +940,7 @@ classdef PopulationTrajectorySet
                     else
                         doAssign = false;
                     end
-                    
+
                     if isstruct(meta)
                         % recurse on subfields
                         dataRoot.(prop) = walkInner(dataRoot.(prop), meta, value, doAssign);
@@ -953,9 +953,9 @@ classdef PopulationTrajectorySet
 
         function list = convertBooleanWalkStructToPathStrings(pset, walkStruct) %#ok<INUSL>
             % takes a struct like that returned from walkPropMeta whose values are true or false and assembles a list of strings
-            
+
             list = walkInner(walkStruct, '');
-            
+
             function list = walkInner(walkStruct, path)
                 props = fieldnames(walkStruct);
                 list = cell(0, 1);
@@ -978,7 +978,7 @@ classdef PopulationTrajectorySet
                 end
             end
         end
-        
+
         function [pset, propsInvalidated] = invalidateDerivedProperties(pset, propsChanged, varargin)
             % recursively and efficiently clear out any properties that depend on properties in the set propsChanged
             % handles pset (.propMeta), stored (.storedpropMeta) and .randomized (.randomizedpropMeta)
@@ -986,7 +986,7 @@ classdef PopulationTrajectorySet
             % or it can have signature newValue = updateFn(oldValue, prop, propMeta, pathToContainer, varargin)
             % where propContainer will be 'pset', 'stored', or 'random'
             pset.warnIfNoArgOut(nargout);
-            
+
             p = inputParser();
             p.addParameter('propsAlreadyUpdated', {}, @(x) ischar(x) || iscellstr(x));
             p.addParameter('updateFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
@@ -1003,19 +1003,19 @@ classdef PopulationTrajectorySet
                 propsAlreadyUpdated = {propsAlreadyUpdated};
             end
             updateFn = p.Results.updateFn;
-           
-            % apply updateFn or generate cleared values 
+
+            % apply updateFn or generate cleared values
             [newData, propsInvalidated] = pset.walkPropMeta(@walkFn, 2);
-            
+
             % assign the new values where invalidated
             pset = pset.walkPropMetaAssignValues(newData, propsInvalidated);
-            
+
             % then recursively invalidate properties dependent on those values just cleared
             listInvalidated = pset.convertBooleanWalkStructToPathStrings(propsInvalidated);
             if ~isempty(listInvalidated)
                 pset = pset.invalidateDerivedProperties(listInvalidated);
             end
-            
+
             function [valueOut, thisPropInvalidated] = walkFn(dataRoot, prop, propMeta, pathToContainer)
                 if ~isempty(pathToContainer)
                     fullPathProp = [pathToContainer '.' prop];
@@ -1024,7 +1024,7 @@ classdef PopulationTrajectorySet
                     fullPathProp = prop;
                     isRootPsetProp = true;
                 end
-                    
+
                 if ismember(prop, propsChanged) || ismember(prop, propsAlreadyUpdated)
                     thisPropInvalidated = false;
                     valueOut = [];
@@ -1071,7 +1071,7 @@ classdef PopulationTrajectorySet
                             if isempty(propValue)
                                 if pset.debugPropMeta, debug('PropMeta: Skipping compute-on-demand %s not yet computed\n', fullPathProp); end
                                 valueOut = [];
-                                thisPropInvalidated = false;   
+                                thisPropInvalidated = false;
                             elseif isempty(updateFn)
                                 if pset.debugPropMeta, debug('PropMeta: Invalidating compute-on-demand %s\n', fullPathProp); end
                                 valueOut = [];
@@ -1082,12 +1082,12 @@ classdef PopulationTrajectorySet
                                 thisPropInvalidated = true;
                             end
                         end % useManual
-                        
+
                     else % this prop does not depend on an invalidated prop?
                         thisPropInvalidated = false;
                         valueOut = [];
                     end
-                    
+
                 end % was this one of the props already handled
             end % walkFn
         end
@@ -1109,10 +1109,10 @@ classdef PopulationTrajectorySet
                     wasUpdated = false;
                 else
                     [dataRoot, wasUpdated] = fn(value, propName, propMeta, pathToContainer);
-                end    
+                end
             end
-            
-            [newValues, wasTransformed] = pset.walkPropMeta(@walkImpl, 2); 
+
+            [newValues, wasTransformed] = pset.walkPropMeta(@walkImpl, 2);
             pset = pset.walkPropMetaAssignValues(newValues, wasTransformed);
         end
 
@@ -2589,7 +2589,7 @@ classdef PopulationTrajectorySet
                     class(pset), pset.nBases, pset.nBasesValid, pset.nBasesPermanentlyInvalid, pset.nBasesTemporarilyInvalid, pset.nConditions, pset.nAlign, dataSourceStr);
             end
             tcprintf('inline', '{yellow}Dataset: {none}%s\n', pset.datasetName);
-            
+
             tcprintf('inline', '{yellow}Data Source Mode: {none}%s\n', pset.describeDataManualMode());
 
             if pset.simultaneous
@@ -3007,11 +3007,11 @@ classdef PopulationTrajectorySet
             pset.conditionDescriptor = pset.conditionDescriptor.setConditionNames(varargin{:});
         end
     end
-    
+
     methods(Access=protected)
         function pset = internalRealignDataSources(pset)
             pset.warnIfNoArgOut(nargout);
-            
+
             % align all data sources to the FIRST alignDescriptor
             % since we have to hold onto one anyway
             prog = ProgressBar(pset.nDataSources, 'Aligning data sources to each alignDescriptor');
@@ -3025,7 +3025,7 @@ classdef PopulationTrajectorySet
             end
             prog.finish();
 
-            pset.dataSources = dataSources; 
+            pset.dataSources = dataSources;
         end
     end
 
@@ -3076,7 +3076,7 @@ classdef PopulationTrajectorySet
             % apply slicing operation along N dim on all properties
             % note that this will take care of translationNormalization automatically through customDim handling
             pset = pset.transformInternalProperties_selectAlongDimension('A', mask);
-            
+
             % now alignDescriptor should have been masked
 %             if ~pset.dataMeanManual
             pset = pset.invalidateDerivedProperties({'tMinValidByAlignBasisConditionRaw', 'tMaxValidByAlignBasisConditionRaw'});
@@ -3094,7 +3094,7 @@ classdef PopulationTrajectorySet
                 psetManual = PopulationTrajectorySetBuilder.convertToManualDataByTrial(pset, vararin{:});
             end
         end
-        
+
         function psetManual = getAsManualDataInfo(pset)
             if pset.dataInfoManual
                 psetManual = pset;
@@ -3102,7 +3102,7 @@ classdef PopulationTrajectorySet
                 psetManual = PopulationTrajectorySetBuilder.convertToManualDataInfo(pset, varargin{:});
             end
         end
-        
+
         function psetManual = getAsManualDataMean(pset, varargin)
             if pset.dataMeanManual
                 psetManual = pset;
@@ -4866,7 +4866,7 @@ classdef PopulationTrajectorySet
             p.addParameter('alpha', 1, @isscalar); % alpha for main traces
             p.addParameter('showSem', false, @islogical); % show standard error traces?
             p.addParameter('showStd', false, @islogical); % show standard error traces?
-            
+
             p.addParameter('errorAlpha', 0.5, @isscalar); % alpha for surrounding error fills
 
             % show less by default than in TDCA
@@ -4914,7 +4914,7 @@ classdef PopulationTrajectorySet
             alignGapFraction = p.Results.alignGapFraction;
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
-            
+
             showSem = p.Results.showSem;
             showStd = p.Results.showStd;
             if showSem && showStd
@@ -5014,7 +5014,7 @@ classdef PopulationTrajectorySet
                 offsets = zerosvec(nBasesPlot);
                 norms = onesvec(nBasesPlot);
             end
-            
+
             if showError
                 if showSem
                     if ~isempty(p.Results.dataRandomIndex)
@@ -5077,7 +5077,7 @@ classdef PopulationTrajectorySet
                 else
                     dataError = nan(size(data));
                 end
-                
+
                 % uniformly scale and separate data vertically
                 data = data + yOffset;
                 data = bsxfun(@plus, data, (nBasesPlot-1:-1:0)');
@@ -5224,7 +5224,7 @@ classdef PopulationTrajectorySet
 
                 end
             end
-            
+
             for iBasis = 1:numel(basisIdx)
                 % for hiding grid lines between bases and setting the grid
                 % placement appropriately
@@ -5379,13 +5379,8 @@ classdef PopulationTrajectorySet
                     app = pset.conditionDescriptor.appearances(c);
 %                     plotArgsC = appear.getPlotArgs();
                     plotArgsC = {};
-<<<<<<< HEAD
-
                     dataMat = squeeze(data(basisIdx, c, :));
-=======
-                    
-                    dataMat = squeeze(data(:, c, :));
->>>>>>> 2409e8e... Plotting tweaks with interval size
+
 
                     if p.Results.plotTubes
                         h = TrialDataUtilities.Plotting.tubeplot(dataMat(1:3, :), p.Results.tubeRadius, 'FaceAlpha', p.Results.alpha, ...
@@ -6527,7 +6522,7 @@ classdef PopulationTrajectorySet
                 basisIdx = basisIdx(mask);
             end
 
-            [trials_NbyTAbyCbyR, nTrials_NbyC, tvec, avec] = pset.arrangeNbyTAbyCbyTrials(varargin{:});
+            [trials_NbyTAbyCbyR, nTrials_NbyC, tvec, avec] = pset.arrangeNbyTAbyCbyR(varargin{:});
 
             if ~pset.hasDataByTrial
                 % retrieve means excluding trial manually

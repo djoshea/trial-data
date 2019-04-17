@@ -1,6 +1,15 @@
 function [lia, locb] = ismembertol(a, b, tol)
 % same as uniquetol with a fallback for versions prior to R2015a
 
+    if iscategorical(a)
+        if ~iscategorical(b)
+            if ischar(b), b = {b}; end
+            b = categorical(b);
+        end
+        [lia, locb] = ismember(a, b);
+        return
+    end
+
     if isfloat(a) && isfloat(b)
         if nargin < 3
             tol = 1e-6;

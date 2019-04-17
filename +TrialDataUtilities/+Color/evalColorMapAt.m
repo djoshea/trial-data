@@ -6,7 +6,7 @@ function ceval = evalColorMapAt(cmap, at, clim)
         clim = [0 1];
     end
     N = size(cmap, 1);
-    
+
     cmapOrigAt = (0:N-1) / (N-1) * (clim(2)-clim(1)) + clim(1);
     ceval = interp1(cmapOrigAt, cmap, at);
 end

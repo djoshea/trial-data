@@ -3,61 +3,61 @@ classdef Run < LFADS.Run
         trialDataSet % loaded from DatasetCollection
         gpfaSequenceData % loaded from GPFA run
     end
-    
+
     properties(Dependent)
         pathGPFAOutput
     end
-    
+
     % You must provide implementation for these
-    methods(Abstract) 
-        td = prepareTrialDataForLFADS(r, td, varargin) 
+    methods(Abstract)
+        td = prepareTrialDataForLFADS(r, td, varargin)
         out = generateCountsForTrialData(r, trialData, mode, varargin);
     end
-    
+
     % Override as necessary
-    methods 
+    methods
         function tf = usesDifferentTrialDataForAlignment(r) %#ok<MANU>
             % set this to true and override prepareTrialDataForAlignment
             % below
             tf = false;
         end
-        
+
         function td = prepareTrialDataForAlignment(r, td)
             % if you override this, set usesDifferentTrialDataForAlignment
             % to return true or this method wont be called
             td = r.prepareTrialDataForLFADS(td);
         end
-        
+
         function chList = listChannelsForLFADS(r, td, varargin) %#ok<INUSD>
             warning('Override listChannelsForLFADS in order to specify channel names in the posterior mean rates');
             chList = {};
         end
-    end      
-    
+    end
+
     methods % needed for LFADS prep
-        function r = Run(varargin) 
+        function r = Run(varargin)
            r@LFADS.Run(varargin{:});
         end
-        
+
         function tf = usesDifferentDataForAlignment(r)
             tf = r.usesDifferentTrialDataForAlignment();
         end
-        
+
         % counts : nTrials x nChannels x nTime tensor
         function out = generateCountsForDataset(r, dataset, mode, varargin)
             td = dataset.loadData();
-            
+
             if nargin < 3
                 mode = 'export';
             end
-            
+
             if strcmp(mode, 'export')
                 td = r.prepareTrialDataForLFADS(td);
             elseif strcmp(mode, 'alignment')
                 td = r.prepareTrialDataForAlignment(td);
             else
                 error('Unknonw mode %s', mode);
-            end 
+            end
 
             if ~td.hasParamChannel('trialId')
                 warning('Provide parameter channel trialId to uniquely identify each trial');
@@ -68,112 +68,153 @@ classdef Run < LFADS.Run
             out = generateCountsForTrialData(r, td, mode, varargin);
         end
     end
-    
+
     methods % Working with LFADS generated data with TrialData
-        
-        function tdSet = loadTrialDataFromDatasetCollection(r, reload)
-            if nargin < 2 
-                reload = false;
-            end
-            if ~isempty(r.trialDataSet) && ~reload
-                tdSet = r.trialDataSet;
+
+        function tdSet = loadTrialDataFromDatasetCollection(r, varargin)
+            p = inputParser();
+            p.addOptional('reload', false, @islogical);
+            p.addParameter('datasetIdx', 1:r.nDatasets, @isvector);
+            p.parse(varargin{:});
+            datasetIdx = LFADS.Utils.vectorMaskToIndices(p.Results.datasetIdx);
+
+            if ~isempty(r.trialDataSet) && ~p.Results.reload
+                tdSet = r.trialDataSet(datasetIdx);
                 return;
             end
-            
-            tdSet = cell(r.nDatasets, 1);
-            
-            prog = ProgressBar(r.nDatasets, 'Preparing trialData from datasets');
-            for i = 1:r.nDatasets
-                prog.update(i);
-                td = r.datasets(i).loadData();
-                tdSet{i} = r.prepareTrialDataForLFADS(td);
+
+            tdSet = cell(numel(datasetIdx), 1);
+
+            prog = ProgressBar(numel(datasetIdx), 'Preparing trialData from datasets');
+            for iiDS = 1:numel(datasetIdx)
+                prog.update(iiDS);
+                td = r.datasets(datasetIdx(iiDS)).loadTrialData();
+                tdSet{iiDS} = r.prepareTrialDataForLFADS(td);
             end
             prog.finish();
-            
-            r.trialDataSet = tdSet;
-        end
-        
-        function tdSet = addPosteriorMeansToTrialData(r)
-            if isempty(r.trialDataSet)
-                r.loadTrialDataFromDatasetCollection(); % these will be prepared for LFADS
+
+            if isequal(datasetIdx, (1:r.nDatasets)')
+                r.trialDataSet = tdSet;
             end
-            r.loadPosteriorMeans();
-            
-            tdSet = cellvec(r.nDatasets);
-            if isempty(r.posteriorMeans)
-                warning('Posterior means not found for run %s', r.name);
+        end
+
+        function tdSet = addPosteriorMeansToTrialData(r, varargin)
+            p = inputParser();
+            p.addParameter('datasetIdx', 1:r.nDatasets, @isvector);
+            p.addParameter('addRates', true, @islogical);
+            p.addParameter('addControllerOutputs', true, @islogical);
+            p.addParameter('addGeneratorICs', true, @islogical);
+            p.parse(varargin{:});
+            datasetIdx = LFADS.Utils.vectorMaskToIndices(p.Results.datasetIdx);
+
+            trialDataSet = r.loadTrialDataFromDatasetCollection('datasetIdx', datasetIdx); % these will be prepared for LFADS
+            [pms, pms_valid] = r.loadPosteriorMeans('datasetIdx', datasetIdx);
+
+            tdSet = cellvec(numel(datasetIdx));
+            if ~all(pms_valid)
+                warning('Posterior means not found for %d runs', nnz(~pms_valid));
                 return;
             end
-            
+
             timeField = 'posteriorMeans_time';
-            prog = ProgressBar(r.nDatasets, 'Merging posterior mean data into trialData for each dataset');
-            for i = 1:r.nDatasets
-                prog.update(i);
-                     
-                td =  r.trialDataSet{i};
+            prog = ProgressBar(numel(datasetIdx), 'Merging posterior mean data into trialData for each dataset');
+            for iiDS = 1:numel(datasetIdx)
+                prog.update(iiDS);
+
+                td = trialDataSet{iiDS};
                 inflate = @(data) TensorUtils.inflateMaskedTensor(data, 1, td.valid); % loaded data only spans valid trials in td.data
                 inflate2 = @(data) TensorUtils.inflateMaskedTensor(data, 2, td.valid);
-                pm = r.posteriorMeans(i);
-                
+                pm = pms(iiDS);
+
                 % data must be nTrials x nTime x nChannels tensor
                 td = td.dropAnalogChannelGroup({'controllerOutputs', 'factors', 'generatorStates', 'rates'});
                 td = td.dropChannels({'generatorIC', 'post_g0_mean', 'post_g0_logvar'});
-                
+
                 facNames = {}; % genNames('f', pm.nFactors)
                 td = td.addAnalogChannelGroup('factors', facNames, ...
                     inflate(permute(pm.factors, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
-                    
+
                 genStateNames = {}; % genNames('g', pm.nGeneratorUnits)
                 td = td.addAnalogChannelGroup('generatorStates', genStateNames, ...
                     inflate(permute(pm.generator_states, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
-                
+
                 rnames = r.listChannelsForLFADS(td);
                 if isempty(rnames)
                     rnames = {};
                 else
                     rnames = cellfun(@(n) sprintf('rate_%s', n), rnames, 'UniformOutput', false);
                 end
-                td = td.addAnalogChannelGroup('rates', rnames, ...
-                    inflate(permute(pm.rates, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
-                td = td.setChannelUnitsPrimary('rates', 'spikes / sec');
-                
-                if pm.nControllerOutputs > 0
+
+                if p.Results.addRates
+                    td = td.addAnalogChannelGroup('rates', rnames, ...
+                        inflate(permute(pm.rates, [3 2 1])), pm.time, 'timeField', timeField, 'units', 'spikes/sec', 'isAligned', true);
+                end
+
+                if pm.nControllerOutputs > 0 && p.Results.addControllerOutputs
                     coNames = {}; % genNames('co', pm.nControllerOutputs)
                     td = td.addAnalogChannelGroup('controllerOutputs', coNames, ...
                         inflate(permute(pm.controller_outputs, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
                 end
-                
-                td = td.addVectorParamAccessAsMatrix('generatorIC', TensorUtils.splitAlongDimension(inflate2(pm.generator_ics), 2)');
+
+                if p.Results.addGeneratorICs
+                    td = td.addVectorParamAccessAsMatrix('generatorIC', TensorUtils.splitAlongDimension(inflate2(pm.generator_ics), 2)');
+                end
                 td = td.addVectorParamAccessAsMatrix('post_g0_mean', TensorUtils.splitAlongDimension(inflate2(pm.post_g0_mean), 2)');
                 td = td.addVectorParamAccessAsMatrix('post_g0_logvar', TensorUtils.splitAlongDimension(inflate2(pm.post_g0_logvar), 2)');
-                
-                tdSet{i} = td;
+
+                tdSet{iiDS} = td;
             end
-            r.trialDataSet = tdSet;
-            
-            function names = genNames(pre, n)
-                names = arrayfun(@(i) sprintf('%s%i', pre, i), (1:n)', 'UniformOutput', false);
+
+            if isequal(datasetIdx, (1:r.nDatasets)')
+                r.trialDataSet = tdSet;
             end
         end
-        
+
+        function exportTrainedTrialData(r, varargin)
+            p = inputParser();
+            p.addParameter('exportPath', fullfile(r.path, 'export_trialData'), @ischar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            exportPath = p.Results.exportPath;
+            if ~exist(exportPath, 'dir')
+                mkdir(exportPath);
+            end
+
+            fprintf('Exporting to %s\n', exportPath);
+
+            mtp = r.loadModelTrainedParams();
+            mtp.exportToHDF5(fullfile(exportPath, 'modelTrainedParams.h5'));
+
+            prog = LFADS.Utils.ProgressBar(r.nDatasets, 'Exporting trial data with posterior means');
+            for iDS = 1:r.nDatasets
+                prog.update(iDS);
+                dsname = r.datasetNames{iDS};
+                td_path = fullfile(exportPath, sprintf('td_%s', dsname));
+
+                tds = r.addPosteriorMeansToTrialData('datasetIdx', iDS, p.Unmatched);
+                tds{1}.saveFast(td_path);
+            end
+            prog.finish();
+        end
+
         function tdSet = getTrialDataWithVirtualPopulationRate(r, dsIdx, W, b)
             timeField = 'posteriorMeans_time';
-            
+
             % concatenated readout matrices for each dataset
             ro = r.loadReadoutMatricesByDataset();
-            
+
             if ~exist('W', 'var')
                 W = cat(1, ro.rates_W); % N_all x Far')
                 b = cat(1, ro.rates_b); % N_all x 1
             end
-            
+
             % row normalize as is done in lfads code
             Wnorm = W ./ sqrt(sum(W.^2, 2));
             N_all = size(Wnorm, 1);
-            
+
             vrNames = genNames('vr', N_all);
             dsIdx = TensorUtils.vectorMaskToIndices(dsIdx);
-            
+
             prog = ProgressBar(numel(dsIdx), 'Adding virtual population rates to trialData for each dataset');
             tdSet = cellvec(numel(dsIdx));
             for i = 1:numel(tdSet)
@@ -181,26 +222,26 @@ classdef Run < LFADS.Run
                 prog.update(idx);
                 td =  r.trialDataSet{idx};
                 pm = r.posteriorMeans(idx);
-                
+
                 % data must be nTrials x nTime x nChannels tensor
                 td = td.dropAnalogChannelGroup({'virtualRates'});
-                
+
                 virtualRates = exp(bsxfun(@plus, TensorUtils.linearCombinationAlongDimension(pm.factors, 1, Wnorm), b));
-                
+
                 td = td.addAnalogChannelGroup('virtualRates', vrNames, ...
                     permute(virtualRates, [3 2 1]), pm.time, 'timeField', timeField, 'isAligned', true);
                 tdSet{i} = td;
             end
-            
+
             % automatically align trial data the same way as the LFADS data was
             % prepared
             tdSet = r.setupTrialDataAsLFADS(tdSet);
-            
+
             function names = genNames(pre, n)
                 names = arrayfun(@(i) sprintf('%s%i', pre, i), (1:n)', 'UniformOutput', false);
             end
         end
-            
+
         function Tset = buildTStructs(r, varargin)
             % opts can specify :
             %   opts.lag - how much to lag the neural and kinematic data
@@ -227,14 +268,14 @@ classdef Run < LFADS.Run
             p.addParameter('neuralFieldName', 'y', @ischar);
             p.addParameter('neuralBinSize', 1, @isscalar);
             p.parse(varargin{:});
-            
+
             tLag = p.Results.lag;
             binWidth = p.Results.binWidth;
             source = p.Results.source;
             align = p.Results.align;
-            
+
             dsIdx = TensorUtils.vectorMaskToIndices(p.Results.datasetMask);
-            
+
             % take the limits of the posterior means in the appropriate
             % alignment
             prog = ProgressBar(r.nDatasets, 'Building T structs');
@@ -242,19 +283,19 @@ classdef Run < LFADS.Run
             for iDS = 1:numel(dsIdx)
                 prog.update(iDS);
                 td = r.trialDataSet{dsIdx(iDS)};
-            
+
                 [~, tvec] = td.getAnalogChannelGroupAsTensor('rates', 'minTrialFraction', 1);
                 tStart = nanmax(p.Results.tStart, tvec(1));
                 tStop = nanmin(p.Results.tStop, tvec(end));
-                
+
                 % round to nearest binWidth multiple
                 tStart = ceil(tStart / binWidth) * binWidth;
                 tStop = floor(tStop / binWidth) * binWidth;
-                
+
                 % align trial data
                 td = td.unalign.start(align, tStart).stop(align, tStop);
-                
-                % lag kinematics relative to neural data 
+
+                % lag kinematics relative to neural data
                 % Trials x Time x 4 channels --> 4 x Time x Trials
                 [kinData, time] = td.lag(tLag).getAnalogMultiAsTensor(...
                     p.Results.behavioralChannels, 'timeDelta', binWidth);
@@ -262,18 +303,18 @@ classdef Run < LFADS.Run
                     warning('%d nans in behavioral data', nnz(isnan(kinData(:))));
                 end
                 kinematics = permute(kinData, [3 2 1]);
-                
+
                 % append ones as lasst channel
                 kinematics = TensorUtils.expandAlongDims(kinematics, 1, 1, 1);
-                
+
                 % split by trials
                 kinematics = squeeze(TensorUtils.splitAlongDimension(kinematics, 3));
-                
+
                 switch source
                     case 'neural'
                         % Trials x Time x Neurons --> Neurons x Time x Trials
                         decode = permute(td.getSpikeBinnedCounts(td.listSpikeChannels, 'binWidthMs', binWidth), [3 2 1]);
-                    
+
                     case 'smoothed_neural'
                         % Trials x Time x Neurons --> Neurons x Time x Trials
                         sf = GaussianSpikeFilter('sigma', p.Results.neural_smooth);
@@ -284,15 +325,15 @@ classdef Run < LFADS.Run
                             warning('Setting %d values from NaN to 0', nnz(mask));
                             decode(mask) = 0;
                         end
-                            
+
                     case 'rates'
                         % Trials x Time x Neurons --> Neurons x Time x Trials
                         decode = permute(td.getAnalogChannelGroupAsTensor('rates', 'timeDelta', binWidth), [3 2 1]);
-                    
+
                     case 'virtualRates'
                         % Trials x Time x NeuronsAll --> Neurons x Time x Trials
                         factorTensor = permute(td.getAnalogChannelGroupAsTensor('factors', 'timeDelta', binWidth), [3 2 1]);
-                        
+
                         % concatenated readout matrices for each dataset
                         ro = r.loadReadoutMatricesByDataset();
                         if isempty(p.Results.rates_W)
@@ -302,87 +343,87 @@ classdef Run < LFADS.Run
                             W = p.Results.rates_W;
                             b = p.Results.rates_b;
                         end
-                        Wnorm = W ./ sqrt(sum(W.^2, 2)); % row normalize as is done in lfads code  
-            
+                        Wnorm = W ./ sqrt(sum(W.^2, 2)); % row normalize as is done in lfads code
+
                         % rates = exp(W*factors + b)
                         decode = exp(TensorUtils.linearCombinationAlongDimension(factorTensor, 1, Wnorm) + b);
-                    
+
                     case 'factors'
                         % Trials x Time x Neurons --> Neurons x Time x Trials
                         decode = permute(td.getAnalogChannelGroupAsTensor('factors', 'timeDelta', binWidth), [3 2 1]);
-                    
+
                     case 'generatorStates'
                         % Trials x Time x Neurons --> Neurons x Time x Trials
                         decode = permute(td.getAnalogChannelGroupAsTensor('generatorStates', 'timeDelta', binWidth), [3 2 1]);
-                    
+
                     case 'gpfa_xorth'
                         % Trials x Time x nGPFA --> nGPFA x Time x Trials
                         decode = permute(td.getAnalogChannelGroupAsTensor('gpfa_xorth', 'timeDelta', binWidth), [3 2 1]);
                 end
-                
+
                 % split by trials
                 decode = squeeze(TensorUtils.splitAlongDimension(decode, 3));
-                
+
                 % number of timepoints
                 nTimepoints = cellfun(@(x) size(x, 2), decode, 'UniformOutput', false);
-                
+
                 valid = num2cell(td.valid);
-                
+
                 conditions = num2cell(td.conditionIdx);
-                
+
                 % split by trials and assign into struct
                 Tset{iDS} = struct('valid', valid, 'X', kinematics, 'Z', decode, 'time', time, 'T', nTimepoints, 'dt', p.Results.binWidth, 'condition', conditions);
             end
-            
+
             prog.finish();
         end
-        
+
         function tdSet = addDecodeTStructToTrialData(r, Tset, varargin)
             p = inputParser();
             p.addParameter('field', 'xk', @ischar);
             p.addParameter('channelPrefix', '', @ischar);
             p.addParameter('channelNames', {'positionX', 'positionY', 'velocityX', 'velocityY'}, @ischar);
             p.parse(varargin{:});
-            
+
             % uses field xk to produce x and y velocity channels
             if isempty(r.trialDataSet)
                 r.loadTrialDataFromDatasetCollection();
             end
-            
+
             if ~iscell(Tset)
                 assert(r.nDatasets == 1);
                 Tset = {Tset};
             end
-            
+
             channelPrefix = p.Results.channelPrefix;
             timeField = sprintf('%s_time', channelPrefix);
             channelNames = cellfun(@(x) sprintf('%s%s', channelPrefix, x), p.Results.channelNames, 'UniformOutput', false);
-            
+
             prog = ProgressBar(r.nDatasets, 'Merging Tstructs into trialData for each dataset');
             tdSet = cellvec(r.nDatasets);
             for i = 1:r.nDatasets
                 prog.update(i);
                 td =  r.trialDataSet{i};
                 T = Tset{i};
-                
+
                 % data must be nTrials x 1 cell of nTime x nChannels
                 % matrices
                 dataThis = arrayfun(@(s) s.xk(1:4, :)', T, 'UniformOutput', false);
                 timeThis = arrayfun(@(s) s.time, T, 'UniformOutput', false);
                 td = td.dropAnalogChannelGroup(channelPrefix);
-                
+
                 td = td.addAnalogChannelGroup(channelPrefix, channelNames, ...
                     dataThis, timeThis, 'timeField', timeField, 'isAligned', true);
 
                 tdSet{i} = td;
             end
-            
+
             % automatically align trial data the same way as the LFADS data was
             % prepared
             r.trialDataSet = tdSet;
         end
     end
-    
+
     methods % GPFA smoothing of neural data
         function p = get.pathGPFAOutput(r)
             if isempty(r.runCollection)
@@ -401,32 +442,32 @@ classdef Run < LFADS.Run
             gpfaResultsDir = fullfile(r.pathGPFAOutput, ...
                                       sprintf('nLat_%03i_binSizeMS_%03i', nLatents, dtMS));
         end
-        
+
         function resultsOut = loadGPFA(r, dtMS, nLatents)
             gpfaOutputFile = r.getGpfaResultsFile(dtMS, nLatents);
             tmp = load(gpfaOutputFile);
             resultsOut = tmp.resultsOut;
             r.gpfaSequenceData = resultsOut;
         end
-        
+
         function resultsOut = runGPFA(r, dtMS, nLatents, deleteExistingResults)
         % function seq = doGPFA(r, dtMS, nLatents, deleteExistingResults)
 
             if ~exist('deleteExistingResults', 'var')
                 deleteExistingResults = false;
             end
-            
+
             % if sequence data is not yet loaded, do so now
             if isempty(r.sequenceData)
                 r.loadSequenceData();
             end
             seqs = r.sequenceData;
-            
+
             % need the training and validation inds
             if isempty(r.inputInfo)
                 r.loadInputInfo();
             end
-            
+
             trainInds = r.inputInfo.trainInds;
             validInds = r.inputInfo.validInds;
 
@@ -463,7 +504,6 @@ classdef Run < LFADS.Run
                         binWarned = true;
                     end
 
-
                     % GPFA is expecting data to be in a field
                     % called 'spikes'
                     [seq.spikes] = seq.y;
@@ -474,8 +514,6 @@ classdef Run < LFADS.Run
                     tid = num2cell(1:numel(seq), 1, ones(numel(seq), ...
                                                       1));
                     [seq.trialId] = tid{:};
-
-
                     tic;
                     % run GPFA with a modified version that allows you to
                     % specify an output directory
@@ -523,12 +561,12 @@ classdef Run < LFADS.Run
                      saveopt);
                 prog.finish();
             end
-           
+
 
             resultsOut = makecol(resultsOut);
             r.gpfaSequenceData = resultsOut;
         end
-        
+
         function tdSet = addGPFAResultsToTrialData(r)
             % function seqs = addGPFAResultsToSeq(r)
             % returns a sequence that has posterior mean
@@ -542,8 +580,8 @@ classdef Run < LFADS.Run
             if isempty(r.trialDataSet)
                 r.loadTrialDataFromDatasetCollection();
             end
-            tdSet = r.trialDataSet; 
-            
+            tdSet = r.trialDataSet;
+
             r.loadPosteriorMeans();
 
             % iterate over datasets
@@ -551,15 +589,15 @@ classdef Run < LFADS.Run
             for iDS = 1:r.nDatasets
                 prog.update(iDS);
                 gs = r.gpfaSequenceData{iDS};
-                
+
                 td = tdSet{iDS};
                 %pm = r.posteriorMeans(iDS);
-                
+
                 % data must be nTrials x nTime x nChannels tensor
                 nGP = size(gs.seqTrain(1).xorth, 1);
                 nTime = size(gs.seqTrain(1).xorth, 2);
                 gpfa_xorth = nan(td.nTrials, nTime, nGP);
-                
+
                 binMs = gs.binWidth;
                 preKeep = double(r.params.preKeep);
                 postKeep = double(r.params.postKeep);
@@ -578,17 +616,17 @@ classdef Run < LFADS.Run
                     gpfa_xorth(ntr, :, :) = gs.seqTest(itr).xorth';
                 end
 
-                td = td.dropAnalogChannelGroup({'gpfa_xorth'}); 
+                td = td.dropAnalogChannelGroup({'gpfa_xorth'});
                 td = td.addAnalogChannelGroup('gpfa_xorth', genNames('gpfa', nGP), ...
                     gpfa_xorth, gpfa_time, 'timeField', 'gpfa_time', 'isAligned', true);
-                
+
                 tdSet{iDS} = td;
             end
             prog.finish();
-            
+
             tdSet = r.setupTrialDataAsLFADS(tdSet);
             r.trialDataSet = tdSet;
-            
+
             function names = genNames(pre, n)
                 names = arrayfun(@(i) sprintf('%s%i', pre, i), (1:n)', 'UniformOutput', false);
             end

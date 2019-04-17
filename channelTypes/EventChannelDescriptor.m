@@ -10,10 +10,27 @@ classdef EventChannelDescriptor < ChannelDescriptor
             cd.dataFields = {cd.name};
             cd.originalDataClassByField = {'double'};
             cd.elementTypeByField = cd.VECTOR;
+            cd.fieldIds = {'times'};
+            cd = cd.initialize();
         end
     end
     
     methods    
+        function cd = initialize(cd)
+            % check and repair internal consistency
+            cd.warnIfNoArgOut(nargout);
+            if isempty(cd.fieldIds)
+                cd.fieldIds = {'times'};
+            end
+            
+            cd = initialize@ChannelDescriptor(cd);
+        end
+        
+        function impl = getImpl(cd)
+            impl = EventChannelImpl(cd);
+        end
+        
+        
         function type = getType(~)
             type = 'event';
         end
@@ -49,6 +66,10 @@ classdef EventChannelDescriptor < ChannelDescriptor
         
         function buildEventWithTagFields(name, timeUnits, tagFields)
             error('not yet implemented');
+        end
+        
+        function cls = getSubChannelClass()
+            cls = '';
         end
     end
 

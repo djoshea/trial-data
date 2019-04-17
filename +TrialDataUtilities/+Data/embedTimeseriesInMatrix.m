@@ -188,7 +188,11 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     
     G = size(dataCell, 2);
     
-    mat = nan([N, T, C, G]); % we'll reshape this later, C is channels per matrix of dataCell, G is over columns of dataCell
+    dclass = TrialDataUtilities.Data.getCellElementClass(dataCell);
+    if ~ismember(dclass, {'single', 'double'})
+        dclass = 'single';
+    end
+    mat = nan([N, T, C, G], dclass); % we'll reshape this later, C is channels per matrix of dataCell, G is over columns of dataCell    
     
     indPutStart = TrialDataUtilities.Stats.floortol((tMin - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
     indPutStop  = TrialDataUtilities.Stats.floortol((tMax - tMinGlobal) / timeDelta, timeDelta/1000) + 1;

@@ -22,7 +22,7 @@ function str = strjoin(strCell, join)
                 if isnumeric(strCell{i})
                     strCell{i} = num2str(strCell{i});
                 end
-                assert(ischar(strCell{i}), 'Contents of strCell must be strings');
+                assert(ischar(strCell{i}) || isstring(strCell{i}), 'Contents of strCell must be strings');
             end
         end
         

@@ -1,6 +1,6 @@
-classdef AlignDescriptor 
-    % Describes a particular way to slice and align trial data in time based off 
-    % of event times in each trial. Typically analog data and neural data are 
+classdef AlignDescriptor
+    % Describes a particular way to slice and align trial data in time based off
+    % of event times in each trial. Typically analog data and neural data are
     % aligned relative to the times of certain events before further analysis takes
     % place. This class provides a common language for expressing these different
     % types of aligning data.
@@ -11,30 +11,30 @@ classdef AlignDescriptor
         % abbreviate event names to capital/lowercase initials automatically
         % override this by calling addEventAbbrev
         autoAbbreviateLabels = false;
-        
+
         % use capitalized initials instead of lowercased initials
         autoAbbreviateMakeUpper = true;
-        
+
         % for description
         name % set manually, or will be auto-populated
-        
+
         % minimum duration to mark as valid
         minDuration = 0;
-         
+
     end
-        
+
     properties(SetAccess=protected, Hidden)
         nameDefault
-        
+
         % how to handle the window falling outside of the trial
         outsideOfTrialMode = AlignDescriptor.TRUNCATE; % TRUNCATE or INVALIDATE or IGNORE
-        
+
         % allow an additional time window around the alignment interval
         % see .setPadWindow below
         padPre = 0;
         padPost = 0;
     end
-    
+
     properties(Access=protected)
         % eventAbbrevLookup.eventName == abbreviatedName, overrides auto abbreviation
         % use ad = ad.abbrev(eventName, abbrev) to add an entry
@@ -56,7 +56,7 @@ classdef AlignDescriptor
         stopOffset = 0;
         stopEventIndex = 1;
         stopAppear
-        stopMark 
+        stopMark
         stopDefault = true;
         stopLabelStored = '';
 
@@ -77,21 +77,22 @@ classdef AlignDescriptor
         % move interval stop backward in time to avoid these times
         truncateAfterEvents = {};
         truncateAfterEventsIndex = {};
-        truncateAfterOffsets 
+        truncateAfterOffsets
 
         % invalidate any trial whose window includes these events
         invalidateEvents = {};
         invalidateEventsIndex = {};
         invalidateOffsets
 
-        % purely for annotation, used by getTimeInfo and drawTimeAxis methods 
+        % purely for annotation, used by getTimeInfo and drawTimeAxis methods
         markEvents = {};
         markEventsIndex
-        markOffsets 
+        markOffsets
         markLabelsStored = {};
         markAppear
         markShowOnData % whether to mark on data traces
         markShowOnAxis % whether to mark on the axis
+        markAggregateAllOccurrences % if true, multiple occurrences per trial will be aggregated the same as they are across trials, as opposed to aggregating each occurrence separately
 
         % for marking time intervals on the time axis as colored rectangles
         intervalEventsStart = {}; % n x 1 cell array of start/stop events
@@ -106,10 +107,10 @@ classdef AlignDescriptor
         %intevalMultiTrialMode = 'first';
         intervalConditionMatch = {}; % n x 1 cell array of structs with .attrName = attrValue(s)
         intervalAppear % miscellaneous
-        
+
         intervalShowOnData % whether to mark on data traces
         intervalShowOnAxis % whether to mark on the axis
-        
+
         % Timestamp rounding. If active,
         % timeseries and timestamps will be shifted such that the
         % difference between each timestamp and zero is an exact integer multiple of
@@ -132,7 +133,7 @@ classdef AlignDescriptor
         markLabelsShort
         intervalLabels
         intervalLabelsShort
-        
+
         startLabel
         startLabelShort
         stopLabel
@@ -155,18 +156,18 @@ classdef AlignDescriptor
         isStartFixedTime % is the start event always at a fixed time relative to zero
         isStopFixedTime % is the start event always at a fixed time relative to zero
         isMarkFixedTime % is each mark event always at a fixed time relative to zero
-        isIntervalFixedTime % n x 2 is interval start/end fixed time relative to zero 
+        isIntervalFixedTime % n x 2 is interval start/end fixed time relative to zero
 
         isStartZero % is the start event always == 0
         isStopZero % is the stop event always == 0
         isMarkZero % is each mark event always == 0
-        
+
         isStartStopEqual % is start event same as start event
 
         isZeroOutsideStartStop % is the zero event guaranteed to lie outside the start/stop window
-        
+
         isFullTrial
-        
+
         nMarks % number of marked events (length .markEvents)
         nIntervals % number of marked intervals (length .markIntervals)
 
@@ -221,7 +222,7 @@ classdef AlignDescriptor
                     ad.markOffsets == ad.zeroOffset;
             end
         end
-        
+
         function tf = get.isStartStopEqual(ad)
             tf = strcmp(ad.startEvent, ad.stopEvent) && isequal(ad.startEventIndex, ad.stopEventIndex) && ...
                 ad.startOffset == ad.stopOffset;
@@ -230,20 +231,20 @@ classdef AlignDescriptor
         function tf = get.isZeroOutsideStartStop(ad)
             tf = (ad.isStartFixedTime && ad.startOffset > 0) || (ad.isStopFixedTime && ad.stopOffset < 0);
         end
-        
+
         function tf = get.isFullTrial(ad)
             tf = strcmp(ad.startEvent, 'TrialStart') && ad.startOffset == 0 && ...
                 strcmp(ad.stopEvent, 'TrialEnd') && ad.stopOffset == 0;
         end
-        
+
         function n = get.nMarks(ad)
             n = numel(ad.markEvents);
         end
-        
+
         function n = get.nIntervals(ad)
             n = numel(ad.intervalEventsStart);
         end
-        
+
         function name = get.name(ad)
             if isempty(ad.name)
                 name = ad.getStartStopZeroDescription();
@@ -251,7 +252,7 @@ classdef AlignDescriptor
                 name = ad.name;
             end
         end
-        
+
         function ad = setName(ad, name)
             ad.name = name;
             ad.nameDefault = false;
@@ -261,11 +262,11 @@ classdef AlignDescriptor
             padWindow = [ad.padPre ad.padPost];
         end
     end
-    
+
     methods % Auto-generated / manually set abbreviated labels
         function str = get.startLabel(ad)
             if isempty(ad.startLabelStored)
-                if ad.isStartFixedTime && ~ad.isStartZero && ad.omitRedundantLabel 
+                if ad.isStartFixedTime && ~ad.isStartZero && ad.omitRedundantLabel
                     str = ad.buildLabel('', [], ad.startOffset, false);
                 else
                     str = ad.buildLabel(ad.startEvent, ad.startEventIndex, ad.startOffset, false);
@@ -274,10 +275,10 @@ classdef AlignDescriptor
                 str = ad.startLabelStored;
             end
         end
-        
+
         function str = get.startLabelShort(ad)
             if isempty(ad.startLabelStored)
-                if ad.isStartFixedTime && ~ad.isStartZero && ad.omitRedundantLabel 
+                if ad.isStartFixedTime && ~ad.isStartZero && ad.omitRedundantLabel
                     str = ad.buildLabel('', [], ad.startOffset, true);
                 else
                     str = ad.buildLabel(ad.startEvent, ad.startEventIndex, ad.startOffset, true);
@@ -286,14 +287,14 @@ classdef AlignDescriptor
                 str = ad.buildLabel(ad.startLabelStored, [], 0, true);
             end
         end
-        
+
         function ad = set.startLabel(ad, v)
             ad.startLabelStored = v;
         end
-        
+
         function str = get.stopLabel(ad)
             if isempty(ad.stopLabelStored)
-                if ad.isStopFixedTime && ~ad.isStopZero && ad.omitRedundantLabel 
+                if ad.isStopFixedTime && ~ad.isStopZero && ad.omitRedundantLabel
                     str = ad.buildLabel('', [], ad.stopOffset, false);
                 else
                     str = ad.buildLabel(ad.stopEvent, ad.stopEventIndex, ad.stopOffset, false);
@@ -302,10 +303,10 @@ classdef AlignDescriptor
                 str = ad.stopLabelStored;
             end
         end
-        
+
         function str = get.stopLabelShort(ad)
             if isempty(ad.stopLabelStored)
-                if ad.isStopFixedTime && ~ad.isStopZero && ad.omitRedundantLabel 
+                if ad.isStopFixedTime && ~ad.isStopZero && ad.omitRedundantLabel
                     str = ad.buildLabel('', [], ad.stopOffset, true);
                 else
                     str = ad.buildLabel(ad.stopEvent, ad.stopEventIndex, ad.stopOffset, true);
@@ -314,7 +315,7 @@ classdef AlignDescriptor
                 str = ad.buildLabel(ad.stopLabelStored, [], 0, true);
             end
         end
-        
+
         function ad = set.stopLabel(ad, v)
             ad.stopLabelStored = v;
         end
@@ -326,7 +327,7 @@ classdef AlignDescriptor
                 str = ad.zeroLabelStored;
             end
         end
-        
+
         function str = get.zeroLabelShort(ad)
             if isempty(ad.zeroLabelStored)
                 str = ad.buildLabel(ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, true);
@@ -334,16 +335,16 @@ classdef AlignDescriptor
                 str = ad.buildLabel(ad.zeroLabelStored, [], 0, true);
             end
         end
-        
+
         function ad = set.zeroLabel(ad, v)
             ad.zeroLabelStored = v;
         end
-            
+
         function markLabels = get.markLabels(ad)
             if isempty(ad.markLabelsStored)
                 ad.markLabelsStored = cell(length(ad.markEvents), 1);
             end
-            
+
             markLabels = cell(length(ad.markLabelsStored), 1);
             for iMark = 1:length(ad.markLabelsStored)
                 if ~strcmp(ad.markLabelsStored{iMark}, AlignDescriptor.AUTO)
@@ -360,12 +361,12 @@ classdef AlignDescriptor
                 end
             end
         end
-        
+
         function markLabels = get.markLabelsShort(ad)
             if isempty(ad.markLabelsStored)
                 ad.markLabelsStored = cell(length(ad.markEvents), 1);
             end
-            
+
             markLabels = cell(length(ad.markLabelsStored), 1);
             for iMark = 1:length(ad.markLabelsStored)
                 if ~strcmp(ad.markLabelsStored{iMark}, AlignDescriptor.AUTO)
@@ -382,7 +383,7 @@ classdef AlignDescriptor
                 end
             end
         end
-        
+
         function ad = set.markLabels(ad, v)
             ad.markLabelsStored = v;
         end
@@ -392,7 +393,7 @@ classdef AlignDescriptor
             if isempty(ad.intervalLabelsStored)
                 ad.intervalLabelsStored = cell(nIntervals, 1);
             end
-            
+
             intervalLabels = cell(length(ad.intervalLabelsStored), 1);
             for i = 1:nIntervals
                 if ~strcmp(ad.intervalLabelsStored{i}, AlignDescriptor.AUTO)
@@ -418,13 +419,13 @@ classdef AlignDescriptor
                 end
             end
         end
-        
+
         function intervalLabels = get.intervalLabelsShort(ad)
             nIntervals = size(ad.intervalEventsStart, 1); %#ok<*PROP>
             if isempty(ad.intervalLabelsStored)
                 ad.intervalLabelsStored = cell(nIntervals, 1);
             end
-            
+
             intervalLabels = cell(length(ad.intervalLabelsStored), 1);
             for i = 1:nIntervals
                 if ~strcmp(ad.intervalLabelsStored{i}, AlignDescriptor.AUTO)
@@ -450,7 +451,7 @@ classdef AlignDescriptor
                 end
             end
         end
-        
+
         function ad = set.intervalLabels(ad, v)
             ad.intervalLabelsStored = v;
         end
@@ -480,7 +481,7 @@ classdef AlignDescriptor
                 ad.intervalEventsIndexStart, num2cell(ad.intervalOffsetsStart), 'UniformOutput', false);
             strCellStop = cellfun(@ad.buildUnabbreviatedLabel, ad.intervalEventsStop, ...
                 ad.intervalEventsIndexStop, num2cell(ad.intervalOffsetsStop), 'UniformOutput', false);
-            
+
             strCell = cellfun(@(s1, s2) sprintf('%s : %s', s1, s2), strCellStart, strCellStop, ...
                 'UniformOutput', false);
         end
@@ -509,7 +510,7 @@ classdef AlignDescriptor
                 app = AppearanceSpec('Color', [0 0 0]);
             end
         end
-        
+
         function app = get.startAppear(ad)
             app = ad.startAppear;
             if isempty(app)
@@ -517,16 +518,26 @@ classdef AlignDescriptor
                 app = AppearanceSpec('Color', [82 157 82] / 255);
             end
         end
-        
+
         function app = get.stopAppear(ad)
             app = ad.stopAppear;
             if isempty(app)
-                % default to redra 
+                % default to redra
                 app = AppearanceSpec('Color', [212 92 92] / 255);
             end
         end
     end
-    
+
+    methods % Other auto-generated props if missing
+        function tf = get.markAggregateAllOccurrences(ad)
+            if isempty(ad.markAggregateAllOccurrences)
+                tf = false(ad.nMarks, 1);
+            else
+                tf = makecol(ad.markAggregateAllOccurrences);
+            end
+        end
+    end
+
     methods % constructor, manual event specification
         function ad = AlignDescriptor(varargin)
             ad.eventAbbrevLookup = struct();
@@ -545,12 +556,12 @@ classdef AlignDescriptor
 %                 ad = structargs(ad, varargin);
             end
         end
-        
+
         function ad = copyFromAlignDescriptor(ad, adOther)
             % this is used by subclasses, so can't copy to output
             meta = ?AlignDescriptor;
             props = meta.PropertyList;
-            
+
             for iProp = 1:length(props)
                 prop = props(iProp);
                 if prop.Dependent || prop.Constant || prop.Transient
@@ -566,12 +577,12 @@ classdef AlignDescriptor
             ad.warnIfNoArgOut(nargout);
             % does nothing here, used primarily in AlignInfo
         end
-        
+
         function ad = postUpdateMark(ad)
             ad.warnIfNoArgOut(nargout);
             % does nothing here, used primarily in AlignInfo
         end
-        
+
         function ad = postUpdateInterval(ad)
             ad.warnIfNoArgOut(nargout);
             % does nothing here, used primarily in AlignInfo
@@ -585,7 +596,7 @@ classdef AlignDescriptor
                 ad.markEvents; ad.intervalEventsStart; ad.intervalEventsStop]);
             eventList = setdiff(eventList, 'TimeZero');
         end
-        
+
         function assertHasEvent(ad, eventName) %#ok<INUSD>
             % this does nothing here, but is overriden in AlignInfo to
             % prevent post-hoc modifications that refer to non-existent
@@ -610,7 +621,7 @@ classdef AlignDescriptor
             ad.startEventIndex = p.Results.index;
             ad.startOffset = offset;
             ad.startMark = p.Results.mark;
-            
+
             if ~isempty(p.Results.as)
                 ad.startLabel = p.Results.as;
             else
@@ -675,7 +686,7 @@ classdef AlignDescriptor
                     pre = pre(1);
                 end
             end
-               
+
             ad.padPre = pre;
             ad.padPost = post;
 
@@ -715,16 +726,16 @@ classdef AlignDescriptor
 
             ad = ad.update();
         end
-        
+
         function idx = findInterval(ad, eventStart, indexStart, offsetStart, ...
                 eventStop, indexStop, offsetStop)
             if ad.nIntervals == 0
                 idx = [];
                 return;
             end
-            
+
             match = truevec(ad.nIntervals);
-            
+
             match = match & makecol(strcmp(ad.intervalEventsStart, eventStart));
             match = match & makecol(cellfun(@(x) isequal(x, indexStart), ad.intervalEventsIndexStart));
             match = match & makecol(ad.intervalOffsetsStart == offsetStart);
@@ -760,7 +771,7 @@ classdef AlignDescriptor
             if ~ismember('indexStop', p.UsingDefaults), indexStop = p.Results.indexStop; end
             ad.assertHasEvent(eventNameStart);
             ad.assertHasEvent(eventNameStop);
-            
+
             idx = ad.findInterval(eventNameStart, indexStart, offsetStart, ...
                 eventNameStop, indexStop, offsetStop);
             if ~isempty(idx)
@@ -769,28 +780,28 @@ classdef AlignDescriptor
             else
                 iInterval = size(ad.intervalEventsStart,1)+1;
             end
-            
-            ad.intervalEventsStart{iInterval} = eventNameStart; 
-            ad.intervalEventsStop{iInterval} = eventNameStop; 
+
+            ad.intervalEventsStart{iInterval} = eventNameStart;
+            ad.intervalEventsStop{iInterval} = eventNameStop;
             ad.intervalEventsIndexStart{iInterval} = indexStart;
             ad.intervalEventsIndexStop{iInterval} = indexStop;
             ad.intervalOffsetsStart(iInterval) = offsetStart;
             ad.intervalOffsetsStop(iInterval) = offsetStop;
             ad.intervalLabelsStored{iInterval} = as;
-            
+
             appear = p.Results.appear;
             if ~isempty(p.Results.color)
                 appear.Color = p.Results.color;
             end
             ad.intervalAppear{iInterval} = appear;
-            
+
             ad.intervalEventsStart = makecol(ad.intervalEventsStart);
             ad.intervalEventsStop = makecol(ad.intervalEventsStop);
             ad.intervalEventsIndexStart = makecol(ad.intervalEventsIndexStart);
             ad.intervalEventsIndexStop = makecol(ad.intervalEventsIndexStop);
             ad.intervalOffsetsStart = makecol(ad.intervalOffsetsStart);
             ad.intervalOffsetsStop = makecol(ad.intervalOffsetsStop);
-            
+
             ad.intervalAppear = makecol(ad.intervalAppear);
             ad.intervalLabelsStored = makecol(ad.intervalLabelsStored);
             ad.intervalShowOnData(iInterval) = p.Results.showOnData;
@@ -800,12 +811,12 @@ classdef AlignDescriptor
 
             ad = ad.postUpdateInterval();
         end
-        
+
         function ad = removeIntervalsByIdx(ad, mask)
             ad.warnIfNoArgOut(nargout);
 
             mask = makecol(TensorUtils.vectorIndicesToMask(mask, ad.nIntervals));
-            
+
             ad.intervalEventsStart = ad.intervalEventsStart(~mask);
             ad.intervalEventsStop = ad.intervalEventsStop(~mask);
             ad.intervalEventsIndexStart = ad.intervalEventsIndexStart(~mask);
@@ -816,10 +827,10 @@ classdef AlignDescriptor
             ad.intervalLabelsStored = ad.intervalLabelsStored(~mask);
             ad.intervalShowOnData = ad.intervalShowOnData(~mask);
             ad.intervalShowOnAxis = ad.intervalShowOnAxis(~mask);
-            
+
             ad = ad.postUpdateInterval();
         end
-        
+
         function ad = removeInterval(ad, eventStart, indexStart, offsetStart, ...
                 eventStop, indexStop, offsetStop)
             ad.warnIfNoArgOut(nargout);
@@ -828,33 +839,33 @@ classdef AlignDescriptor
                 eventStop, indexStop, offsetStop);
             ad = ad.removeIntervalsByIdx(idx);
         end
-        
-        
+
+
         function idx = findMarkByString(ad, str)
             [eventName, index, offset] = ad.parseEventOffsetString(str, ...
                 'mark', 'defaultIndex', ':');
             idx = ad.findMark(eventName, index, offset);
         end
-        
+
         function idx = findMark(ad, eventName, varargin)
             p = inputParser();
             p.addOptional('index', ':', @(x) isempty(x) || ischar(x) || isscalar(x));
             p.addOptional('offset', 0, @isscalar);
             p.parse(varargin{:});
-            
+
             if ad.nMarks == 0
                 idx = [];
                 return;
             end
-            
+
             match = truevec(ad.nMarks);
-            
+
             match = match & makecol(strcmp(ad.markEvents, eventName));
             match = match & makecol(cellfun(@(x) isequal(x, p.Results.index), ad.markEventsIndex));
             match = match & makecol(ad.markOffsets == p.Results.offset);
             idx = find(match);
         end
-        
+
         function ad = mark(ad, eventStr, varargin)
             ad.warnIfNoArgOut(nargout);
 
@@ -866,8 +877,9 @@ classdef AlignDescriptor
             p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
+            p.addParameter('aggregateAllOccurrences', false, @islogical);
             p.parse(varargin{:});
-            
+
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
                 'mark', 'defaultIndex', ':');
             if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
@@ -877,21 +889,21 @@ classdef AlignDescriptor
 
             % check for existing mark which matches
             idx = ad.findMark(eventName, index, offset);
-            
+
             if ~isempty(idx)
                 warning('Replacing existing mark');
                 iMark = idx(1);
             else
                 iMark = length(ad.markEvents)+1;
             end
-            
+
             ad.markEvents{iMark} = eventName;
             ad.markEvents = makecol(ad.markEvents);
             ad.markEventsIndex{iMark} = index;
             ad.markEventsIndex = makecol(ad.markEventsIndex);
             ad.markOffsets(iMark) = offset;
             ad.markOffsets = makecol(ad.markOffsets);
-            
+
             appear = p.Results.appear;
             if isempty(appear)
                 appear = AppearanceSpec();
@@ -906,17 +918,19 @@ classdef AlignDescriptor
             ad.markShowOnData = makecol(ad.markShowOnData);
             ad.markShowOnAxis(iMark) = p.Results.showOnAxis;
             ad.markShowOnAxis = makecol(ad.markShowOnAxis);
+            ad.markAggregateAllOccurrences(iMark) = p.Results.aggregateAllOccurrences;
+            ad.markAggregateAllOccurrences = makecol(ad.markAggregateAllOccurrences);
             ad.markLabelsStored{iMark,1} = p.Results.as;
 
             ad = ad.postUpdateMark();
         end
-        
+
         function color = getNextMarkColor(ad)
             nMarks = ad.nMarks;
             map = TrialDataUtilities.Color.cbrewer('qual', 'Set1');
             color = map(mod(nMarks, size(map, 1)) + 1, :);
         end
-        
+
         function ad = removeMarksByIdx(ad, mask)
             ad.warnIfNoArgOut(nargout);
 
@@ -928,19 +942,20 @@ classdef AlignDescriptor
             ad.markOffsets = ad.markOffsets(~mask);
             ad.markLabelsStored = ad.markLabelsStored(~mask);
             ad.markAppear= ad.markAppear(~mask);
-            ad.markShowOnData = ad.markShowOnData(~mask); 
+            ad.markShowOnData = ad.markShowOnData(~mask);
             ad.markShowOnAxis = ad.markShowOnAxis(~mask);
-            
+            ad.markAggregateAllOccurrences = ad.markAggregateAllOccurrences(~mask);
+
             ad = ad.postUpdateMark();
         end
-        
+
         function ad = removeMarkByString(ad, str)
             ad.warnIfNoArgOut(nargout);
 
             idx = ad.findMarkByString(str);
             ad = ad.removeMarksByIdx(idx);
         end
-        
+
         function ad = removeMark(ad, eventName, varargin)
             ad.warnIfNoArgOut(nargout);
 
@@ -953,14 +968,14 @@ classdef AlignDescriptor
             p.addParameter('offset', 0, @isnumeric);
             p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
-            
+
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
                 'truncateBefore', 'defaultIndex', 'end');
             if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
             if ~ismember('index', p.UsingDefaults), index = p.Results.index; end
 
             ad.assertHasEvent(eventName);
-            
+
             ad.warnIfNoArgOut(nargout);
             ad.truncateBeforeEvents{end+1} = eventName;
             ad.truncateBeforeEventsIndex{end+1} = index;
@@ -969,7 +984,7 @@ classdef AlignDescriptor
             ad.truncateBeforeEvents = makecol(ad.truncateBeforeEvents);
             ad.truncateBeforeEventsIndex = makecol(ad.truncateBeforeEventsIndex);
             ad.truncateBeforeOffsets = makecol(ad.truncateBeforeOffsets);
-            
+
             ad = ad.update();
         end
 
@@ -978,19 +993,19 @@ classdef AlignDescriptor
             p.addParameter('offset', 0, @isscalar);
             p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
-            
+
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
                 'truncateAfter', 'defaultIndex', '1');
             if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
             if ~ismember('index', p.UsingDefaults), index = p.Results.index; end
 
             ad.assertHasEvent(eventName);
-            
+
             ad.warnIfNoArgOut(nargout);
             ad.truncateAfterEvents{end+1} = eventName;
             ad.truncateAfterEventsIndex{end+1} = index;
             ad.truncateAfterOffsets(end+1) = offset;
-            
+
             ad.truncateAfterEvents = makecol(ad.truncateAfterEvents);
             ad.truncateAfterEventsIndex = makecol(ad.truncateAfterEventsIndex);
             ad.truncateAfterOffsets = makecol(ad.truncateAfterOffsets);
@@ -1003,19 +1018,19 @@ classdef AlignDescriptor
             p.addParameter('offset', 0, @isscalar);
             p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
             p.parse(varargin{:});
-            
+
             [eventName, index, offset] = ad.parseEventOffsetString(eventStr, ...
                 'truncateBefore', 'defaultIndex', ':');
             if ~ismember('offset', p.UsingDefaults), offset = p.Results.offset; end
             if ~ismember('index', p.UsingDefaults), index = p.Results.index; end
-            
+
             ad.assertHasEvent(eventName);
 
             ad.warnIfNoArgOut(nargout);
             ad.invalidateEvents{end+1} = eventName;
             ad.invalidateEventsIndex{end+1} = index;
             ad.invalidateOffsets(end+1) = offset;
-            
+
             ad.invalidateEvents = makecol(ad.invalidateEvents);
             ad.invalidateEventsIndex = makecol(ad.invalidateEventsIndex);
             ad.invalidateOffsets = makecol(ad.invalidateOffsets);
@@ -1055,14 +1070,14 @@ classdef AlignDescriptor
             ad = ad.start(ad.zeroEvent, tStart);
             ad = ad.stop(ad.zeroEvent, tStop);
         end
-        
+
         function ad = round(ad, timeDelta)
             ad.warnIfNoArgOut(nargout);
             ad.roundTimes = true;
             ad.minTimeDelta = timeDelta;
             ad = ad.update();
         end
-        
+
         function ad = noRound(ad)
             ad.warnIfNoArgOut(nargout);
             ad.roundTimes = false;
@@ -1073,22 +1088,22 @@ classdef AlignDescriptor
         function ad = clearIntervals(ad)
             % remove all marks and intervals
             ad.warnIfNoArgOut(nargout);
-            
-            ad.intervalEventsStart = {}; 
-            ad.intervalEventsStop = {}; 
+
+            ad.intervalEventsStart = {};
+            ad.intervalEventsStop = {};
             ad.intervalEventsIndexStart = [];
             ad.intervalEventsIndexStop  = [];
             ad.intervalOffsetsStart  = [];
             ad.intervalOffsetsStop  = [];
             ad.intervalLabelsStored = {};
-            ad.intervalConditionMatch = {}; 
+            ad.intervalConditionMatch = {};
             ad.intervalAppear  = [];
             ad.intervalShowOnData = [];
             ad.intervalShowOnAxis = [];
 
             ad = ad.postUpdateInterval();
         end
-        
+
         function ad = clearMarks(ad)
             % remove all marks and intervals
             ad.warnIfNoArgOut(nargout);
@@ -1097,20 +1112,21 @@ classdef AlignDescriptor
             ad.markOffsets = [];
             ad.markLabelsStored = {};
             ad.markAppear= [];
-            ad.markShowOnData = []; 
+            ad.markShowOnData = [];
             ad.markShowOnAxis = [];
-            
+            ad.markAggregateAllOccurrences = [];
+
             ad = ad.postUpdateMark();
         end
-        
+
         function ad = clearMarksIntervals(ad)
             ad.warnIfNoArgOut(nargout);
             ad = ad.clearMarks();
             ad = ad.clearIntervals();
         end
-       
+
         function ad = lag(ad, tDelay)
-            % shift so that aligned data is exctracted tDelay units earlier in time, 
+            % shift so that aligned data is exctracted tDelay units earlier in time,
             % instead of start/stop at Event, start/stop at Event-tDelay. We must move
             % the zero so that the time reference for interpolation /
             % re-sampling remains fixed when we lag, otherwise we end up
@@ -1132,21 +1148,21 @@ classdef AlignDescriptor
             assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
             ad.startAppear = spec;
         end
-        
+
         function ad = setStopAppearance(ad, spec)
             % updates the AppearanceSpec for stop
             ad.warnIfNoArgOut(nargout);
             assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
             ad.stopAppear = spec;
         end
-        
+
         function ad = setZeroAppearance(ad, spec)
             % updates the AppearanceSpec for zero
             ad.warnIfNoArgOut(nargout);
             assert(isempty(spec) || isa(spec, 'AppearanceSpec'), 'Must provide AppearanceSpec object or []');
             ad.zeroAppear = spec;
         end
-        
+
         function ad = setMarkAppearance(ad, ind, spec)
             % updates the AppearanceSpec for mark at index ind
             % use .findMark to find the index for a given mark's event,
@@ -1155,7 +1171,7 @@ classdef AlignDescriptor
             assert(ind > 0 && ind < ad.nMarks, 'Index out of range');
             ad.markAppear{ind} = spec;
         end
-        
+
         function ad = setIntervalAppearance(ad, ind, spec)
             % updates the AppearanceSpec for interval at index ind
             % use .findInterval to find the index for a given interval's
@@ -1166,10 +1182,10 @@ classdef AlignDescriptor
             ad.intervalAppear{ind} = spec;
         end
     end
-    
+
     methods % Equivalence to other descriptors
         % determine if this align descriptor is functionally equivalent to another AlignDescriptor,
-        % ignoring appearance-level details (e.g. marks, intervals, label info, abbreviations) 
+        % ignoring appearance-level details (e.g. marks, intervals, label info, abbreviations)
         % and focusing only on time alignment and trial validity details
         function tf = isCompatibleWith(ad1, ad2)
             % check for equivalence of all of the following properties:
@@ -1226,7 +1242,7 @@ classdef AlignDescriptor
         end
     end
 
-    methods % String parsing and building, disp() 
+    methods % String parsing and building, disp()
         function ad = parseDescriptionString(ad, str)
             % parse the string in the format:
             % startEventName+offset : stopEventName+offset @ zeroEventName+offset, truncateBefore event+offset, truncateAfter event+offset, mark event+offset
@@ -1243,19 +1259,19 @@ classdef AlignDescriptor
             if isempty(info) || isempty(info.start) || isempty(info.stop)
                 % Try parsing it as just a single event, which would be
                 % come the zero
-                %try 
+                %try
                     [ad.zeroEvent, ad.zeroEventIndex, ad.zeroOffset, ad.zeroLabel] = ...
                         ad.parseEventOffsetString(startStopZero, 'zero', 'defaultIndex', 1);
                     ad.zeroDefault = false;
                     %ad.zeroMark = true;
-                    
+
                     % '@Event' means TrialStart:TrialEnd @ Event (align whole trial to Event), whereas
                     % 'Event' means Event:Event @ Event (single sample at Event)
                     if(str(1) ~= '@')
                         ad = ad.start(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset);
                         ad = ad.stop(ad.zeroEvent, 'index', ad.zeroEventIndex, 'offset', ad.zeroOffset);
                     end
-                    
+
                 %catch exc
                     % otherwise just fail
                     %error('Error parsing align descriptor %s', string);
@@ -1270,7 +1286,7 @@ classdef AlignDescriptor
                 [ad.stopEvent, ad.stopEventIndex, ad.stopOffset, ad.stopLabel] = ...
                     ad.parseEventOffsetString(info.stop, 'stop', 'defaultIndex', 1);
                 ad.stopDefault = true;
-                
+
                 % deal with event:+100, -100:event cases
                 if isempty(ad.startEvent) && ~isempty(ad.stopEvent)
                     ad.startEvent = ad.stopEvent;
@@ -1287,17 +1303,17 @@ classdef AlignDescriptor
                     if isempty(ad.startEvent) && isempty(ad.stopEvent)
                         ad.startEvent = ad.zeroEvent;
                         ad.stopEvent = ad.zeroEvent;
-                    end 
+                    end
                 else
                     % deal with 500:800 case here
                     if isempty(ad.startEvent) && isempty(ad.stopEvent)
                         ad.startEvent = 'TrialStart';
                         ad.stopEvent = 'TrialStart';
-                    end 
+                    end
                     ad = ad.setDefaultZero();
                 end
             end
-            
+
             % now that everything has been manually parsed in a piecemeal
             % fashion, call the functions to ensure everything else gets
             % set up correctly
@@ -1316,7 +1332,7 @@ classdef AlignDescriptor
                 % parse this as 'typeStr name+offset'
                 [typeStr, event, index, offset, label] = ....
                     ad.parseTypedEventOffsetString(thisToken);
-                
+
                 if ~isempty(typeStr)
                     % match typeStr against the known types:
                     switch typeStr
@@ -1360,31 +1376,31 @@ classdef AlignDescriptor
 
                         otherwise
                             error('Unknown descriptor keyword %s', typeStr);
-                    end  
+                    end
                 else
                     % try parsing pad command
                     [success, ad.padPre, ad.padPost] = ad.parsePadString(thisToken);
                     if ~success
                         error('Could not parse token %s');
-                    end                    
+                    end
                 end
             end
 
             ad = ad.update();
         end
-        
+
         function [success, padPre, padPost] = parsePadString(ad, str) %#ok<INUSL>
             pat = 'pad\s*\[?(?<padPre>+?-?\d*):(?<padPost>+?-?\d*)';
             str = strtrim(str);
             info = regexp(str, pat, 'names', 'once');
-            
+
             if isempty(info)
                 success = false;
             else
                 success = true;
                 padPre = str2double(info.padPre);
                 padPost = str2double(info.padPost);
-                
+
                 assert(~isnan(padPre), 'Could not parse padPre %s as number', info.padPre);
                 assert(~isnan(padPost), 'Could not parse padPost %s as number', info.padPost);
             end
@@ -1413,7 +1429,7 @@ classdef AlignDescriptor
             p = inputParser;
             p.addParameter('defaultIndex', [], @isvector);
             p.parse(varargin{:});
-            
+
             % match event name
             eventPat = '(?<event>[a-zA-Z]\w+)?';
             % match anything like V or V:V where V is '#', 'end', 'end-#'
@@ -1422,8 +1438,8 @@ classdef AlignDescriptor
             offsetPat = '(?<offset>[+\-\.e\d\s]+)?';
             % match 'as eventLabel'
             asPat = '(as)?\s*(?<label>[\w\s\d+\-\.\<\>\?]+)?';
-            
-            pat = [eventPat indexPat '\s*' offsetPat '\s*' asPat]; 
+
+            pat = [eventPat indexPat '\s*' offsetPat '\s*' asPat];
             str = strtrim(str);
             info = regexp(str, pat, 'names', 'once');
 
@@ -1435,7 +1451,7 @@ classdef AlignDescriptor
 
             if isempty(info.index)
                 index = p.Results.defaultIndex;
-            else 
+            else
                 indexStr = info.index(2:end-1);
                 num = str2double(indexStr);
                 if ~isnan(num)
@@ -1476,7 +1492,7 @@ classdef AlignDescriptor
                 % just the offset
                 abbrev = '';
 
-            elseif isfield(ad.eventAbbrevLookup, name) 
+            elseif isfield(ad.eventAbbrevLookup, name)
                 % abbrev has been specified via addEventAbbrev
                 abbrev = ad.eventAbbrevLookup.(name);
 
@@ -1559,9 +1575,9 @@ classdef AlignDescriptor
 
             str = sprintf('%s : %s @ %s', sStart, sStop, sZero);
         end
-        
+
         function str = getStartStopZeroPadDescription(ad)
-            if ad.padPre ~= 0 || ad.padPost ~= 0 
+            if ad.padPre ~= 0 || ad.padPost ~= 0
                 padStr = sprintf(', pad [%d %d]', ad.padPre, ad.padPost);
             else
                 padStr = '';
@@ -1578,12 +1594,12 @@ classdef AlignDescriptor
                 tcprintf('inline', '{yellow}%s: {none}%s\n', class(ad), desc);
             end
         end
-        
+
         function printDescription(ad, varargin)
             p = inputParser();
             p.addParameter('active', false, @islogical);
             p.parse(varargin{:});
-            
+
             if ~ad.nameDefault
                 if p.Results.active
                     tcprintf('inline', '{yellow}%s: {white}%s {red}(active)\n', class(ad), ad.name);
@@ -1598,19 +1614,19 @@ classdef AlignDescriptor
                     tcprintf('inline', '{yellow}%s:\n', class(ad));
                 end
             end
-            
+
             tcprintf('inline', '  {bright blue}Start {purple}%s {darkGray}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
             tcprintf('inline', '  {bright blue}Stop {purple}%s {darkGray}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
             tcprintf('inline', '  {bright blue}Zero {purple}%s {darkGray}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
 
             for i = 1:length(ad.markEvents)
                 tcprintf('inline', '  {bright blue}Mark {purple}%s {darkGray}as {white}%s\n', ...
-                    ad.markUnabbreviatedLabels{i}, ad.markLabels{i}); 
+                    ad.markUnabbreviatedLabels{i}, ad.markLabels{i});
             end
             for i = 1:size(ad.intervalEventsStart, 1)
                 tcprintf('inline', '  {bright blue}Interval {purple}%s{darkGray} as {white}%s\n', ...
                     ad.intervalUnabbreviatedLabels{i}, ...
-                    ad.intervalLabels{i}); 
+                    ad.intervalLabels{i});
                 % TODO add condition match description
             end
             for i = 1:length(ad.truncateBeforeEvents)
@@ -1621,8 +1637,8 @@ classdef AlignDescriptor
             end
             for i = 1:length(ad.invalidateEvents)
                 tcprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});
-            end     
-                   
+            end
+
             tcprintf('inline', '  {darkGray}outside trial mode {white}%s\n', ad.outsideOfTrialMode);
             tcprintf('inline', '  {darkGray}minimum duration {white}%d\n', ad.minDuration);
             if ad.roundTimes
@@ -1635,7 +1651,7 @@ classdef AlignDescriptor
 
         function disp(ad)
             ad.printDescription();
-            
+
             fprintf('\n');
             builtin('disp', ad);
         end
@@ -1651,7 +1667,7 @@ classdef AlignDescriptor
             str = sprintf('%s%+g%s', ad.zeroEvent, offset + ad.zeroOffset, units);
         end
     end
-    
+
     methods(Static) % construct from another align descriptor, used primarily by AlignInfo
         function adNew = fromAlignDescriptor(ad, adNew)
             if nargin < 2

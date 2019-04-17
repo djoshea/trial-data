@@ -1,5 +1,4 @@
 classdef ParamChannelDescriptor < ChannelDescriptor
-    
     methods(Access=protected)
         function cd = ParamChannelDescriptor(varargin)
             cd = cd@ChannelDescriptor(varargin{:});
@@ -7,10 +6,25 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.UNKNOWN;
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
+            cd.fieldIds = {'data'};
         end
     end
     
     methods
+        function cd = initialize(cd)
+            % check and repair internal consistency
+            cd.warnIfNoArgOut(nargout);
+            if isempty(cd.fieldIds)
+                cd.fieldIds = {'data'};
+            end
+            
+            cd = initialize@ChannelDescriptor(cd);
+        end
+        
+        function impl = getImpl(cd)
+            impl = ParamChannelImpl(cd);
+        end
+        
         function type = getType(~)
             type = 'param';
         end
@@ -44,9 +58,14 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             end
             
             if ~iscell(dataCell)
-                cd.originalDataClassByField = {class(dataCell)};               
-                if islogical(dataCell)
+                data = dataCell;
+                cd.originalDataClassByField = {class(data)};               
+                if islogical(data)
                     cd.elementTypeByField = cd.BOOLEAN;
+                elseif isstring(data)
+                    cd.elementTypeByField = cd.STRING;
+                elseif iscategorical(data)
+                    cd.elementTypeByField = cd.CATEGORICAL;
                 else
                     cd.elementTypeByField = cd.SCALAR;
                 end
@@ -85,7 +104,6 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                     cd.originalDataClassByField = {''};
                 end 
             end
-            
         end
         
     end
@@ -103,15 +121,18 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.STRING;
         end
         
-        function cd = buildScalarParam(name, units)
+        function cd = buildScalarParam(name, dataClass, units)
             cd = ParamChannelDescriptor(name);
-            if nargin > 1
+            if nargin < 2
+                dataClass = 'double';
+            end
+            if nargin > 2
                 assert(ischar(units), 'Units must be string');
                 cd.unitsByField = {units};
             else
                 cd.unitsByField = {''};
             end
-            cd.originalDataClassByField = {'double'};
+            cd.originalDataClassByField = {dataClass};
             cd.elementTypeByField = cd.SCALAR;
         end
         
@@ -120,27 +141,34 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.catAlongFirstDimByField = true;
         end 
         
-        function cd = buildVectorParam(name, units)
+        function cd = buildVectorParam(name, dataClass, units)
             cd = ParamChannelDescriptor(name);
-            if nargin > 1
+            if nargin < 2
+                dataClass = 'double';
+            end
+                
+            if nargin > 2
                 assert(ischar(units), 'Units must be string');
                 cd.unitsByField = {units};
             else
                 cd.unitsByField = {''};
             end
-            cd.originalDataClassByField = {'double'};
+            cd.originalDataClassByField = {dataClass};
             cd.elementTypeByField = cd.VECTOR;
         end 
         
-        function cd = buildNumericParam(name, units)
+        function cd = buildNumericParam(name, dataClass, units)
             cd = ParamChannelDescriptor(name);
-            if nargin > 1
+            if nargin < 2
+                dataClass = 'double';
+            end
+            if nargin > 2
                 assert(ischar(units), 'Units must be string');
                 cd.unitsByField = {units};
             else
                 cd.unitsByField = {''};
             end
-            cd.originalDataClassByField = {'double'};
+            cd.originalDataClassByField = {dataClass};
             cd.elementTypeByField = cd.NUMERIC;
         end 
         
@@ -163,6 +191,10 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 units = '';
             end
             cd.unitsByField = {units};
+        end
+        
+        function cls = getSubChannelClass()
+            cls = 'ChannelDescriptor';
         end
     end
 end

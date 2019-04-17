@@ -25,7 +25,8 @@ if iscell(data)
     % different time vector for each
     for i = 1:numel(data)
         if ~isempty(data{i}) && ~isempty(time{i})
-            mask = ~all(isnan(data{i}), 2) & time{i} >= tMinExcludingPadding(i) & time{i} <= tMaxExcludingPadding(i);
+            % need to make data{i} into matrix to detect if all NaNs
+            mask = ~all(isnan(data{i}(:, :)), 2) & time{i} >= tMinExcludingPadding(i) & time{i} <= tMaxExcludingPadding(i);
             if any(mask)
                 [tMin(i), indMin(i)] = min(time{i}(mask), [], 'omitnan');
                 [tMax(i), indMax(i)] = max(time{i}(mask), [], 'omitnan');

@@ -80,6 +80,9 @@ classdef ProjPCA < StateSpaceProjection
             
             ctaKeep = ~any(isnan(CTAbyNvalid), 2);
             CTAbyNvalid = CTAbyNvalid(ctaKeep, :);
+            if ~any(ctaKeep)
+                error('No valid timepoints found shared across all bases');
+            end
             if proj.meanSubtract
                 CTAbyNvalid = bsxfun(@minus, CTAbyNvalid, mean(CTAbyNvalid, 1));
             end

@@ -9,51 +9,51 @@ classdef AlignSummary
     properties(SetAccess=protected)
         % AlignDescriptor object from which this was generated
         alignDescriptor
-        
+
         % ConditionDescriptor object from which this was generated
         conditionDescriptor
     end
-    
+
     properties
         timeUnitName = '';
     end
-    
+
     properties(Dependent, SetAccess=protected)
         minTimeDelta
-        
+
         nConditions
-        
+
         nMarks
         nOccurrencesByMark
-        
+
         nIntervals
         nOccurrencesByInterval
     end
-    
+
     properties(SetAccess=protected)
         nTrials = 0;
-        
+
         startAgg = EventAccumulator();
         stopAgg = EventAccumulator();
         markAgg = {}; % nMarks x 1 cell of nOccurrences x 1 EventAccumulators
         intervalStartAgg = {}; % nIntervals x 1 cell of nOccurrences x 1 EventAccumulators
         intervalStopAgg = {}; % nintervals x 1 cell of nOccurrences x 1 EventAccumulators
-        
+
         % nConditions x 1 numeric array indicating how many trials
         % contribute to the statistics above (useful when aggregating)
         nTrialsByCondition = 0;
-        
+
         startAggC = []; % nConditions x 1 EventAccumulators
         stopAggC = []; % nConditions x 1 EventAccumulators
         markAggC = {}; % nMarks x 1 cell of nConditions x nOccurrences EventAccumulators
         intervalStartAggC = {} % nIntervals x 1 cell of nConditions x nOccurrences EventAccumulators
         intervalStopAggC = {}; % nIntervals x 1 cell of nConditions x nOccurrences EventAccumulators
-                    
-        % these are build by initialize() 
+
+        % these are build by initialize()
         labelInfo
         intervalInfo
     end
-    
+
     properties(Dependent)
         startMin
         startMax
@@ -61,68 +61,68 @@ classdef AlignSummary
         startMedian
         startBins
         startDist
-        
+
         stopMin
         stopMax
         stopMean
         stopMedian
         stopBins
         stopDist
-       
+
         % nMark x 1 cell array with nOccurrences x 1 vectors
         markMax
         markMin
         markMean
         markMedian
-        
+
         % nInterval x 1 cell array with nOccurrences x 1 vectors
         intervalStartMax
         intervalStartMin
         intervalStartMean
         intervalStartMedian
-        
+
         % nInterval x 1 cell array of nOccurrences x 1 vectors
         intervalStopMax
         intervalStopMin
         intervalStopMean
         intervalStopMedian
-        
-        % all times are relative to zero 
+
+        % all times are relative to zero
         % nConditions x 1 vector of earliest start times by condition
         startMinByCondition
-        
+
         % nConditions x 1 vector of latest start times by condition
         startMaxByCondition
-        
+
         % nConditions x 1 vector of mean start times by condition
         startMeanByCondition
         startMedianByCondition
-        
+
         % nConditions x 1 vector of earliest stop times by condition
         stopMinByCondition
-        
+
         % nConditions x 1 vector of earliest stop times by condition
         stopMaxByCondition
-        
+
         % nConditions x 1 vector of mean stop times by condition
         stopMeanByCondition
         stopMedianByCondition
-        
+
         % nMarks x 1 cell with nConditions x nOccurrences matrices of
         % latest occurrence time(s) of that mark event (relative to the zero event)
         markMaxByCondition
-        
+
         % nMarks x 1 cell with nConditions x nOccurrences matrices of
         % earliest occurrence time(s) of that mark event (relative to the zero event)
         markMinByCondition
-        
+
         % nMarks x 1 cell with nConditions x nOccurrences matrices of
         % mean occurrence time(s) of that mark event (relative to the zero event)
         markMeanByCondition
         markMedianByCondition
-        
+
         % nIntervals x 1 cell with nConditions x nOccurrences matrices of
-        % latest occurrence time of the start of each occurrence of that interval 
+        % latest occurrence time of the start of each occurrence of that interval
         % (relative to the zero event)
         intervalStartMaxByCondition
         intervalStartMinByCondition
@@ -133,39 +133,39 @@ classdef AlignSummary
         intervalStopMeanByCondition
         intervalStopMedianByCondition
     end
-    
+
     methods
         function as = AlignSummary()
         end
     end
-    
+
     methods % Simple dependent properties
         function n = get.nConditions(as)
             n = numel(as.nTrialsByCondition);
         end
-        
+
         function v = get.minTimeDelta(as)
             v = as.alignDescriptor.minTimeDelta;
         end
-        
+
         function n = get.nMarks(as)
             n = numel(as.markAgg);
         end
-        
+
         function nvec = get.nOccurrencesByMark(as)
             % markMean is nMark x 1 cell array with nOccurrences x 1 vectors
             nvec = cellfun(@numel, as.markAgg);
         end
-        
+
         function n = get.nIntervals(as)
             n = numel(as.intervalStartAgg);
         end
-        
+
         function nvec = get.nOccurrencesByInterval(as)
             % intervalStartMean is nMark x 1 cell array with nOccualignSummaryAggregated{iAlign}rrences x 1 vectors
             nvec = cellfun(@numel, as.intervalStartAgg);
         end
-        
+
         function v = get.startMin(as)
             v = as.startAgg.min;
         end
@@ -184,7 +184,7 @@ classdef AlignSummary
         function v = get.startDist(as)
             v = as.startAgg.counts;
         end
-        
+
         function v = get.stopMin(as)
             v = as.stopAgg.min;
         end
@@ -203,8 +203,8 @@ classdef AlignSummary
         function v = get.stopDist(as)
             v = as.stopAgg.counts;
         end
-        
-        
+
+
         function v = get.markMin(as)
             v = cellfun(@EventAccumulator.min_array, as.markAgg, 'UniformOutput', false);
         end
@@ -217,7 +217,7 @@ classdef AlignSummary
         function v = get.markMedian(as)
             v = cellfun(@EventAccumulator.median_array, as.markAgg, 'UniformOutput', false);
         end
-        
+
         function v = get.intervalStartMin(as)
             v = cellfun(@EventAccumulator.min_array, as.intervalStartAgg, 'UniformOutput', false);
         end
@@ -230,7 +230,7 @@ classdef AlignSummary
         function v = get.intervalStartMedian(as)
             v = cellfun(@EventAccumulator.median_array, as.intervalStartAgg, 'UniformOutput', false);
         end
-        
+
         function v = get.intervalStopMin(as)
             v = cellfun(@EventAccumulator.min_array, as.intervalStopAgg, 'UniformOutput', false);
         end
@@ -243,7 +243,7 @@ classdef AlignSummary
         function v = get.intervalStopMedian(as)
             v = cellfun(@EventAccumulator.median_array, as.intervalStopAgg, 'UniformOutput', false);
         end
-        
+
         % By Condition
         function v = get.startMinByCondition(as)
             v = EventAccumulator.min_array(as.startAggC);
@@ -257,7 +257,7 @@ classdef AlignSummary
         function v = get.startMedianByCondition(as)
             v = EventAccumulator.median_array(as.startAggC);
         end
-        
+
         function v = get.stopMinByCondition(as)
             v = EventAccumulator.min_array(as.stopAggC);
         end
@@ -270,7 +270,7 @@ classdef AlignSummary
         function v = get.stopMedianByCondition(as)
             v = EventAccumulator.median_array(as.stopAggC);
         end
-        
+
         function v = get.markMinByCondition(as)
             v = cellfun(@EventAccumulator.min_array, as.markAggC, 'UniformOutput', false);
         end
@@ -283,7 +283,7 @@ classdef AlignSummary
         function v = get.markMedianByCondition(as)
             v = cellfun(@EventAccumulator.median_array, as.markAggC, 'UniformOutput', false);
         end
-        
+
         function v = get.intervalStartMinByCondition(as)
             v = cellfun(@EventAccumulator.min_array, as.intervalStartAggC, 'UniformOutput', false);
         end
@@ -296,7 +296,7 @@ classdef AlignSummary
         function v = get.intervalStartMedianByCondition(as)
             v = cellfun(@EventAccumulator.median_array, as.intervalStartAggC, 'UniformOutput', false);
         end
-        
+
         function v = get.intervalStopMinByCondition(as)
             v = cellfun(@EventAccumulator.min_array, as.intervalStopAggC, 'UniformOutput', false);
         end
@@ -310,7 +310,7 @@ classdef AlignSummary
             v = cellfun(@EventAccumulator.median_array, as.intervalStopAggC, 'UniformOutput', false);
         end
     end
-    
+
     % constructor methods and aggregation
     methods(Static)
         function as = buildEmptyFromConditionAlignDescriptor(conditionDescriptor, alignDescriptor, start, stop)
@@ -323,16 +323,16 @@ classdef AlignSummary
             as = AlignSummary();
             as.alignDescriptor = alignDescriptor;
             as.conditionDescriptor = conditionDescriptor;
-            
+
             delta = alignDescriptor.minTimeDelta;
-            
+
             as.nTrials = 0;
             as.startAgg = EventAccumulator(start, delta);
             as.stopAgg = EventAccumulator(stop, delta);
             as.markAgg = cell(alignDescriptor.nMarks);
             as.intervalStartAgg = cell(alignDescriptor.nIntervals);
             as.intervalStopAgg = cell(alignDescriptor.nIntervals);
-            
+
             as.nTrialsByCondition = zeros(conditionDescriptor.nConditions, 1);
             as.startAggC = EventAccumulator(start, delta);
             as.stopAggC = EventAccumulator(start, delta);
@@ -340,35 +340,35 @@ classdef AlignSummary
                 as.startAggC(i, 1) = EventAccumulator(start, delta);
                 as.stopAggC(i, 1) = EventAccumulator(stop, delta);
             end
-            
+
             as.markAggC = cell(alignDescriptor.nMarks);
             as.intervalStartAggC = cell(alignDescriptor.nIntervals);
             as.intervalStopAggC = cell(alignDescriptor.nIntervals);
         end
-        
+
         % factory constructor method used by TDCA
         function as = buildFromConditionAlignInfo(conditionInfo, alignInfo)
             % build from a set of conditionInfo and alignInfo instances
             as = AlignSummary();
             as.alignDescriptor = AlignDescriptor.fromAlignDescriptor(alignInfo);
-            
+
             % fix value lists to their current values before converting to
             % condition descriptor
             conditionInfo = conditionInfo.fixAllValueLists();
             as.conditionDescriptor = ConditionDescriptor.fromConditionDescriptor(conditionInfo);
-            
+
             % request aligned, ungrouped data for start/stop/marks/intervals
             [startData, stopData] = alignInfo.getStartStopRelativeToZeroByTrial();
             markData = alignInfo.getAlignedMarkData(); % nMarks cell with nTrials x nOccurrences
             [intervalStartData, intervalStopData] = alignInfo.getAlignedIntervalData(); % nIntervals cell with nTrials x nOccurrences
-            
+
             % total number of valid trials contributing
             as.nTrials = nnz(alignInfo.valid);
-            
+
              % compute summary statistics for all trials
             as.startAgg = EventAccumulator(startData, as.minTimeDelta);
             as.stopAgg = EventAccumulator(stopData, as.minTimeDelta);
-            
+
             % compute summary statistics for EACH occurrence of EACH
             % mark and interval event, nless markAggregateAllOccurrences is
             % true)
@@ -376,38 +376,42 @@ classdef AlignSummary
                 markData, num2cell(alignInfo.markAggregateAllOccurrences), 'UniformOutput', false);
             as.intervalStartAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), intervalStartData, 'UniformOutput', false);
             as.intervalStopAgg = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), intervalStopData, 'UniformOutput', false);
-                        
+
             % group the data by condition into a flattened nConditions x 1
             % array
             as.nTrialsByCondition = cellfun(@numel, conditionInfo.listByCondition(:));
             [startGrouped, stopGrouped] = conditionInfo.groupElementsFlattened(startData, stopData);
- 
+
             % compute summary statistics for each condition separately
             temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), startGrouped, 'UniformOutput', false);
             as.startAggC = cat(1, temp{:}); % only new versions of Matlab support cellfun uniform output with objects
             temp = cellfun(@(d) EventAccumulator.constructForEachColumn(d, as.minTimeDelta), stopGrouped, 'UniformOutput', false);
             as.stopAggC = cat(1, temp{:});
-            
-            % aggregate within each condition for 
+
+            % aggregate within each condition for
             as.markAggC = aggMultipleEventByCondition(markData, conditionInfo, alignInfo.markAggregateAllOccurrences);
             as.intervalStartAggC = aggMultipleEventByCondition(intervalStartData, conditionInfo);
             as.intervalStopAggC = aggMultipleEventByCondition(intervalStopData, conditionInfo);
-            
+
             as = as.initialize();
-            
-            function agg = aggMultipleEventByCondition(dataCell, ci)
-                % dataCell is a nDistinctEvents (e.g. nMarks, nIntervals) cell, 
+
+            function agg = aggMultipleEventByCondition(dataCell, ci, aggregateAllOccurrences)
+                % dataCell is a nDistinctEvents (e.g. nMarks, nIntervals) cell,
                 % each of which is an nTrials x nOccurrences, to be grouped
                 % into conditions by ci
                 %
                 % agg is nDistinctEvents x 1 cell of nConditions x nOccurrences matrix
                 nEvents = numel(dataCell);
                 agg = cell(nEvents, 1);
-                
+
+                if nargin < 3
+                    aggregateAllOccurrences = false(size(dataCell));
+                end
+
                 if nEvents == 0
                     return;
                 end
-                
+
                 for iE = 1:nEvents
                     dataGrouped = ci.groupElementsFlattened(dataCell{iE});
                     aggAllOccur = aggregateAllOccurrences(iE);
@@ -417,34 +421,34 @@ classdef AlignSummary
                 end
             end
         end
-        
+
         function as = buildByAggregation(alignSummarySet, varargin)
             % build a new AlignSummary object by aggregating over multiple
             % AlignSummary objects, shifting error ranges and means as
             % appropriate
-            
+
             p = inputParser();
             p.addParameter('aggregateMarks', true, @islogical);
             p.addParameter('aggregateIntervals', true, @islogical);
             p.addParameter('skipConditions', false, @islogical); % for internal use only, will not call initialize
             p.parse(varargin{:});
-            
+
             if isempty(alignSummarySet)
                 as = [];
                 return;
             end
-            
+
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
             else
                 set = makecol(alignSummarySet);
             end
             set1 = set(1);
-            
+
             as = AlignSummary();
             as.alignDescriptor = set1.alignDescriptor;
             as.timeUnitName = set1.timeUnitName;
-            
+
             if ~p.Results.aggregateMarks
                 as.alignDescriptor = as.alignDescriptor.clearMarks();
             end
@@ -452,17 +456,17 @@ classdef AlignSummary
                 as.alignDescriptor = as.alignDescriptor.clearIntervals();
             end
             as.conditionDescriptor = set1.conditionDescriptor;
-            
+
             % TODO could check that all alignDescriptors and
             % conditionDescriptors are equivalent here, but would be slow
             aggNTrials = makecol([set.nTrials]); % used in nested functions below
-            
+
             % add up trial counts
             as.nTrials = sum(aggNTrials);
-            
+
             as.startAgg = EventAccumulator.aggregate(set.startAgg);
             as.stopAgg = EventAccumulator.aggregate(set.stopAgg);
-            
+
             if p.Results.aggregateMarks
                 as.markAgg = cell(set1.nMarks, 1);
                 for iM = 1:set1.nMarks
@@ -470,7 +474,7 @@ classdef AlignSummary
                     as.markAgg{iM} = EventAccumulator.aggregate(args{:});
                 end
             end
-            
+
             if p.Results.aggregateIntervals
                 [as.intervalStartAgg, as.intervalStopAgg] = deal(cell(set1.nIntervals, 1));
                 for iM = 1:set1.nIntervals
@@ -480,7 +484,7 @@ classdef AlignSummary
                     as.intervalStopAgg{iM} = EventAccumulator.aggregate(args{:});
                 end
             end
-            
+
             if ~p.Results.skipConditions
                 % nConditions x nSummary matrix of trial counts for doing
                 % proper re-weighting
@@ -512,37 +516,37 @@ classdef AlignSummary
                         as.intervalStopAggC{iM} = EventAccumulator.aggregate(args{:});
                     end
                 end
-                as = as.initialize(); % only initialize if we did the conditions, otherwise caller is responsible
+                as = as.initialize();
             end
         end
-        
+
         function as = aggregateByConcatenatingConditionsAlongNewAxis(alignSummarySet, newConditionDescriptor, varargin)
             p = inputParser();
             p.addParameter('aggregateMarks', true, @islogical);
             p.addParameter('aggregateIntervals', true, @islogical);
             p.parse(varargin{:});
-            
+
             % let aggregation handle the non-condition specific values
             as = AlignSummary.buildByAggregation(alignSummarySet, p.Results);
             minTimeDelta = max(arrayfun(@(as) as.minTimeDelta, alignSummarySet));
-            
+
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
             else
                 set = makecol(alignSummarySet);
             end
-            
+
             % update the condtion descriptor with the new version
             as.conditionDescriptor = newConditionDescriptor;
 
             args = arrayfun(@(as) as.nTrialsByCondition, set, 'UniformOutput', false);
             as.nTrialsByCondition = cat(1, args{:});
-            
+
             args = arrayfun(@(as) as.startAggC, set, 'UniformOutput', false);
             as.startAggC = cat(1, args{:});
             args = arrayfun(@(as) as.stopAggC, set, 'UniformOutput', false);
             as.stopAggC = cat(1, args{:});
-            
+
             if p.Results.aggregateMarks
                 as.markAggC = cell(as.nMarks, 1);
                 for i = 1:as.nMarks
@@ -560,43 +564,43 @@ classdef AlignSummary
                     as.intervalStopAggC{i} = vertcatPadCols(args{:});
                 end
             end
-            
+
             as = as.initialize();
-            
+
             function out = vertcatPadCols(varargin)
                 nC = cellfun(@(x) size(x, 2), varargin);
                 newC = max(nC);
                 for j = 1:numel(varargin)
                     varargin{j} = cat(2, varargin{j}, repmat(EventAccumulator([], minTimeDelta), size(varargin{j}, 1), newC - nC(j)));
                 end
-                
+
                 out = cat(1, varargin{:});
             end
         end
-        
+
         function as = aggregateByConcatenatingConditionsAlongExistingAxis(alignSummarySet, newConditionDescriptor, catAxis, varargin)
             p = inputParser();
             p.addParameter('aggregateMarks', true, @islogical);
             p.addParameter('aggregateIntervals', true, @islogical);
             p.parse(varargin{:});
-            
+
             % let aggregation handle the non-condition specific values
             as = AlignSummary.buildByAggregation(alignSummarySet, p.Results);
-           
+
             if iscell(alignSummarySet)
                 set = makecol([alignSummarySet{:}]);
             else
                 set = makecol(alignSummarySet);
             end
-            
+
             origConditionSizes = arrayfun(@(as) as.conditionDescriptor.conditionsSize, alignSummarySet, 'UniformOutput', false);
-            
+
             % update the condtion descriptor with the new version
             as.conditionDescriptor = newConditionDescriptor;
-            
+
             args = arrayfun(@(as) as.nTrialsByCondition, set, 'UniformOutput', false);
             as.nTrialsByCondition = catAlong(args{:});
-            
+
             args = arrayfun(@(as) as.startAggC, set, 'UniformOutput', false);
             as.startAggC = catAlong(args{:});
             args = arrayfun(@(as) as.stopAggC, set, 'UniformOutput', false);
@@ -619,18 +623,18 @@ classdef AlignSummary
                     as.intervalStopAggC{i} = catAlongPadCols(args{:});
                 end
             end
-            
+
             as = as.initialize();
-            
+
             function out = catAlong(varargin)
                 for j = 1:numel(varargin)
                     varargin{j} = reshape(varargin{j}, origConditionSizes{j});
                 end
-                
+
                 out = cat(catAxis, varargin{:});
                 out = out(:);
             end
-            
+
             function out = catAlongPadCols(varargin)
                 % pad out each arg to the max number of columns (for marks,
                 % intervals that have different nOccurrences)
@@ -639,25 +643,25 @@ classdef AlignSummary
                 for j = 1:numel(varargin)
                     varargin{j} = cat(2, varargin{j}, repmat(EventAccumulator([], minTimeDelta), size(varargin{j}, 1), newC - nC(j)));
                 end
-                
+
                 for j = 1:numel(varargin)
                     varargin{j} = reshape(varargin{j}, origConditionSizes{j});
                 end
-                
+
                 out = cat(catAxis, varargin{:});
                 out = out(:);
             end
         end
-        
+
 %         function as = buildForSelectedConditions(aso, cmask)
 %             % build a new AlignSummary object by including only selected
 %             % conditions
 %             error('Not fully implemented');
-%             
+%
 %             as = AlignSummary();
 %             as.alignDescriptor = aso.alignDescriptor;
 %             as.conditionDescriptor = aso.conditionDescriptor;
-%             
+%
 %             % mask all of the byConditions directly by cmask
 %             as.nTrialsByCondition = aso.nTrialsByCondition(cmask);
 %             as.startMinByCondition =  aso.startMinByCondition(cmask);
@@ -666,7 +670,7 @@ classdef AlignSummary
 %             as.stopMinByCondition = as.stopMinByCondition(cmask);
 %             as.stopMaxByCondition = as.stopMaxByCondition(cmask);
 %             as.stopMeanByCondition = as.stopMeanByCondition(cmask);
-% 
+%
 %             applyCmaskFn = @(in) cellfun(@(e) e(cmask, :);
 %             as.markMaxByCondition = as.markMaxByCondition(cmask);
 %             as.markMinByCondition = as.markMinByCondition(cmask);
@@ -677,16 +681,16 @@ classdef AlignSummary
 %             as.intervalStopMaxByCondition = as.intervalStopMaxByCondition(cmask);
 %             as.intervalStopMinByCondition = as.intervalStopMinByCondition(cmask);
 %             as.intervalStopMeanByCondition = as.intervalStopMeanByCondition(cmask);
-% 
+%
 %             % aggregate the selected conditions into the primary statistics
 %             aggNTrials = as.nTrialsByCondition; % used in nested functions below
 %             as.nTrials = sum(as.nTrialsByCondition);
-%             
+%
 %             [as.startMin, as.startMax, as.startMean] = ...
 %                 aggregateSingleEventStats(as.startMinByCondition, as.startMaxByCondition, as.startMeanByCondition, aggNTrials);
 %             [as.stopMin, as.stopMax, as.stopMean] = ...
 %                 aggregateSingleEventStats(as.stopMinByCondition, as.stopMaxByCondition, as.stopMeanByCondition, aggNTrials);
-%             
+%
 %             % aggregate
 %             % markMaxByCondition is nMarks x 1 of nConditions x nOccurrences,
 %             % cat(1, as.markMaxByCondition{:})' is nOccurrences x nConditions
@@ -694,40 +698,40 @@ classdef AlignSummary
 %             [as.markMax, as.markMin, as.markMean] = aggregateMultipleEventStats(...
 %                 cat(2, set.markMax), cat(2, set.markMin), ...
 %                 cat(2, set.markMean), aggNTrials);
-%             
+%
 %             [as.intervalStartMax, as.intervalStartMin, as.intervalStartMean] = aggregateMultipleEventStats(...
 %                 cat(2, set.intervalStartMax), cat(2, set.intervalStartMin), ...
 %                 cat(2, set.intervalStartMean), aggNTrials);
-%             
+%
 %             [as.intervalStopMax, as.intervalStopMin, as.intervalStopMean] = aggregateMultipleEventStats(...
 %                 cat(2, set.intervalStopMax), cat(2, set.intervalStopMin), ...
 %                 cat(2, set.intervalStopMean), aggNTrials);
-%     
+%
 %             as = as.initialize();
-%             
+%
 %             function [maxNew, minNew, meanNew] = aggregateSingleEventStats(...
 %                     maxData, minData, meanData, nTrialsData)
 %                 minNew = nanmin(minData);
 %                 maxNew = nanmax(maxData);
 %                 meanNew = nansum(makecol(meanData) .* makecol(nTrialsData)) / sum(nTrialsData);
 %             end
-%             
+%
 %             function [maxNew, minNew, meanNew] = aggregateMultipleEventStats(...
 %                     maxData, minData, meanData, nTrialsData)
 %                 % max/min/meanData are nDistinctEvents x nSummary cells of
 %                 % nOccurrences vectors.
 %                 %
 %                 % nTrialsData is nSummary x 1 vector
-%                 % 
+%                 %
 %                 % max/min/meanNew are nDistinctEvents cells of nOccurrences
 %                 % vectors
 %                 nDistinctEvents = size(maxData, 1);
 %                 nSummary = size(maxData, 2);
 %                 nOccurrences = cellfun(@numel, maxData);
 %                 maxOccurrencesByEvent = max(nOccurrences, [], 2);
-%                 
+%
 %                 [maxNew, minNew, meanNew] = deal(cell(nDistinctEvents, 1));
-%                 
+%
 %                 for iEv = 1:nDistinctEvents
 %                     padToLength = @(vec) [makecol(vec); ...
 %                         nan(maxOccurrencesByEvent(iEv)-numel(vec), 1)];
@@ -738,11 +742,11 @@ classdef AlignSummary
 %                         'UniformOutput', false));
 %                     meanMat = cell2mat(cellfun(padToLength, meanData(iEv, :), ...
 %                         'UniformOutput', false));
-%                     
+%
 %                     % cell elements are maxOccurrencesByEvent x 1 vectors
 %                     maxNew{iEv} = nanmax(maxMat, [], 2);
 %                     minNew{iEv} = nanmin(minMat, [], 2);
-%                     
+%
 %                     % note that we use nanmean to compute the weighted sum
 %                     % because nansum returns 0 when all are NaN
 %                     meanNew{iEv} = nanmean(bsxfun(@times, meanMat, makerow(nTrialsData)), 2) / ...
@@ -751,20 +755,20 @@ classdef AlignSummary
 %             end
 %         end
     end
-    
+
     % manipulations of AlignSummary that yield new AlignSummary objects
-    methods    
+    methods
         function as = combineSetsOfConditions(as, newConditionDescriptor, conditionIdxCell)
             as.warnIfNoArgOut(nargout);
             % recombine conditions, for each entry of conditionIdxCell,
             % collect stats across the condition indices inside
             as.conditionDescriptor = newConditionDescriptor;
-            
-            function out = aggregateRows(eamat) 
+
+            function out = aggregateRows(eamat)
                 nRowsNew = numel(conditionIdxCell);
                 nCols = size(eamat, 2);
                 out(nRowsNew, nCols) = EventAccumulator();
-                
+
                 for iRNew = 1:nRowsNew
                     for iC = 1:nCols
                         % need to grab the appropriate rows
@@ -773,35 +777,35 @@ classdef AlignSummary
                     end
                 end
             end
-            
+
             as.startAggC = aggregateRows(as.startAggC);
             as.stopAggC = aggregateRows(as.stopAggC);
             as.markAggC = cellfun(@aggregateRows, as.markAggC, 'UniformOutput', false);
             as.intervalStartAggC = cellfun(@aggregateRows, as.intervalStartAggC, 'UniformOutput', false);
             as.intervalStopAggC = cellfun(@aggregateRows, as.intervalStopAggC, 'UniformOutput', false);
-            
+
             % must do this last as above calculations depend on nTrials
             % field
             as.nTrialsByCondition = cellfun(@(idx) sum(as.nTrialsByCondition(idx)), conditionIdxCell);
-            
+
             as = as.initialize();
         end
-        
+
         function as = setConditionDescriptor(as, newConditionDescriptor)
             % replace condition descriptor with one with the same number of
             % conditions
             as.warnIfNoArgOut(nargout);
-            
+
             assert(as.conditionDescriptor.nConditions == newConditionDescriptor.nConditions, 'Number of conditions do not match');
             % recombine conditions, for each entry of conditionIdxCell,
             % collect stats across the condition indices inside
             as.conditionDescriptor = newConditionDescriptor;
         end
-        
+
 %         function as = manualSliceTimeWindow(as, tMin, tMax)
 %             % reslice a window of time out of this align summary, used by
 %             % pset's method by the same name
-%             
+%
 %             function v = constrainToWindow(v)
 %                 if v < tMin
 %                     v = tMin;
@@ -809,35 +813,35 @@ classdef AlignSummary
 %                     v = tMax;
 %                 end
 %             end
-%             
+%
 %             constrainToWindowCell = @(c) cellfun(@(v) filterWindow, c, 'UniformOutput', false);
 %             as.startMin = filterWindow(as.startMin);
 %             as.startMax = filterWindow(as.startMax);
 %             as.startMean = filterWindow(as.startMean);
-%         
+%
 %             as.stopMin = filterWindow(as.stopMin);
 %             as.stopMax = filterWindow(as.stopMax);
 %             as.stopMean = filterWindow(as.stopMean);
-%        
+%
 %             % nMark x 1 cell array with nOccurrences x 1 vectors
 %             as.markMax = filterWindowCell(as.markMax);
 %             as.markMin = filterWindowCell(as.markMin);
 %             as.markMean = filterWindowCell(as.markMean);
-%         
+%
 %             % nInterval x 1 cell array with nOccurrences x 1 vectors
 %             as.intervalStartMax = filterWindowCell(as.intervalStartMax);
 %             as.intervalStartMin = filterWindowCell(as.intervalStartMin);
 %             as.intervalStartMean = filterWindowCell(as.intervalStartMean);
-%             
+%
 %             % nInterval x 1 cell array of nOccurrences x 1 vectors
 %             as.intervalStopMax = filterWindowCell(as.intervalStopMax);
 %             as.intervalStopMin = filterWindowCell(as.intervalStopMin);
 %             as.intervalStopMean = filterWindowCell(as.intervalStopMean);
-%         
+%
 %             function v = nanOutsideWindow(v)
 %                 v(v < tMin | v > tMax) = NaN;
 %             end
-%             
+%
 %             function v = nanOutsideWindowCell(c, nOccurrencesKeepCell)
 %                 for i = 1:numel(c)
 %                     v = c{i};
@@ -845,7 +849,7 @@ classdef AlignSummary
 %                     c{i} = v(:, 1:nOccurrencesKeepCell{i});
 %                 end
 %             end
-% 
+%
 %             % nConditions x 1 vector of earliest start times by condition
 %             as.startMinByCondition = nanOutsideWindow(as.startMinByCondition);
 %             as.startMaxByCondition = nanOutsideWindow(as.startMaxByCondition);
@@ -853,16 +857,16 @@ classdef AlignSummary
 %             as.stopMinByCondition = nanOutsideWindow(as.stopMinByCondition);
 %             as.stopMaxByCondition = nanOutsideWindow(as.stopMaxByCondition);
 %             as.stopMeanByCondition = nanOutsideWindow(as.stopMeanByCondition);
-%         
+%
 %             % nMarks x 1 cell with nConditions x nOccurrences matrices
 %             % the nOccurrences dependent properties will automatically
-%             % update due to the filtering operations above, so we'll 
+%             % update due to the filtering operations above, so we'll
 %             as.markMaxByCondition = nanOutsideWindowCell(as.markMaxByCondition, as.nOccurrencesByMark);
 %             as.markMinByCondition = nanOutsideWindowCell(as.markMinByCondition);
-%             as.markMeanByCondition = nanOutsideWindowCell(markMeanByCondition, 
-%         
+%             as.markMeanByCondition = nanOutsideWindowCell(markMeanByCondition,
+%
 %         % nIntervals x 1 cell with nConditions x nOccurrences matrices of
-%         % latest occurrence time of the start of each occurrence of that interval 
+%         % latest occurrence time of the start of each occurrence of that interval
 %         % (relative to the zero event)
 %         intervalStartMaxByCondition
 %         intervalStartMinByCondition
@@ -879,15 +883,15 @@ classdef AlignSummary
             as = as.buildLabelInfo();
             as = as.buildIntervalInfo();
         end
-        
+
         function as = buildLabelInfo(as, varargin)
             % build a list of events to mark on the time axis or on data by
-            % aggregating across the start, stop, zero, and marks. 
+            % aggregating across the start, stop, zero, and marks.
             % each mark will be expanded so that one label will be
             % generated for each mark
-            
+
             assert(nargout == 1);
-           
+
             % optionally provide time window which filters which labels will be included
             p = inputParser();
             p.addParameter('timeWindow', [], @isvector);
@@ -903,7 +907,7 @@ classdef AlignSummary
             % include the zero event provided that it lies within the start/stop window
             if isequal(ad.zeroMark, true) || (ad.nMarks == 0 && ad.nIntervals == 0)
                 info(counter).name = ad.zeroLabel;
-                info(counter).nameShort = ad.zeroLabelShort; 
+                info(counter).nameShort = ad.zeroLabelShort;
                 info(counter).dist = [];
                 info(counter).bins = [];
                 info(counter).time = 0;
@@ -915,7 +919,7 @@ classdef AlignSummary
                 info(counter).appear = ad.zeroAppear;
                 info(counter).fixed = true;
                 info(counter).occurrence = 1;
-                
+
                 counter = counter + 1;
             end
 
@@ -926,11 +930,11 @@ classdef AlignSummary
             markMinByCondition = as.markMedianByCondition;
             markMaxByCondition = as.markMaxByCondition;
             markMedianByCondition = as.markMedianByCondition;
-            
+
             for iMark = 1:ad.nMarks
                 if ~ad.markShowOnAxis(iMark), continue; end
                 % loop over each occurrence of the mark
-                
+
                 for iOccur = 1:as.nOccurrencesByMark(iMark)
                     info(counter).name = ad.markLabels{iMark};
                     info(counter).nameShort = ad.markLabelsShort{iMark};
@@ -951,48 +955,48 @@ classdef AlignSummary
                     info(counter).appear = ad.markAppear{iMark};
                     info(counter).fixed = ad.isMarkFixedTime(iMark);
                     info(counter).occurrence = iOccur;
-                
+
                     counter = counter + 1;
                 end
             end
-            
+
             if ~isempty(timeWindow)
                 times = [info.time];
                 timeMask = times >= timeWindow(1) & times <= timeWindow(2);
                 info = info(timeMask);
             end
-            
+
             for i = 1:numel(info)
                 if isempty(info(i).appear)
                     info(i).appear = AppearanceSpec();
                 end
             end
-            
+
             as.labelInfo = makecol(info);
         end
-        
+
         function as = buildIntervalInfo(as, varargin)
             assert(nargout == 1);
-        
+
             ad = as.alignDescriptor;
-            
+
             info = struct('name', {}, 'startTime', {}, 'startMin', {}, 'startMax', {}, 'appear', {}, 'fixed', {});
             counter = 1;
-            
+
             intervalStartMin = as.intervalStartMin;
             intervalStartMax = as.intervalStartMax;
             intervalStartMedian = as.intervalStartMedian;
             intervalStopMin = as.intervalStopMin;
             intervalStopMax = as.intervalStopMax;
             intervalStopMedian = as.intervalStopMedian;
-            
+
             intervalStartMinByCondition = as.intervalStartMinByCondition;
             intervalStartMaxByCondition = as.intervalStartMaxByCondition;
             intervalStartMedianByCondition = as.intervalStartMedianByCondition;
             intervalStopMinByCondition = as.intervalStopMinByCondition;
             intervalStopMaxByCondition = as.intervalStopMaxByCondition;
             intervalStopMedianByCondition = as.intervalStopMedianByCondition;
-            
+
             for iInterval = 1:ad.nIntervals
                 if ~ad.intervalShowOnAxis(iInterval), continue; end
                 for iOccur = 1:numel(as.intervalStartMean{iInterval})
@@ -1021,19 +1025,19 @@ classdef AlignSummary
                     info(counter).appear = ad.intervalAppear{iInterval};
                     info(counter).fixed = ad.isIntervalFixedTime(iInterval);
                     info(counter).occurrence = iOccur;
-                    
+
                     if isempty(info(counter).appear)
                         info(counter).appear = AppearanceSpec();
                     end
                     counter = counter + 1;
-                    
+
                 end
             end
-            
+
             as.intervalInfo = info;
         end
     end
-    
+
     methods
         function au = setupTimeAutoAxis(as, varargin)
             % add ticks and markers to the x-axis of a plot representing
@@ -1061,23 +1065,23 @@ classdef AlignSummary
             tMax = p.Results.tMax;
             allowedRange = p.Results.allowedRange;
             showRanges = p.Results.showRanges;
-            
+
             quick = strcmp(style, 'quick');
             if ~quick
                 au = AutoAxis(p.Results.axh);
                 au.xUnits = as.timeUnitName;
             end
-            
+
             % filter labels, intervals that overlap tMin : tMax
             labelInfo = as.labelInfo; %#ok<*PROP>
             if ~isempty(labelInfo)
-                labelInfo = labelInfo([labelInfo.time] >= tMin & [labelInfo.time] <= tMax); 
+                labelInfo = labelInfo([labelInfo.time] >= tMin & [labelInfo.time] <= tMax);
             end
             intervalInfo = as.intervalInfo;
             if ~isempty(intervalInfo)
                 intervalInfo = intervalInfo([intervalInfo.stopTime] >= tMin & [intervalInfo.startTime] <= tMax);
             end
-            
+
             if ~isempty(labelInfo)
                 indLabelZero = find([labelInfo.time] == 0, 1);
             else
@@ -1090,32 +1094,32 @@ classdef AlignSummary
                 zeroLabel = as.alignDescriptor.zeroLabel;
                 zeroLabelShort = as.alignDescriptor.zeroLabelShort;
             end
-            
+
             if ~quick
                 au.removeAutoAxisX();
                 au.removeAutoScaleBarX();
             end
-            
+
             switch style
                 case 'none'
-                    
+
                 case 'quick'
                     xlabel(sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
-                    
+
                 case 'auto'
                     au.addAutoAxisX();
                     xlabel(sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
-                    
-                case 'tickBridge'      
+
+                case 'tickBridge'
                     au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
                         'zeroLabel', zeroLabelShort, ...
                         'autoTicks', true);
-                    
-                case 'tickBridgeStartStop'      
+
+                case 'tickBridgeStartStop'
                     au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
                         'zeroLabel', zeroLabelShort, ...
                         'autoTicks', false);
-                    
+
                 case {'markerRange', 'marker'}
                     if p.Results.showIntervals
                         for iInterval = 1:numel(intervalInfo)
@@ -1147,11 +1151,11 @@ classdef AlignSummary
                                 'horizontalAlignment', ii.appear.HorizontalAlignment);
                         end
                     end
-                    
+
                     if p.Results.showMarks
                         if strcmp(style, 'markerRange')
                             for iLabel = 1:numel(labelInfo)
-                                li = labelInfo(iLabel);  
+                                li = labelInfo(iLabel);
 
                                 % constrain to tMin:tMax
                                 if li.min < tMin, li.min = tMin; end
@@ -1178,7 +1182,7 @@ classdef AlignSummary
                             end
                         else
                             for iLabel = 1:numel(labelInfo)
-                                li = labelInfo(iLabel);  
+                                li = labelInfo(iLabel);
 
                                 mask = li.bins >= tMin & li.bins <= tMax;
                                 bins = li.bins(mask);
@@ -1207,7 +1211,7 @@ classdef AlignSummary
                             end
                         end
                     end
-                    
+
                     if p.Results.showScaleBar
                         if isnan(p.Results.timeScaleBarWidth)
                             au.addAutoScaleBarX();
@@ -1215,28 +1219,28 @@ classdef AlignSummary
                             au.addScaleBarX('length', p.Results.timeScaleBarWidth);
                         end
                     end
-                    
+
                     % just for setting grid lines and blanking between grid
                     au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
                         'zeroLabel', zeroLabelShort, ...
                         'autoTicks', true, 'drawBridge', false);
-               
+
                 case 'scaleBar'
                     if isnan(p.Results.timeScaleBarWidth)
                         au.addAutoScaleBarX();
                     else
                         au.addScaleBarX('length', p.Results.timeScaleBarWidth);
                     end
-                    
+
             end
             if ~quick
                 axis off;
 %                 au.update();
-%                 au.installCallbacks();      
+%                 au.installCallbacks();
             end
         end
     end
-    
+
     methods(Static) % tools for interacting with multiple alignments
         function setupTimeAutoAxisForMultipleAligns(asSet, tvecByAlign, varargin)
             nAlign = numel(asSet);
@@ -1246,13 +1250,13 @@ classdef AlignSummary
             p.addParameter('doUpdate', true, @islogical);
             p.addParameter('showMarks', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
-            p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis            
+            p.addParameter('showRanges', true, @islogical); % show ranges for marks below axis
             p.addParameter('timeAxisStyle', 'marker', @ischar); % 'tickBridge' or 'marker'
             p.addParameter('tUnits', 'ms', @ischar); % time units
             p.parse(varargin{:});
-            
+
             axh = p.Results.axh;
-            
+
             au = AutoAxis(axh);
             switch p.Results.timeAxisStyle
                 case {'tickBridge', 'tickBridgeStartStop'}
@@ -1260,19 +1264,19 @@ classdef AlignSummary
                         as = asSet{iAlign};
                         tvec = tvecByAlign{iAlign};
                         offset = p.Results.tOffsetByAlign(iAlign);
-                        
+
                         as.setupTimeAutoAxis('axh', axh, 'style', p.Results.timeAxisStyle, ...
                             'tMin', nanmin(tvec), 'tMax', nanmax(tvec), 'tOffsetZero', offset, ...
                             'tUnits', p.Results.tUnits, ...
                             'showRanges', p.Results.showRanges);
                     end
-                    
+
                 case {'marker', 'markerRange'}
                     for iAlign = 1:nAlign
                         as = asSet{iAlign};
                         tvec = tvecByAlign{iAlign};
                         offset = p.Results.tOffsetByAlign(iAlign);
-                        
+
                         as.setupTimeAutoAxis('axh', axh, 'style', p.Results.timeAxisStyle, ...
                             'tMin', nanmin(tvec), 'tMax', nanmax(tvec), 'tOffsetZero', offset, ...
                             'tUnits', p.Results.tUnits, ...
@@ -1281,19 +1285,19 @@ classdef AlignSummary
                             'showRanges', p.Results.showRanges);
                     end
                     au.addAutoScaleBarX();
-                    
+
                 otherwise
                     error('Unknown timeAxisStyle %s', p.Results.timeAxisStyle);
-           
+
             end
-            
+
             if p.Results.doUpdate
                 au.update();
                 au.installCallbacks();
             end
         end
     end
-    
+
     methods
         function drawOnDataByCondition(as, time, data, varargin)
         % annotate data time-series with markers according to the labels indicated
@@ -1313,14 +1317,14 @@ classdef AlignSummary
         %   T is number of time points
         %   C is number of conditions (masked by conditionIdx)
         %   N is the number of traces to be annotated (with the same time)
-        
+
             p = inputParser();
             p.addParameter('tOffsetZero', 0, @isscalar);
             p.addParameter('conditionIdx', truevec(as.conditionDescriptor.nConditions), @isvector);
             p.addParameter('axh', gca, @ishandle);
             p.addParameter('tMin', -Inf, @isscalar);
             p.addParameter('tMax', Inf, @isscalar);
-            
+
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markOutline', true, @islogical);
             p.addParameter('markOutlineAlpha', 0.6, @isscalar)
@@ -1334,7 +1338,7 @@ classdef AlignSummary
             p.addParameter('showZero', false, @islogical);
             p.addParameter('showStart', false, @islogical);
             p.addParameter('showStop', false, @islogical);
-            
+
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
@@ -1346,16 +1350,16 @@ classdef AlignSummary
             xOffset = p.Results.xOffset;
             yOffset = p.Results.yOffset;
             zOffset = p.Results.zOffset;
-            
+
             tOffsetZero = p.Results.tOffsetZero;
             axh = p.Results.axh;
-            
+
             conditionIdx = p.Results.conditionIdx;
             if islogical(conditionIdx)
                 conditionIdx = find(conditionIdx);
             end
             nConditions = numel(conditionIdx); %#ok<*PROPLC>
-            
+
             if iscell(data)
                 assert(isvector(data) && iscell(time) && isvector(time), 'Cell inputs must be vectors');
                 C = numel(data);
@@ -1370,9 +1374,9 @@ classdef AlignSummary
                 assert(D >= 1 && D <= 3, 'Dimensionality of timeseries, size(data, 2), must be 1,2,3');
                 assert(C == nConditions, 'size(data, 3) must match nConditions specified');
             end
-            
+
             hold(axh, 'on');
-            
+
             % plot intervals
             if p.Results.showIntervals
                 hIntervals = cell(as.nIntervals, 1);
@@ -1381,7 +1385,7 @@ classdef AlignSummary
                     if ~as.alignDescriptor.intervalShowOnData(iInterval), continue, end
                     % gather mark locations
                     % nOccur x nConditions cell of T x D data in interval
-                    [intLoc, intRangeLoc] = deal(cell(nOccurByInterval(iInterval), as.nConditions)); 
+                    [intLoc, intRangeLoc] = deal(cell(nOccurByInterval(iInterval), as.nConditions));
                     for iCond = 1:C
                         idxCond = conditionIdx(iCond);
                         % filter by the time window specified (for this condition)
@@ -1391,7 +1395,7 @@ classdef AlignSummary
                         tRangeStart = as.intervalStartMinByCondition{iInterval}(idxCond, :)';
                         tRangeStop = as.intervalStopMaxByCondition{iInterval}(idxCond, :)';
 
-                        % tvec should T vector, dmat should be T x D 
+                        % tvec should T vector, dmat should be T x D
                         if iscell(time)
                             tvec = time{iCond};
                         else
@@ -1466,9 +1470,9 @@ classdef AlignSummary
             end
 
             nMarks = as.nMarks;
-            
+
             if p.Results.showMarks
-                % markMeanByCondition is nMarks x 1 cell with nConditions x 
+                % markMeanByCondition is nMarks x 1 cell with nConditions x
                 % nOccurrences matrices.
                 % for each mark we want to find where to plot the mean/min/max
                 % location of each occurrence on the data via interpolation
@@ -1519,7 +1523,7 @@ classdef AlignSummary
 
                         % and slice the error interval location
                         % tMarkMin is nOcccur x 1
-                        % dError will be nOccur cell with 
+                        % dError will be nOccur cell with
                         dError = TrialDataUtilities.Plotting.DrawOnData.sliceIntervalLocations(t, d, tMarkMin, tMarkMax);
                         markErrorLoc(:, iC) = dError;
                     end
@@ -1558,7 +1562,7 @@ classdef AlignSummary
                     end
                 end
             end
-            
+
             if p.Results.showZero
                 markMeanLoc = nan(1, max(2, D), nConditions);
                 for iC = 1:nConditions
@@ -1572,7 +1576,7 @@ classdef AlignSummary
                         d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
                         t = time;
                     end
-                    
+
                     markMeanLoc(:, :, iC) = TrialDataUtilities.Plotting.DrawOnData.interpMarkLocation(t, d, 0);
 
                     % add the time offset if plotting against time
@@ -1590,7 +1594,7 @@ classdef AlignSummary
                     TrialDataUtilities.Plotting.hideInLegend(h);
                 end
             end
-                    
+
             if p.Results.showStart
                 markMeanLoc = nan(1, max(2, D), nConditions);
                 for iC = 1:nConditions
@@ -1602,7 +1606,7 @@ classdef AlignSummary
                     else
                         d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
                     end
-                    
+
                     % find first non-nan sample
                     idxStart = find(TensorUtils.allMultiDim(~isnan(d), [2 3]), 1, 'first');
                     if isempty(idxStart), continue, end
@@ -1623,7 +1627,7 @@ classdef AlignSummary
                     TrialDataUtilities.Plotting.hideInLegend(h);
                 end
             end
-            
+
             if p.Results.showStop
                 markMeanLoc = nan(1, max(2, D), nConditions);
                 for iC = 1:nConditions
@@ -1635,7 +1639,7 @@ classdef AlignSummary
                     else
                         d = TensorUtils.squeezeDims(data(:, :, iC, :), 3);
                     end
-                    
+
                     % find last non-nan sample
                     idxStop = find(TensorUtils.allMultiDim(~isnan(d), [2 3]), 1, 'last');
                     if isempty(idxStop), continue, end
@@ -1657,15 +1661,15 @@ classdef AlignSummary
                 end
             end
         end
-        
+
 %         function [hMarks, hIntervals] = drawOnRasterByCondition(ad, varargin)
 %             error('Not yet implemented'); % WIP copied from AlignInfo
-%             % annotate raster plots with markers and intervals located near each condition 
+%             % annotate raster plots with markers and intervals located near each condition
             % according to the labels indicated
-            % by this align descriptor. 
+            % by this align descriptor.
             %
             % timeCell is nTrials x 1 cell of time vectors
-            % it is assumed that each row is drawn below the last, such that timeCell{1} is drawn from 
+            % it is assumed that each row is drawn below the last, such that timeCell{1} is drawn from
             % yOffsetTop to yOffsetTop + 1, with timeCell{2} drawn 1 below that
             %
 %             p = inputParser();
@@ -1674,27 +1678,27 @@ classdef AlignSummary
 %             p.addParameter('axh', gca, @ishandle);
 %             p.addParameter('tOffsetZero', 0, @isscalar);
 %             p.addParameter('yOffsetTop', 0, @isscalar);
-%             
+%
 %             p.addParameter('markAsTicks', true, @islogical);
 %             p.addParameter('markAlpha', 1, @isscalar);
 %             p.addParameter('intervalAlpha', 0.5, @isscalar);
 %             p.addParameter('conditionIdx', 1:ad.nConditions, @isnumeric);
 %             p.addParameter('showInLegend', true, @islogical);
 %             p.parse(varargin{:});
-% 
+%
 %             axh = p.Results.axh;
 %             tOffsetZero = p.Results.tOffsetZero;
 %             yOffsetTop = p.Results.yOffsetTop;
 %             trialIdx = p.Results.trialIdx;
 %             startByTrial = p.Results.startByTrial;
 %             stopByTrial = p.Results.stopByTrial;
-% 
+%
 %             hold(axh, 'on');
-% 
+%
 %             N = numel(trialIdx);
 %             assert(N == size(startByTrial, 1), 'numel(startByTrial) must match nTrials');
 %             assert(N == size(stopByTrial, 1), 'numel(startByTrial) must match nTrials');
-%             
+%
 %             % plot intervals
 %             hIntervals = cell(ad.nIntervals, 1);
 %             nOccurByInterval = ad.intervalMaxCounts;
@@ -1703,75 +1707,75 @@ classdef AlignSummary
 %                 if ~ad.intervalShowOnData(iInterval), continue; end
 %                 % gather interval locations
 %                 % nOccur x nTrials set of start, stop by in interval
-%                 [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N)); 
-%                 
+%                 [intStart, intStop] = deal(nan(nOccurByInterval(iInterval), N));
+%
 %                 for iTrial = 1:N
 %                     % filter by the time window specified (for this trial)
 %                     tStart = intStartData{iInterval}(trialIdx(iTrial), :)';
 %                     tStop = intStopData{iInterval}(trialIdx(iTrial), :)';
-%                     
+%
 %                     % constrain the time window to the interval being
 %                     % plotted as defined by tvec. not valid if it lies entirely outside
 %                     % the interval for this trial defined by start/stopByTrial
 %                     valid = ~isnan(tStart) & ~isnan(tStop);
 %                     valid(tStart > stopByTrial(iTrial)) = false;
 %                     valid(tStop < startByTrial(iTrial)) = false;
-%                     
+%
 %                     if ~any(valid), continue; end
-%                     
+%
 %                     tStart(tStart < startByTrial(iTrial)) = startByTrial(iTrial);
 %                     tStop(tStop > stopByTrial(iTrial)) = stopByTrial(iTrial);
-%                     
+%
 %                     intStart(:, iTrial) = tStart;
 %                     intStop(:, iTrial) = tStop;
 %                 end
-%  
+%
 %                 app = ad.intervalAppear{iInterval};
-%                 
+%
 %                 hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotIntervalOnRaster(axh, intStart, intStop, ...
 %                     app, p.Results.intervalAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
-% 
+%
 %                 if p.Results.showInLegend
 %                     TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
 %                 else
 %                     TrialDataUtilities.Plotting.hideInLegend(hIntervals{iInterval});
 %                 end
 %             end
-%             
+%
 %             % plot marks
 %             % grab information about the mark times relative to the trial
 %             nOccurByMark = ad.markMaxCounts;
 %             markData = ad.getAlignedMarkData();
-%             
+%
 %             hMarks = cell(ad.nMarks, 1);
 %             for iMark = 1:ad.nMarks
 %                 if ~ad.markShowOnData(iMark), continue; end
 %                 % gather mark locations
-%                 % nOccur x N 
+%                 % nOccur x N
 %                 markLoc = nan(nOccurByMark(iMark), N);
-%                 
+%
 %                 for t = 1:N
 %                     % get the mark times on this trial
 %                     tMark = markData{iMark}(trialIdx(t), :);
-%                     
+%
 %                     % filter by the time window specified (for this trial)
 %                     maskInvalid = tMark < startByTrial(t) | tMark > stopByTrial(t);
 %                     tMark(maskInvalid) = NaN;
-%                     
+%
 %                     if all(isnan(tMark))
 %                         % none found in this time window for this condition
 %                         continue;
 %                     end
-%                     
+%
 %                     markLoc(:, t) = tMark;
 %                 end
-%                 
+%
 %                 app = ad.markAppear{iMark};
-%                 
+%
 %                 % plot mark and provide legend hint
 %                 hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMarkOnRaster(axh, markLoc, app, ...
 %                     p.Results.markAlpha, 'xOffset', tOffsetZero, 'yOffset', yOffsetTop);
-% 
+%
 %                 if p.Results.showInLegend
 %                     TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});
 %                     TrialDataUtilities.Plotting.hideInLegend(hMarks{iMark}(2:end));
@@ -1780,21 +1784,21 @@ classdef AlignSummary
 %                 end
 %             end
 %         end
-        
+
         % used to annotate a time axis with the relevant start/stop/zero/marks
-        % non-fixed marks as <markLabel> unless the range is less than a specified 
+        % non-fixed marks as <markLabel> unless the range is less than a specified
         % noise-threshold, in which case it is marked as though it were fixed
 %         function drawTimeAxis(ad, varargin)
 %             timeInfo = ad.timeInfo;
-% 
+%
 %             % uses ad.labelInfo to call drawPrettyAxis
 %             tLims = [];
-%            % xLabel = ''; 
+%            % xLabel = '';
 %             axh = [];
 %             drawY = true; % also draw the y axis while we're here? otherwise they'll be nothing there
 %             setXLim = false;
 %             assignargs(varargin);
-% 
+%
 %             if isempty(axh)
 %                 axh = gca;
 %             end
@@ -1807,30 +1811,30 @@ classdef AlignSummary
 %             end
 %             tMin = tLims(1);
 %             tMax = tLims(2);
-%               
+%
 %             labelInfo = ad.getLabelInfo(timeInfo, 'tMin', tMin, 'tMax', tMax);
 %             tickPos = [labelInfo.time];
 %             tickLabels = {labelInfo.name};
 %             tickAlignments = {labelInfo.align};
-%                      
+%
 %             if setXLim
 %                 xlim([min(tickPos), max(tickPos)]);
 %             end
-%             
+%
 %             if drawY
-%                 makePrettyAxis('yOnly', true); 
+%                 makePrettyAxis('yOnly', true);
 %             else
 %                 axis(axh, 'off');
 %                 box(axh, 'off');
 %             end
-%             
+%
 %             if all(~isnan(tLims))
-%                 drawAxis(tickPos, 'tickLabels', tickLabels, 'tickAlignments', tickAlignments, 'axh', axh); 
+%                 drawAxis(tickPos, 'tickLabels', tickLabels, 'tickAlignments', tickAlignments, 'axh', axh);
 %             end
 %         end
 
     end
-    
+
     methods(Access=protected) % Utility methods
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~ishandle(obj)

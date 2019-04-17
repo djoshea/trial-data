@@ -1,20 +1,19 @@
 classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
     properties(Dependent) 
-        % these are encoded in the channel name
-        array
+        % these are encoded in the channel name as type_arrayElectrode,
+        % e.g. lfp_vA001
+        type string
+        array string
         electrode
-        type
     end
-    
-%     properties(SetAccess=protected)
-%         arrayManual = '';
-%         electrodeManual = [];
-%         typeManual = '';
-%     end
     
     methods
         function cd = ContinuousNeuralChannelDescriptor(name, timeField)
             cd = cd@AnalogChannelDescriptor(name, timeField);
+        end
+        
+        function impl = getImpl(cd)
+            impl = ContinuousNeuralChannelImpl(cd);
         end
     end
     
@@ -77,8 +76,9 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
     end
     
     methods(Static)
-        function cd = buildFromTypeArrayElectrode(type, array, electrode, timeField)
-            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode);
+        function cd = buildFromTypeArrayElectrode(type, array, electrode, timeField, numElectrodes)
+            if nargin < 5, numElectrodes = []; end
+            name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode, numElectrodes);
             cd = ContinuousNeuralChannelDescriptor(name, timeField);
         end
         
@@ -90,28 +90,49 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
         function [chName] = convertArrayElectrodeToChannelName(arrayElectrodeStr)
             [type, array, electrode] = ContinuousNeuralChannelDescriptor.parseTypeArrayElectrode(arrayElectrodeStr);
             assert(~isnan(electrode), 'Could not parse array/electrode string %s', arrayElectrodeStr);
-            chName = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode);
+            chName = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode, numElectrode);
         end
         
-        function str = generateNameFromTypeArrayElectrode(type, array, electrode)
-            if isempty(type)
-                str = sprintf('%s%03d', array, electrode);
+        function str = generateNameFromTypeArrayElectrode(type, array, electrode, numElectrodes)
+            if nargin < 4 || isempty(numElectrodes)
+                padZeros = 3;
             else
-                str = sprintf('%s_%s%03d', type, array, electrode);
+                padZeros = max(3, ceil(log10(numElectrodes)));
+            end
+            
+            assert(isscalar(electrode));
+            
+           if isempty(type)
+                str = sprintf("%s%0*d", array, padZeros, electrode);
+            else
+                str = sprintf("%s_%s%0*d", type, array, padZeros, electrode);
             end
         end
 
         function [type, array, electrode] = parseTypeArrayElectrode(str)
             tokens = regexp(str, '(?<type>\w+_)?(?<array>[A-Za-z_]*)(?<electrode>\d+)', 'names', 'once');
             if isempty(tokens)
-                array = '';
+                array = "";
                 electrode = NaN;
-                type = '';
+                type = "";
             else
+                if isempty(tokens.array) && ~isempty(tokens.type)
+                    % this can happen when array ends with _
+                    if contains(tokens.type, '_')
+                        idx = find(tokens.type == '_', 1, 'first');
+                        temp = tokens.type;
+                        tokens.type = temp(1:idx);
+                        tokens.array = temp(idx+1:end);
+                    end
+                end
                 array = tokens.array;
-                electrode =str2double(tokens.electrode);
+                electrode = str2double(tokens.electrode);
                 type = tokens.type(1:end-1); % strip trailing _
             end
+        end
+        
+        function cls = getSubChannelClass()
+            cls = '';
         end
     end
 

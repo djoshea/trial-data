@@ -3,32 +3,32 @@ classdef PopulationTrajectorySetBuilder
     % manually by holding property values temporarily in the factory
     % instance. See PopulationTrajectorySet for documentation on the
     % meanings of these values
-    
+
     % These properties hold temporary data for injecting into a PopulationTrajectorySet
-    % when building 
+    % when building
     properties
         data
         propMeta
     end
-   
+
     % initial construction methods
     methods(Static)
         function pset = fromAllUnitsInTrialData(tdca, varargin)
             p = inputParser();
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
-            
+
             if ~isa(tdca, 'TrialDataConditionAlign')
                 tdca = TrialDataConditionAlign(tdca);
             end
-            
+
             % each unit in TrialData becomes a basis
-            units = tdca.listSpikeChannels();
+            units = p.Results.channelNames;
             nUnits = numel(units);
-            
+
             pset = PopulationTrajectorySet();
             pset.datasetName = tdca.datasetName;
-            
+
             pset.timeUnitName = tdca.timeUnitName;
             pset.timeUnitsPerSecond = tdca.timeUnitsPerSecond;
             pset.dataSources = {tdca};
@@ -38,13 +38,13 @@ classdef PopulationTrajectorySetBuilder
             if ~isempty(p.Results.spikeFilter)
                 pset.spikeFilter = p.Results.spikeFilter;
             end
-            
+
             ci = tdca.conditionInfo.fixAllValueLists();
             pset = pset.setConditionDescriptor(ci);
             pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
             pset = pset.initialize();
         end
-        
+
         function pset = fromAllUnitsInTrialDataSplitBySaveTag(td)
             % each unit from each save tag in TrialData becomes a basis
             if ~isa(td, 'TrialDataConditionAlign')
@@ -52,11 +52,11 @@ classdef PopulationTrajectorySetBuilder
             end
             units = td.listSpikeChannels();
             nUnits = numel(units);
-            
+
             saveTags = td.getParamUnique('saveTag');
             nSaveTags = numel(saveTags);
             [~, saveTagIdxByTrial] = ismember(td.getParam('saveTag'), saveTags);
-            
+
             % number of spikes in each save tag by each unit
             debug('Counting spikes in each save tag for each unit\n');
             spikeCountBySaveTag = zeros(nUnits, nSaveTags);
@@ -65,13 +65,13 @@ classdef PopulationTrajectorySetBuilder
                 spikeCountBySaveTag(iU, :) = counts;
             end
             [keepUnits, keepSaveTags] = find(spikeCountBySaveTag > 0);
-            
+
             pset = PopulationTrajectorySet();
             pset.dataUnits = 'sp/s';
             pset.datasetName = td.datasetName;
             pset.timeUnitName = td.timeUnitName;
             pset.timeUnitsPerSecond = td.timeUnitsPerSecond;
-            
+
             % build separate TrialData for each save tag, then index the
             % data sources back into these by save tag
             debug('Splitting save tags\n');
@@ -84,26 +84,33 @@ classdef PopulationTrajectorySetBuilder
             pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
         end
-        
+
         function pset = fromMultipleTrialData(tdCell, varargin)
             p = inputParser();
             p.addOptional('channelNames', {}, @(x) isempty(x) || iscell(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
-            
+
             % if only tdCell is provided, all spiking units in each td will
             % be used
             pset = PopulationTrajectorySet();
             %pset.datasetName = td.datasetName;
-            
+
+            channelNamesBySource = p.Results.channelNames;
+            if ~isempty(channelNamesBySource)
+                if ischar(channelNamesBySource)
+                    channelNamesBySource = repmat({channelNamesBySource}, nSources, 1);
+                end
+            end
+
             nSources = numel(tdCell);
             iBasis = 1;
             for i = 1:nSources
                 if ~isa(tdCell{i}, 'TrialDataConditionAlign')
                     tdCell{i} = TrialDataConditionAlign(tdCell{i});
                 end
-                units = tdCell{i}.listSpikeChannels();
-                if isempty(p.Results.channelNames)
+                if isempty(channelNamesBySource)
+                    units = tdCell{i}.listSpikeChannels();
                     % use all spike channels in each file
                     for j = 1:numel(units)
                         basisDataSourceIdx(iBasis) = i; %#ok<AGROW>
@@ -111,63 +118,177 @@ classdef PopulationTrajectorySetBuilder
                         iBasis = iBasis + 1;
                     end
                 else
-                    % use specified channel names
-                    basisDataSourceIdx(iBasis) = i;
-                    basisDataSourceChannelNames{iBasis} = p.Results.channelNames{i}; 
-                    iBasis = iBasis + 1;
+                    chNamesThis = channelNamesBySource{i};
+                    if ischar(chNamesThis)
+                        chNamesThis = {chNamesThis};
+                    end
+                    for j = 1:numel(chNamesThis)
+                        if tdCell{i}.hasAnalogChannelGroup(chNamesThis{j})
+                            % split analog channel group into separate channels
+                            newNames = tdCell{i}.listAnalogChannelsInGroupByColumn(chNamesThis{j});
+
+                            for k = 1:numel(newNames)
+                                % use specified channel names
+                                basisDataSourceIdx(iBasis) = i;
+                                basisDataSourceChannelNames{iBasis} = newNames{k};
+                                iBasis = iBasis + 1;
+                            end
+                        else
+                            % use specified channel names
+                            basisDataSourceIdx(iBasis) = i;
+                            basisDataSourceChannelNames{iBasis} = chNamesThis{j};
+                            iBasis = iBasis + 1;
+                        end
+                    end
                 end
             end
-            
+
             % check that all tdCell have same timeUnitsPerSecond
             assert(numel(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))) == 1, ...
                 'All data sources must have identical timeUnitsPerSecond');
-            
+
             pset.timeUnitName = tdCell{1}.timeUnitName;
             pset.timeUnitsPerSecond = tdCell{1}.timeUnitsPerSecond;
             pset.dataSources = makecol(tdCell);
-            pset.basisDataSourceIdx = makecol(basisDataSourceIdx); 
-            pset.basisDataSourceChannelNames = makecol(basisDataSourceChannelNames); 
+            pset.basisDataSourceIdx = makecol(basisDataSourceIdx);
+            pset.basisDataSourceChannelNames = makecol(basisDataSourceChannelNames);
             if ~isempty(p.Results.spikeFilter)
                 pset.spikeFilter = p.Results.spikeFilter;
             end
-            
+
             tdca = tdCell{1};
             pset = pset.setConditionDescriptor(tdca.conditionInfo);
             pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
             pset = pset.initialize();
         end
-        
+
+        function pset = fromAnalogChannelsInMultipleTrialData(tdCell, varargin)
+            p = inputParser();
+            p.addRequired('channelNames', @(x) iscell(x));
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
+            p.parse(varargin{:});
+
+            timeDelta = p.Results.timeDelta;
+
+            % if only tdCell is provided, all spiking units in each td will
+            % be used
+            pset = PopulationTrajectorySet();
+            %pset.datasetName = td.datasetName;
+
+            channelNamesBySource = p.Results.channelNames;
+
+            nSources = numel(tdCell);
+            iBasis = 1;
+            for i = 1:nSources
+                if ~isa(tdCell{i}, 'TrialDataConditionAlign')
+                    tdCell{i} = TrialDataConditionAlign(tdCell{i});
+                end
+
+                chNamesThis = channelNamesBySource{i};
+                if ischar(chNamesThis)
+                    chNamesThis = {chNamesThis};
+                end
+                for j = 1:numel(chNamesThis)
+                    if tdCell{i}.hasAnalogChannelGroup(chNamesThis{j})
+                        % split analog channel group into separate channels
+                        newNames = tdCell{i}.listAnalogChannelsInGroupByColumn(chNamesThis{j});
+
+                        for k = 1:numel(newNames)
+                            % use specified channel names
+                            basisDataSourceIdx(iBasis) = i; %#ok<AGROW>
+                            basisDataSourceChannelNames{iBasis} = newNames{k};  %#ok<AGROW>
+                            iBasis = iBasis + 1;
+                        end
+                    else
+                        % use specified channel names
+                        basisDataSourceIdx(iBasis) = i;
+                        basisDataSourceChannelNames{iBasis} = chNamesThis{j};
+                        iBasis = iBasis + 1;
+                    end
+
+                    if isempty(timeDelta)
+                        timeDelta = tdCell{i}.getAnalogTimeDelta(chNamesThis{j});
+                    end
+                end
+            end
+
+            % check that all tdCell have same timeUnitsPerSecond
+            assert(numel(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))) == 1, ...
+                'All data sources must have identical timeUnitsPerSecond');
+
+            pset.timeUnitName = tdCell{1}.timeUnitName;
+            pset.timeUnitsPerSecond = tdCell{1}.timeUnitsPerSecond;
+            pset.dataSources = makecol(tdCell);
+            pset.basisDataSourceIdx = makecol(basisDataSourceIdx);
+            pset.basisDataSourceChannelNames = makecol(basisDataSourceChannelNames);
+            % don't want spiking filter to add padding
+            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', timeDelta);
+
+            tdca = tdCell{1};
+            pset = pset.setConditionDescriptor(tdca.conditionInfo);
+            pset = pset.setAlignDescriptorSet(tdca.alignInfoSet);
+            pset = pset.initialize();
+        end
+
+
         function pset = fromAnalogChannelsInTrialData(td, chNames, varargin)
             if nargin < 2
                 chNames = td.listAnalogChannels();
             end
+            if ischar(chNames)
+                chNames = {chNames};
+            end
             p = inputParser();
-            p.addParameter('timeDelta', td.getAnalogTimeDelta(chNames), @isscalar);
+            p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.parse(varargin{:});
-            
+            timeDelta = p.Results.timeDelta;
+
+            chNamesExpanded = cell(0, 1);
+            iBasis = 1;
+            for c = 1:numel(chNames)
+                if td.hasAnalogChannelGroup(chNames{c})
+                    % split analog channel group into separate channels
+                    newNames = td.listAnalogChannelsInGroupByColumn(chNames{c});
+
+                    for k = 1:numel(newNames)
+                        % use specified channel names
+                        chNamesExpanded{iBasis} = newNames{k};
+                        iBasis = iBasis + 1;
+                    end
+                else
+                    chNamesExpanded{iBasis} = chNames{c};
+                    iBasis = iBasis+1;
+                end
+
+                if isempty(timeDelta)
+                    timeDelta = td.getAnalogTimeDelta(chNames{c});
+                end
+            end
+
+
             pset = PopulationTrajectorySet();
             pset.datasetName = td.datasetName;
-            
+
             if ~isa(td, 'TrialDataConditionAlign')
                 td = TrialDataConditionAlign(td);
             end
             pset.timeUnitName = td.timeUnitName;
             pset.timeUnitsPerSecond = td.timeUnitsPerSecond;
             pset.dataSources = {td};
-            pset.basisDataSourceIdx = onesvec(numel(chNames));
-            pset.basisDataSourceChannelNames = chNames;
-            
+            pset.basisDataSourceIdx = onesvec(numel(chNamesExpanded));
+            pset.basisDataSourceChannelNames = chNamesExpanded;
+
             % don't want spiking filter to add padding
-            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', p.Results.timeDelta);
-            
+            pset.spikeFilter = NonOverlappingSpikeBinFilter('timeDelta', timeDelta);
+
             pset = pset.setConditionDescriptor(td.conditionInfo);
             pset = pset.setAlignDescriptorSet(td.alignInfoSet);
             pset = pset.initialize();
         end
-        
+
         function pset = fromDataMeanTensor(dataMean_NbyCbyT, varargin)
             p = inputParser();
-            
+
             p.addOptional('time', [], @(x) isempty(x) || iscell(x) || isvector(x));
             p.addParameter('basisNames', {}, @iscellstr);
             p.addParameter('zeroEventNames', {}, @iscellstr);
@@ -178,7 +299,7 @@ classdef PopulationTrajectorySetBuilder
             p.addParameter('timeUnitName', 'ms', @ischar);
             p.addParameter('timeUnitsPerSecond', 1000, @isscalar);
             p.parse(varargin{:});
-            
+
             if ~iscell(dataMean_NbyCbyT)
                 dataMean_NbyCbyT = {dataMean_NbyCbyT};
             end
@@ -200,7 +321,7 @@ classdef PopulationTrajectorySetBuilder
                 assert(prod(conditionsSize) == C);
             end
             cd = ConditionDescriptor.createManualWithSize(conditionsSize, 'axisNames', p.Results.axisNames, 'valuesAlongAxes', p.Results.valuesAlongAxes);
-                
+
             if isempty(p.Results.time)
                 time = (1:T)';
             else
@@ -213,7 +334,7 @@ classdef PopulationTrajectorySetBuilder
             tMinDataMean = cellfun(@min, time);
             tMaxDataMean = cellfun(@max, time);
             A = numel(dataMean_NbyCbyT);
-            
+
             if isempty(p.Results.zeroEventNames)
                 zeroEventNames = arrayfun(@(i) sprintf('Align%d', i), (1:A)', 'UniformOutput', false);
             end
@@ -222,7 +343,7 @@ classdef PopulationTrajectorySetBuilder
                 ev = zeroEventNames{iA};
                 alignDescriptorSet{iA} = AlignDescriptor().zero(ev).start(ev, tMinDataMean(iA)).stop(ev, tMaxDataMean(iA));
             end
-            
+
             [tMinValidByAlignBasisCondition, tMaxValidByAlignBasisCondition] = deal(nan(A, N, C));
             dataValid = false(A, N, C);
             for iA = 1:A
@@ -230,13 +351,13 @@ classdef PopulationTrajectorySetBuilder
                 tMaxValidByAlignBasisCondition(iA, :, :) = TensorUtils.findNAlongDim(~isnan(dataMean_NbyCbyT{1}), 3, 1, 'last');
                 dataValid(iA, :, :) = any(~isnan(dataMean_NbyCbyT{iA}), 3);
             end
-            
+
             if isempty(p.Results.basisNames)
                 basisNames = arrayfun(@(i) sprintf('basis%d', i), (1:N)', 'UniformOutput', false);
             else
                 basisNames = p.Results.basisNames;
             end
-            
+
             pset = PopulationTrajectorySet();
             pset.dataSourceManual = true;
             pset.alignDescriptorSet = alignDescriptorSet;
@@ -253,7 +374,7 @@ classdef PopulationTrajectorySetBuilder
             pset.dataNTrials = double(dataValid);
             pset.tMinValidByAlignBasisCondition = tMinValidByAlignBasisCondition;
             pset.tMaxValidByAlignBasisCondition = tMaxValidByAlignBasisCondition;
-            
+
             alignSummaryData = cell(1, A);
             for iA = 1:A
                 alignSummaryData{iA} = AlignSummary.buildEmptyFromConditionAlignDescriptor(cd, pset.alignDescriptorSet{iA}, tMinDataMean(iA), tMaxDataMean(iA));
@@ -263,39 +384,39 @@ classdef PopulationTrajectorySetBuilder
             pset = pset.initialize();
         end
     end
-    
+
     % methods to list the properties that are involved in specific contexts
     methods(Static)
         function propMetaStruct = filterPropMetaNonEmptyRequired(propMetaStruct)
-            
+
             propMetaStruct = PropertyShapeMeta.filterMetaStruct(propMetaStruct, @(meta, name) meta.getAttrWithDefault('emptyOkay', false), true);
         end
-        
+
         function [toCopy, toCheckNonEmpty] = getPropMetaInGroups(groups)
             toCopy = PopulationTrajectorySet.getPropMetaInGroup(groups);
             toCheckNonEmpty = PopulationTrajectorySetBuilder.filterPropMetaNonEmptyRequired(toCopy);
         end
-            
+
         function [toCopy, toCheckNonEmpty] = getPropMetaSingleTrial(varargin)
             p = inputParser();
             p.addParameter('includeDataSourceInfo', true, @islogical); % used when construction psets with dataSourceManual == true
             p.parse(varargin{:});
-            
+
             groups = {'settings', 'descriptors', 'basisInfo', 'singleTrial', ...
                  'trialAverage', 'randomized', 'noise'}
             if p.Results.includeDataSourceInfo
                 groups{end+1} = 'dataSourceInfo';
             end
-            
+
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaInGroups(groups);
         end
-        
+
         function [toCopy, toCheckNonEmpty] = getPropMetaTrialAverage(varargin)
             p = inputParser();
             p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
 %             p.addParameter('includeDataSourceInfo', true, @islogical); % used when construction psets with dataSourceManual == true
             p.parse(varargin{:});
-            
+
             groups = {'settings', 'descriptors', 'basisInfo', ...
                  'trialAverage', 'randomized'}
 %             if p.Results.includeDataSourceInfo
@@ -304,11 +425,11 @@ classdef PopulationTrajectorySetBuilder
             if p.Results.includeDiffTrialsNoise
                 groups{end+1} = 'noise';
             end
-            
+
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaInGroups(groups);
         end
     end
-    
+
     % methods to copy fields from pset into a builder
     methods(Static)
         function bld = copySingleTrialFromPopulationTrajectorySet(pset)
@@ -325,41 +446,41 @@ classdef PopulationTrajectorySetBuilder
             propMeta = PopulationTrajectorySetBuilder.getPropMetaTrialAverage();
             bld.data = pset.getValuesFromPropMeta(propMeta);
         end
-        
+
         function bld = copySettingsDescriptorsBasisInfoFromPopulationTrajectorySet(pset)
             bld = PopulationTrajectorySetBuilder();
             propMeta = PopulationTrajectorySetBuilder.getPropMetaInGroups({'settings', 'descriptors', 'basisInfo'});
             bld.data = pset.getValuesFromPropMeta(propMeta);
         end
-        
+
         function bld = copySettingsDescriptorsFromPopulationTrajectorySet(pset)
             bld = PopulationTrajectorySetBuilder();
             propMeta = PopulationTrajectorySetBuilder.getPropMetaInGroups({'settings', 'descriptors'});
             bld.data = pset.getValuesFromPropMeta(propMeta);
         end
     end
-    
+
     methods(Static)
         function psetManual = convertToAutoWithManualDataByTrial(pset, varargin)
             bld = PopulationTrajectorySetBuilder.copySingleTrialFromPopulationTrajectorySet(pset);
             psetManual = bld.buildManualWithSingleTrialData(varargin{:});
         end
-        
+
         function psetManual = convertToManualWithTrialAveragedData(pset, varargin)
             % params include 'includeDiffTrialsNoise'
             fields = PopulationTrajectorySetBuilder.listFieldsTrialAverage(varargin{:});
             bld = PopulationTrajectorySetBuilder.copyFromPopulationTrajectorySet(pset, fields);
             psetManual = bld.buildManualWithTrialAveragedData(varargin{:});
         end
-        
+
         function pset = concatenatePopulationTrajectorySets(psetCell)
             if numel(psetCell) == 1
                 pset = psetCell{1};
                 return;
             end
-            
+
             bld = PopulationTrajectorySetBuilder.copySettingsDescriptorsFromPopulationTrajectorySet(psetCell{1});
-            
+
             % determine simultaneity (when the data source is the same
             % across each
             simultaneous = all(cellfun(@(pset) pset.simultaneous, psetCell));
@@ -369,23 +490,23 @@ classdef PopulationTrajectorySetBuilder
                     simultaneous = simultaneous && isequal(commonDataSource, psetCell{iP}.dataSources{1});
                 end
             end
-            
+
             manual = cellfun(@(pset) pset.dataSourceManual, psetCell);
             if any(manual)
                 error('Not yet implemented for manual psets');
             end
- 
+
             % then copy the data
-            fields = PopulationTrajectorySetBuilder.fBasisInfo;   
+            fields = PopulationTrajectorySetBuilder.fBasisInfo;
             getFn = @(fld) cellfun(@(pset) makecol(pset.(fld)), psetCell, 'UniformOutput', false);
             for iF = 1:length(fields)
                 fld = fields{iF};
                 vals = getFn(fld);
                 bld.data.(fld) = cat(1, vals{:});
             end
-            
+
             nBasesTotal = sum(cellfun(@(pset) pset.nBases, psetCell));
-            
+
             if simultaneous
                 bld.data.dataSources = pset.dataSource;
                 bld.data.basisDataSourceIdx = ones(nBasesTotal, 1);
@@ -393,7 +514,7 @@ classdef PopulationTrajectorySetBuilder
                 vals = getFn('dataSources');
                 bld.data.dataSources = cat(1, vals{:});
                 vals = getFn('basisDataSourceIdx');
-            
+
                 % offset the data source idx according to the concatenation
                 nSources = cellfun(@(pset) pset.nDataSources, psetCell);
                 [vals, whichPset] = TensorUtils.catWhich(1, vals{:});
@@ -404,10 +525,10 @@ classdef PopulationTrajectorySetBuilder
                 end
                 bld.data.basisDataSourceIdx = vals;
             end
-            
+
             vals = getFn('basisDataSourceChannelNames');
             bld.data.basisDataSourceChannelNames = cat(1, vals{:});
-            
+
             if simultaneous
                 pset = bld.buildAutoWithSingleTrialData();
             else
@@ -415,7 +536,7 @@ classdef PopulationTrajectorySetBuilder
             end
         end
     end
-    
+
     % methods to build a pset from the fields that were stored
     methods
         function pset = buildWithFields(bld, propMetaToCopy, varargin)
@@ -424,15 +545,15 @@ classdef PopulationTrajectorySetBuilder
             p.addParameter('dataByTrialManual', false, @islogical);
             p.addParameter('dataMeanManual', false, @islogical);
             p.parse(varargin{:});
-            
+
             pset = PopulationTrajectorySet();
-            
+
             % first set the properties that determine what is manual and what is automatically computed
             % these settings will dictate where the subsequent properties are stored
             pset.dataInfoManual = p.Results.dataInfoManual;
             pset.dataByTrialManual = p.Results.dataByTrialManual;
             pset.dataMeanManual = p.Results.dataMeanManual;
-            
+
             flds = fieldnames(propMetaToCopy);
             for f = 1:numel(flds)
                 if isfield(bld.data, flds{f})
@@ -442,46 +563,46 @@ classdef PopulationTrajectorySetBuilder
 
             pset = pset.initialize();
         end
-        
+
         function pset = buildAuto(bld, varargin)
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaSingleTrial(varargin{:});
             bld.assertNonEmpty(toCheckNonEmpty);
             pset = bld.buildWithFields(toCopy);
         end
-        
+
         function pset = buildManualDataInfo(bld, varargin)
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.getPropMetaSingleTrial(varargin{:});
             bld.assertNonEmpty(toCheckNonEmpty);
             pset = bld.buildWithFields(toCopy);
         end
-        
+
         function pset = buildAutoWithTrialAveragedData(bld, varargin)
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.listFieldsTrialAverage(...
                 'includeDiffTrialsNoise', true, 'includeDataSourceInfo', true);
-            
+
             bld.assertNonEmpty(toCheckNonEmpty);
             pset = bld.buildAutoWithFields(toCopy);
         end
-            
+
         function pset = buildManualWithSingleTrialData(bld)
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.listFieldsSingleTrial();
             bld.assertNonEmpty(toCheckNonEmpty);
             pset = bld.buildManualWithFields(toCopy);
         end
-        
+
         function pset = buildManualWithTrialAveragedData(bld, varargin)
             p = inputParser();
             p.addParameter('includeDiffTrialsNoise', true, @islogical); % this can be slow so we make it optional
             p.parse(varargin{:});
-            
+
             [toCopy, toCheckNonEmpty] = PopulationTrajectorySetBuilder.listFieldsTrialAverage(...
                 'includeDiffTrialsNoise', p.Results.includeDiffTrialsNoise);
-            
+
             bld.assertNonEmpty(toCheckNonEmpty);
             pset = bld.buildManualWithFields(toCopy);
         end
     end
-    
+
     methods(Access=protected)
         function assertNonEmpty(bld, varargin)
             % assert that all fields in field are non empty
@@ -493,33 +614,33 @@ classdef PopulationTrajectorySetBuilder
                     strjoin(fields(isEmpty), ', '));
             end
         end
-        
+
         function pset = buildManualWithFields(bld, fields)
             pset = PopulationTrajectorySet();
             pset.dataSourceManual = true;
-            
+
             for iFld = 1:numel(fields)
                 fld = fields{iFld};
                 if isfield(bld.data, fld)
                     pset.(fld) = bld.data.(fld);
                 elseif pset.propCanBeSetCurrently(fld)
-                    % warn since this property should theoretically be set 
+                    % warn since this property should theoretically be set
                     warning('PTS Builder missing property value for %s', fld);
                 end
-            end 
-            
+            end
+
             pset = pset.initialize();
         end
-        
+
         function pset = buildAutoWithFields(bld, fields)
             pset = PopulationTrajectorySet();
             pset.dataSourceManual = false;
-            
+
             for iFld = 1:numel(fields)
                 fld = fields{iFld};
                 pset.(fld) = bld.data.(fld);
-            end 
-            
+            end
+
             pset = pset.initialize();
             pset.dataSourceManual = false;
             pset = pset.applyAlignDescriptorSet();
