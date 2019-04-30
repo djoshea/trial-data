@@ -41,7 +41,7 @@ classdef EventChannelDescriptor < ChannelDescriptor
 
         function cd = inferAttributesFromData(cd, dataCell)
             cd.warnIfNoArgOut(nargout);
-            cd.originalDataClassByField = {ChannelDescriptor.getCellElementClass(dataCell)};
+            cd.originalDataClassByField = {ChannelImpl.getCellElementClass(dataCell)};
         end
     end
     

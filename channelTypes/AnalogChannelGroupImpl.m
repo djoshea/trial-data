@@ -4,10 +4,11 @@ classdef AnalogChannelGroupImpl < ChannelImpl
             impl.cd = cd;
         end
         
-         function data = convertDataCellOnAccess(cd, fieldIdx, data)
+         function data = convertDataCellOnAccess(impl, fieldIdx, data)
             % cast to access class, also do scaling upon request
             % (cd.scaleFromLims -> cd.scaleToLims)
-            data = convertDataCellOnAccess@ChannelImpl(cd, fieldIdx, data);
+            data = convertDataCellOnAccess@ChannelImpl(impl, fieldIdx, data);
+            cd = impl.cd;
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims) && ~isempty(data)
                 data = ChannelImpl.scaleData(data, cd.scaleFromLims, cd.scaleToLims);
 %                 scaleFromLow = cd.scaleFromLims(1);
@@ -23,8 +24,9 @@ classdef AnalogChannelGroupImpl < ChannelImpl
             end
         end
         
-        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
-            data = convertDataSingleOnAccess@ChannelImpl(cd, fieldIdx, data);
+        function data = convertDataSingleOnAccess(impl, fieldIdx, data)
+            cd = impl.cd;
+            data = convertDataSingleOnAccess@ChannelImpl(impl, fieldIdx, data);
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 data = ChannelImpl.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
 %                 scaleFromLow = cd.scaleFromLims(2);
@@ -35,7 +37,8 @@ classdef AnalogChannelGroupImpl < ChannelImpl
             end
         end
         
-        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
+        function data = convertAccessDataCellToMemory(impl, fieldIdx, data)
+            cd = impl.cd;
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 data = ChannelImpl.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
 %                 scaleFromLow = cd.scaleFromLims(2);
@@ -44,10 +47,11 @@ classdef AnalogChannelGroupImpl < ChannelImpl
 %                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
 %                 data = cellfun(@(d) (d-scaleToLow)*(scaleFromRange/scaleToRange) + scaleFromLow, data, 'UniformOutput', false);
             end
-            data = convertAccessDataCellToMemory@ChannelImpl(cd, fieldIdx, data);
+            data = convertAccessDataCellToMemory@ChannelImpl(impl, fieldIdx, data);
         end
         
-        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
+        function data = convertAccessDataSingleToMemory(impl, fieldIdx, data)
+            cd = impl.cd;
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 data = ChannelImpl.scaleData(data, cd.scaleFromLims, cd.scaleToLims);
 %                 scaleFromLow = cd.scaleFromLims(2);
@@ -56,23 +60,25 @@ classdef AnalogChannelGroupImpl < ChannelImpl
 %                 scaleToRange = cd.scaleToLims(2) - cd.scaleToLims(1);
 %                 data = (data-scaleToLow)*(scaleFromRange/scaleToRange) + scaleFromLow;
             end
-            data = convertAccessDataSingleToMemory@ChannelImpl(cd, fieldIdx, data);
+            data = convertAccessDataSingleToMemory@ChannelImpl(impl, fieldIdx, data);
         end
         
-        function [dataCell, timeCell] = computeTransformDataRaw(cd, td, varargin)
-            [dataCell, timeCell] = AnalogChannelGroupDescriptor.doComputeTransformData(cd, td, varargin{:});
+        function [dataCell, timeCell] = computeTransformDataRaw(impl, td, varargin)
+            [dataCell, timeCell] = AnalogChannelGroupImpl.doComputeTransformData(impl, td, varargin{:});
         end
              
     end
     
      methods(Static)
-        function [dataCell, timeCell] = doComputeTransformData(cd, td, varargin)
+        function [dataCell, timeCell] = doComputeTransformData(impl, td, varargin)
             p = inputParser();
             p.addParameter('applyScaling', true, @islogical);
             p.addParameter('slice', {}, @(x) true); % this is used to index specifically into each sample
             p.addParameter('timeCell', [], @(x) true);
             p.addParameter('sort', false, @islogical);
             p.parse(varargin{:});
+            
+            cd = impl.cd;
             
             % get raw data from trial data
             [dataCell, timeCell] = td.getAnalogChannelGroupMulti(cd.transformChannelNames, 'raw', true, ...
