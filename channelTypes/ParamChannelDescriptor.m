@@ -74,7 +74,7 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 scalar = all(cellfun(@(x) isempty(x) || isscalar(x), dataCell));
                 vector = all(cellfun(@(x) isempty(x) || isvector(x), dataCell));
                 numeric = all(cellfun(@isnumeric, dataCell));
-                cls = ChannelDescriptor.getCellElementClass(dataCell);
+                cls = ChannelImpl.getCellElementClass(dataCell);
                 
                 cd.originalDataClassByField = {cls};
 

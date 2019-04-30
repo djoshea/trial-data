@@ -592,7 +592,7 @@ classdef TrialData
             for iG = 1:numel(groups)
                 gcd = td.channelDescriptorsByName.(groups(iG));
                 if isempty(gcd.sampleSize)
-                    sz = ChannelDescriptor.getCellElementSize({td.data.(gcd.dataFieldPrimary)}');
+                    sz = ChannelImpl.getCellElementSize({td.data.(gcd.dataFieldPrimary)}');
                     gcd.sampleSize = sz(2:end);
                     td.channelDescriptorsByName.(groups(iG)) = gcd;
                 end
@@ -605,7 +605,7 @@ classdef TrialData
                 if cds(iA).isColumnOfSharedMatrix
                     if ~ismember(cds(iA).primaryDataField, groups)
                         % add missing group with sample size info
-                        sz = ChannelDescriptor.getCellElementSize({td.data.(cds(iA).primaryDataField)}');
+                        sz = ChannelImpl.getCellElementSize({td.data.(cds(iA).primaryDataField)}');
                         gcd = cds(iA).buildGroupChannelDescriptor('sampleSize', sz(2:end));
 
                         td = td.addChannel(gcd, {}, 'ignoreDataFields', true, 'ignoreExisting', true);
@@ -615,7 +615,7 @@ classdef TrialData
                         parent = cds(iA).primaryDataField;
                         gcd = td.channelDescriptorsByName.(parent);
                         if isempty(gcd.sampleSize)
-                            sz = ChannelDescriptor.getCellElementSize({td.data.(cds(iA).dataFieldPrimary)}');
+                            sz = ChannelImpl.getCellElementSize({td.data.(cds(iA).dataFieldPrimary)}');
                             gcd.sampleSize = sz(2:end);
                         end
                         gcd = gcd.setSubChannelInfo(cds(iA).primaryDataFieldColumnIndex, cds(iA).name, cds(iA).unitsPrimary);
@@ -2742,13 +2742,11 @@ classdef TrialData
             % compute the median delta betwen successive samples of an
             % analog channel(s), returns the minimum timeDelta across all channels
 
-            if ischar(name)
-                name = {name};
-            end
+            name = string(name);
 
             delta = nanvec(numel(name));
             for i = 1:numel(name)
-                cd = td.getChannelDescriptor(name);
+                cd = td.getChannelDescriptor(name{i});
                 if (isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')) && cd.isUniform
                     % trust the channel descriptor if it is a uniform channel
                     delta(i) = cd.timeDelta;
@@ -3189,7 +3187,7 @@ classdef TrialData
 
             sampleSize = p.Results.sampleSize;
             if isempty(sampleSize)
-                sampleSize = ChannelDescriptor.getCellElementSize(values);
+                sampleSize = ChannelImpl.getCellElementSize(values);
                 sampleSize = sampleSize(2:end);
             end
 
@@ -3203,8 +3201,8 @@ classdef TrialData
                 % loop over channels and create AnalogChannelDescriptors
                 opts.scaleFromLims = p.Results.scaleFromLims;
                 opts.scaleToLims = p.Results.scaleToLims;
-                opts.dataClass = ChannelDescriptor.getCellElementClass(values);
-                opts.timeClass = ChannelDescriptor.getCellElementClass(times);
+                opts.dataClass = ChannelImpl.getCellElementClass(values);
+                opts.timeClass = ChannelImpl.getCellElementClass(times);
                 opts.sampleSize = sampleSize;
 
                 % create a channel descriptor for the group as a whole
@@ -3780,6 +3778,7 @@ classdef TrialData
             else
                 % fetch the data directly
                 cd = td.channelDescriptorsByName.(groupName);
+                impl = cd.getImpl();
                 timeField = cd.timeField;
                 dataField = cd.dataFieldPrimary;
 
@@ -3800,8 +3799,8 @@ classdef TrialData
 
                 % do scaling and convert to double
                 if p.Results.applyScaling
-                    data = cd.convertDataCellOnAccess(1, data);
-                    emptySlice = cd.convertDataCellOnAccess(1, emptySlice);
+                    data = impl.convertDataCellOnAccess(1, data);
+                    emptySlice = impl.convertDataCellOnAccess(1, emptySlice);
                 end
 
                 if ~isempty(p.Results.slice)
@@ -4123,7 +4122,8 @@ classdef TrialData
                     % take new data back into scaled values to match the
                     % existing
                     cd = td.channelDescriptorsByName.(groupName);
-                    values = cd.convertAccessDataCellToMemory(1, values);
+                    impl = cd.getImpl();
+                    values = impl.convertAccessDataCellToMemory(1, values);
                 end
             end
 
@@ -5071,7 +5071,7 @@ classdef TrialData
 
             values = p.Results.values;
             if iscell(values)
-                dataClass = ChannelDescriptor.getCellElementClass(values);
+                dataClass = ChannelImpl.getCellElementClass(values);
             else
                 dataClass = class(values);
             end
