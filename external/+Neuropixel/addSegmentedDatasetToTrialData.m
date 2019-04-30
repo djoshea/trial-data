@@ -17,7 +17,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     end
     
     cluster_ids = p.Results.cluster_ids;
-    clusterInds = seg.lookupClusterInds(cluster_ids);
+    clusterInds = seg.lookup_clusterIds(cluster_ids);
     
     cluster_groups_keep = categorical(p.Results.cluster_groups);
     
