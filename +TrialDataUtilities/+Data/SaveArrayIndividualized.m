@@ -23,7 +23,7 @@ classdef SaveArrayIndividualized < handle
             N = numel(S);
             
             % create the directory as path/name
-            fullPath = GetFullPath(locationName);
+            fullPath = GetFullPath(char(locationName));
             
             if exist(fullPath, 'dir')
                 TrialDataUtilities.Data.SaveArrayIndividualized.clearLocationContents(fullPath);

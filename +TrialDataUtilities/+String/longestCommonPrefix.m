@@ -1,5 +1,9 @@
 function prefix = longestCommonPrefix(entries)
     entries = string(entries);
+    if isempty(entries)
+        prefix = "";
+        return;
+    end
     nCommon = nan(numel(entries)-1, 1);
     for iS = 1:numel(entries)-1
         nCommon(iS) = getNCommon(entries(iS), entries(iS+1));
