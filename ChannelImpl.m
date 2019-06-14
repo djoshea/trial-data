@@ -62,6 +62,19 @@ classdef ChannelImpl
                         
                         data = cellfun(@categorical, data);
                         
+                    elseif ismember(cd.elementTypeByField(fieldIdx), cd.BOOLEAN)
+                        data = ChannelImpl.cellCast(data, 'logical');
+                        missingVal = cd.missingValueByField{fieldIdx};
+                        assert(isscalar(missingVal));
+                        nVals = cellfun(@numel, data);
+                        if any(nVals > 1)
+                            throwError('Data must contain scalar values for each trial');
+                        end
+                        [data{nVals==0}] = deal(missingVal);
+                        nel = numel(data);
+                        data = cat(1, data{:});
+                        assert(isempty(data) || isvector(data) && numel(data) == nel);
+                        
                     else
                         missingVal = cd.missingValueByField{fieldIdx};
                         assert(isscalar(missingVal));

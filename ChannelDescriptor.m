@@ -139,15 +139,16 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             assert(numel(cd.catAlongFirstDimByField) == nFields, 'catAlongFirstDimByField has wrong size');
         end
 
-        function idx = lookupFieldId(cd, fieldId)
+        function [inds, fieldIds] = lookupFieldId(cd, fieldId)
             if isnumeric(fieldId)
-                idx = fieldId;
+                inds = fieldId;
             else
-                [tf, idx] = ismember(fieldId, cd.fieldIds);
+                [tf, inds] = ismember(fieldId, cd.fieldIds);
                 if ~all(tf)
                     error('Field with id %s not found for channel %s', fieldId{find(~tf, 1)}, cd.name);
                 end
             end
+            fieldIds = cd.fieldIds(inds);
         end
 
         function info = getFieldInfoById(cd, fieldId)
@@ -162,15 +163,29 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             info.memoryClass = cd.memoryClassByField{ind};
             info.storageClass = cd.storageClassByField{ind};
             info.isShareable = cd.isShareableByField(ind);
-
         end
 
         % used by trial data when it needs to change field names
-        function name = suggestFieldName(cd, fieldIdx)
-            if fieldIdx == 1
-                name = cd.name;
+        function name = suggestFieldName(cd, fieldInd)
+            if isnumeric(fieldInd)
+                [~, fieldId] = cd.lookupFieldId(fieldInd);
             else
-                name = sprintf('%s_f%d', fieldIdx);
+                fieldId = fieldInd;
+            end
+
+            s = cd.buildNameSuggestionsById();
+            name = s.(fieldId);
+        end
+
+        % ChannelDescriptors might want to override this if they want custom field name suggestions
+        function s = buildNameSuggestionsById(cd)
+            ids = cd.fieldIds;
+            for i = 1:numel(ids)
+                if i == 1
+                    s.(ids{i}) = cd.name;
+                else
+                    s.(ids{i}) = sprintf('%s_%s', cd.name, ids{i});
+                end
             end
         end
 
@@ -349,10 +364,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             vals = missingVals(cd.elementTypeByField);
             accClasses = string(cd.accessClassByField); % was memory class, changed to access class so that int types converted to single get filled as NaN
             for iF = 1:numel(vals)
-                if ~cd.collectAsCellByField(iF) && ismember(cd.elementTypeByField, [cd.VECTOR, cd.NUMERIC])
+                if ~cd.collectAsCellByField(iF) && ismember(makecol(cd.elementTypeByField(iF)), [cd.VECTOR, cd.NUMERIC])
                     % replace [] with NaN since this will be collected as
                     % matrix
-                    vals{iF} = nan(1, accClasses{iF});
+                    if strcmp(accClasses{iF}, "logical")
+                        vals{iF} = false;
+                    else
+                        vals{iF} = nan(1, accClasses{iF});
+                    end
 
                 elseif cd.elementTypeByField(iF) == cd.SCALAR
                     if strcmp(accClasses{iF}, 'logical')
@@ -381,7 +400,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
 
         function tf = get.collectAsCellByField(cd)
-            tf = ~cd.isVectorizableByField;
+            tf =makecol(~cd.isVectorizableByField);
             if ~isempty(cd.catAlongFirstDimByField)
                 tf = tf & makecol(~cd.catAlongFirstDimByField);
             end
@@ -396,7 +415,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
 
         function tf = get.isVectorizableByField(cd) % returns true for boolean and scalar including string
-            tf = ismember(cd.elementTypeByField, [cd.BOOLEAN, cd.SCALAR, cd.DATENUM, cd.STRING, cd.CATEGORICAL]);
+            tf = ismember(makecol(cd.elementTypeByField), [cd.BOOLEAN, cd.SCALAR, cd.DATENUM, cd.STRING, cd.CATEGORICAL]);
         end
 
         function tf = get.isNumericScalarByField(cd)
