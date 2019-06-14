@@ -976,6 +976,16 @@ classdef TensorUtils
                     num2cell(1:numel(varargin)), 'UniformOutput', false)));
             end
         end
+        
+        function [out, subs] = catCellWhichSubs(dim, inCell)
+            % works like cat, but returns a vector indicating which of the
+            % inputs each element of out came from
+            sz = size(inCell);
+            out = cat(dim, inCell{:});
+            ind = cell2mat(TensorUtils.makecol(cellfun(@(in, idx) idx*ones(size(in, dim), 1), inCell(:), ...
+                num2cell((1:numel(inCell))'), 'UniformOutput', false)));
+            subs = TensorUtils.ind2subAsMat(sz, ind);
+        end
 
         function paddedCell = expandToSameSizeAlongDims(dims, varargin)
             nd = max(max(dims), max(cellfun(@ndims, varargin)));

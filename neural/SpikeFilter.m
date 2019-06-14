@@ -3,71 +3,52 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
 % They also provide information about the amount of pre and post window timepoints 
 % they require in order to estimate the rate at a given time point
 
-    properties % these write to and read from the underlying _I properties below
-        timeDelta = 1; % sampling interval for the filtered output
-        binAlignmentMode BinAlignmentMode = BinAlignmentMode.Centered;
-        resampleMethod char = 'interp';
-    end
-    
-    methods % Get methods that allow subclasses to provide their own value overwriting
-        % these allow subclasses to override the values
-        function v = get.timeDelta(sf)
-            v = sf.getTimeDelta(sf.timeDelta);
-        end
-        
-        function v = getTimeDelta(sf, v)
-            
-        end
-        
-        function v = get.binAlignmentMode(sf)
-            v = sf.getBinAlignmentMode(sf.binAlignmentMode);
-        end
-        
-        function v = getBinAlignmentMode(sf, v)
-            
-        end
-        
-        function v = get.resampleMethod(sf)
-            v = sf.getResampleMethod(sf.resampleMethod);
-        end
-        
-        function v = getResampleMethod(sf, v)
-            
-        end
-        
-        function sf = set.resampleMethod(sf, v)
-            validList = {'filter', 'repeat', 'average', 'interp'};
-            assert(ismember(v, validList), 'Resample method must be one of filter, repeat, average, interp');
-    
-            sf.resampleMethod = v;
-        end
-    end
-    
     % Dependent properties are provided as a convenience, override the underlying methods
     properties(Dependent)
         preWindow
         postWindow
-        
         padWindow % includes pre / post window plus binWidth time for the edge bins
         isCausal
     end
 
-    methods(Abstract, Access=protected) 
-        % return the time window of preceding spike data in ms required to estimate
-        % the rate at any particular time, including both the spike filtering and
-        % the timeDelta binning
-        t = getPreWindow(sf)
-
-        % return the time window of preceding spike data in ms required to estimate
-        % the rate at any particular time, including both the spike filtering and
-        % the timeDelta binning
-        t = getPostWindow(sf)
+    methods(Abstract)
+        % returns the [pre post] window in ms, outside of which the filter value is treated as 0
+        windowMs = getFilterWindow(sf);
+           
+        % returns a function that maps time in ms to a filter amplitude at that time offset. MUST be vectorized
+        % and return output the same size and class (typically single) as input
+        fn = getFilterFn(sf);
+    end
         
-        % return a [pre post] window of padding that should be applied to
-        % the trial-data object before filtering in order to provide
-        % spiking data sufficient to fill the aligned time window
-        % post-filtering
-        w = getPadWindow(sf)
+    methods        
+        function t = get.preWindow(sf)
+            t = sf.getPadWindow();
+            t = t(1);
+        end
+
+        function t = get.postWindow(sf)
+            t = sf.getPadWindow();
+            t = t(2);
+        end
+        
+        function w = get.padWindow(sf)
+            w = sf.getPadWindow();
+        end
+                         
+        function tf = get.isCausal(sf)
+            tf = sf.getIsCausal();
+        end
+        function w = getPadWindow(sf)
+            % pre and post window are already in ms to accommodate the filter
+            % then we accommodate both
+            w = sf.getFilterWindow();
+        end
+
+        function checkSettingsOkay(sf)
+            % doesn't make sense to sample more finely than the
+            % spikeBinWidth used
+            
+        end
 
         % spikeCell is nTrains x 1 cell array of time points
         %
@@ -82,7 +63,102 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         % this subclass method should respect sf.timeDelta,
         % sf.binAlignmentMode, and sf.resampleMethod. We could do this work
         % here, but not doing so leaves flexibility to the subclass
-        [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowPerTrial, multiplierToSpikesPerSec)
+        function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec, varargin)
+            p = inputParser();
+            p.addParameter('useTimeDelta', true, @islogical);
+            p.parse(varargin{:});
+            
+            if p.Results.useTimeDelta
+                timeDelta = sf.timeDelta;
+            else
+                % resampling will be done by caller later (typically on all
+                % trials at once)
+                timeDelta = sf.binWidthMs;
+            end
+            
+            if isempty(spikeCell)
+                rateCell = cell(size(spikeCell));
+                timeCell = cell(size(spikeCell, 1), 0);
+                return;
+            end
+            
+            filt = sf.filter;
+            
+            % normalization is critical to maintain filtered signal as a
+            % spike rate
+            filt = filt ./ sum(filt);
+            
+             % get time vector for bins including pre and post padding to accomodate filter
+            % this depends on both the bin width, time delta, and the bin
+            % alignment mode and is computed in getPadWindow
+            
+            % Example: causal binning, binWidthMs = 1, timeDelta=20. To get a sample
+            % at 0 we need binning to start at -19 (tMin = -20)
+            % If binWidthMs = 20 and timeDelta = 1, to get a sample at 0 we
+            % need binning to start at 0, which already spans -20:0.
+            
+            if timeDelta > sf.binWidthMs
+            	window = [-sf.preWindow + sf.binAlignmentMode.getBinStartOffsetForBinWidth(timeDelta), ...
+                         sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(timeDelta)];
+            else
+                window = [-sf.preWindow sf.postWindow];
+            end
+            
+            tMinByTrial = floor(tWindowByTrial(:, 1));
+            tMaxByTrial = floor(tWindowByTrial(:, 2));
+            
+           [timeLabels, tbinsForHistcByTrial] = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
+                    tMinByTrial+window(1), tMaxByTrial+window(2), sf.binWidthMs); %#ok<ASGLU> % timeLabels is useful for debugging
+                
+            % then construct timeCell, which contains time vector without the extra samples
+            % needed for the convolution, but WTIH the potential extra
+            % samples needed for the input to resampling from binWidthMs to
+            % timeDelta.
+            if timeDelta > sf.binWidthMs
+                % we need to set the bin limits wider to facilitate
+                % resampling, as per the first example above.
+                tPre = sf.binAlignmentMode.getBinStartOffsetForBinWidth(timeDelta);
+                tPost = sf.binAlignmentMode.getBinStopOffsetForBinWidth(timeDelta);
+            else
+                tPre = 0;
+                tPost = 0;
+            end            
+            
+            % note that we don't use sf.timeDelta as the fourth argument
+            % here because we're not binning to timeDelta below. We don't
+            % convert to timeDelta until the resampling step at the end,
+            % which will take care of the adjusted time limits then. The
+            % tPre and tPost ensure that when the time limits are adjusted
+            % they end up ultimately at tMinByTrial and tMaxByTrial.
+            timeCell = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
+                tMinByTrial + tPre, tMaxByTrial + tPost, sf.binWidthMs, sf.binWidthMs);
+            
+            % filter via valid-region convolution, which automatically removes the padding
+            rateCell = cellvec(size(spikeCell, 1));
+            nTrials = size(rateCell, 1);
+            nUnits = size(spikeCell(:, :), 2);
+            for i = 1:nTrials
+                nTimeThis = numel(timeCell{i});
+                rateCell{i} = zeros(nTimeThis, nUnits); 
+                for j = 1:nUnits
+                    if ~isempty(spikeCell{i, j})
+                        countsPad = histc(spikeCell{i, j}, tbinsForHistcByTrial{i}); % we drop the last bin from this since histc returns an last edge bin == last edge which we don't need
+                        rateCell{i}(:, j) = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
+                    elseif ~isnan(tMinByTrial(i))
+                        % put in zeros
+                        rateCell{i}(:, j) = zeros(nTimeThis, 1);
+                    end
+                end
+            end
+            
+            % do the resampling to timeDelta bins
+            if p.Results.useTimeDelta && ~TrialDataUtilities.Data.isequaltol(timeDelta, sf.binWidthMs)
+                [rateCell, timeCell] = TrialDataUtilities.Data.resampleDataCellInTime(rateCell, timeCell, 'timeDelta', sf.timeDelta, ...
+                    'timeReference', 0, 'binAlignmentMode', sf.binAlignmentMode, ...
+                    'resampleMethod', sf.resampleMethod, 'uniformlySampled', true, ...
+                    'tMinExcludingPadding', tMinByTrial, 'tMaxExcludingPadding', tMaxByTrial);
+            end
+        end
     end
     
     methods(Access=protected) % Subclasses may wish to override these 
@@ -91,32 +167,45 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         function str = subclassGetDescription(sf) %#ok<MANU>
             str = '';
         end
-        
-        function tf = getIsCausal(sf) % allows subclasses to override
-            tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
-        end
     end
 
-    methods % Dependent properties
-        function checkOkay(sf)
-            % throw an error if the settings are wrong
-            return;
-        end
-        
-        function t = get.preWindow(sf)
-            t = sf.getPreWindow();
-        end
-
-        function t = get.postWindow(sf)
-            t = sf.getPostWindow();
-        end
-        
-        function w = get.padWindow(sf)
-            w = sf.getPadWindow();
-        end
-                         
-        function tf = get.isCausal(sf)
-            tf = sf.getIsCausal();
+    methods 
+        function plotFilter(sf)
+            cla;
+            [filt, indZero] = sf.getFilter(); %#ok<PROP>
+            filt = filt ./ sum(filt);
+            tvec = ((1:numel(filt))' - indZero) * sf.binWidthMs; %#ok<PROP>
+            TrialDataUtilities.Plotting.verticalLine(0, 'Color', [0.7 0.7 0.7]);
+            hold on;
+            if true || isscalar(filt)
+                stem(tvec, filt, 'filled', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+%             else
+%                 plot(tvec, filt, '.-', 'Color', [0.5 0.5 0.5], 'MarkerEdgeColor', 'k');
+            end
+            xlabel('Time (ms)');
+            ylabel('Impulse Response');
+            
+            h = gobjects(0, 1);
+            if sf.getPreWindow() > 0
+                h(end+1) = text(0, 0, '  Causal', 'HorizontalAlignment', 'left', 'BackgroundColor', 'none', 'VerticalAlignment', 'bottom', 'XLimInclude', 'on');
+            end
+            if sf.getPostWindow() > 0
+                h(end+1) = text(0, 0, 'Acausal  ', 'HorizontalAlignment', 'right', 'BackgroundColor', 'none', 'VerticalAlignment', 'bottom', 'XLimInclude', 'on');
+            end
+            TrialDataUtilities.Plotting.verticalLine(0, 'Color', 'r');
+            hold off;
+            xlim([tvec(1) - sf.binWidthMs tvec(end) + sf.binWidthMs]);
+            
+            del = max(filt) - min(filt);
+            yl = [min(filt) - del*0.05, max(filt) + del*0.05];
+            yl(1) = min(0, yl(1));
+            yl(2) = max(0, yl(2));
+            
+            ylim(yl);
+            ax = AutoAxis.replace();
+            
+            ax.addAnchor(AutoAxis.AnchorInfo(h, AutoAxis.PositionType.Bottom, gca, AutoAxis.PositionType.Top, ax.axisPaddingTop));
+            ax.update();
         end
         
         function str = getDescription(sf)
@@ -142,16 +231,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
     end
 
     methods
-        function sf = SpikeFilter(varargin)
-            p = inputParser();
-            p.addParameter('timeDelta', 1, @isscalar);
-            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar);
-            p.parse(varargin{:});
-            
-            sf.timeDelta = p.Results.timeDelta; % sampling interval for the filtered output
-            sf.binAlignmentMode = p.Results.binAlignmentMode;
-            sf.resampleMethod = p.Results.resampleMethod;
+        function sf = SpikeFilter()
         end
        
         function [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
