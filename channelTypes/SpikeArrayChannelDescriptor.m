@@ -3,6 +3,7 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         hasWaveforms
         hasSortQualityEachTrial
         hasBlankingRegions
+        hasTrialMask
         nChannels
         nElectrodes % number of unique electrodes
         array string
@@ -32,6 +33,8 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         sortQuality = NaN; % numeric scalar metric of sort quality
         sortMethod = '';
 
+        trialMaskField = '';
+        
         spikeThreshold = NaN; % set if known, otherwise this will be estimated from the waveforms
         
         isColumnOfSharedMatrix = false; % this field shares a data field with other channels
@@ -56,13 +59,15 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.CELL;
             cd.originalDataClassByField = {''};
             cd.unitsByField = {''};
-
+            cd.catAlongFirstDimByField = false;
+            
             if cd.hasWaveforms
                 cd.fieldIds{end+1} = 'waveforms';
                 cd.dataFields{end+1} = cd.waveformsField;
                 cd.elementTypeByField(end+1) = cd.CELL;
                 cd.originalDataClassByField{end+1} = cd.waveformsOriginalDataClass;
                 cd.unitsByField{end+1} = cd.waveformsUnits;
+                cd.catAlongFirstDimByField(end+1) = false;
             end
 
             if cd.hasSortQualityEachTrial
@@ -71,6 +76,7 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
                 cd.elementTypeByField(end+1) = cd.CELL;
                 cd.originalDataClassByField{end+1} = 'double';
                 cd.unitsByField{end+1} = '';
+                cd.catAlongFirstDimByField(end+1) = false;
             end
 
             if cd.hasBlankingRegions
@@ -79,9 +85,19 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
                 cd.elementTypeByField(end+1) = cd.CELL;
                 cd.originalDataClassByField{end+1} = 'double';
                 cd.unitsByField{end+1} = '';
+                cd.catAlongFirstDimByField(end+1) = false;
             end
             
-            cd.catAlongFirstDimByField = false(cd.nFields, 1);
+            if cd.hasTrialMask
+                cd.fieldIds{end+1} = 'trialMask';
+                cd.dataFields{end+1} = cd.trialMaskField;
+                cd.elementTypeByField(end+1) = cd.VECTOR;
+                cd.originalDataClassByField{end+1} = 'logical';
+                cd.unitsByField{end+1} = '';
+                cd.catAlongFirstDimByField(end+1) = true;
+            end
+            
+%             cd.catAlongFirstDimByField = false(cd.nFields, 1);
             cd = initialize@ChannelDescriptor(cd);
         end
         
@@ -89,24 +105,12 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             impl = SpikeArrayChannelImpl(cd);
         end
 
-        % used by trial data when it needs to change field names
-        function name = suggestFieldName(cd, fieldIdx)
-            suggest = {cd.name};
-            if cd.hasWaveforms
-                suggest{end+1} = sprintf('%s_waveforms', cd.name);
-            end
-            if cd.hasSortQualityEachTrial
-                suggest{end+1} = sprintf('%s_sortQualityByTrial', cd.name);
-            end
-            if cd.hasBlankingRegions
-                suggest{end+1} = sprintf('%s_blankingRegions', cd.name);
-            end
-
-            if fieldIdx <= numel(suggest)
-                name = suggest{fieldIdx};
-            else
-                name = sprintf('%s_f%d', fieldIdx);
-            end
+        function s = buildNameSuggestionsById(cd)
+            s.spikes = cd.name;
+            s.waveforms = sprintf('%s_waveforms', cd.name);
+            s.sortQualityByTrial = sprintf('%s_sortQualityByTrial', cd.name);
+            s.blankingRegions = sprintf('%s_blankingRegions', cd.name);
+            s.trialMask = sprintf('%s_trialMask', cd.name);
         end
 
         function cd = addWaveformsField(cd, waveField, varargin)
@@ -158,6 +162,20 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             end
             cd.blankingRegionsField = field;
             cd = cd.initialize();
+        end
+        
+        function cd = addTrialMaskField(cd, field)
+            cd.warnIfNoArgOut(nargout);
+            if nargin < 2 || isempty(field)
+                field = cd.suggestFieldName('trialMask');
+            end
+            cd.trialMaskField = field;
+            cd = cd.initialize();
+        end
+        
+        function cd = removeTrialMaskField(cd)
+            cd.warnIfNoArgOut(nargout);
+            cd.trialMaskField = '';
         end
 
         function data = convertDataCellOnAccess(cd, fieldIdx, data)
@@ -238,6 +256,10 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             tf = ~isempty(cd.blankingRegionsField);
         end
         
+        function tf = get.hasTrialMask(cd)
+            tf = ~isempty(cd.trialMaskField);
+        end
+        
         function n = get.nElectrodes(cd)
             n = numel(unique(cd.electrodes));
         end
@@ -301,7 +323,8 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
                 'sortQualityEachTrialField', cd.sortQualityEachTrialField, ...
                 'sortQuality', cd.sortQuality, ...
                 'blankingRegionsField', cd.blankingRegionsField, ...
-                'isColumnOfArray', true};
+                'isColumnOfArray', true, ...
+                'trialMaskField', cd.trialMaskField};
                 
             for i = numel(names):-1:1
                 cds(i) = SpikeChannelDescriptor.build(names{i}, ...

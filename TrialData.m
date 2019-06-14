@@ -1727,14 +1727,13 @@ classdef TrialData
             cd = makecol(cd);
         end
 
-        % This Should be disabled! It is mostly a hack for fixing data
-        % issues post-hoc
-%         function td = setChannelDescriptor(td, name, cd)
-%             td.warnIfNoArgOut(nargout);
-%             td.assertHasChannel(name);
-%             assert(isa(cd, 'ChannelDescriptor'));
-%             td.channelDescriptorsByName.(name) = cd;
-%         end
+        % This Should be hidden
+        function td = setChannelDescriptor(td, name, cd)
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(name);
+            assert(isa(cd, 'ChannelDescriptor'));
+            td.channelDescriptorsByName.(name) = cd;
+        end
 
         function type = getChannelType(td, name)
             type = td.getChannelDescriptor(name).getType();
@@ -2017,6 +2016,7 @@ classdef TrialData
                 td.channelDescriptorsByName, 'UniformOutput', false);
 
             [namesByField, fieldIdxEach] = cellvec(numel(fields));
+            [namesByField{:}] = deal({});
             for iF = 1:numel(fields)
                 % don't need the assert since this might be called before
                 % the field is written
@@ -5719,6 +5719,30 @@ classdef TrialData
             % make the final update
             td = td.setChannelData(name, channelData, 'fieldMask', channelFieldMask, p.Unmatched);
         end
+        
+        function trialMask = getSpikeChannelTrialMask(td, name)
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'SpikeChannelDescriptor'));
+            if cd.hasTrialMask
+                fld = cd.trialMaskField;
+                trialMask = {td.data.(fld)}';
+            else
+                trialMask = true(td.nTrials, 1);
+            end
+            trialMask = trialMask & td.valid;
+        end
+        
+        function td = setSpikeChannelTrialMask(td, name, trialMask, varargin)
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'SpikeChannelDescriptor'));
+
+            cd = cd.addTrialMaskField();
+            td = td.setChannelDescriptor(name, cd);
+
+            td = td.setChannelData(name, trialMask, 'fieldMask', 'trialMask', varargin{:});
+        end
 
         function td = addOrUpdateSpikeChannel(td, name, times, varargin)
             % set spike times of channel name if it exists where mask is true.
@@ -6330,9 +6354,9 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
 
             p = inputParser();
-            p.addOptional('electrodes', @(x) isnumeric(x) && isvector(x));
-            p.addOptional('units', @(x) isnumeric(x) && isvector(x));
-            p.addOptional('spikes', {}, @(x) ismatrix(x) && iscell(x));
+            p.addParameter('electrodes', [], @(x) isnumeric(x) && isvector(x));
+            p.addParameter('units', [], @(x) isnumeric(x) && isvector(x));
+            p.addParameter('spikes', {}, @(x) ismatrix(x) && iscell(x));
             p.addParameter('isAligned', true, @isscalar);
             p.addParameter('waveforms', [], @iscell);
             p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
@@ -6486,6 +6510,34 @@ classdef TrialData
                 td = td.dropChannels(subNames);
             end
             prog.finish();
+        end
+        
+        function trialMask = getSpikeArrayTrialMask(td, name)
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'SpikeArrayChannelDescriptor'));
+            if cd.hasTrialMask
+                fld = cd.trialMaskField;
+                trialMask = cat(1, td.data.(fld));
+            else
+                trialMask = true(td.nTrials, cd.nChannels);
+            end
+            trialMask = trialMask & td.valid;
+        end
+        
+        function td = setSpikeArrayTrialMask(td, name, trialMask, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.assertHasChannel(name);
+            cd = td.channelDescriptorsByName.(name);
+            assert(isa(cd, 'SpikeArrayChannelDescriptor'));
+            
+            cd = cd.addTrialMaskField();
+            td = td.setChannelDescriptor(name, cd);
+            
+            assert(size(trialMask, 1) == td.nTrials);
+            assert(size(trialMask, 2) == cd.nChannels);
+            trialMaskSplit = mat2cell(trialMask, ones(td.nTrials, 1), cd.nChannels);
+            td = td.setChannelData(name, {trialMaskSplit}, 'fieldMask', 'trialMask', varargin{:});
         end
     end
 
@@ -7280,7 +7332,7 @@ classdef TrialData
             % so the caller should handle any access to memory conversion
             %
             p = inputParser();
-            p.addParameter('fieldMask', [], @islogical);
+            p.addParameter('fieldMask', [], @(x) islogical(x) || ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('clearForInvalid', false, @islogical);
             p.addParameter('updateValidOnly', true, @islogical);
             p.addParameter('updateMask', [], @isvector);
@@ -7302,23 +7354,38 @@ classdef TrialData
                 fieldMask = false(cd.nFields, 1);
                 fieldMask(1:numel(valueCell)) = true; % assume that only the first few fields are specified
             else
-                assert(numel(fieldMask) == cd.nFields);
+                % convert numeric list or list of string ids to logical mask
+                if ischar(fieldMask) || iscellstr(fieldMask) || isstring(fieldMask)
+                    fieldIds = string(fieldMask);
+                    fieldMask = cd.lookupFieldId(fieldIds);
+                end
+                if isnumeric(fieldMask)
+                    temp = fieldMask;
+                    fieldMask = false(cd.nFields, 1);
+                    fieldMask(temp) = true;
+                end
+                assert(islogical(fieldMask) && numel(fieldMask) == cd.nFields);
             end
             fieldMask = makecol(fieldMask);
 
-            % expand valueCell with missing data
-            if numel(valueCell) < cd.nFields
-                for iF = 1:cd.nFields
-                    if numel(valueCell) < iF
-                        if ~fieldMask(iF)
-                            % fill in with empty
-                            valueCell{iF} = cell(td.nTrials, 1);
-                        else
-                            error('valueCell missing field %d', iF);
-                        end
-                    end
-                end
-            end
+            % expand valueCell to nFields using fieldMask
+            temp = valueCell;
+            valueCell = cell(cd.nFields, 1);
+            valueCell(fieldMask) = temp;
+            
+%             if numel(valueCell) < cd.nFields
+%                 valueCell = TensorUtils.inflateMaskedTensor(valueCell, 
+%                 for iF = 1:cd.nFields
+%                     if numel(valueCell) < iF
+%                         if ~fieldMask(iF)
+%                             % fill in with empty
+%                             valueCell{iF} = cell(td.nTrials, 1);
+%                         else
+%                             error('valueCell missing field %d', iF);
+%                         end
+%                     end
+%                 end
+%             end
 
             dataFields = cd.dataFields;
             nFields = numel(dataFields);

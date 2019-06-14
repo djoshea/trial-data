@@ -3,6 +3,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         hasWaveforms
         hasSortQualityEachTrial
         hasBlankingRegions
+        hasTrialMask
         array string
         electrode
         unit
@@ -25,6 +26,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
 
         sortQuality = NaN; % numeric scalar metric of sort quality
         sortMethod = '';
+
+        trialMaskField = '';
 
         spikeThreshold = []; % set if known, otherwise this will be estimated from the waveforms
 
@@ -78,6 +81,14 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 cd.unitsByField{end+1} = '';
             end
 
+            if cd.hasTrialMask
+                cd.fieldIds{end+1} = 'trialMask';
+                cd.dataFields{end+1} = cd.trialMaskField;
+                cd.elementTypeByField(end+1) = cd.BOOLEAN;
+                cd.originalDataClassByField{end+1} = 'logical';
+                cd.unitsByField{end+1} = '';
+            end
+
             cd.catAlongFirstDimByField = false(cd.nFields, 1);
 
             cd = initialize@ChannelDescriptor(cd);
@@ -87,41 +98,13 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             impl = SpikeChannelImpl(cd);
         end
 
-        % used by trial data when it needs to change field names
-        function name = suggestFieldName(cd, fieldIdx)
-            suggest = {cd.name};
-            if cd.hasWaveforms
-                suggest{end+1} = sprintf('%s_waveforms', cd.name);
-            end
-            if cd.hasSortQualityEachTrial
-                suggest{end+1} = sprintf('%s_sortQualityByTrial', cd.name);
-            end
-            if cd.hasBlankingRegions
-                suggest{end+1} = sprintf('%s_blankingRegions', cd.name);
-            end
-
-            if fieldIdx <= numel(suggest)
-                name = suggest{fieldIdx};
-            else
-                name = sprintf('%s_f%d', fieldIdx);
-            end
+        function s = buildNameSuggestionsById(cd)
+            s.spikes = cd.name;
+            s.waveforms = sprintf('%s_waveforms', cd.name);
+            s.sortQualityByTrial = sprintf('%s_sortQualityByTrial', cd.name);
+            s.blankingRegions = sprintf('%s_blankingRegions', cd.name);
+            s.trialMask = sprintf('%s_trialMask', cd.name);
         end
-
-%         function cd = setArrayElectrodeUnit(cd, array, electrode, unit)
-%             cd.warnIfNoArgOut(nargout);
-%             assert(ischar('array'));
-%             assert(isnumeric(electrode));
-%             assert(isnumeric(unit));
-%             cd.electrodeManual = electrode;
-%             cd.arrayManual = array;
-%             cd.unitManual = unit;
-%         end
-
-%         function cd = clearManualArrayElectrode(cd)
-%             cd.warnIfNoArgOut(nargout);
-%             cd.electrodeManual = [];
-%             cd.arrayManual = [];
-%         end
 
         function cd = addWaveformsField(cd, waveField, varargin)
             p = inputParser;
@@ -180,58 +163,18 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
 
-        function data = convertDataCellOnAccess(cd, fieldIdx, data)
-            % cast to access class, also do scaling upon request
-            % (cd.scaleFromLims -> cd.scaleToLims)
-            data = convertDataCellOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+        function cd = addTrialMaskField(cd, field)
+            cd.warnIfNoArgOut(nargout);
+            if nargin < 2 || isempty(field)
+                field = cd.suggestFieldName('trialMask');
             end
+            cd.trialMaskField = field;
+            cd = cd.initialize();
         end
 
-        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
-            data = convertDataSingleOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
-            end
-        end
-
-        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
-            end
-            data = convertAccessDataCellToMemory@ChannelDescriptor(cd, fieldIdx, data);
-        end
-
-        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
-            end
-            data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
-        end
-
-        function waveData = scaleWaveforms(cd, waveData)
-            if iscell(waveData)
-                waveData = cd.convertDataCellOnAccess(2, waveData);
-            else
-                waveData = cd.convertDataSingleOnAccess(2, waveData);
-            end
-%             % waveData is either matrix or cell of matrices
-%             dtype = cd.accessClassByField{2};
-%             if isempty(cd.waveformsScaleFromLims) || isempty(cd.waveformsScaleToLims)
-%                 scaleFn = @(x) cast(x, dtype);
-%             else
-%                 fromDelta = cd.waveformsScaleFromLims(2) - cd.waveformsScaleFromLims(1);
-%                 toDelta = cd.waveformsScaleToLims(2) - cd.waveformsScaleToLims(1);
-%
-%                 % convert to dtype and scale
-%                 scaleFn = @(x) (cast(x, dtype) - cd.waveformsScaleFromLims(1)) / fromDelta * toDelta + cd.waveformsScaleToLims(1);
-%             end
-%             if iscell(waveData)
-%                 waveData = cellfun(scaleFn, waveData, 'UniformOutput', false);
-%             else
-%                 waveData = scaleFn(waveData);
-%             end
+        function cd = removeTrialMaskField(cd)
+            cd.warnIfNoArgOut(nargout);
+            cd.trialMaskField = '';
         end
 
         function waveData = unscaleWaveforms(cd, waveData)
@@ -294,6 +237,10 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             tf = ~isempty(cd.blankingRegionsField);
         end
 
+        function tf = get.hasTrialMask(cd)
+            tf = ~isempty(cd.trialMaskField);
+        end
+
         function type = getType(~)
             type = 'spike';
         end
@@ -323,6 +270,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             p.addParameter('waveformsOriginalDataClass', '', @ischar);
             p.addParameter('waveformsNumChannels', 1, @isscalar);
             p.addParameter('waveformsInfo', [], @(x) true); % used for spatial coordinates or offsets of the recorded waveforms
+            p.addParameter('trialMaskField', '', @ischar);
             p.addParameter('sortQualityEachTrialField', '', @ischar);
             p.addParameter('sortQuality', NaN, @isscalar)
             p.addParameter('blankingRegionsField', '', @ischar);
@@ -352,6 +300,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             end
 
             cd.spikeThreshold = p.Results.spikeThreshold;
+            
+            cd.trialMaskField = p.Results.trialMaskField;
 
             cd.isColumnOfArray = p.Results.isColumnOfArray;
             cd.primaryDataFieldColumnIndex = p.Results.primaryDataFieldColumnIndex;
