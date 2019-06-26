@@ -21,11 +21,11 @@ function str = structToString(s, varargin)
     end
     vals = cellfun(@(fld) convertToString(s.(fld), fld), fieldnames(s), 'UniformOutput', false);
 
-    str = strjoin(vals, separator);
+    str = TrialDataUtilities.String.strjoin(vals, separator);
     
     function str = convertToString(v, fld)
         if isfield(suffixByField, fld) && ~isempty(suffixByField.(fld))
-            suffix = [' ' suffixByField.(fld)];
+            suffix = [' ' char(suffixByField.(fld))];
         else
             suffix = '';
         end
@@ -42,8 +42,8 @@ function str = structToString(s, varargin)
             prefix = '';
         end
         
-        if ischar(v)
-            str = [prefix v suffix];
+        if ischar(v) || isstring(v)
+            str = [prefix char(v) suffix];
         elseif islogical(v) && p.Results.useFieldNameForBoolean
             if p.Results.removeIsForLogical
                 if strncmp(fldSub, 'Is ', 3)

@@ -709,9 +709,22 @@ classdef TrialData
             p.addParameter('partitions', td.saveFastPartitionInfo, @isstruct);
             p.addParameter('partitionWaveforms', td.saveFastPartitionWaveforms, @islogical);
             p.addParameter('convertCategoricals', true, @islogical);
+            p.addParameter('partialLoadParams', ["saveTag", "trialId"], @isstringlike);
             p.parse(varargin{:});
 
             data = td.data;
+            
+            % save a separate meta file with these param values
+            partialLoadParams = string(p.Results.partialLoadParams);
+            partialLoadParams = intersect(partialLoadParams, td.listParamChannels());
+            if ~isempty(partialLoadParams) 
+                partialLoadData = struct();
+                for iF = 1:numel(partialLoadParams)
+                    partialLoadData.(partialLoadParams{iF}) = td.getParamRaw(partialLoadParams{iF});
+                end
+            else
+                partialLoadData = [];
+            end
 
             % categoricals are super slow to load, here we convert them to
             % char strings just to save time, since they'll be fixed during
@@ -815,7 +828,7 @@ classdef TrialData
             % save elements of data
             msg = sprintf('Saving TrialData to %s', location);
             TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg, ...
-                'partitionFieldLists', partitionFields, 'partitionMeta', partitionMeta);
+                'partitionFieldLists', partitionFields, 'partitionMeta', partitionMeta, 'partialLoadData', partialLoadData);
         end
     end
 
@@ -835,13 +848,21 @@ classdef TrialData
             p = inputParser();
             p.addParameter('maxTrials', Inf, @isscalar);
             p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x) || isstring(x));
-            p.addParameter('loadAllPartitions', false, @islogical);
+            p.addParameter('loadAllPartitions', [], @(x) isempty(x) || islogical(x));
             p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.addParameter('validate', true, @islogical);
+            p.KeepUnmatched = true; % unmatched fields will match parameter values that were provided to load fast
             p.parse(varargin{:});
             % strip extension
             %             [path, name, ext] = fileparts(location);
             %             location = fullfile(path, name);
+            
+            % by default, load all
+            partitions = p.Results.partitions;
+            loadAllPartitions = p.Results.loadAllPartitions;
+            if isempty(loadAllPartitions)
+                loadAllPartitions = isempty(partitions);
+            end 
 
             if exist(location, 'file') == 2
                 ld = load(location);
@@ -861,10 +882,10 @@ classdef TrialData
 
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
-                [td.data, partitionMeta] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
+                [td.data, partitionMeta, partialLoadMask] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
                     'message', msg, 'maxElements', p.Results.maxTrials, ...
-                    'partitions', p.Results.partitions, 'loadAllPartitions', p.Results.loadAllPartitions, ...
-                    'ignoreMissingPartitions', p.Results.ignoreMissingPartitions);
+                    'partitions', partitions, 'loadAllPartitions', loadAllPartitions, ...
+                    'ignoreMissingPartitions', p.Results.ignoreMissingPartitions, 'partialLoadSpec', p.Unmatched);
 
                 % add channel descriptors in partitionMeta, overwriting existing channels if overlapping (used for partitionWaveforms)
                 partitions = fieldnames(partitionMeta);
@@ -872,8 +893,8 @@ classdef TrialData
                     td.channelDescriptorsByName = structMerge(td.channelDescriptorsByName, partitionMeta.(partitions{iF}).channelDescriptorsByName);
                 end
 
-                if ~isinf(p.Results.maxTrials)
-                    td = td.selectTrials(1:p.Results.maxTrials);
+                if ~all(partialLoadMask)
+                    td = td.selectTrials(partialLoadMask);
                 end
 
                 td = td.rebuildOnDemandCache();
@@ -921,6 +942,10 @@ classdef TrialData
 
         function list = loadFastListPartitions(location)
             list = TrialDataUtilities.Data.SaveArrayIndividualized.listPartitions(location);
+        end
+        
+        function params = loadFastListPartialLoadParams(location)
+            params = TrialDataUtilities.Data.SaveArrayIndividualized.listPartialLoadFields(location);
         end
 
         function tf = loadFastIsValidLocation(location)
@@ -1499,6 +1524,15 @@ classdef TrialData
 
             td = td.clearTrialsTemporarilyInvalid();
         end
+        
+        function td = resetHard(td)
+            td.warnIfNoArgOut(nargout);
+            % don't touch .manualValid. this is not consistent with what reset means
+            % for TrialDataConditionAlign
+
+            td = td.clearTrialsTemporarilyInvalid();
+            td = td.setManualValidTo(true(td.nTrials, 1));
+        end
     end
 
     methods
@@ -1734,29 +1768,28 @@ classdef TrialData
             type = td.getChannelDescriptor(name).getType();
         end
 
-        function units = getChannelUnitsPrimary(td, name)
+        function units = getChannelUnitsPrimary(td, names)
             % return a string describing the units of a given channel
-            if ischar(name)
+            names = string(names);
+            
+            function units = getUnitsSingle(name)
                 if td.hasSpikeChannel(name)
-                    units = 'spikes/sec';
+                    units = "spikes/sec";
                 else
-                    units = td.getChannelDescriptor(name).unitsPrimary;
+                    units = string(td.getChannelDescriptor(name).unitsPrimary);
                     if strcmp(units, 'enum') % MatUdp did this at one point
-                        units = '';
+                        units = "";
                     end
                 end
-            elseif iscell(name)
-                units = cellfun(@(n) td.getChannelUnitsPrimary(n), name, 'UniformOutput', false);
-                uniq_units = unique(units);
-                if numel(uniq_units) == 1
-                    units = uniq_units{1};
-                else
-                    units = 'mixed';
-                end
-            else
-                error('Must be name or list of names');
             end
-
+            
+            units = arrayfun(@(n) getUnitsSingle(n), names);
+            uniq_units = unique(units);
+            if numel(uniq_units) == 1
+                units = uniq_units(1);
+            else
+                units = "mixed";
+            end
         end
 
         function td = setChannelUnitsPrimary(td, name, units)
@@ -5308,10 +5341,7 @@ classdef TrialData
 
         % return nTrials x nParams cell of valid values only
         function valueCell = getParamMultiAsCell(td, names)
-            if ischar(names)
-                names = {names};
-            end
-
+            names = string(names);
             nC = numel(names);
             valueCell = cell(td.nTrials, nC);
             for iC = 1:nC
@@ -5332,13 +5362,13 @@ classdef TrialData
             p.addParameter('includeValidColumn', false, @islogical);
             p.parse(varargin{:});
 
-            names = TrialDataUtilities.Data.wrapCell(names);
+            names = string(names);
             valueCell = td.getParamMultiAsCell(names);
-            units = cellfun(@(name) td.getChannelUnitsPrimary(name), names, 'UniformOutput', false);
+            units = arrayfun(@(name) td.getChannelUnitsPrimary(name), names);
 
             if p.Results.includeValidColumn
                 valueCell = horzcat( num2cell(td.valid), valueCell );
-                names = vertcat({'valid'}, makecol(names));
+                names = vertcat("valid", makecol(names));
             end
 
             numWidth = ceil(log(td.nTrials)/log(10));
@@ -7259,6 +7289,19 @@ classdef TrialData
                 %                 end
             end
 
+        end
+        
+        function td = setChannelDisplayGroup(td, names, displayGroup)
+            td.warnIfNoArgOut(nargout);
+            
+            names = string(names);
+            
+            for iN = 1:numel(names)
+                name = names(iN);
+                cd = td.channelDescriptorsByName.(name);
+                cd.displayGroup = displayGroup;
+                td.channelDescriptorsByName.(name) = cd;
+            end
         end
 
         function [td, trialsUpdated, fieldsUpdated] = setChannelData(td, name, valueCell, varargin)

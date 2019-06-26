@@ -1914,11 +1914,11 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
 
             p = inputParser;
-            p.addRequired('name', @ischar);
-            p.addParameter('units', '', @ischar);
+            p.addRequired('name', @isstringlike);
+            p.addParameter('units', '', @isstringlike);
             % is this attribute always numeric?
             % list of allowed values for this value (other values will be ignored)
-            p.addParameter('displayAs', '', @ischar);
+            p.addParameter('displayAs', '', @isstringlike);
             p.addParameter('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x));
             p.addParameter('valueListDisplayAs', {}, @(x) isempty(x) || iscellstr(x));
             p.addParameter('valueBins', {}, @(x) isnumeric(x) || iscell(x));
@@ -2301,7 +2301,7 @@ classdef ConditionDescriptor
 
     % get, set data stored inside odc
     methods
-        % NOTE: all of these should copy odc before writing to it
+        % NOTE: all of these should copy odc before writing to ittd
 
         function v = get.conditions(ci)
             v = ci.odc.conditions;
@@ -2878,16 +2878,16 @@ classdef ConditionDescriptor
             units = ci.attributeUnits;
             valueDisplay = ci.attributeValueListsAsStringsManual;
             for i = 1:ci.nAttributes
-                if isempty(units{i})
-                    unitStr = '';
+                if strlength(units{i}) == 0
+                    unitStr = "";
                 else
-                    unitStr = [' ' units{i}];
+                    unitStr = sprintf(" %s", units{i});
                 end
                 switch modes(i)
                     case ci.AttributeValueListManual
                         if ~isempty(valueDisplay{i})
                             % use manual stirngs
-                            displayAs = makecol(valueDisplay{i});
+                            displayAs = string(makecol(valueDisplay{i}));
                             assert(numel(valueList{i}) == numel(displayAs), 'attributeValueListsAsStringsManual for attribute %s has the wrong number of entries');
 
                             valueList{i} = displayAs;
@@ -2941,7 +2941,7 @@ classdef ConditionDescriptor
                         % ConditionInfo applies it to data
                         valueList{i} = {'(automatically determined)'};
                 end
-                valueList{i} = makecol(valueList{i});
+                valueList{i} = makecol(string(valueList{i}));
             end
         end
 

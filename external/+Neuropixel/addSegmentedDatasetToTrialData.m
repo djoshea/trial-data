@@ -43,7 +43,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
             
             % add metadata
             td = td.setChannelMetaKey(arrayName, 'kilosort_pathLeaf', seg.dataset.pathLeaf);
-            td = td.setChannelMetaKey(arrayName, 'cluster_idx', seg.cluster_ids(clusterIndsThis));
+            td = td.setChannelMetaKey(arrayName, 'cluster_ids', seg.cluster_ids(clusterIndsThis));
             td = td.setChannelMetaKey(arrayName, 'cluster_groups', seg.cluster_groups(clusterIndsThis));
         end
     else
@@ -63,12 +63,16 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
 
             % add metadata
             td = td.setChannelMetaKey(arrayName, 'kilosort_pathLeaf', seg.dataset.pathLeaf);
-            td = td.setChannelMetaKey(arrayName, 'cluster_idx', seg.cluster_ids(clusterInds));
+            td = td.setChannelMetaKey(arrayName, 'cluster_ids', seg.cluster_ids(clusterInds));
             td = td.setChannelMetaKey(arrayName, 'cluster_groups', seg.cluster_groups(clusterInds));
         end
     end
 
-    td = td.addOrUpdateBooleanParam(sprintf('%s_hasData', p.Results.arrayPrefix), seg.trial_has_data);  
+    ch_has_data = sprintf('%s_hasData', p.Results.arrayPrefix);
+    td = td.addOrUpdateBooleanParam(ch_has_data, seg.trial_has_data);
+    td = td.setChannelDisplayGroup(ch_has_data, 'neuropixel');
+    
+    td.saveFastPartitionInfo.spikes = {'npix'};
 end
 
 function clusterInds = sortClusters(clusterCOM, clusterInds)

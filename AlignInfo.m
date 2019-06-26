@@ -1313,6 +1313,7 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('markOutlineAlpha', 1, @isscalar);
             p.addParameter('markSize', 8, @isscalar);
             p.addParameter('intervalThickness', 3, @isscalar);
+            p.addParameter('intervalAlpha', 1, @isscalar);
             p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParameter('showInLegend', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
@@ -1402,7 +1403,7 @@ classdef AlignInfo < AlignDescriptor
                     app = ad.intervalAppear{iInterval};
                     
                     hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
-                        app, p.Results.intervalThickness, p.Results.markAlpha);
+                        app, p.Results.intervalThickness, p.Results.intervalAlpha);
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
                     else

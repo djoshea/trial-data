@@ -726,14 +726,14 @@ classdef ConditionInfo < ConditionDescriptor
             % where necessary
             modes = ci.attributeValueModes;
             valueListAsStrings = buildAttributeValueListsAsStrings@ConditionDescriptor(ci);
-            valueListsDisplayAs = ci.attributeValueListsAsStringsManual;
+            valueListsDisplayAs = cellfun(@string, ci.attributeValueListsAsStringsManual, 'UniformOutput', false);
             valueList = ci.attributeValueLists;
 
             for i = 1:ci.nAttributes
-                if isempty(ci.attributeUnits{i})
-                    unitsStr = '';
+                if strlength(ci.attributeUnits{i}) == 0
+                    unitsStr = "";
                 else
-                    unitsStr = [' ', ci.attributeUnits{i}];
+                    unitsStr = " " + string(ci.attributeUnits{i});
                 end
                 if modes(i) == ci.AttributeValueListAuto
                     if ~isempty(valueListsDisplayAs{i})
@@ -744,13 +744,13 @@ classdef ConditionInfo < ConditionDescriptor
                         % convert populated list to cellstr
                         if ~iscell(valueList{i})
                             if isstring(valueList{i}) || iscategorical(valueList{i})
-                            valueListAsStrings{i} = arrayfun(@char, valueList{i}, 'UniformOutput', false);
+                                valueListAsStrings{i} = string(valueList{i});
                             else
-                                valueListAsStrings{i} = arrayfun(@(x) [num2str(x), unitsStr], valueList{i}, 'UniformOutput', false);
+                                valueListAsStrings{i} = arrayfun(@(x) string(num2str(x)) +  unitsStr, valueList{i});
                             %                             valueListAsStrings{i} = arrayfun(@(x) num2str(x), valueList{i}, 'UniformOutput', false);
                             end
                         elseif iscellstr(valueList{i})
-                            valueListAsStrings{i} = valueList{i}; % cellfun(@(x) [x, unitsStr], valueList{i}, 'UniformOutput', false);
+                            valueListAsStrings{i} = string(valueList{i}); % cellfun(@(x) [x, unitsStr], valueList{i}, 'UniformOutput', false);
                             %                             valueListAsStrings{i} = [valueList{i}, unitsStr];
                         else
                             error('Not sure how to convert attribute values to string');
@@ -846,6 +846,9 @@ classdef ConditionInfo < ConditionDescriptor
                             % check whether value list has sublists within
                             % and flatten them if so
                             if ci.attributeNumeric(attrIdx(iF))
+                                if ischar(valsThis) || isstring(valsThis) || iscellstr(valsThis)
+                                    error('Attribute %s is numeric, value cannot be selected', ci.attributeNames{attrIdx(iF)});
+                                end
                                 if iscell(valsThis)
                                     valsThis = [valsThis{:}];
                                     % groups of values per each element
