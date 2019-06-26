@@ -11,6 +11,7 @@ classdef SaveArrayIndividualized < handle
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('partitionFieldLists', struct(), @isstruct);
             p.addParameter('partitionMeta', struct(), @isstruct);
+            p.addParameter('partialLoadData', [], @(x) isempty(x) || isstruct(x));
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
@@ -83,6 +84,13 @@ classdef SaveArrayIndividualized < handle
             countFid = fopen(fullfile(locationName, 'count.txt'), 'w');
             fprintf(countFid, '%d\n', N); 
             fclose(countFid);
+            
+            % save partial load data to partialLoad.mat
+            partialLoadData = p.Results.partialLoadData;
+            if ~isempty(partialLoadData) && ~isempty(fieldnames(partialLoadData))
+                fname = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartialLoadDataFileName(locationName);
+                save(fname, 'partialLoadData');
+            end
         end
         
         function tf = isValidLocation(locationName)
@@ -106,14 +114,15 @@ classdef SaveArrayIndividualized < handle
             end
         end
         
-        function [S, partitionMeta] = loadArray(locationName, varargin)
+        function [S, partitionMeta, partialLoadMask] = loadArray(locationName, varargin)
             p = inputParser();
             p.addParameter('message', '', @ischar);
             p.addParameter('maxElements', Inf, @isscalar);
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
-            p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x));
+            p.addParameter('partitions', {}, @(x) isstringlike(x));
             p.addParameter('loadAllPartitions', false, @islogical);
             p.addParameter('ignoreMissingPartitions', false, @islogical);
+            p.addParameter('partialLoadSpec', [], @(x) isempty(x) || isstruct(x));
             
             p.parse(varargin{:});
             
@@ -133,10 +142,7 @@ classdef SaveArrayIndividualized < handle
             if p.Results.loadAllPartitions
                 partitions = partitionsAvailable;
             else
-                partitions = p.Results.partitions;
-                if ischar(partitions)
-                    partitions = {partitions};
-                end
+                partitions = string(p.Results.partitions);
                 found = ismember(partitions, partitionsAvailable);
                 if any(~found)
                     if ~p.Results.ignoreMissingPartitions
@@ -156,15 +162,38 @@ classdef SaveArrayIndividualized < handle
             end
             
             N = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationName);
-            N = min(N, p.Results.maxElements);
             
+            partialLoadSpec = p.Results.partialLoadSpec;
+            if ~isempty(partialLoadSpec)
+                partialLoadDataPath = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartialLoadDataFileName(locationName);
+                if exist(partialLoadDataPath, 'file') > 0
+                    ld = load(partialLoadDataPath, 'partialLoadData');
+                    partialLoadData = ld.partialLoadData;
+                    partialLoadMask = TrialDataUtilities.Data.SaveArrayIndividualized.buildPartialLoadMask(N, partialLoadData, partialLoadSpec);
+                else
+                    partialLoadMask = true(N, 1);
+                    warning('No partialLoadData found in folder, ignoring partialLoadSpec');
+                end
+            else
+                partialLoadMask = true(N, 1);
+            end
+            
+            if p.Results.maxElements < N
+                keep = find(partialLoadMask, p.Results.maxElements, 'first');
+                partialLoadMask = false(N, 1);
+                partialLoadMask(keep) = true;
+            end
+            
+            nLoad = nnz(partialLoadMask);
             if ~isempty(p.Results.message)
                 str = p.Results.message;
             else
                 str = sprintf('Loading from %s/', locationName);
             end
-            prog = ProgressBar(N, str);
+            prog = ProgressBar(nLoad, str);
             for i = N:-1:1 % reverse order to preallocate array
+                if ~partialLoadMask(i), continue, end
+                
                 if isempty(callbackFn)
                     file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, N, i);   
                     loaded = load(file, 'element');
@@ -187,10 +216,31 @@ classdef SaveArrayIndividualized < handle
                 end
                 
                 S(i) = element;
-                prog.update(N-i+1);
+                prog.increment();
             end
             prog.finish();
+            
+            S = S(partialLoadMask);
         end
+        
+        function mask = buildPartialLoadMask(N, partialLoadData, partialLoadSpec)
+            mask = true(N, 1);
+            flds = fieldnames(partialLoadSpec);
+            for iF = 1:numel(flds)
+                fld = flds{iF};
+                keepVals = partialLoadSpec.(fld);
+                if ~isfield(partialLoadData, fld)
+                    warning('Partial load field %s not found in cached partialLoad data on disk, ignoring', fld);
+                    continue;
+                end
+                vals = partialLoadData.(fld);
+                assert(numel(vals) == N, 'Number of trials in partialLoadData.%s does not match number of saved elements (%d)', fld, N);
+                
+                tf = ismember(vals, keepVals);
+                mask = mask & tf;
+            end
+        end
+                    
         
         function N = getArrayCount(locationName)
             locationName = GetFullPath(locationName);
@@ -231,6 +281,18 @@ classdef SaveArrayIndividualized < handle
                 error('Could not read partition file %s', partitionFname);
             end
             list = tokens{1};
+            list = string(list);
+        end
+        
+        function fields = listPartialLoadFields(locationName)
+           file =  TrialDataUtilities.Data.SaveArrayIndividualized.generatePartialLoadDataFileName(locationName);
+           if exist(file, 'file') > 0
+               ld = load(file, 'partialLoadData');
+               partialLoadData = ld.partialLoadData;
+               fields = string(fieldnames(partialLoadData));
+           else
+               fields = strings(0);
+           end
         end
         
         function linkPartitionFromOtherLocation(locationNameRef, locationNameSave, varargin)
@@ -331,6 +393,10 @@ classdef SaveArrayIndividualized < handle
     methods(Static, Hidden)
         function fname = generateCountFileName(locationName)
             fname = fullfile(locationName, 'count.txt');
+        end
+        
+        function fname = generatePartialLoadDataFileName(locationName)
+            fname = fullfile(locationName, 'partialLoad.mat');
         end
         
         function nzeros = numZerosInFileForCount(count)
