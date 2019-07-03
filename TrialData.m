@@ -882,10 +882,11 @@ classdef TrialData
 
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
-                [td.data, partitionMeta, partialLoadMask] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
+                [data, partitionMeta, partialLoadMask] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
                     'message', msg, 'maxElements', p.Results.maxTrials, ...
                     'partitions', partitions, 'loadAllPartitions', loadAllPartitions, ...
                     'ignoreMissingPartitions', p.Results.ignoreMissingPartitions, 'partialLoadSpec', p.Unmatched);
+                td.data = TensorUtils.inflateMaskedTensor(makecol(data), 1, partialLoadMask); % we'll select the partially loaded trials later, but for now needs to be numel(td.data) == nTrials (full)
 
                 % add channel descriptors in partitionMeta, overwriting existing channels if overlapping (used for partitionWaveforms)
                 partitions = fieldnames(partitionMeta);
@@ -6648,9 +6649,9 @@ classdef TrialData
             % first lookup by names
             for iN = 1:numel(names)
                 name = names{iN};
-                if isnumeric(names)
+                if isnumeric(name)
                     % global index
-                    unitNames = td.lookupSpikeChannelByIndex(unitNames);
+                    name = td.lookupSpikeChannelByIndex(name);
                 end
                 if isfield(td.channelDescriptorsByName, name)
                     cd = td.channelDescriptorsByName.(name);
@@ -6662,7 +6663,7 @@ classdef TrialData
                     elseif isa(cd, 'EventChannelDescriptor')
                         fieldsByName{iN} = {cd.(cdField)};
                         colByName{iN} = 1;
-                        fieldIsArrayByName{iN} = false;
+                        fieldIsArrayByName{iN} = false;td
 
                     elseif isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')
                         % refers to analog channel, use timestamps as

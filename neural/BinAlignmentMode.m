@@ -126,12 +126,12 @@ classdef BinAlignmentMode < int32
             tbinsForHistc = tbinsForHistcCell{1};
             
             binStartOffset = mode.getBinStartOffsetForBinWidth(binWidth);
-            
+            tol = 1e-6;
             nTrials = numel(starts);
             tbinsValidMat = false(nTrials, numel(tvecLabel));
             for iTrial = 1:nTrials
-                tbinsValidMat(iTrial, :) = tbinsForHistc(1:end-1) >= starts(iTrial)+binStartOffset & ...
-                    tbinsForHistc(2:end) <= stops(iTrial) + binWidth + binStartOffset; % ensure that we take the last bin labeled at exactly stop(iTrial)
+                tbinsValidMat(iTrial, :) = tbinsForHistc(1:end-1) + tol >= starts(iTrial)+binStartOffset & ...
+                                           tbinsForHistc(2:end) <= stops(iTrial) + binWidth + binStartOffset + tol; % ensure that we take the last bin labeled at exactly stop(iTrial)
             end
         end
     end

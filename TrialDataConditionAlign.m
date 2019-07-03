@@ -4447,7 +4447,7 @@ classdef TrialDataConditionAlign < TrialData
         % Binned spike counts
         %%%%%%%
 
-        function [countsMat, tvec, hasSpikes, tBinEdges] = getSpikeBinnedCounts(td, unitName, varargin)
+        function [countsMat, tvec, hasSpikes, tBinEdges, td] = getSpikeBinnedCounts(td, unitName, varargin)
             % countsMat is nTrials x T x nUnits, tvec is T x 1, hasSpikes
             % is nTrials x nUnits
             p = inputParser;
@@ -4528,13 +4528,13 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = getSpikeBinnedCountsGrouped(td, unitName, varargin)
-            [countsMat, tvec, hasSpikes, tBinEdges] = td.getSpikeBinnedCounts(unitName, varargin{:});
-            countsGrouped = td.groupElementsFlat(countsMat);
-            hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
+            [countsMat, tvec, hasSpikes, tBinEdges, td] = td.getSpikeBinnedCounts(unitName, varargin{:}); % we take back td so that we keep the validity changed during padding
+            countsGrouped = td.groupElements(countsMat);
+            hasSpikesGrouped = td.groupElements(hasSpikes);
         end
 
         function [countsGrouped, tvec, hasSpikesGrouped, tBinEdges] = getSpikeBinnedCountsGroupedRandomized(td, unitName, varargin)
-            [countsMat, tvec, hasSpikes, tBinEdges] = td.getSpikeBinnedCounts(unitName, varargin{:});
+            [countsMat, tvec, hasSpikes, tBinEdges, td] = td.getSpikeBinnedCounts(unitName, varargin{:});
             countsGrouped = td.groupElementsRandomized(countsMat);
             hasSpikesGrouped = td.groupElementsRandomized(hasSpikes);
         end

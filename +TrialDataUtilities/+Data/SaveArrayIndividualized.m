@@ -221,6 +221,7 @@ classdef SaveArrayIndividualized < handle
             prog.finish();
             
             S = S(partialLoadMask);
+            S = makecol(S);
         end
         
         function mask = buildPartialLoadMask(N, partialLoadData, partialLoadSpec)
