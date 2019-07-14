@@ -5882,10 +5882,14 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function plotRaster(td, unitNames, varargin)
+            
+            % black + cbrewer Qual Set1
+            def_cmap = [0 0 0; 0.894 0.102 0.11;0.216 0.494 0.722;0.302 0.686 0.29;0.596 0.306 0.639;1 0.498 0;1 1 0.2;0.651 0.337 0.157;0.969 0.506 0.749;0.6 0.6 0.6];
+            
             p = inputParser();
             p.addParameter('conditionIdx', 1:td.nConditions, @isvector);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
-            p.addParameter('spikeColorMap', cat(1, [0 0 0], distinguishable_colors(5, {'k', 'w'})), @(x) true);
+            p.addParameter('spikeColorMap', def_cmap, @(x) true);
 %             p.addParameter('spikeColor', 'k', @(x) true);
             p.addParameter('colorSpikesLikeCondition', false, @islogical);
             p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
@@ -5994,7 +5998,12 @@ classdef TrialDataConditionAlign < TrialData
 
                     % get grouped spike times by alignment
                     thisC = td.useAlign(idxAlign).getSpikeTimesGrouped(unitNames, 'combine', p.Results.combine);
-                    timesByAlign(iAlign, :, :) = thisC;
+                    for iC = 1:nConditionsUsed
+                        idxCond = conditionIdx(iC);
+                        for iU = 1:nUnits
+                            timesByAlign{iAlign, iC, iU} = thisC{idxCond}(:, iU);
+                        end
+                    end
 
                     if p.Results.drawSpikeWaveforms
                         [wavesC, wavesTvec] = td.useAlign(idxAlign).getSpikeWaveformsGrouped(unitNames, 'combine', p.Results.combine);
