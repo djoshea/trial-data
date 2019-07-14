@@ -6003,7 +6003,7 @@ classdef TrialData
             nFields = numel(fieldList);
             timesCellByUnit = cell(td.nTrials, nUnits);
             for iF = 1:nFields
-                fld = fieldList{1};
+                fld = fieldList{iF};
                 col = colIdxEachField{iF};
                 idx = assignIdxEachField{iF};
 
@@ -6631,8 +6631,8 @@ classdef TrialData
             if isnumeric(names)
                 names = {names};
             end
-            if ischar(names)
-                names = {names};
+            if ischar(names) || iscellstr(names) || isstring(names)
+                names = string(names);
             end
             [fieldsByName, fieldIsArrayByName, colByName] = deal(cell(numel(names), 1));
             nColumnsPerName = nan(numel(names), 1);
@@ -6719,7 +6719,7 @@ classdef TrialData
                         error('Channel %s not found', array);
                     end
 
-                    fieldsByName{iN} = repmat({cd.(cdField)}, numel(chidx), 1);
+                    fieldsByName{iN} = repmat(string(cd.(cdField)), numel(chidx), 1);
                     colByName{iN} = chidx;
                     fieldIsArrayByName{iN} = true(numel(chidx), 1);
                     cdByName(iN, 1) = cd; %#ok<AGROW>

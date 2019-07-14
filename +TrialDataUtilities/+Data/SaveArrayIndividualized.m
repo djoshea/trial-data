@@ -164,7 +164,7 @@ classdef SaveArrayIndividualized < handle
             N = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationName);
             
             partialLoadSpec = p.Results.partialLoadSpec;
-            if ~isempty(partialLoadSpec)
+            if ~isempty(partialLoadSpec) && ~isempty(fieldnames(partialLoadSpec))
                 partialLoadDataPath = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartialLoadDataFileName(locationName);
                 if exist(partialLoadDataPath, 'file') > 0
                     ld = load(partialLoadDataPath, 'partialLoadData');
