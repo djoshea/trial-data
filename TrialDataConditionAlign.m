@@ -560,7 +560,7 @@ classdef TrialDataConditionAlign < TrialData
             names = setdiff(names, td.listSpecialChannels());
 
             % don't remove channels that don't exist
-            names = intersect(names, td.listChannels());
+            names = intersect(names, td.listChannels('includeNamedSubChannels', false));
             if isempty(names)
                 return;
             end
@@ -6273,7 +6273,8 @@ classdef TrialDataConditionAlign < TrialData
                 else
                     unitNameStr = unitName;
                 end
-                TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s %s', td.datasetName, unitNameStr);
+%                 TrialDataUtilities.Plotting.setTitleIfBlank(axh, '%s %s', td.datasetName, unitNameStr);
+                title(axh, sprintf('%s %s', td.datasetName, unitNameStr), 'Interpreter', 'none');
             end
 
             tLims = [min(tLimitsByAlign(:)), max(tLimitsByAlign(:))];

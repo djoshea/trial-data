@@ -1774,14 +1774,14 @@ classdef TrialData
             names = string(names);
             
             function units = getUnitsSingle(name)
-                if td.hasSpikeChannel(name)
-                    units = "spikes/sec";
-                else
+%                 if td.hasSpikeChannel(name)
+%                     units = "spikes/sec";
+%                 else
                     units = string(td.getChannelDescriptor(name).unitsPrimary);
                     if strcmp(units, 'enum') % MatUdp did this at one point
                         units = "";
                     end
-                end
+%                 end
             end
             
             units = arrayfun(@(n) getUnitsSingle(n), names);
@@ -1864,7 +1864,7 @@ classdef TrialData
                     mask = arrayfun(isaMulti, channelDescriptors);
                 else
                     mask = arrayfun(@(cd) isa(cd, p.Results.channelDescriptorClass), channelDescriptors);
-                    end
+                end
             else
                 isaMutliNonSubClass = @(obj) any(arrayfun(@(cls) strcmp(class(obj), cls), cdClassList));
                 mask = arrayfun(isaMutliNonSubClass, channelDescriptors);
