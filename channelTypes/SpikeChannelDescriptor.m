@@ -406,12 +406,16 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
 
         function name = generateNameFromArrayElectrodeUnit(array, electrode, unit, maxElectrode)
             if nargin < 4 || isempty(maxElectrode)
-                maxElectrode = max(99, electrode);
+                if isnan(electrode)
+                    maxElectrode = max(99, unit);
+                else
+                    maxElectrode = max(99, electrode);
+                end
             end
             nZeros = floor(log10(double(maxElectrode))) + 1;
             
             if isnan(electrode)
-                name = sprintf("%s%d", array, unit);
+                name = sprintf("%s%0*d", array, nZeros, unit);
             else
                 name = sprintf("%s%0*d_%d", array, nZeros, electrode, unit);
             end
@@ -419,7 +423,11 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
         
         function names = generateNameListFromArrayElectrodeUnit(arrays, electrodes, units, maxElectrode)
             if nargin < 4
-                maxElectrode = max(99, max(electrodes));
+                if ~all(isnan(electrodes))
+                    maxElectrode = max(99, max(electrodes));
+                else
+                    maxElectrode = max(99, max(units)); % no electrode numbers
+                end
             end
             
             arrays = string(arrays);

@@ -4,8 +4,12 @@ function showInLegend(h, names)
 % use legend(axh, 'show') to activate default legend
 % names is either char (for scalar h), or cellstr
 
-    if nargin >= 2 && ~isempty(names) && ischar(names)
-        names = repmat({names}, numel(h), 1);
+    
+    if nargin >= 2 && ~isempty(names)
+        names = string(names);
+        if numel(names) == 1
+            names = repmat(names, numel(h), 1);
+        end
     end
 
     for i = 1:numel(h)

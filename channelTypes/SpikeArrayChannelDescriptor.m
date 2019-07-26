@@ -330,7 +330,11 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         function ch_idx = findSubChannelByElectrodeUnit(cd, elec, unit)
             ch_idx = nan(size(elec));
             for iE = 1:numel(elec)
-                thisIdx = find(cd.electrodes == elec(iE) & cd.units == unit(iE));
+                if isnan(elec(iE))
+                    thisIdx = find(isnan(cd.electrodes) & cd.units == unit(iE));
+                else
+                    thisIdx = find(cd.electrodes == elec(iE) & cd.units == unit(iE));
+                end
                 if ~isempty(thisIdx)
                     ch_idx(iE) = thisIdx;
                 end

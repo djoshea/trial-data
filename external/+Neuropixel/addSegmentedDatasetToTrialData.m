@@ -60,8 +60,11 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
             clusterInds = sortClusters(clusterCOM, clusterInds);
         end
         
-        electrodes = seg.cluster_ids(clusterInds);
-        units = zeros(numel(electrodes), 1);
+        % name as array#unit# since electrode isn't meaningful
+        units = seg.cluster_ids(clusterInds);
+        electrodes = nan(size(units));
+%         electrodes = seg.cluster_ids(clusterInds);
+%         units = zeros(numel(electrodes), 1);
         if include_valid
             if include_cutoff
                 data_valid = seg.spike_times_ms_rel_start(:, clusterInds);

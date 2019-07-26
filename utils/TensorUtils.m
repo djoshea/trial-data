@@ -1229,6 +1229,7 @@ classdef TensorUtils
             allDims = cat(1, allDims{:});
             assert(all(ismember(1:numel(allDims), allDims)), ...
                 'whichDims must contain each dim in 1:length(whichDims)');
+            
             % add any trailing dimensions which are missing from the list
             % automatically
             if max(allDims) < ndimsOrig
@@ -1236,7 +1237,11 @@ classdef TensorUtils
                 % recompute allDims in case trailing dims were added
                 allDims = cellfun(@(x) x(:), whichDims, 'UniformOutput', false);
                 allDims = cat(1, allDims{:});
-            end
+            elseif max(allDims) > ndimsOrig
+                % in case szOrig has trailing singleton dimensions
+                ndimsOrig = max(ndimsOrig, max(allDims));
+                szOrig = TensorUtils.expandSizeToNDims(szOrig, ndimsOrig);
+            end 
 
             % intermediate size to "unconcatenate" the dims that were
             % concatenated

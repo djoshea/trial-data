@@ -399,6 +399,11 @@ if ~p.Results.quick
     end
 
     axis tight
+    
+    ax = gca;
+    ax.TickDir = 'out';
+    ax.ColorSpace.Colormap = map;
+    ax.CLim = [1 size(map, 1)];
 
     % show y extents as tick bridges on the right hand side
     if showYRanges && ~showScaleBars
@@ -432,6 +437,10 @@ if ~p.Results.quick
 end
 
 axis tight
+
+if nargout == 0
+    clear traceCenters hLines;
+end
 
 end
 
