@@ -402,8 +402,10 @@ if ~p.Results.quick
     
     ax = gca;
     ax.TickDir = 'out';
-    ax.ColorSpace.Colormap = map;
-    ax.CLim = [1 size(map, 1)];
+    if size(map, 1) > 1
+        ax.ColorSpace.Colormap = map;
+        ax.CLim = [1 size(map, 1)];
+    end
 
     % show y extents as tick bridges on the right hand side
     if showYRanges && ~showScaleBars
