@@ -1919,13 +1919,16 @@ classdef ConditionDescriptor
             % is this attribute always numeric?
             % list of allowed values for this value (other values will be ignored)
             p.addParameter('displayAs', '', @isstringlike);
-            p.addParameter('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x));
+            p.addParameter('valueList', {}, @(x) islogical(x) || isnumeric(x) || iscell(x) || isstring(x));
             p.addParameter('valueListDisplayAs', {}, @(x) isempty(x) || iscellstr(x));
             p.addParameter('valueBins', {}, @(x) isnumeric(x) || iscell(x));
             p.addParameter('numeric', false, @islogical);
             p.addParameter('asVector', false, @islogical);
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
+            if isstring(valueList)
+                valueList = cellstr(valueList);
+            end
 
             [tf, iAttr] = ci.hasAttribute(name);
             if tf
