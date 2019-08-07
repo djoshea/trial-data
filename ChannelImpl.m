@@ -354,7 +354,7 @@ classdef ChannelImpl
         end
 
         function data = unscaleData(data, scaleFromLims, scaleToLims)
-            data = ChannelDescriptor.scaleData(data, scaleToLims, scaleFromLims);
+            data = ChannelImpl.scaleData(data, scaleToLims, scaleFromLims);
         end
 
         function cls = getCellElementClass(dataCell)

@@ -160,52 +160,6 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             cd = cd.initialize();
         end
 
-        function data = convertDataCellOnAccess(cd, fieldIdx, data)
-            % cast to access class, also do scaling upon request
-            % (cd.scaleFromLims -> cd.scaleToLims)
-            data = convertDataCellOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
-            end
-        end
-
-        function data = convertDataSingleOnAccess(cd, fieldIdx, data)
-            data = convertDataSingleOnAccess@ChannelDescriptor(cd, fieldIdx, data);
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
-            end
-        end
-
-        function data = convertAccessDataCellToMemory(cd, fieldIdx, data)
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
-            end
-            data = convertAccessDataCellToMemory@ChannelDescriptor(cd, fieldIdx, data);
-        end
-
-        function data = convertAccessDataSingleToMemory(cd, fieldIdx, data)
-            if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
-            end
-            data = convertAccessDataSingleToMemory@ChannelDescriptor(cd, fieldIdx, data);
-        end
-
-        function waveData = scaleWaveforms(cd, waveData)
-            if iscell(waveData)
-                waveData = cd.convertDataCellOnAccess(2, waveData);
-            else
-                waveData = cd.convertDataSingleOnAccess(2, waveData);
-            end
-        end
-
-        function waveData = unscaleWaveforms(cd, waveData)
-            if iscell(waveData)
-                waveData = cd.convertAccessDataCellToMemory(2, waveData);
-            else
-                waveData = cd.convertAccessDataSingleToMemory(2, waveData);
-            end
-        end
-
         function [cd, dataFieldRenameStruct] = rename(cd, newName)
             cd.warnIfNoArgOut(nargout);
             % also rename _waveforms field if it matches

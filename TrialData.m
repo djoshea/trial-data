@@ -1956,7 +1956,7 @@ classdef TrialData
             channelDescriptors = channelDescriptors(mask);
         end
 
-        function [names, channelDescriptors] = listNonSpecialChannels(td)
+        function [names, channelDescriptors] = listNonSpecialChannels(td, varargin)
             [names, channelDescriptors] = td.listChannels(varargin{:});
             mask = arrayfun(@(cd) ~cd.special, channelDescriptors);
             names = names(mask);
@@ -2795,13 +2795,11 @@ classdef TrialData
         end
 
         function timeField = getAnalogTimeField(td, name)
-            if td.hasAnalogChannel(name) || td.hasAnalogChannelGroup(name)
-                cd = td.getChannelDescriptor(name);
+            cd = td.getChannelDescriptor(name);
+            if isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')
                 timeField = string(cd.timeField);
             else
-                if isempty(td)
-                    error('%s is not an analog channel or analog channel group', name);
-                end
+                error('%s is not an analog channel or analog channel group', name);
             end
         end
 
@@ -4222,7 +4220,7 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
 
             names = string(names);
-            timeFields = unique(arrayfun(@(name) td.getAnalogTimeField(name), names, 'UniformOutput', false));
+            timeFields = unique(arrayfun(@(name) td.getAnalogTimeField(name), names));
 
             if ~isempty(timeFields)
                 timeFields = unique(timeFields);
@@ -5391,7 +5389,7 @@ classdef TrialData
             [uniqTable, ~, which] = unique(valueTable);
             uniqTable.Properties.RowNames = {};
 
-            counts = hist(which, 1:max(which))';
+            counts = hist(which, 1:max(which))'; %#ok<HIST>
             uniqTable.TrialCount = counts;
             uniqTable.Properties.VariableUnits{end} = 'trials';
         end
@@ -5536,7 +5534,8 @@ classdef TrialData
 
                 % undo scaling and convert back to memory scale
                 if ~p.Results.waveformsInMemoryScale
-                    waveforms = cd.unscaleWaveforms(waveforms);
+                    impl = cd.getImpl();
+                    waveforms = impl.unscaleWaveforms(waveforms);
                 end
 
                 channelData{end+1} = makecol(waveforms);
@@ -5587,7 +5586,7 @@ classdef TrialData
 
             td.assertHasChannel(name);
             cd = td.channelDescriptorsByName.(name);
-            assert(isa(cd, 'SpikeChannelDescriptor'));
+            assert(isa(cd, 'SpikeChannelDescriptor') || isa(cd, 'SpikeArrayChannelDescriptor'));
 
             if p.Results.isAligned
                 % add the zero offset to the time vector for each trial
@@ -5599,10 +5598,13 @@ classdef TrialData
                 offsets = zerosvec(td.nTrials);
             end
 
-            if iscell(times)
-                times = cellfun(@plus, makecol(times), num2cell(offsets), 'UniformOutput', false);
+            if cd.nChannels == 1
+                times = makecol(times);
+            end
+            if iscell(times) 
+                times = cellfun(@plus, times, repmat(num2cell(offsets), 1, cd.nChannels), 'UniformOutput', false);
             else
-                times = makecol(times) + offsets;
+                times = times + offsets;
             end
 
             channelData = {times};
@@ -5624,7 +5626,8 @@ classdef TrialData
 
                 % undo scaling and convert back to memory scale
                 if ~p.Results.waveformsInMemoryScale
-                    newWaves = cd.unscaleWaveforms(newWaves);
+                    impl = cd.getImpl();
+                    newWaves = impl.unscaleWaveforms(newWaves);
                 end
 
             else
@@ -6115,10 +6118,11 @@ classdef TrialData
 
         function td = maskSpikeChannelSpikesRaw(td, unitName, mask, varargin)
             td.warnIfNoArgOut(nargout);
-            assert(isvector(mask) && numel(mask) == td.nTrials);
+            assert(ismatrix(mask) && size(mask, 1) == td.nTrials);
 
             %td.assertHasSpikeChannel(unitName);
             cd = td.channelDescriptorsByName.(unitName);
+            assert(size(mask, 2) == cd.nChannels);
 
             times = cat(1, td.data.(unitName));
             notEmpty = ~cellfun(@isempty, times);
@@ -6180,7 +6184,7 @@ classdef TrialData
                 
                 cd = td.channelDescriptorsByName.(unitName);
                 spikeField = cd.dataFieldPrimary;
-                if isa(cd, 'SpikeChannelArrayDescriptor')
+                if isa(cd, 'SpikeArrayChannelDescriptor')
                     nUnits = cd.nChannels;
                 else
                     nUnits = 1;
@@ -6192,8 +6196,8 @@ classdef TrialData
                 timesMask = cell(td.nTrials, nUnits);
                 
                 for iT = 1:td.nTrials
-                    for iU = 1:nUnits
-                        timesMask{iT, iU} = times{iT, iU} >= startTimes(iT) & times{iT, iU} <= stopTimes(iT);
+                    for iV = 1:nUnits
+                        timesMask{iT, iV} = times{iT, iV} >= startTimes(iT) & times{iT, iV} <= stopTimes(iT);
                     end
                 end
 
@@ -6270,7 +6274,7 @@ classdef TrialData
                     wavesCellByUnit(:, idx) = catData(:, col);
                 end
                 if p.Results.applyScaling
-                   wavesCellByUnit(:, idx) = cdByField(iF).scaleWaveforms(wavesCellByUnit(:, idx));
+                   wavesCellByUnit(:, idx) = cdByField(iF).getImpl().scaleWaveforms(wavesCellByUnit(:, idx));
                 end
             end
 
@@ -6436,7 +6440,8 @@ classdef TrialData
 
                 % undo scaling and convert back to memory scale
                 if ~p.Results.waveformsInMemoryScale
-                    waveforms = cd.unscaleWaveforms(waveforms);
+                    impl = cd.getImpl();
+                    waveforms = impl.unscaleWaveforms(waveforms);
                 end
 
                 channelData{end+1} = splitCellIntoTrials(waveforms);
@@ -6663,7 +6668,7 @@ classdef TrialData
                     elseif isa(cd, 'EventChannelDescriptor')
                         fieldsByName{iN} = {cd.(cdField)};
                         colByName{iN} = 1;
-                        fieldIsArrayByName{iN} = false;td
+                        fieldIsArrayByName{iN} = false;
 
                     elseif isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')
                         % refers to analog channel, use timestamps as
@@ -7388,6 +7393,12 @@ classdef TrialData
                 % only touch specified fields
                 if ~fieldMask(iF), continue; end
 
+                if size(valueCell{iF}, 2) > 1 && size(valueCell{iF}, 1) == td.nTrials
+                    % split along trial axis into nTrials separate cells
+                    valueCell{iF} = mat2cell(valueCell{iF}, ones(td.nTrials, 1), size(valueCell{iF}, 2));
+                end
+                    
+                
                 % fields that have CELL values could be passed in as
                 % nTrials x nFields, here we're choosing to have this
                 % conversion be handled by the caller
