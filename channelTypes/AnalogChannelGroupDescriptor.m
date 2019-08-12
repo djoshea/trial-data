@@ -143,12 +143,13 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
 
         % used by trial data when it needs to change field names
         function name = suggestFieldName(cd, fieldIdx)
+            fieldIdx = cd.lookupFieldId(fieldIdx);
             if fieldIdx == 1
                 name = cd.name;
             elseif fieldIdx == 2
                 name = sprintf('%s_time', cd.name);
             else                
-                name = sprintf('%s_f%d', fieldIdx);
+                name = suggestFieldName@ChannelDescriptor(cd, fieldIdx);
             end
         end
         
@@ -280,7 +281,11 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             cd.warnIfNoArgOut(nargout);
             
             if nargin < 3 || isempty(newSampleSize)
-                newSampleSize = numel(colIdx);
+                if islogical(colIdx)
+                    newSampleSize = nnz(colIdx);
+                else
+                    newSampleSize = numel(colIdx);
+                end
             end
             
             names = cd.subChannelNames;

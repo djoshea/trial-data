@@ -167,10 +167,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         
         % used by trial data when it needs to change field names
         function name = suggestFieldName(cd, fieldIdx)
+            fieldIdx = cd.lookupFieldId(fieldIdx);
             if fieldIdx == 1
                 name = cd.name;
             else
-                name = sprintf('%s_f%d', fieldIdx);
+                name = sprintf('%s_f%s', cd.fieldIds{fieldIdx});
             end
         end
         
@@ -278,6 +279,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         
         function cd = renameDataField(cd, iF, newName)
             cd.warnIfNoArgOut(nargout);
+            iF = cd.lookupFieldId(iF);
             assert(iF ~= 1, 'Should not rename primary field using this method');
             cd.dataFields{iF} = newName;
             cd = cd.initialize();

@@ -560,7 +560,7 @@ classdef TrialDataConditionAlign < TrialData
             names = setdiff(names, td.listSpecialChannels());
 
             % don't remove channels that don't exist
-            names = intersect(names, td.listChannels('includeNamedSubChannels', false));
+            names = intersect(names, td.listChannels('includeNamedSubChannels', true));
             if isempty(names)
                 return;
             end

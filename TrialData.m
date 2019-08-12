@@ -518,6 +518,7 @@ classdef TrialData
                     resort(iT) = ~issorted(timeThis) || numel(timeThis) > numel(unique(timeThis));
                 end
                 if any(resort)
+                    prog.pause_for_output();
                     warning('%d trials have duplicate or non-monotonically increasing timestamps for %s. Fixing by deleting non-montonic samples.', nnz(resort), dataField);
 
                     % sort all affected channels so that the shared time field can be preserved
@@ -2081,6 +2082,7 @@ classdef TrialData
         end
 
         function td = dropAnalogChannelGroup(td, groupName)
+            error('use dropChannels instead');
             td.warnIfNoArgOut(nargout);
 
             groupName = string(groupName);
@@ -2117,45 +2119,43 @@ classdef TrialData
             names = setdiff(names, td.listSpecialChannels());
 
             % don't remove channels that don't exist
-            names = intersect(names, td.listChannels('includeNamedSubChannels', false));
+            names = intersect(names, td.listChannels('includeNamedSubChannels', true));
             if isempty(names)
                 return;
             end
+            
+            names = string(names);
 
             % first hold onto the to-be-removed channel descriptors
             cds = cellvec(numel(names));
-            partialGroupNames = cellvec(numel(names));
-            [inGroupPartial, inGroupWhole] = falsevec(numel(names)); % analog channel in a group
-            isGroup = falsevec(numel(names));
+            inGroup = falsevec(numel(names));
+            groupPartialSignalsRemove = struct();
             for i = 1:numel(names)
-                cds{i} = td.channelDescriptorsByName.(names{i});
+                cds{i} = td.getChannelDescriptor(names{i});
                 if isa(cds{i}, 'AnalogChannelDescriptor') && cds{i}.isColumnOfSharedMatrix
                     groupName = cds{i}.primaryDataField;
-                    if ismember(groupName, names)
-                        % already included as a whole group, skip it
-                        inGroupWhole(i) = true;
-                    else
-                        inGroupPartial(i) = true;
-                        partialGroupNames{i} = groupName;
+                    inGroup(i) = true;
+                    if ~ismember(groupName, names) % if not already included as a whole group
+                        if isfield(groupPartialSignalsRemove, groupName)
+                            groupPartialSignalsRemove.(groupName) = union(groupPartialSignalsRemove.(groupName), names(i));
+                        else
+                            groupPartialSignalsRemove.(groupName) = names(i);
+                        end
                     end
-                elseif isa(cds{i}, 'AnalogChannelGroupDescriptor')
-                    isGroup(i) = true;
-                end
+                elseif isa(cds{i}, 'SpikeChannelDescriptor') && cds{i}.isColumnOfArray
+                    error('Not yet implemented');
+                end     
+%                 elseif isa(cds{i}, 'AnalogChannelGroupDescriptor')
+%                     isGroup(i) = true;
             end
 
-
-            % remove whole groups first
-            if any(isGroup)
-                td = td.dropAnalogChannelGroup(names(isGroup));
-                cds = cds(~isGroup & ~inGroupWhole);
-%                 inGroup = inGroup(~isGroup);
-%                 partialGroupNames = partialGroupNames(~isGroup);
-            end
-
-%             groupsAffected = unique(partialGroupNames(inGroup));
+            % remove whole groups first - this doesn't do anything special anymore
+%             if any(isGroup)
+%                 td = td.dropAnalogChannelGroup(names(isGroup));
+%             end
 
             % remove the channel descriptors
-            cdFieldsRemove = intersect(names, fieldnames(td.channelDescriptorsByName));
+            cdFieldsRemove = intersect(names(~inGroup), fieldnames(td.channelDescriptorsByName));
             if ~isempty(cdFieldsRemove)
                 td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, cdFieldsRemove);
             end
@@ -2174,15 +2174,15 @@ classdef TrialData
                 td.data = rmfield(td.data, fieldsRemove);
             end
 
-            % don't do this anymore - not all unnamed columns should be
-            % removed
-            % clean the analog channel groups
-%             for iG = 1:numel(groupsAffected)
-%                 if isfield(td.data, groupsAffected{iG}) % could be that the whole group was dropped
-%                     td = td.removeUnnamedColumnsAnalogChannelGroup(groupsAffected{iG});
-%                 end
-%             end
-
+            % remove signals from groups by trimming analog data columns
+            groups = fieldnames(groupPartialSignalsRemove);
+            for iG = 1:numel(groups)
+                group = groups{iG};
+                removeSubNames = groupPartialSignalsRemove.(group);
+                
+                td = td.removeColumnsFromAnalogChannelGroup(group, removeSubNames);
+            end
+            
             td = td.postDataChange(fieldsRemove);
         end
 
@@ -3129,6 +3129,12 @@ classdef TrialData
                 warning('Overwriting existing analog channel group %s', groupName);
                 td = td.dropChannel(groupName);
             end
+            
+            existingSub = td.hasChannel(subChannelNames);
+            if any(existingSub)
+                warning('Overwriting existing analog channels %s', TrialDataUtilities.String.strjoin(subChannelNames(existingSub)));
+                td = td.dropChannels(subChannelNames(existingSub));
+            end
 
             % times can either be a field/channel name, or it can be raw
             % time values
@@ -3605,8 +3611,13 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             
             cd = td.getChannelDescriptor(groupName);
-            colIdx = setdiff(1:cd.nChannels, removeColIdx);
-            td = td.filterColumnsAnalChannelGroup(groupName, colIdx, varargin{:});
+            if isnumeric(removeColIdx)
+                colIdx = setdiff(1:cd.nChannels, removeColIdx);
+            else
+                removeSubNames = string(removeColIdx);
+                colIdx = ~ismember(cd.subChannelNames, removeSubNames);
+            end
+            td = td.filterColumnsAnalogChannelGroup(groupName, colIdx, varargin{:});
         end
         
         function td = filterColumnsAnalogChannelGroup(td, groupName, colIdx, varargin)
@@ -4281,32 +4292,33 @@ classdef TrialData
             cdList = td.getChannelDescriptor(chList);
 
             % separate groups from non groups
-            maskAnalog = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), cdList);
-            chListAnalog = chList(maskAnalog);
-            cdAnalog = cdList(maskAnalog);
-            inGroup = arrayfun(@(cd) cd.isColumnOfSharedMatrix, cdAnalog);
-            groupList = unique(arrayfun(@(cd) cd.primaryDataField, cdAnalog(inGroup), 'UniformOutput', false));
-            chList = chListAnalog(~inGroup);
+            maskIndiv = arrayfun(@(cd) isa(cd, 'AnalogChannelDescriptor'), cdList);
+            chListIndiv = chList(maskIndiv);
+            cdIndiv = cdList(maskIndiv);
+            inGroup = arrayfun(@(cd) cd.isColumnOfSharedMatrix, cdIndiv);
+            groupList = unique(arrayfun(@(cd) cd.primaryDataField, cdIndiv(inGroup), 'UniformOutput', false));
+            indivChList = chListIndiv(~inGroup);
 
             maskGroup = arrayfun(@(cd) isa(cd, 'AnalogChannelGroupDescriptor'), cdList);
-            cdOther = cdList(~maskAnalog & ~maskGroup);
+            groupList = union(groupList, chList(maskGroup));
+            cdOther = cdList(~maskIndiv & ~maskGroup);
             if ~isempty(cdOther)
                 warning('Trimming analog time field %s referenced by other channels %s', ...
                     timeField, TrialDataUtilities.String.strjoin({cdOther.name}));
             end
 
-            prog = ProgressBar(numel(chList) + numel(groupList), 'Stripping analog channels sharing time field %s', timeField);
+            prog = ProgressBar(numel(indivChList) + numel(groupList), 'Stripping analog channels sharing time field %s', timeField);
 
             % overwrite time field
             times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), timesMask(notEmpty), 'UniformOutput', false);
             td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, timeField, times);
 
-            for iC = 1:numel(chList)
+            for iC = 1:numel(indivChList)
                 prog.increment();
-                samples = {td.data.(chList{iC})}';
+                samples = {td.data.(indivChList{iC})}';
                 samplesNotEmpty = ~cellfun(@isempty, samples) & notEmpty;
                 samples(samplesNotEmpty) = cellfun(@(v, m) v(m), samples(samplesNotEmpty), timesMask(samplesNotEmpty), 'UniformOutput', false);
-                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, chList{iC}, samples);
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, indivChList{iC}, samples);
             end
             for iG = 1:numel(groupList)
                 prog.increment();
@@ -4317,7 +4329,7 @@ classdef TrialData
             end
             prog.finish();
 
-            td = td.postDataChange(cat(1, chList, groupList));
+            td = td.postDataChange(cat(1, indivChList, groupList));
         end
 
         function [times, values] = trimIncomingAnalogChannelData(td, times, values, varargin)
@@ -6097,12 +6109,10 @@ classdef TrialData
             mask = falsevec(numel(unitNames));
             for iU = 1:numel(unitNames)
                 unitName = unitNames{iU};
-                if ~td.hasSpikeChannel(unitName)
-                    mask(iU) = true;
-                else
+                if td.hasSpikeChannel(unitName) || td.hasSpikeArrayChannel(unitName);
                     wavefields{iU} = td.channelDescriptorsByName.(unitName).waveformsField;
-                    mask(iU) = false;
-
+                    if isempty(wavefields{iU}), continue; end
+                    mask(iU) = true;
                     td.channelDescriptorsByName.(unitName) = td.channelDescriptorsByName.(unitName).removeWaveformsField();
                 end
             end
@@ -6610,6 +6620,10 @@ classdef TrialData
         function tf = hasSpikeChannel(td, name, varargin)
             tf = ismember(name, td.listSpikeChannels(varargin{:}));
         end
+        
+        function tf = hasSpikeArrayChannel(td, name, varargin)
+            tf = ismember(name, td.listSpikeArrays(varargin{:}));
+        end
 
         function [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName, cdsByField] = ...
                 getSpikeChannelMultiAccessInfo(td, names, type)
@@ -7060,6 +7074,62 @@ classdef TrialData
 
             td = td.updatePostChannelDataChange(newName);
         end
+        
+        function tdDest = copyChannelToSecondInstance(td, tdDest, oldName, varargin)
+            p = inputParser();
+            p.addParameter('as', oldName, @TrialDataUtilities.String.isstringlike);
+            p.addParameter('clearForInvalid', false, @islogical);
+            p.parse(varargin{:});
+
+            % copy channel oldName to newName
+            td.warnIfNoArgOut(nargout);
+            newName = p.Results.as;
+            
+            assert(td.nTrials == tdDest.nTrials, 'Trial counts of td and tdDest differ');
+
+            alreadyHasChannel = tdDest.hasChannel(newName);
+            if alreadyHasChannel
+                warning('Overwriting existing channel with name %s', newName);
+                tdDest = tdDest.dropChannels(newName);
+            end
+
+            % ask the channel descriptor to rename itself and store the copy
+            [cd, dataFieldRenameMap] = td.channelDescriptorsByName.(oldName).rename(newName);
+            tdDest.channelDescriptorsByName.(newName) = cd;
+            flds = fieldnames(dataFieldRenameMap);
+            
+            % check that no other channels in tdDest (besides newName) were using that field
+            for iF = 1:numel(flds)
+                oldField = flds{iF};
+                newField = dataFieldRenameMap.(oldField);
+                otherCh = setdiff(tdDest.getChannelsReferencingFields(newField), newName);
+                if ~isempty(otherCh)
+                    error('Channel %s in destination td also references field %s', ...
+                        TrialDataUtilities.String.strjoin(otherCh), newField);
+                end
+            end
+            
+            % then copy new channel fields
+            for iF = 1:numel(flds)
+                oldField = flds{iF};
+                newField = dataFieldRenameMap.(oldField);
+                tdDest.data = copyStructField(td.data, tdDest.data, oldField, newField);
+            end
+
+            % if analog channel in group, separate it from the group
+            % this will copy the data, but it won't get rid of the old data
+            % since the original channel still references that column
+            if isa(cd, 'AnalogChannelDescriptor') && cd.isColumnOfSharedMatrix
+                tdDest = tdDest.separateAnalogChannelFromGroup(newName);
+            end
+
+            if p.Results.clearForInvalid
+                % we use td.valid since we want td source to control which data points are considered valid, not tdDest
+                tdDest = tdDest.clearChannelData(newName, 'updateMask', ~td.valid, 'updateOnlyValidTrials', false);
+            end
+
+            tdDest = tdDest.updatePostChannelDataChange(newName);
+        end
 
         function td = renameChannel(td, oldName, newName)
             % rename channel name to newName
@@ -7084,6 +7154,23 @@ classdef TrialData
                 td = td.renameDataField(oldField, newField, oldName);
             end
         end
+        
+        function td = renameAnalogTimeField(td, name, timeField)
+            td.warnIfNoArgOut(nargout);
+            cd = td.channelDescriptorsByName.(name);
+            
+            if nargin < 3
+                timeField = cd.suggestFieldName('time');
+            end
+            oldTimeField = cd.timeField;
+            
+            if strcmp(oldTimeField, timeField);
+                return;
+            end
+            
+            td.channelDescriptorsByName.(name) = cd.renameDataField('time', timeField);
+            td = td.renameDataField(oldTimeField, timeField, name); 
+        end
 
         function td = renameDataField(td, field, newFieldName, ignoreChannelList, copy)
             % rename field number fieldIdx of channel name to newFieldName
@@ -7097,6 +7184,11 @@ classdef TrialData
             if nargin < 5
                 copy = false;
             end
+            
+            conflictChannels = setdiff(td.getChannelsReferencingFields(newFieldName), ignoreChannelList);
+            if ~isempty(conflictChannels)
+                error('Channels %s are referencing field name %s', TrialDataUtilities.String.strjoin(conflictChannels));
+            end
 
             otherChannels = setdiff(td.getChannelsReferencingFields(field), ignoreChannelList);
             if ~isempty(otherChannels) || copy
@@ -7106,6 +7198,22 @@ classdef TrialData
                 % move field and delete old one
                 td.data = mvfield(td.data, field, newFieldName);
             end
+        end
+        
+        function td = dropUnusedDataFields(td)
+            td.warnIfNoArgOut(nargout);
+
+            flds = fieldnames(td.data);
+            maskRemove = falsevec(numel(flds));
+            for iF = 1:numel(flds)
+                maskRemove(iF) = isempty(td.getChannelsReferencingFields(flds{iF})); 
+            end
+            
+            if any(maskRemove)
+                td.data = rmfield(td.data, flds(maskRemove));
+            end
+            
+            td.data = orderfields(td.data);
         end
 
         function td = copyRenameSharedChannelFields(td, names, fieldMask)

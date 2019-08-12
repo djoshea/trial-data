@@ -180,12 +180,13 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
         
         % used by trial data when it needs to change field names
         function name = suggestFieldName(cd, fieldIdx)
+            fieldIdx = cd.lookupFieldId(fieldIdx);
             if fieldIdx == 1
                 name = cd.name;
             elseif fieldIdx == 2
                 name = sprintf('%s_time', cd.name);
             else                
-                name = sprintf('%s_f%d', fieldIdx);
+                name = suggestFieldName@ChannelDescriptor(cd, fieldIdx);
             end
         end
         
