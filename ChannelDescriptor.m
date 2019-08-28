@@ -139,6 +139,16 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             assert(numel(cd.catAlongFirstDimByField) == nFields, 'catAlongFirstDimByField has wrong size');
         end
         
+        function [tf, idx] = hasFieldId(cd, fieldId)
+            fieldId = string(fieldId);
+            if isnumeric(fieldId)
+                tf = fieldId >= 1 & fieldId <= cd.nFields;
+                idx = fieldId;
+            else
+                [tf, idx] = ismember(fieldId, cd.fieldIds);
+            end
+        end
+        
         function idx = lookupFieldId(cd, fieldId)
             if isnumeric(fieldId)
                 idx = fieldId;
@@ -351,10 +361,14 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
             vals = missingVals(cd.elementTypeByField);
             accClasses = string(cd.accessClassByField); % was memory class, changed to access class so that int types converted to single get filled as NaN
             for iF = 1:numel(vals)
-                if ~cd.collectAsCellByField(iF) && ismember(cd.elementTypeByField, [cd.VECTOR, cd.NUMERIC])
-                    % replace [] with NaN since this will be collected as
-                    % matrix
-                    vals{iF} = nan(1, accClasses{iF});
+                if ismember(cd.elementTypeByField, [cd.VECTOR, cd.NUMERIC])
+                    if ~cd.collectAsCellByField(iF)
+                        % replace [] with NaN since this will be collected as
+                        % matrix
+                        vals{iF} = nan(1, accClasses{iF});
+                    else
+                        vals{iF} = nan(0, 1, accClasses{iF});
+                    end
                     
                 elseif cd.elementTypeByField(iF) == cd.SCALAR
                     if strcmp(accClasses{iF}, 'logical')
@@ -364,6 +378,9 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
                     else
                         vals{iF} = ChannelImpl.icast(vals{iF}, accClasses{iF});
                     end
+                    
+                elseif cd.elementTypeByField(iF) == cd.CELL
+                    vals{iF} = {};
                 end
             end
         end
@@ -385,7 +402,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function tf = get.collectAsCellByField(cd)
             tf = ~cd.isVectorizableByField;
             if ~isempty(cd.catAlongFirstDimByField)
-                tf = tf & makecol(~cd.catAlongFirstDimByField);
+                tf = tf & makerow(~cd.catAlongFirstDimByField);
             end
         end
         

@@ -1,4 +1,9 @@
 function td = remapNeuralChannels(td, spikeMapFn, continuousMapFn)
+%% THIS FUNCTION HAS NOW BEEN MADE OBSOLETE BY SPIKE ARRAYS
+
+error('Not useful anymore');
+
+
 % spikeMapFn and continuousMapFn receive channel descriptors and return the new
 % name for the channel, and the meta field.
 % [newName, meta] = spikeMapFn(spikeChannelDescriptor)

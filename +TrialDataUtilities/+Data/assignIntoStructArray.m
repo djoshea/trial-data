@@ -1,4 +1,4 @@
-function S = assignIntoStructArray(S, fld, vals, idx)
+function S = assignIntoStructArray(S, fld, vals, idx, treatValsAsScalar)
 % S = assignIntoStructArray(S, fld, vals, idx)
 % for each element s in struct array S(idx), efficiently assigns
 % s.(fld) = the corresponding element from vals.
@@ -8,7 +8,7 @@ function S = assignIntoStructArray(S, fld, vals, idx)
 % 
 % If fld is a cellstr, assigns vals(iS, iFld) into each field in fld{:}
 
-    if ~exist('idx', 'var')
+    if ~exist('idx', 'var') || isempty(idx)
         if isempty(S)
             % no existing struct, make it by figuring out how many vals are
             % given
@@ -25,6 +25,10 @@ function S = assignIntoStructArray(S, fld, vals, idx)
         end
     end
      
+    if ~exist('treatValsAsScalar', 'var')
+        treatValsAsScalar = false;
+    end
+    
     % cell wrap fld
     if ~iscell(fld)
         fld = {fld};
@@ -35,6 +39,10 @@ function S = assignIntoStructArray(S, fld, vals, idx)
         vals = {vals};
     elseif ~iscell(vals)
         vals = num2cell(vals);
+    end
+    
+    if treatValsAsScalar
+        vals = {vals};
     end
     
     % scalar expand vals

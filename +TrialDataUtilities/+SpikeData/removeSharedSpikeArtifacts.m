@@ -46,7 +46,7 @@ end
 artifactCounts = nan(size(data));
 timeWindowHalf = p.Results.timeWindow / 2;
 matchCounts = cellfun(@(times) zeros(size(times)), data, 'UniformOutput', false);
-    
+
 for c = 1:nC
     unitName = unitNames{c};
     prog.update(c, 'Scanning %s for shared artifacts', unitName);

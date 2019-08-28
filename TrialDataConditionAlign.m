@@ -2038,10 +2038,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('isAligned', true, @islogical); % timesAligned already relative to current zero
             p.parse(varargin{:});
 
-            assert(iscell(timesRaw) && isvector(timesRaw) && numel(timesRaw) == td.nTrials);
-            assert(iscell(dataRaw) && numel(dataRaw) == td.nTrials);
-            assert(iscell(dataAligned) && numel(dataAligned) == td.nTrials);
-            assert(iscell(timesAligned) && isvector(timesAligned) && numel(timesAligned) == td.nTrials);
+            assert(iscell(timesRaw) && ismatrix(timesRaw) && size(timesRaw, 1) == td.nTrials);
+            assert(iscell(dataRaw) && size(dataRaw, 1) == td.nTrials);
+            assert(iscell(dataAligned) && size(dataAligned, 1) == td.nTrials);
+            assert(iscell(timesAligned) && ismatrix(timesAligned) && size(timesAligned, 1) == td.nTrials);
 
             [~, indFirst, indLast] = td.alignInfoActive.getAlignedTimesMask(...
                 timesRaw, 'includePadding', p.Results.includePadding);
@@ -2053,8 +2053,9 @@ classdef TrialDataConditionAlign < TrialData
             else
                 offsets = zeros(td.nTrials, 1);
             end
+            offsets = repmat(offsets, 1, size(dataRaw, 2));
 
-            for iT = 1:td.nTrials
+            for iT = 1:numel(dataRaw)
                 if ~isnan(indFirst(iT))
                     dpre = dataRaw{iT}(1:indFirst(iT), :, :, :, :);
                     tpre = timesRaw{iT}(1:indFirst(iT), :, :, :, :);
@@ -3115,6 +3116,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
             p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis this enables nanmean like computations
 
+            p.addParameter('applyScaling', true, @islogical);
             p.parse(varargin{:});
 
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName, ...
@@ -3122,7 +3124,8 @@ classdef TrialDataConditionAlign < TrialData
                 'linearCombinationWeights', p.Results.linearCombinationWeights, ...
                 'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
                 'keepNaNIfAllNaNs', p.Results.keepNaNIfAllNaNs, ...
-                'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN);
+                'normalizeCoefficientsByNumNonNaN', p.Results.normalizeCoefficientsByNumNonNaN, ...
+                'applyScaling', p.Results.applyScaling);
 
             includePadding = p.Results.includePadding;
 
@@ -3831,7 +3834,7 @@ classdef TrialDataConditionAlign < TrialData
 
             %assert(td.checkAnalogChannelGroupHasUniformScaling(groupName), 'Analog channel group must be uniformly scaled');
 
-            cd = td.getAnalogChannelGroupSingleChannelDescriptor(groupName);
+            cd = td.getChannelDescriptor(groupName);
             timeField = cd.timeField;
 
             fullTrial = td.alignIncludesFullTrial();
@@ -5272,7 +5275,7 @@ classdef TrialDataConditionAlign < TrialData
     end
 
     methods % spike modification
-        function td = setSpikeChannelWithinAlignWindow(td, unitName, newTimes, varargin)
+        function td = setSpikeChannelWithinAlignWindow(td, ch, newTimes, varargin)
             p = inputParser();
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('waveforms', [], @iscell);
@@ -5280,41 +5283,40 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
-            td.assertHasChannel(unitName);
-            cd = td.channelDescriptorsByName.(unitName);
-            assert(isa(cd, 'SpikeChannelDescriptor'));
+            cd = td.getChannelDescriptor(ch);
+            assert(isa(cd, 'SpikeChannelDescriptor') || isa(cd, 'SpikeArrayChannelDescriptor'));
 
-            hasWaves = ~isempty(p.Results.waveforms);
+            hasWaves = ~isempty(p.Results.waveforms) && cd.hasWaveforms;
             if hasWaves
-               [wavesRaw, ~, timesRaw] = td.getRawSpikeWaveforms(unitName);
+               [wavesRaw, ~, timesRaw] = td.getRawSpikeWaveforms(ch, 'applyScaling', ~p.Results.waveformsInMemoryScale); % have the scaling match the input
 
                [waves, times] = td.replaceDataWithinAlignWindow(wavesRaw, timesRaw, ...
                    p.Results.waveforms, newTimes, 'includePadding', p.Results.includePadding);
             else
-                timesRaw = td.getRawSpikeTimes(unitName);
+                timesRaw = td.getRawSpikeTimes(ch);
 
                 times = td.replaceDataWithinAlignWindow(timesRaw, timesRaw, ...
                    newTimes, newTimes, 'includePadding', p.Results.includePadding);
                 waves = [];
             end
 
-            td = td.setSpikeChannel(unitName, times, 'waveforms', waves, ...
-                'waveformsInMemoryScale', p.Results.waveformsInMemoryScale);
+            td = td.setSpikeChannel(ch, times, 'waveforms', waves, ...
+                'waveformsInMemoryScale', p.Results.waveformsInMemoryScale, 'isAligned', false);
         end
 
-        function td = maskSpikeChannelSpikes(td, unitName, mask, varargin)
+        function td = maskSpikeChannelSpikes(td, ch, mask, varargin)
             p = inputParser();
             p.addParameter('keepRemovedSpikesAs', '', @ischar);
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
             keepAs = p.Results.keepRemovedSpikesAs;
-            assert(isvector(mask) && numel(mask) == td.nTrials);
+            assert(ismatrix(mask) && size(mask, 1) == td.nTrials);
 
-            td.assertHasSpikeChannel(unitName);
-            cd = td.channelDescriptorsByName.(unitName);
+            cd = td.channelDescriptorsByName.(ch);
+            assert(isa(cd, 'SpikeChannelDescriptor') || isa(cd, 'SpikeArrayChannelDescriptor'));
 
-            timesOrig = td.getSpikeTimes(unitName);
+            timesOrig = td.getSpikeTimes(ch);
             times = timesOrig;
             notEmpty = ~cellfun(@isempty, times);
             times(notEmpty) = cellfun(@(t, m) t(m), times(notEmpty), mask(notEmpty), 'UniformOutput', false);
@@ -5322,7 +5324,7 @@ classdef TrialDataConditionAlign < TrialData
             hasWaves = cd.hasWaveforms;
             if hasWaves
                 % maintain in memory scale to save time
-                [wavesOrig, waveTvec] = td.getSpikeWaveforms(unitName, 'applyScaling', false);
+                [wavesOrig, waveTvec] = td.getSpikeWaveforms(ch, 'applyScaling', false);
                 waves = wavesOrig;
                 waves(notEmpty) = cellfun(@(w, m) w(m, :), waves(notEmpty), mask(notEmpty), 'UniformOutput', false);
             else
@@ -5343,40 +5345,44 @@ classdef TrialDataConditionAlign < TrialData
                 notEmpty = ~cellfun(@isempty, timesRem);
                 if any(notEmpty)
                     if td.hasSpikeChannel(keepAs)
-                        td = td.appendSpikesToSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem);
+                        td = td.appendSpikesToSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem, 'waveformsInMemoryScale', true);
+                    elseif isa(cd, 'SpikeChannelDescriptor')
+                        td = td.addSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem, 'waveformsTime', waveTvec, 'waveformsInMemoryScale', true);
                     else
-                        td = td.addSpikeChannel(keepAs, timesRem, 'waveforms', wavesRem, 'waveformsTime', waveTvec);
+                        td = td.addSpikeArrayChannel(keepAs, timesRem, 'waveforms', wavesRem, 'waveformsTime', waveTvec, 'waveformsInMemoryScale', true);
                     end
                 end
             end
 
-            td = td.setSpikeChannelWithinAlignWindow(unitName, times, 'waveforms', waves, ...
+            td = td.setSpikeChannelWithinAlignWindow(ch, times, 'waveforms', waves, ...
                 'waveformsInMemoryScale', true);
         end
 
-        function td = appendSpikesToSpikeChannel(td, unitName, newTimes, varargin)
+        function td = appendSpikesToSpikeChannel(td, ch, newTimes, varargin)
             p = inputParser();
             p.addParameter('waveforms', [], @iscell);
+            p.addParameter('waveformsInMemoryScale', false, @islogical);
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
 
-            td.assertHasSpikeChannel(unitName);
-            cd = td.channelDescriptorsByName.(unitName);
+            td.assertHasSpikeChannel(ch);
+            cd = td.channelDescriptorsByName.(ch);
 
-            times = td.getSpikeTimes(unitName);
+            times = td.getSpikeTimes(ch);
             times = cellfun(@(t1, t2) sort(cat(1, t1, t2)), times, newTimes, 'UniformOutput', false);
 
             hasWaves = cd.hasWaveforms;
             if hasWaves
-                waves = td.getSpikeWaveforms(unitName);
+                waves = td.getSpikeWaveforms(ch);
                 assert(~isempty(p.Results.waveforms), 'Must provide waveforms to append when existing unit has waveforms');
                 waves = cellfun(@(w1, w2) cat(1, w1, w2), waves, p.Results.waveforms, 'UniformOutput', false);
             else
                 waves = {};
             end
 
-            td = td.setSpikeChannel(unitName, times, 'isAligned', true, 'waveforms', waves);
+            td = td.setSpikeChannel(ch, times, 'isAligned', true, 'waveforms', waves, ...
+                'waveformsInMemoryScale', p.Results.waveformsInMemoryScale);
         end
     end
 

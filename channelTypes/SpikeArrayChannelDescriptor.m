@@ -220,6 +220,21 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             cd.originalDataClassByField = {ChannelDescriptor.getCellElementClass(varargin{1})};
             cd.elementTypeByField = cd.VECTOR;
         end
+        
+        function vals = getMissingValueByField(cd)
+            vals = getMissingValueByField@ChannelDescriptor(cd);
+            accClasses = string(cd.accessClassByField);
+            id = cd.lookupFieldId('spikes');
+            el = nan(0, 1, accClasses{id});
+            vals{id} = cell(1, cd.nChannels);
+            [vals{id}{:}] = deal(el);
+            if cd.hasWaveforms
+                id = cd.lookupFieldId('waveforms');
+                el = nan(0, numel(cd.waveformsTime), accClasses{id});
+                vals{id} = cell(1, cd.nChannels);
+                [vals{id}{:}] = deal(el);
+            end 
+        end
     end
 
     methods

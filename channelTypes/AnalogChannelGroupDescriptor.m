@@ -87,6 +87,12 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             names = namesStored;
         end
         
+        function vals = getMissingValueByField(cd)
+            vals = getMissingValueByField@ChannelDescriptor(cd);
+            accClasses = string(cd.accessClassByField);
+            vals{1} = nan(0, cd.nChannels, accClasses{1});
+        end
+        
         function v = get.subChannelUnits(cd)
             if isempty(cd.subChannelUnits)
                 if ~isnan(cd.nChannels)

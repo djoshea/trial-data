@@ -1,7 +1,9 @@
 classdef AnalogChannelGroupImpl < ChannelImpl
     methods
         function impl = AnalogChannelGroupImpl(cd)
-            impl.cd = cd;
+            if nargin > 0
+                impl.cd = cd;
+            end
         end
         
          function data = convertDataCellOnAccess(impl, fieldIdx, data)
@@ -28,7 +30,7 @@ classdef AnalogChannelGroupImpl < ChannelImpl
             cd = impl.cd;
             data = convertDataSingleOnAccess@ChannelImpl(impl, fieldIdx, data);
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
-                data = ChannelImpl.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
+                data = ChannelImpl.scaleData(data, cd.scaleFromLims, cd.scaleToLims);
 %                 scaleFromLow = cd.scaleFromLims(2);
 %                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
 %                 scaleToLow = cd.scaleToLims(2);
@@ -53,7 +55,7 @@ classdef AnalogChannelGroupImpl < ChannelImpl
         function data = convertAccessDataSingleToMemory(impl, fieldIdx, data)
             cd = impl.cd;
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
-                data = ChannelImpl.scaleData(data, cd.scaleFromLims, cd.scaleToLims);
+                data = ChannelImpl.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
 %                 scaleFromLow = cd.scaleFromLims(2);
 %                 scaleFromRange = cd.scaleFromLims(2) - cd.scaleFromLims(1);
 %                 scaleToLow = cd.scaleToLims(2);

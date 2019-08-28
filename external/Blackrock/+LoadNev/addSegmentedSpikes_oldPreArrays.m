@@ -62,7 +62,7 @@ waveforms = spikeData.waveform(:, mask);
 nPairs = size(pairs, 1);
 
 % here we get clever in the name of efficiency, using accum array to
-% group the times (nTrials x nPairs neurons)
+% group the times
 times = accumarray([trialInd, idxPair], times, [nTrials, nPairs], @(x) {x});
 
 % and even more complicated, the waves keeping columns together
@@ -76,19 +76,29 @@ if isfield(spikeData, 'rating')
     rating = spikeData.rating(spikeInds);
     rating = accumarray([trialInd idxPair], rating, [nTrials nPairs], @(x) {x});
 end
-
+	
 prog = ProgressBar(nTrials, 'Inserting segmented spike times');
-for iq = 1:nTrials
-    prog.update(iq);
-    Q(iq).electrodes = pairs(:, 1);
-    Q(iq).units = pairs(:, 2);
-    Q(iq).spikes = times(iq, :);
-    Q(iq).waves = waveforms(iq, :);
-    if isfield(spikeData, 'rating')
-        Q(iq).sortRatings = cellfun(@(r) r(1), rating(iq, :));
+if ~isempty(pairs)
+    for iq = 1:nTrials
+        prog.update(iq);
+        for ipair = 1:nPairs
+            % convert to 'elec#.unit#'
+            key = LoadNev.getElecUnitStr(prefix, pairs(ipair, 1), pairs(ipair, 2));
+
+            if ~isempty(times{iq, ipair})
+                Q(iq).spikes.(key) = times{iq, ipair};
+                Q(iq).waves.(key) = waveforms{iq, ipair};
+
+                % add the rating of the first spike for this unit
+                if isfield(spikeData, 'rating')
+                    Q(iq).sortRatings.(key) = rating{iq, ipair}(1);
+                end
+            end
+        end
     end
 end
 prog.finish();
+
 
 
 end
