@@ -41,7 +41,7 @@ function S = assignIntoStructArray(S, fld, vals, idx, treatValsAsScalar)
         vals = num2cell(vals);
     end
     
-    if treatValsAsScalar
+    if treatValsAsScalar && ~isscalar(vals) % this is for the case where we need to assign a scalar cell wrapped into each element, which would otherwise be treated as nElements x 1 cell array with one value for each element
         vals = {vals};
     end
     
