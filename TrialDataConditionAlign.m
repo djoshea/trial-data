@@ -702,15 +702,15 @@ classdef TrialDataConditionAlign < TrialData
             out = cellfun(fn, dataByGroup, 'UniformOutput', false);
         end
 
-        function [means, sem, std, nTrials, totalWeights] = computeGroupMeansWeighted(td, data, minTrials, minTrialFraction)
-            deal(nan(td.nConditions, numel(tvec), nUnits));
-            for iC = 1:td.nConditions
-                if ~isempty(rateCell{iC})
-                    [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
-                end
-            end
-        end
+%         function [means, sem, std, nTrials, totalWeights] = computeGroupMeansWeighted(td, data, minTrials, minTrialFraction)
+%             deal(nan(td.nConditions, numel(tvec), nUnits));
+%             for iC = 1:td.nConditions
+%                 if ~isempty(data{iC})
+%                     [means(iC, :, :), sem(iC, :, :), nTrials(iC, :, :), std(iC, :, :)] = ...
+%                         TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
+%                 end
+%             end
+%         end
 
         function td = setConditionDescriptor(td, cd)
             td.warnIfNoArgOut(nargout);
@@ -2076,6 +2076,272 @@ classdef TrialDataConditionAlign < TrialData
             end
         end
 
+    end
+    
+    % Adjustment of adjacent trial-trial boundaries
+    methods
+        function td = adjustAdjacentTrialBoundaries(td, varargin)
+            % this function assumes that any two successive trials with successive trial ids represent a continuous period
+            % of time, such that the boundary between them could be adjusted:
+            %  1. If align start is TrialStart and align stop is Event + offset, removes data from Event + offset from each trial
+            %     and moves it to the beginning of the next trial.
+            %  2. If align start is Event + offset and align stop is TrialEnd, removes data from the start of each trial and 
+            %     moves it to the end of the previous trial
+            
+            p = inputParser();
+            p.addParameter('interTrialOffset', 1, @isscalar); % number of time units (typically ms) to insert between trials
+            p.addParameter('trialSpliceEvent', 'TrialSplice', @TrialDataUtilities.String.isstringlike);
+            p.parse(varargin{:});
+            interTrialOffset = p.Results.interTrialOffset;
+            trialSpliceEvent = p.Results.trialSpliceEvent;
+          
+            trialId = td.getParamRaw('trialId');
+            is_adjacent_with_next = [diff(trialId) == 1; false];
+            is_adjacent_with_prev = [false; diff(trialId) == 1];
+            
+            ai = td.alignInfoActive;
+            if ai.isStartTrialStart
+                assert(~ai.isStopTrialEnd, 'Either start or stop alignment must not be TrialStart / TrialEnd');
+                shiftToNext = true;
+                
+            elseif ai.isStopTrialEnd
+                shiftToNext = false;
+                
+            else
+                error('Only one of start and stop alignment may be TrialStart / TrialEnd in order to adjust trial boundaries');
+            end
+            
+            % gather all events up front
+            align_valid = ai.computedValid;
+            ev_trialStart = td.getEventRawFirst('TrialStart');
+            ev_trialEnd = td.getEventRawFirst('TrialEnd');
+            align_trialStart = ai.timeInfo.start;
+            align_trialEnd = ai.timeInfo.stop;
+            
+            % shift event channels
+            channels = setdiff(td.listEventChannels(), ["TrialStart", "TrialEnd", "TimeZero"]);
+            prog = ProgressBar(numel(channels), 'Adjusting trial boundaries for event channels');
+            for c = 1:numel(channels)
+                ch = channels{c};
+                prog.update(c, 'Adjusting trial boundaries for event %s', ch);
+                cd = td.channelDescriptorsByName.(ch);
+                adjust_boundary_internal(cd.dataFieldPrimary, [], false);
+            end
+            
+            % shift analog channels
+            % organize access to analog fields based on their time field since time fields may be shared
+            channels = cat(1, td.listAnalogChannels('includeNamedSubChannels', false, 'includeTransformChannels', false), ...
+                                td.listAnalogChannelGroups('includeTransformChannels', false));
+            timeFieldByChannel = arrayfun(@(ch) string(td.getAnalogTimeField(ch)), channels);
+            [timeFields, ~, whichTimeField] = unique(timeFieldByChannel);
+            prog = ProgressBar(numel(channels), 'Adjusting trial boundaries for analog channels');
+            for c = 1:numel(timeFields)
+                timeField = timeFields{c};
+                associatedChannels = channels(whichTimeField==c);
+                prog.update(c, 'Adjusting trial boundaries for %d analog channels with time field %s', numel(associatedChannels), timeField);
+                adjust_boundary_internal(timeField, associatedChannels, false);
+            end
+            
+            % shift spike channels
+            channels = cat(1, td.listSpikeChannels('includeArraySubChannels', false), ...
+                                td.listExplicitSpikeArrays());
+            prog = ProgressBar(numel(channels), 'Adjusting trial boundaries for spike channels');
+            for c = 1:numel(channels)
+                ch = channels{c};
+                prog.update(c, 'Adjusting trial boundaries for spike %s', ch);
+                cd = td.channelDescriptorsByName.(ch);
+                
+                associated_fields = strings(0, 1);
+                if cd.hasWaveforms, associated_fields(end+1) = string(cd.waveformsField); end %#ok<AGROW>
+                if cd.hasBlankingRegions, associated_fields(end+1) = string(cd.blankingRegionsField); end %#ok<AGROW>
+                if cd.hasSortQualityEachTrial, associated_fields(end+1) = string(cd.sortQualityEachTrialField); end %#ok<AGROW>
+                adjust_boundary_internal(cd.dataFieldPrimary, associated_fields, true);
+            end
+            
+            % shift trial start or trial end events and compute trial splice times
+            ev_trialSplice = nan(td.nTrials, 1);
+            if shiftToNext
+                % shift the end event earlier to match align
+                % and the start event earlier by the same amount
+                [new_trialStart, new_trialEnd] = deal(nan(td.nTrials, 1));
+                shifted_from_last = 0;
+                for iR = 1:td.nTrials
+                    if shifted_from_last > 0
+                        ev_trialSplice(iR) = ev_trialStart(iR);
+                    end
+                    new_trialStart(iR) = ev_trialStart(iR) - shifted_from_last;
+                    if is_adjacent_with_next(iR)
+                        new_trialEnd(iR) = align_trialEnd(iR);
+                        shifted_from_last = ev_trialEnd(iR) - align_trialEnd(iR);
+                    else
+                        % not adjacent, don't shift anything
+                        new_trialEnd(iR) = ev_trialEnd(iR);
+                        shifted_from_last = 0;
+                    end
+                end
+                
+            else
+                % shift the start event later to match align
+                % and the end event later by the same amount
+                [new_trialStart, new_trialEnd] = deal(nan(td.nTrials, 1));
+                shifted_from_last = 0;
+                for iR = td.nTrials:-1:1
+                    if shifted_from_last > 0
+                        ev_trialSplice(iR) = ev_trialEnd(iR);
+                    end
+                    new_trialEnd(iR) = ev_trialEnd(iR) + shifted_from_last;
+                    if is_adjacent_with_prev(iR)
+                        new_trialStart(iR) = align_trialStart(iR);
+                        shifted_from_last = align_trialStart(iR) - ev_trialStart(iR);
+                    else
+                        % not adjacent, don't shift anything
+                        new_trialStart(iR) = ev_trialStart(iR);
+                        shifted_from_last = 0;
+                    end
+                end
+            end
+            td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, ["TrialStart"; "TrialEnd"], [new_trialStart, new_trialEnd]);
+            td = td.postDataChange(fieldnames(td.data));
+            td = td.reset();
+            if ~isempty(trialSpliceEvent)
+                td = td.addEvent(trialSpliceEvent, ev_trialSplice, 'isAligned', false);
+            end
+            
+            function adjust_boundary_internal(timeField, associatedFields, eachTrialIsCell) 
+                if eachTrialIsCell
+                    time_data = cat(1, td.data.(timeField));
+                else
+                    time_data = {td.data.(timeField)}';
+                end
+                nA = numel(associatedFields);
+                associated_data = cell(nA);
+                for iA = 1:nA
+                    if eachTrialIsCell
+                        associated_data{iA} = cat(1, td.data.(associatedFields{iA}));
+                    else
+                        associated_data{iA} = {td.data.(associatedFields{iA})}';
+                    end
+                end
+                
+                nDataCol = size(time_data(:, :), 2); % if eachTrialIsCell, data cell will have nTrial rows but have multiple columns 
+                
+                if shiftToNext
+                    % shift the end of this trial to the beginning of next trial
+                    [time_next, time_buffer] = deal(cell(nDataCol, 1)); % end of previous trial to place at beginning of this one
+                    [associated_buffers, associated_next] = deal(cell(nA, nDataCol));
+                    trialEnd_previous = NaN; % need to keep track of offset from trial end
+                    
+                    [~, ~, indLastEachTrial] = ai.getAlignedTimesMask(time_data, 'raw', true, 'singleTimepointTolerance', 0, 'edgeTolerance', 0);
+                    for iT = 1:td.nTrials-1
+                        trialStart_this = ev_trialStart(iT);
+                        
+                        for iC = 1:nDataCol
+                            if ~is_adjacent_with_next(iT) || ~align_valid(iT) 
+                                % not going to remove from the end of this trial, it's not adjacent or we don't know it's true Stop
+                                indLast = numel(time_data{iT, iC});
+                            elseif isnan(indLastEachTrial(iT, iC))
+                               % everything goes to the next trial
+                                indLast = 0;
+                            else
+                                % going to strip off the end
+                                indLast = indLastEachTrial(iT, iC);
+                            end
+
+                            % cache end values for next trial, incorporating offset from trialEnd_previous into negative offset relative to this trialStart
+                            time_next{iC} = time_data{iT, iC}(indLast+1:end, :);
+                            for iA = 1:nA
+                                associated_next{iA, iC} = associated_data{iA}{iT, iC}(indLast+1:end, :, :, :, :, :, :, :, :, :);
+                            end
+
+                            if ~isempty(time_buffer{iC})
+                                % prepend while slicing, including offsets
+                                % we assume that something that occurred at the end of the previous trial now occurs at 
+                                % the start of this trial minus interTrialOffset
+                                
+                                time_data{iT, iC} = cat(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, time_data{iT, iC}(1:indLast, :));
+                                for iA = 1:nA
+                                    associated_data{iA}{iT, iC} = cat(1, associated_buffers{iA, iC}, associated_data{iA}{iT, iC}(1:indLast, :, :, :, :, :, :, :, :, :));
+                                end
+                            else
+                                % no need to prepend, just slice off end
+                                time_data{iT, iC} = time_data{iT, iC}(1:indLast, :);
+                                for iA = 1:nA
+                                    associated_data{iA}{iT, iC} = associated_data{iA}{iT, iC}(1:indLast, :, :, :, :, :, :, :, :, :);
+                                end
+                            end
+                        end
+                        
+                        % store next trial values in buffer
+                        time_buffer = time_next;
+                        associated_buffers = associated_next;
+                        trialEnd_previous = ev_trialEnd(iT);
+                    end
+                    
+                else
+                    % shift from the beginning of this trial to the end of the previous trial
+                    % shift the end of this trial to the beginning of next trial
+                    [time_prev, time_buffer] = deal(cell(nDataCol, 1)); % end of previous trial to place at beginning of this one
+                    [associated_buffers, associated_prev] = deal(cell(nA, nDataCol));
+                    trialStart_next = NaN; % need to keep track of offset from trial end
+                    
+                    [~, indFirstEachTrial, ~] = ai.getAlignedTimesMask(time_data, 'raw', true, 'singleTimepointTolerance', 0, 'edgeTolerance', 0);
+                    for iT = td.nTrials:-1:1
+                        trialEnd_this = ev_trialEnd(iT);
+                        
+                        for iC = 1:nDataCol
+                            if ~is_adjacent_with_prev(iT) || ~align_valid(iT)
+                                % not going to remove from the beginning of this trial
+                                indFirst = numel(time_data{iT, iC}) + 1;
+                            elseif isnan(indFirstEachTrial(iT, iC))
+                                % everything goes to the previous trial
+                                indFirst = numel(time_data{iT, iC}) + 1;
+                            else
+                                % going to strip off everything before indFirst
+                                indFirst = indFirstEachTrial(iT, iC);
+                            end
+
+                            % cache end values for next trial, incorporating offset from trialEnd_previous into negative offset relative to this trialStart
+                            time_prev{iC} = time_data{iT, iC}(1:indFirst-1, :);
+                            for iA = 1:nA
+                                associated_prev{iA, iC} = associated_data{iA}{iT, iC}(1:indFirst-1, :, :, :, :, :, :, :, :, :);
+                            end
+
+                            if ~isempty(time_buffer{iC})
+                                % postpend while offsetting times, slice off beginning 
+                                % we assume that something that occurred at the start of the subsequent trial now occurs at 
+                                % the end of this trial plus interTrialOffset
+                                time_data{iT, iC} = cat(1, time_data{iT, iC}(indFirst:end, :), time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
+                                for iA = 1:nA
+                                    associated_data{iA}{iT, iC} = cat(1, associated_buffers{iA, iC}, associated_data{iA}{iT, iC}(indFirst:end, :, :, :, :, :, :, :, :, :));
+                                end
+                            else
+                                % no need to postpend, just slice off beginning
+                                time_data{iT, iC} = time_data{iT, iC}(indFirst:end, :);
+                                for iA = 1:nA
+                                    associated_data{iA}{iT, iC} = associated_data{iA}{iT, iC}(indFirst:end, :, :, :, :, :, :, :, :, :);
+                                end
+                            end
+                        end
+                        
+                        % store next trial values in buffer
+                        time_buffer = time_prev;
+                        associated_buffers = associated_prev;
+                        trialStart_next = ev_trialStart(iT);
+                    end
+                    
+                end
+                
+                if eachTrialIsCell % split back into nTrials x 1 cell of 1 x nDataCol cells
+                    time_data = mat2cell(time_data, ones(td.nTrials, 1), nDataCol);
+                    for iA = 1:nA
+                        associated_data{iA} = mat2cell(associated_data{iA}, ones(td.nTrials, 1), nDataCol);
+                    end
+                end
+                assign_data = [time_data, associated_data{:}];
+                assign_fields = cat(1, string(timeField), string(associatedFields));
+                td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, assign_fields, assign_data);
+            end
+        end
     end
 
     % Analog channel access
@@ -6309,11 +6575,6 @@ classdef TrialDataConditionAlign < TrialData
             end
             hold(axh, 'off');
         end
-    end
-
-    % Plotting raster single trial
-    methods
-
     end
 
     % Plotting Analog each trial

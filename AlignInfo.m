@@ -951,6 +951,7 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('isAligned', false, @islogical); % true means times already are relative to zero
             p.addParameter('singleTimepointTolerance', NaN, @isscalar); % acceptable tolerance to take sample when start == stop, NaN --> 2 * sampling rate
             p.addParameter('edgeTolerance', NaN, @isscalar); % acceptable tolerance to be within the interval, NaN --> 1e-6 * sampling rate
+            p.addParameter('raw', false, @islogical); % ignore current .valid and operate on all trials that are align valid
             p.parse(varargin{:});
             
             includePadding = p.Results.includePadding;
@@ -970,17 +971,23 @@ classdef AlignInfo < AlignDescriptor
                 edgeTolerance = 1e-6 * sampleDelta;
             end
             
+            if p.Results.raw
+                timeInfo = ad.timeInfo;
+            else
+                timeInfo = ad.timeInfoValid;
+            end
+            
             % filter the times within the window
             if includePadding
-                start = ad.timeInfoValid.startPad;
-                stop = ad.timeInfoValid.stopPad;
+                start = timeInfo.startPad;
+                stop = timeInfo.stopPad;
             else
-                start = ad.timeInfoValid.start;
-                stop = ad.timeInfoValid.stop;
+                start = timeInfo.start;
+                stop = timeInfo.stop;
             end
             if p.Results.isAligned
                 % add in time zero to unalign the incoming times
-                offsets = ad.timeInfoValid.zero;
+                offsets = timeInfo.zero;
             else
                 offsets = zeros(ad.nTrials, 1);
             end
@@ -1001,7 +1008,12 @@ classdef AlignInfo < AlignDescriptor
             
             [indFirst, indLast] = deal(nan(ad.nTrials, J));
             for i = 1:ad.nTrials
-                if valid(i)
+                if p.Results.raw
+                    valid_this = ~any(isnan([start(i), stop(i), offsets(i)])); 
+                else
+                    valid_this = valid(i);
+                end
+                if valid_this
                     for j = 1:J
                         if iscell(rawTimes)
                             raw = rawTimes{i, j};
@@ -1016,8 +1028,8 @@ classdef AlignInfo < AlignDescriptor
                             % point if it's nearby
                             % provided that the sampling time is within the
                             % trial start:stop boundaries
-                            if singleTimepointTolerance > 0 && start(i) + edgeTolerance >= ad.timeInfoValid.trialStart(i) && ...
-                                    stop(i) - edgeTolerance <= ad.timeInfoValid.trialStop(i)
+                            if singleTimepointTolerance > 0 && start(i) + edgeTolerance >= timeInfo.trialStart(i) && ...
+                                    stop(i) - edgeTolerance <= timeInfo.trialStop(i)
                                 
                                 [closestTime, closestIdx] = min(abs(raw - start(i)));
                                 rawMask(closestIdx) = closestTime < singleTimepointTolerance;
@@ -1233,6 +1245,7 @@ classdef AlignInfo < AlignDescriptor
             [intervalStopData, intervalStopMask] = ...
                 cellfun(@(m) ad.getAlignedTimesMatrix(m, includePadding, false, true), ad.intervalStopDataValid, 'UniformOutput', false);
         end
+        
     end
     
     methods % Time-Aligning data transformations to individual marks and intervals

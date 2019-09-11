@@ -4,7 +4,7 @@ function intervalCell = removeOverlappingIntervals(varargin)
     % intervalCell2 is optional, will be combined with intervalCell if
     % specified
     %
-    % both intervalCell are cellvecs with nInterval x 2 matrices inside
+    % both intervalCell are cells of matching size with nInterval x 2 matrices inside
     % 
     % simplifies the blanking regions to be non-overlapping
    

@@ -834,7 +834,8 @@ classdef TrialData
         end
     end
 
-    methods(Static)
+    % Loading from disk
+    methods(Static) 
         function td = loadobj(s)
             if ~isa(s, 'TrialData')
                 td = builtin('loadobj', s);
@@ -1018,6 +1019,7 @@ classdef TrialData
 
     end
 
+    % general utils
     methods(Static)
         function delta = computeDeltaFromTimes(time)
             if ~iscell(time)
@@ -1115,7 +1117,7 @@ classdef TrialData
         end
     end
 
-    % General utilities
+    % printing and display utilities
     methods
         function printDescriptionShort(td)
             if td.nTrialsValid < td.nTrials
@@ -1536,8 +1538,27 @@ classdef TrialData
             td = td.clearTrialsTemporarilyInvalid();
             td = td.setManualValidTo(true(td.nTrials, 1));
         end
+        
+        function saveTags = listSaveTags(td)
+            saveTags = td.getParamUnique('saveTag');
+        end
+
+        function td = selectTrialsFromSaveTag(td, saveTags)
+            td.warnIfNoArgOut(nargout);
+
+            mask = ismember(td.getParam('saveTag'), saveTags);
+            td = td.selectTrials(mask);
+        end
+
+        function td = withTrialsFromSaveTag(td, saveTags)
+            td.warnIfNoArgOut(nargout);
+
+            mask = ismember(td.getParam('saveTag'), saveTags);
+            td = td.withTrials(mask);
+        end
     end
 
+    % Internal code warnings
     methods
         function warnIfNoArgOut(obj, nargOut)
             if nargOut == 0 && ~isa(obj, 'handle')
@@ -1547,7 +1568,8 @@ classdef TrialData
         end
     end
 
-    methods(Access=protected) % Utility methods
+    % Utility methods related to valid trials
+    methods(Access=protected) 
         function [valid, cause] = getManualValid(td)
             if isempty(td.manualValid)
                 valid = truevec(td.nTrials);
@@ -1621,6 +1643,15 @@ classdef TrialData
             if isa(obj, 'handle')
                 obj = obj.copy(); %#ok<MCNPN>
             end
+        end
+        
+        function td = dropChannelFields(td, fieldsRemove)
+            % for the removed data channels' fields, figure out which ones
+            % aren't referenced by any other channels
+            otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
+            maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
+            fieldsRemove = fieldsRemove(maskRemove);
+            td.data = rmfield(td.data, fieldsRemove);
         end
     end
 
@@ -2013,15 +2044,17 @@ classdef TrialData
             end
         end
 
-        function cds = getChannelDescriptorArray(td)
+        function cds = getChannelDescriptorArray(td, channels)
             % this sort operation is what puts channel names in order
             % during display, don't remove
-            fields = sort(fieldnames(td.channelDescriptorsByName));
-            if isempty(fields)
+            if nargin < 2
+                channels = sort(fieldnames(td.channelDescriptorsByName));
+            end
+            if isempty(channels)
                 cds = [];
             else
-                for iF = 1:length(fields)
-                    cds(iF) = td.channelDescriptorsByName.(fields{iF}); %#ok<AGROW>
+                for iF = 1:length(channels)
+                    cds(iF) = td.channelDescriptorsByName.(channels{iF}); %#ok<AGROW>
                 end
             end
             cds = makecol(cds);
@@ -2251,37 +2284,6 @@ classdef TrialData
 
             trialEnd = min(trialEnd, stopTimes);
             td = td.setEvent('TrialEnd', trialEnd, 'isAligned', false);
-        end
-    end
-
-    methods(Access=protected)
-        function td = dropChannelFields(td, fieldsRemove)
-            % for the removed data channels' fields, figure out which ones
-            % aren't referenced by any other channels
-            otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
-            maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
-            fieldsRemove = fieldsRemove(maskRemove);
-            td.data = rmfield(td.data, fieldsRemove);
-        end
-    end
-
-    methods
-        function saveTags = listSaveTags(td)
-            saveTags = td.getParamUnique('saveTag');
-        end
-
-        function td = selectTrialsFromSaveTag(td, saveTags)
-            td.warnIfNoArgOut(nargout);
-
-            mask = ismember(td.getParam('saveTag'), saveTags);
-            td = td.selectTrials(mask);
-        end
-
-        function td = withTrialsFromSaveTag(td, saveTags)
-            td.warnIfNoArgOut(nargout);
-
-            mask = ismember(td.getParam('saveTag'), saveTags);
-            td = td.withTrials(mask);
         end
     end
 
@@ -5962,6 +5964,126 @@ classdef TrialData
                 'isAligned', false, ...
                 'blankingRegions', blankingRegions);
         end
+        
+        function td = mergeSpikeArraysEachUnit(td, arrayList, varargin)
+            % TODO update this for spike array descriptors
+            arrayList = string(arrayList);
+            nA = numel(arrayList);
+            assert(nA > 1);
+            defaultAs = append("fuse_", strjoin(arrayList, '_'));
+            td.warnIfNoArgOut(nargout);
+
+            p = inputParser();
+            p.addParameter('as', defaultAs, @ischar);
+            p.addParameter('dropSourceArrays', true, @islogical);
+            p.parse(varargin{:});
+
+            % check that arrays have the same units and electrodes
+            cds = td.getChannelDescriptorArray(arrayList);
+            for a = 1:nA
+                assert(isa(cds(a), 'SpikeArrayChannelDescriptor'), 'All arrays must be explicit SpikeArrayChannelDescriptors');
+            end
+            nUnitsEach = arrayfun(@(cd) cd.nChannels, cds);
+            assert(all(nUnitsEach == nUnitsEach(1)));
+            nU = nUnitsEach(1);
+            
+            electrodes = cds(1).electrodes;
+            units = cds(1).units;
+            for a = 2:nA
+                assert(isequaln(cds(a).electrodes, electrodes) && isequaln(cds(a).units, units), ...
+                    'Array %d electrodes and units do not match', a);
+            end
+            
+            % gather all spike times and waveforms and other fields
+            hasWaveforms = cds(1).hasWaveforms;
+            hasBlankingRegions = cds(1).hasBlankingRegions;
+            timesCell = cell(nA, td.nTrials, nU);
+            
+            if hasWaveforms
+                wavesCell = cell(nA, td.nTrials);
+                waveTvecCell = cell(nA, 1);
+                [idxZero, nTimeWave, deltaTimeWave] = nanvec(nA);
+                
+                for a = 1:nA
+                    [wavesCell(a, :, :), waveTvecCell{a}, timesCell(a, :, :)] = td.getRawSpikeWaveforms(arrayList{a});
+                    [~, idxZero(a)] = min(abs(waveTvecCell{a}));
+                    nTimeWave(a) = numel(waveTvecCell{a});
+                    deltaTimeWave(a) = mean(diff(waveTvecCell{a}));
+                end
+                
+                if max(deltaTimeWave) - min(deltaTimeWave) > median(deltaTimeWave) * 0.05
+                    warning('Spike channel waveforms have different sampling rates. Using median');
+                end
+                deltaTimeWave = median(deltaTimeWave);
+
+                % figure out how to match the waveform time vectors
+                zeroInd = max(idxZero);
+                nRightZeroGlobal = max(nTimeWave - idxZero);
+                waveTvecGlobal = -deltaTimeWave*(zeroInd-1) : deltaTimeWave : deltaTimeWave*nRightZeroGlobal;
+
+                % pad the waveforms to the left or right with NaNs to match sizes
+                for a = 1:nA
+                    padLeft = zeroInd - idxZero(a);
+                    padRight = nRightZeroGlobal - (nTimeWave(a) - idxZero(a));
+                    if padLeft > 0 || padRight > 0
+                        debug('Padding waveforms for %s to match new combined waveforms time vector\n', arrayList{a});
+                        for t = 1:size(wavesCell, 2)
+                            nWaves = size(wavesCell{a, t}, 1);
+                            wavesCell{a, t} = cat(2, zeros(nWaves, padLeft), wavesCell{c, t}, zeros(nWaves, padRight));
+                        end
+                    end
+                end
+                
+            else
+                % no waveforms
+                waveTvecGlobal = [];
+                for a = 1:nA
+                    timesCell(a, :, :) = td.getRawSpikeTimes(arrayList{a});
+                    blankingRegionsCell(a, :, :) = td.getRawSpikeBlankingRegions(arrayList{a});
+                end
+            end
+            
+            if hasBlankingRegions
+                blankingRegionsByArray = cell(nA, 1);
+                for a = 1:nA
+                    blankingRegionsByArray{a} = td.getRawSpikeBlankingRegions(arrayList{a});
+                end
+                
+                blankingRegions = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blankingRegionsByArray{:});
+            else
+                blankingRegions = {};
+            end
+            
+            % combine the spiking data across channels
+            times = cellvec(td.nTrials);
+            if hasWaveforms
+                waves = cellvec(td.nTrials, 1);
+            else
+                waves = {};
+            end
+            prog = ProgressBar(td.nTrials, 'Combining spike data');
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                for iU = 1:nU
+                    [times{iT, iU}, sort_idx] = sort(cat(1, timesCell{:, iT, iU}));
+                    if hasWaveforms
+                        temp = cat(1, wavesCell{:, iT, iU});
+                        waves{iT, iU} = temp(sort_idx, :);
+                    end
+                end
+                
+            end
+            prog.finish();
+
+            % add the new channel with combined data
+            if p.Results.dropSourceArrays
+                td = td.dropChannels(arrayList);
+            end
+            td = td.addSpikeArrayChannel(p.Results.as, electrodes, units, times, 'waveforms', waves, ...
+                'waveformsTime', waveTvecGlobal, ...
+                'isAligned', false, ...
+                'blankingRegions', blankingRegions);
+        end
 
         function td = setSpikeChannelArray(td, spikeCh, array)
             td.warnIfNoArgOut(nargout);
@@ -6048,35 +6170,23 @@ classdef TrialData
                 unitNames = td.lookupSpikeChannelByIndex(unitNames);
             end
             unitNames = string(unitNames);
+            if numel(unitNames) == 1 && td.hasExplicitSpikeArray(unitNames)
+                intervalCell = td.getRawSpikeArrayBlankingRegions(unitNames(1), p.Results);
+                return;
+            end
+            nU = numel(unitNames);
+            emptyInterval = zeros(0, 2);
 
             intervalCell = cell(td.nTrials, numel(unitNames));
             channelDescriptors = td.getChannelDescriptor(unitNames);
-            for iU = 1:numel(unitNames)
-%                 if ischar(unitName{iU})
+            for iU = 1:nU
                 cd = channelDescriptors(iU);
                 fld = cd.blankingRegionsField;
                 if ~isempty(fld)
                     intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(makecol({td.data.(fld)}));
+                else
+                    intervalCell(:, iU) = repmat({emptyInterval}, td.nTrials, 1);
                 end
-%                 elseif iscellstr(unitName{iU})
-%                     % combine inner units of nested cellstr
-%                     arg2 = cellvec(numel(unitName{iU}));
-%                     mask2 = falsevec(numel(unitName{iU}));
-%                     for iU2 = 1:numel(unitName{iU})
-%                         cd = td.channelDescriptorsByName.(unitName{iU}{iU2});
-%                         fld = cd.blankingRegionsField;
-%                         if ~isempty(fld)
-%                             arg2{iU2} = makecol({td.data.(fld)});
-%                             mask2(iU2) = true;
-%                         end
-%
-%                     end
-%                     if any(mask2)
-%                         intervalCell(:, iU) = TrialDataUtilities.SpikeData.removeOverlappingIntervals(arg2{mask2});
-%                     end
-%                 else
-%                     error('Invalid cell nesting structure. Must be cellstr or cell of cellstr');
-%                 end
             end
 
             if p.Results.combine
@@ -6087,7 +6197,38 @@ classdef TrialData
                 end
                 intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCellByUnit{:});
             end
-        end
+            end
+        
+        function intervalCell = getRawSpikeArrayBlankingRegions(td, arrayName, varargin)
+            p = inputParser();
+            p.addParameter('combine', false, @islogical);
+            p.parse(varargin{:});
+
+            emptyInterval = zeros(0, 2);
+            cd = td.getChannelDescriptor(arrayName);
+            nU = cd.nChannels;
+            
+            if ~cd.hasBlankingRegions
+                if p.Results.combine
+                    intervalCell = repmat({emptyInterval}, td.nTrials);
+                else
+                    intervalCell = repmat({emptyInterval}, td.nTrials, nU);
+                end
+                return;
+            end
+            
+            fld = cd.blankingRegionsField;
+            intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(makecol({td.data.(fld)}));
+
+            if p.Results.combine
+                % combine the intervals in multiple units
+                intervalCellByUnit = cellvec(numel(unitNames));
+                for iU = 1:numel(unitNames)
+                    intervalCellByUnit{iU} = intervalCell(:, iU);
+                end
+                intervalCell = TrialDataUtilities.SpikeData.removeOverlappingIntervals(intervalCellByUnit{:});
+            end
+        end  
 
         function intervalCell = getSpikeBlankingRegions(td, unitName, varargin)
             intervalCell = td.getRawSpikeBlankingRegions(unitName, varargin{:});
@@ -6346,9 +6487,9 @@ classdef TrialData
                 col = colIdxEachField{iF};
                 idx = assignIdxEachField{iF};
 
-                if isempty(fld)
+                if string(fld) == ""
                     % no waveforms!
-                    if p.Results.fillMissingWithNan
+                    if p.Results.fillMissingWithNaN
                         nTime = numel(cdByField(iF).waveformsTime);
                         nWaveChan = cdByField(iF).waveformsNumChannels;
                         waveClass = cdByField(iF).waveformsOriginalDataClass;
@@ -6463,7 +6604,7 @@ classdef TrialData
             p.addOptional('spikes', {}, @(x) ismatrix(x) && iscell(x));
             p.addParameter('isAligned', true, @isscalar);
             p.addParameter('waveforms', [], @iscell);
-            p.addParameter('waveformsTime', [], @isvector); % common time vector to be shared for ALL waveforms for this channel
+            p.addParameter('waveformsTime', [], @(x) isempty(x) || isvector(x)); % common time vector to be shared for ALL waveforms for this channel
             p.addParameter('waveformsField', sprintf('%s_waveforms', arrayName), @ischar);
             p.addParameter('waveformsScaleFromLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('waveformsScaleToLims', [], @(x) isempty(x) || isvector(x));
@@ -7300,7 +7441,7 @@ classdef TrialData
             end
             oldTimeField = cd.timeField;
 
-            if strcmp(oldTimeField, timeField);
+            if strcmp(oldTimeField, timeField)
                 return;
             end
 
@@ -7761,6 +7902,7 @@ classdef TrialData
         saveFastPartitionWaveforms = false;
     end
 
+    % CacheCustomSaveLoad impl
     methods
         function tf = getUseCustomSaveLoad(td, info) %#ok<INUSD>
             tf = td.cacheWithSaveFast;
@@ -7773,6 +7915,7 @@ classdef TrialData
         end
     end
 
+    % CacheCustomSaveLoad load impl
     methods(Static)
         function data = loadCustomFromLocation(location, token, varargin)  %#ok<INUSL>
             data = TrialData.loadFast(location, varargin{:});

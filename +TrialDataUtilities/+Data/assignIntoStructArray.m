@@ -30,9 +30,7 @@ function S = assignIntoStructArray(S, fld, vals, idx, treatValsAsScalar)
     end
     
     % cell wrap fld
-    if ~iscell(fld)
-        fld = {fld};
-    end
+    fld = cellstr(fld);
     
     % cell wrap vals
     if ischar(vals) || isempty(vals)
@@ -49,10 +47,11 @@ function S = assignIntoStructArray(S, fld, vals, idx, treatValsAsScalar)
     if isscalar(vals)
         vals = repmat(vals, nnz(idx), numel(fld));
     elseif isvector(vals)
-        if size(vals, 1) == numel(fld)
+        if size(vals, 1) == numel(fld) && size(vals, 2) ~= numel(fld)
             vals = vals';
+        else
+            vals = repmat(vals, 1, numel(fld));
         end
-        vals = repmat(vals, 1, numel(fld));
     end 
         
     if numel(idx) == size(vals, 1)

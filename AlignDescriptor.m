@@ -167,6 +167,8 @@ classdef AlignDescriptor
         isZeroOutsideStartStop % is the zero event guaranteed to lie outside the start/stop window
         
         isFullTrial
+        isStartTrialStart
+        isStopTrialEnd
         
         nMarks % number of marked events (length .markEvents)
         nIntervals % number of marked intervals (length .markIntervals)
@@ -233,8 +235,15 @@ classdef AlignDescriptor
         end
         
         function tf = get.isFullTrial(ad)
-            tf = strcmp(ad.startEvent, 'TrialStart') && ad.startOffset == 0 && ...
-                strcmp(ad.stopEvent, 'TrialEnd') && ad.stopOffset == 0;
+            tf = ad.isStartTrialStart && ad.isStopTrialEnd;
+        end
+        
+        function tf = get.isStartTrialStart(ad)
+            tf = strcmp(ad.startEvent, 'TrialStart') && ad.startOffset == 0;
+        end
+        
+        function tf = get.isStopTrialEnd(ad)
+            tf = strcmp(ad.stopEvent, 'TrialEnd') && ad.stopOffset == 0;
         end
         
         function n = get.nMarks(ad)
