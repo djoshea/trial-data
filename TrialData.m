@@ -5964,126 +5964,6 @@ classdef TrialData
                 'isAligned', false, ...
                 'blankingRegions', blankingRegions);
         end
-        
-        function td = mergeSpikeArraysEachUnit(td, arrayList, varargin)
-            % TODO update this for spike array descriptors
-            arrayList = string(arrayList);
-            nA = numel(arrayList);
-            assert(nA > 1);
-            defaultAs = append("fuse_", strjoin(arrayList, '_'));
-            td.warnIfNoArgOut(nargout);
-
-            p = inputParser();
-            p.addParameter('as', defaultAs, @ischar);
-            p.addParameter('dropSourceArrays', true, @islogical);
-            p.parse(varargin{:});
-
-            % check that arrays have the same units and electrodes
-            cds = td.getChannelDescriptorArray(arrayList);
-            for a = 1:nA
-                assert(isa(cds(a), 'SpikeArrayChannelDescriptor'), 'All arrays must be explicit SpikeArrayChannelDescriptors');
-            end
-            nUnitsEach = arrayfun(@(cd) cd.nChannels, cds);
-            assert(all(nUnitsEach == nUnitsEach(1)));
-            nU = nUnitsEach(1);
-            
-            electrodes = cds(1).electrodes;
-            units = cds(1).units;
-            for a = 2:nA
-                assert(isequaln(cds(a).electrodes, electrodes) && isequaln(cds(a).units, units), ...
-                    'Array %d electrodes and units do not match', a);
-            end
-            
-            % gather all spike times and waveforms and other fields
-            hasWaveforms = cds(1).hasWaveforms;
-            hasBlankingRegions = cds(1).hasBlankingRegions;
-            timesCell = cell(nA, td.nTrials, nU);
-            
-            if hasWaveforms
-                wavesCell = cell(nA, td.nTrials);
-                waveTvecCell = cell(nA, 1);
-                [idxZero, nTimeWave, deltaTimeWave] = nanvec(nA);
-                
-                for a = 1:nA
-                    [wavesCell(a, :, :), waveTvecCell{a}, timesCell(a, :, :)] = td.getRawSpikeWaveforms(arrayList{a});
-                    [~, idxZero(a)] = min(abs(waveTvecCell{a}));
-                    nTimeWave(a) = numel(waveTvecCell{a});
-                    deltaTimeWave(a) = mean(diff(waveTvecCell{a}));
-                end
-                
-                if max(deltaTimeWave) - min(deltaTimeWave) > median(deltaTimeWave) * 0.05
-                    warning('Spike channel waveforms have different sampling rates. Using median');
-                end
-                deltaTimeWave = median(deltaTimeWave);
-
-                % figure out how to match the waveform time vectors
-                zeroInd = max(idxZero);
-                nRightZeroGlobal = max(nTimeWave - idxZero);
-                waveTvecGlobal = -deltaTimeWave*(zeroInd-1) : deltaTimeWave : deltaTimeWave*nRightZeroGlobal;
-
-                % pad the waveforms to the left or right with NaNs to match sizes
-                for a = 1:nA
-                    padLeft = zeroInd - idxZero(a);
-                    padRight = nRightZeroGlobal - (nTimeWave(a) - idxZero(a));
-                    if padLeft > 0 || padRight > 0
-                        debug('Padding waveforms for %s to match new combined waveforms time vector\n', arrayList{a});
-                        for t = 1:size(wavesCell, 2)
-                            nWaves = size(wavesCell{a, t}, 1);
-                            wavesCell{a, t} = cat(2, zeros(nWaves, padLeft), wavesCell{c, t}, zeros(nWaves, padRight));
-                        end
-                    end
-                end
-                
-            else
-                % no waveforms
-                waveTvecGlobal = [];
-                for a = 1:nA
-                    timesCell(a, :, :) = td.getRawSpikeTimes(arrayList{a});
-                    blankingRegionsCell(a, :, :) = td.getRawSpikeBlankingRegions(arrayList{a});
-                end
-            end
-            
-            if hasBlankingRegions
-                blankingRegionsByArray = cell(nA, 1);
-                for a = 1:nA
-                    blankingRegionsByArray{a} = td.getRawSpikeBlankingRegions(arrayList{a});
-                end
-                
-                blankingRegions = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blankingRegionsByArray{:});
-            else
-                blankingRegions = {};
-            end
-            
-            % combine the spiking data across channels
-            times = cellvec(td.nTrials);
-            if hasWaveforms
-                waves = cellvec(td.nTrials, 1);
-            else
-                waves = {};
-            end
-            prog = ProgressBar(td.nTrials, 'Combining spike data');
-            for iT = 1:td.nTrials
-                prog.update(iT);
-                for iU = 1:nU
-                    [times{iT, iU}, sort_idx] = sort(cat(1, timesCell{:, iT, iU}));
-                    if hasWaveforms
-                        temp = cat(1, wavesCell{:, iT, iU});
-                        waves{iT, iU} = temp(sort_idx, :);
-                    end
-                end
-                
-            end
-            prog.finish();
-
-            % add the new channel with combined data
-            if p.Results.dropSourceArrays
-                td = td.dropChannels(arrayList);
-            end
-            td = td.addSpikeArrayChannel(p.Results.as, electrodes, units, times, 'waveforms', waves, ...
-                'waveformsTime', waveTvecGlobal, ...
-                'isAligned', false, ...
-                'blankingRegions', blankingRegions);
-        end
 
         function td = setSpikeChannelArray(td, spikeCh, array)
             td.warnIfNoArgOut(nargout);
@@ -6874,6 +6754,125 @@ classdef TrialData
                 td = td.sortSpikeChannelArrayColumns(arrayChName);
             end
         end
+        
+        function td = mergeSpikeArraysEachUnit(td, arrayList, varargin)
+            % TODO update this for spike array descriptors
+            arrayList = string(arrayList);
+            nA = numel(arrayList);
+            assert(nA > 1);
+            defaultAs = append("fuse_", strjoin(arrayList, '_'));
+            td.warnIfNoArgOut(nargout);
+
+            p = inputParser();
+            p.addParameter('as', defaultAs, @TrialDataUtilities.String.isstringlike);
+            p.addParameter('dropSourceArrays', true, @islogical);
+            p.parse(varargin{:});
+
+            % check that arrays have the same units and electrodes
+            cds = td.getChannelDescriptorArray(arrayList);
+            for a = 1:nA
+                assert(isa(cds(a), 'SpikeArrayChannelDescriptor'), 'All arrays must be explicit SpikeArrayChannelDescriptors');
+            end
+            nUnitsEach = arrayfun(@(cd) cd.nChannels, cds);
+            assert(all(nUnitsEach == nUnitsEach(1)));
+            nU = nUnitsEach(1);
+            
+            electrodes = cds(1).electrodes;
+            units = cds(1).units;
+            for a = 2:nA
+                assert(isequaln(cds(a).electrodes, electrodes) && isequaln(cds(a).units, units), ...
+                    'Array %d electrodes and units do not match', a);
+            end
+            
+            % gather all spike times and waveforms and other fields
+            hasWaveforms = cds(1).hasWaveforms;
+            hasBlankingRegions = cds(1).hasBlankingRegions;
+            timesCell = cell(nA, td.nTrials, nU);
+            
+            if hasWaveforms
+                wavesCell = cell(nA, td.nTrials);
+                waveTvecCell = cell(nA, 1);
+                [idxZero, nTimeWave, deltaTimeWave] = nanvec(nA);
+                
+                for a = 1:nA
+                    [wavesCell(a, :, :), waveTvecCell{a}, timesCell(a, :, :)] = td.getRawSpikeWaveforms(arrayList{a});
+                    [~, idxZero(a)] = min(abs(waveTvecCell{a}));
+                    nTimeWave(a) = numel(waveTvecCell{a});
+                    deltaTimeWave(a) = mean(diff(waveTvecCell{a}));
+                end
+                
+                if max(deltaTimeWave) - min(deltaTimeWave) > median(deltaTimeWave) * 0.05
+                    warning('Spike channel waveforms have different sampling rates. Using median');
+                end
+                deltaTimeWave = median(deltaTimeWave);
+
+                % figure out how to match the waveform time vectors
+                zeroInd = max(idxZero);
+                nRightZeroGlobal = max(nTimeWave - idxZero);
+                waveTvecGlobal = -deltaTimeWave*(zeroInd-1) : deltaTimeWave : deltaTimeWave*nRightZeroGlobal;
+
+                % pad the waveforms to the left or right with NaNs to match sizes
+                for a = 1:nA
+                    padLeft = zeroInd - idxZero(a);
+                    padRight = nRightZeroGlobal - (nTimeWave(a) - idxZero(a));
+                    if padLeft > 0 || padRight > 0
+                        debug('Padding waveforms for %s to match new combined waveforms time vector\n', arrayList{a});
+                        for t = 1:size(wavesCell, 2)
+                            nWaves = size(wavesCell{a, t}, 1);
+                            wavesCell{a, t} = cat(2, zeros(nWaves, padLeft), wavesCell{c, t}, zeros(nWaves, padRight));
+                        end
+                    end
+                end
+                
+            else
+                % no waveforms
+                waveTvecGlobal = [];
+                for a = 1:nA
+                    timesCell(a, :, :) = td.getRawSpikeTimes(arrayList{a});
+                end
+            end
+            
+            if hasBlankingRegions
+                blankingRegionsByArray = cell(nA, 1);
+                for a = 1:nA
+                    blankingRegionsByArray{a} = td.getRawSpikeBlankingRegions(arrayList{a});
+                end
+                
+                blankingRegions = TrialDataUtilities.SpikeData.removeOverlappingIntervals(blankingRegionsByArray{:});
+            else
+                blankingRegions = {};
+            end
+            
+            % combine the spiking data across channels
+            times = cellvec(td.nTrials);
+            if hasWaveforms
+                waves = cellvec(td.nTrials, 1);
+            else
+                waves = {};
+            end
+            prog = ProgressBar(td.nTrials, 'Combining spike data');
+            for iT = 1:td.nTrials
+                prog.update(iT);
+                for iU = 1:nU
+                    [times{iT, iU}, sort_idx] = sort(cat(1, timesCell{:, iT, iU}));
+                    if hasWaveforms
+                        temp = cat(1, wavesCell{:, iT, iU});
+                        waves{iT, iU} = temp(sort_idx, :);
+                    end
+                end
+                
+            end
+            prog.finish();
+
+            % add the new channel with combined data
+            if p.Results.dropSourceArrays
+                td = td.dropChannels(arrayList);
+            end
+            td = td.addSpikeArrayChannel(p.Results.as, electrodes, units, times, 'waveforms', waves, ...
+                'waveformsTime', waveTvecGlobal, ...
+                'isAligned', false, ...
+                'blankingRegions', blankingRegions);
+        end
 
         function td = sortSpikeChannelArrayColumns(td, array)
             td.warnIfNoArgOut(nargout);
@@ -6900,6 +6899,50 @@ classdef TrialData
             cd.units = units;
             td = td.setChannelDescriptor(array, cd);
             td = td.postDataChange(array);
+        end
+        
+        function td = selectSpikeArrayChannels(td, array, mask, varargin)
+            p = inputParser();
+            p.addParameter('as', array, @TrialDataUtilities.String.isstringlike)
+            p.parse(varargin{:});
+            as = string(p.Results.as);
+            
+            td = td.reset();
+            td.warnIfNoArgOut(nargout);
+            cd = td.getChannelDescriptor(array);
+            assert(isa(cd, 'SpikeArrayChannelDescriptor'));
+
+            electrodes = cd.electrodes(mask);
+            units = cd.units(mask);
+            
+            if cd.hasWaveforms
+                [waves, waveTvecGlobal, times] = td.getRawSpikeWaveforms(array);
+                waves = waves(:, mask);
+            else
+                waves = {};
+                waveTvecGlobal = [];
+                times = td.getRawSpikeTimes(array);
+            end
+            times = times(:, mask);
+            
+            if cd.hasBlankingRegions
+                blankingRegions = td.getRawSpikeBlankingRegions(array);
+                blankingRegions = blankingRegions(:, mask);
+            else
+                blankingRegions = {};
+            end
+            if cd.hasSortQualityEachTrial
+                error('Not implemented');
+            end
+            
+            if strcmp(array, as)
+                td = td.dropChannels(array);
+            end
+                
+            td = td.addSpikeArrayChannel(as, electrodes, units, times, 'waveforms', waves, ...
+                'waveformsTime', waveTvecGlobal, ...
+                'isAligned', false, ...
+                'blankingRegions', blankingRegions);
         end
 
         function [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName, cdsByField] = ...
