@@ -2214,7 +2214,7 @@ classdef TrialDataConditionAlign < TrialData
                     time_data = {td.data.(timeField)}';
                 end
                 nA = numel(associatedFields);
-                associated_data = cell(nA);
+                associated_data = cell(nA, 1);
                 for iA = 1:nA
                     if eachTrialIsCell
                         associated_data{iA} = cat(1, td.data.(associatedFields{iA}));
@@ -2248,11 +2248,14 @@ classdef TrialDataConditionAlign < TrialData
                             end
 
                             % cache end values for next trial, incorporating offset from trialEnd_previous into negative offset relative to this trialStart
-                            time_next{iC} = time_data{iT, iC}(indLast+1:end, :);
-                            for iA = 1:nA
-                                associated_next{iA, iC} = associated_data{iA}{iT, iC}(indLast+1:end, :, :, :, :, :, :, :, :, :);
+                            associated_empty = cellfun(@(assoc) isempty(assoc{iT, iC}), associated_data); % sometimes time will be non-empty but the values will be empty
+                            if ~any(associated_empty)
+                                time_next{iC} = time_data{iT, iC}(indLast+1:end, :);
+                                for iA = 1:nA
+                                    associated_next{iA, iC} = associated_data{iA}{iT, iC}(indLast+1:end, :, :, :, :, :, :, :, :, :);
+                                end
                             end
-
+                            
                             if ~isempty(time_buffer{iC})
                                 % prepend while slicing, including offsets
                                 % we assume that something that occurred at the end of the previous trial now occurs at 
@@ -2301,9 +2304,12 @@ classdef TrialDataConditionAlign < TrialData
                             end
 
                             % cache end values for next trial, incorporating offset from trialEnd_previous into negative offset relative to this trialStart
-                            time_prev{iC} = time_data{iT, iC}(1:indFirst-1, :);
-                            for iA = 1:nA
-                                associated_prev{iA, iC} = associated_data{iA}{iT, iC}(1:indFirst-1, :, :, :, :, :, :, :, :, :);
+                            associated_empty = cellfun(@(assoc) isempty(assoc{iT, iC}), associated_data); % sometimes time will be non-empty but the values will be empty
+                            if ~any(associated_empty)
+                                time_prev{iC} = time_data{iT, iC}(1:indFirst-1, :);
+                                for iA = 1:nA
+                                    associated_prev{iA, iC} = associated_data{iA}{iT, iC}(1:indFirst-1, :, :, :, :, :, :, :, :, :);
+                                end
                             end
 
                             if ~isempty(time_buffer{iC})
@@ -2312,7 +2318,7 @@ classdef TrialDataConditionAlign < TrialData
                                 % the end of this trial plus interTrialOffset
                                 time_data{iT, iC} = cat(1, time_data{iT, iC}(indFirst:end, :), time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
                                 for iA = 1:nA
-                                    associated_data{iA}{iT, iC} = cat(1, associated_buffers{iA, iC}, associated_data{iA}{iT, iC}(indFirst:end, :, :, :, :, :, :, :, :, :));
+                                    associated_data{iA}{iT, iC} = cat(1, associated_data{iA}{iT, iC}(indFirst:end, :, :, :, :, :, :, :, :, :),  associated_buffers{iA, iC});
                                 end
                             else
                                 % no need to postpend, just slice off beginning
