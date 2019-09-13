@@ -5667,6 +5667,29 @@ classdef TrialData
 
             td = td.addChannel(cd, channelData);
         end
+        
+        function n = getSpikeArrayChannelCount(td, array)
+            if td.hasExplicitSpikeArray(array)
+                cd = td.getChannelDescriptor(array);
+                n = cd.nChannels;
+            else
+                % implicit array
+                subNames = td.listSpikeChannels('array', array);
+                n = numel(subNames);
+            end
+        end
+        
+        function [electrodes, units] = listSpikeElectrodesUnitsOnArray(td, array)
+            if td.hasExplicitSpikeArray(array)
+                cd = td.getChannelDescriptor(array);
+                electrodes = cd.electrodes;
+                units = cd.units;
+            else
+                % implicit array
+                subNames = td.listSpikeChannels('array', array);
+                [~, electrodes, units] = arrayfun(@(subname) SpikeChannelDescriptor.parseArrayElectrodeUnit(subname), string(subNames));
+            end
+        end
 
         function td = setSpikeChannel(td, name, times, varargin)
             % td = setSpikeChannel(td, name, times, varargin)
