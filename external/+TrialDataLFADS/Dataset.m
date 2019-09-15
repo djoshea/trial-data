@@ -5,8 +5,12 @@ classdef Dataset < LFADS.Dataset
     end
     
     methods
-        function ds = Dataset(collection, tdPath)
-            ds = ds@LFADS.Dataset(collection, tdPath);
+        function ds = Dataset(collection, tdPathOrShortName, td) 
+            ds = ds@LFADS.Dataset(collection, tdPathOrShortName);
+            if nargin > 2 && ~isempty(td)
+                ds.trialData =  TrialDataConditionAlign(td);
+                ds.trialData = ds.trialData.setMetaKey('datasetPath', '');
+            end 
         end
         
         function nChannels = getNumChannelsForCounts(ds, td) %#ok<INUSL>

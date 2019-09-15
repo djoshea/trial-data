@@ -88,7 +88,7 @@ classdef Run < LFADS.Run
             prog = ProgressBar(numel(datasetIdx), 'Preparing trialData from datasets');
             for iiDS = 1:numel(datasetIdx)
                 prog.update(iiDS);
-                td = r.datasets(datasetIdx(iiDS)).loadTrialData();
+                td = r.datasets(datasetIdx(iiDS)).loadData();
                 tdSet{iiDS} = r.prepareTrialDataForLFADS(td);
             end
             prog.finish();
@@ -127,33 +127,33 @@ classdef Run < LFADS.Run
                 pm = pms(iiDS);
                 
                 % data must be nTrials x nTime x nChannels tensor
-                td = td.dropAnalogChannelGroup({'controllerOutputs', 'factors', 'generatorStates', 'rates'});
+                td = td.dropChannels({'controllerOutputs', 'factors', 'generatorStates', 'rates'});
                 td = td.dropChannels({'generatorIC', 'post_g0_mean', 'post_g0_logvar'});
                 
                 facNames = {}; % genNames('f', pm.nFactors)
-                td = td.addAnalogChannelGroup('factors', facNames, ...
-                    inflate(permute(pm.factors, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
+                td = td.addAnalogChannelGroup('factors', inflate(permute(pm.factors, [3 2 1])), pm.time, ...
+                    'subChannelNames', facNames', 'timeField', timeField, 'isAligned', true);
                     
                 genStateNames = {}; % genNames('g', pm.nGeneratorUnits)
-                td = td.addAnalogChannelGroup('generatorStates', genStateNames, ...
-                    inflate(permute(pm.generator_states, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
+                td = td.addAnalogChannelGroup('generatorStates', inflate(permute(pm.generator_states, [3 2 1])), pm.time, ...
+                    'subChannelNames', genStateNames, 'timeField', timeField, 'isAligned', true);
                 
                 rnames = r.listChannelsForLFADS(td);
-                if isempty(rnames)
+                if isempty(rnames) || numel(rnames) == 1
                     rnames = {};
                 else
                     rnames = cellfun(@(n) sprintf('rate_%s', n), rnames, 'UniformOutput', false);
                 end
                 
                 if p.Results.addRates
-                    td = td.addAnalogChannelGroup('rates', rnames, ...
-                        inflate(permute(pm.rates, [3 2 1])), pm.time, 'timeField', timeField, 'units', 'spikes/sec', 'isAligned', true);
+                    td = td.addAnalogChannelGroup('rates', inflate(permute(pm.rates, [3 2 1])), pm.time, 'timeField', timeField, ...
+                        'subChannelNames', rnames, 'units', 'spikes/sec', 'isAligned', true);
                 end
                 
                 if pm.nControllerOutputs > 0 && p.Results.addControllerOutputs
                     coNames = {}; % genNames('co', pm.nControllerOutputs)
-                    td = td.addAnalogChannelGroup('controllerOutputs', coNames, ...
-                        inflate(permute(pm.controller_outputs, [3 2 1])), pm.time, 'timeField', timeField, 'isAligned', true);
+                    td = td.addAnalogChannelGroup('controllerOutputs', inflate(permute(pm.controller_outputs, [3 2 1])), pm.time, ...
+                        'subChannelNames', coNames, 'timeField', timeField, 'isAligned', true);
                 end
                 
                 if p.Results.addGeneratorICs
