@@ -2170,11 +2170,11 @@ classdef TrialDataConditionAlign < TrialData
                         ev_trialSplice(iR) = ev_trialStart(iR);
                     end
                     new_trialStart(iR) = ev_trialStart(iR) - shifted_from_last;
-                    if is_adjacent_with_next(iR)
+                    if is_adjacent_with_next(iR) && ~isnan(align_trialEnd(iR))
                         new_trialEnd(iR) = align_trialEnd(iR);
                         shifted_from_last = ev_trialEnd(iR) - align_trialEnd(iR);
                     else
-                        % not adjacent, don't shift anything
+                        % not adjacent or no end event to splice at, don't shift anything
                         new_trialEnd(iR) = ev_trialEnd(iR);
                         shifted_from_last = 0;
                     end
@@ -2190,16 +2190,17 @@ classdef TrialDataConditionAlign < TrialData
                         ev_trialSplice(iR) = ev_trialEnd(iR);
                     end
                     new_trialEnd(iR) = ev_trialEnd(iR) + shifted_from_last;
-                    if is_adjacent_with_prev(iR)
+                    if is_adjacent_with_prev(iR) && ~isnan(align_trialStart(iR))
                         new_trialStart(iR) = align_trialStart(iR);
                         shifted_from_last = align_trialStart(iR) - ev_trialStart(iR);
                     else
-                        % not adjacent, don't shift anything
+                        % not adjacent or no start event to splice at, don't shift anything
                         new_trialStart(iR) = ev_trialStart(iR);
                         shifted_from_last = 0;
                     end
                 end
             end
+            assert(~any(isnan(new_trialStart)) && ~any(isnan(new_trialEnd)));
             td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, ["TrialStart"; "TrialEnd"], [new_trialStart, new_trialEnd]);
             td = td.postDataChange(fieldnames(td.data));
             td = td.reset();
@@ -2809,6 +2810,7 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
 
+            nameCell = cellstr(nameCell);
             assert(iscellstr(nameCell), 'Must be cellstr of channel names');
             nChannels = numel(nameCell);
 
@@ -5125,8 +5127,13 @@ classdef TrialDataConditionAlign < TrialData
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             end
 
-            if p.Results.combine || ischar(unitNames)
-                nUnits = 1;
+            if p.Results.combine || ischar(unitNames) || isStringScalar(unitNames)
+                cd = td.getChannelDescriptor(unitNames);
+                if isa(cd, 'SpikeArrayChannelDescriptor')
+                    nUnits = cd.nChannels;
+                else
+                    nUnits = 1;
+                end
             else
                 nUnits = numel(unitNames);
             end
@@ -6527,15 +6534,15 @@ classdef TrialDataConditionAlign < TrialData
             if p.Results.quick
                 td.alignSummarySet{1}.setupTimeAutoAxis('which', 'x', ...
                     'style', 'quick');
-            elseif p.Results.annotateAboveEachCondition
-                if iAlign == nAlignUsed
-                    % just use horizontal scale bar
-                    au = AutoAxis(axh);
-                    au.xUnits = td.timeUnitName;
-                    au.addAutoScaleBarX();
-                    au.update();
-                    au.installCallbacks();
-                end
+%             elseif p.Results.annotateAboveEachCondition
+%                 if iAlign == nAlignUsed
+%                     % just use horizontal scale bar
+%                     au = AutoAxis(axh);
+%                     au.xUnits = td.timeUnitName;
+%                     au.addAutoScaleBarX();
+%                     au.update();
+%                     au.installCallbacks();
+%                 end
             else
                 % use marks or tickBridges via AlignSummary
                 for iAlign = 1:nAlignUsed
@@ -7290,12 +7297,12 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            [dataCell, tvec] = td.getAnalogMultiCommonTimeGrouped({name1, name2, name3}, p.Results);
+            [dataCell, timeCell] = td.getAnalogMultiCommonTimeGrouped({name1, name2, name3}, p.Results);
             td.plotProvidedAnalogDataGroupedEachTrial(3, ...
-                'time', tvec, 'data', dataCell(:), ...
-                'axisInfoX', td.channelDescriptorsByName.(name1), ...
-                'axisInfoY', td.channelDescriptorsByName.(name2), ...
-                'axisInfoZ', td.channelDescriptorsByName.(name3), p.Unmatched);
+                'time', timeCell(:), 'data', dataCell(:), ...
+                'axisInfoX', td.getChannelDescriptor(name1), ...
+                'axisInfoY', td.getChannelDescriptor(name2), ...
+                'axisInfoZ', td.getChannelDescriptor(name3), p.Unmatched);
         end
     end
 
@@ -7439,8 +7446,8 @@ classdef TrialDataConditionAlign < TrialData
             end
             td.plotProvidedAnalogDataGroupMeans(2, 'time', tvecCell, ...
                 'data', meanMat, p.Unmatched, ...
-                'axisInfoX', td.channelDescriptorsByName.(name1), ...
-                'axisInfoY', td.channelDescriptorsByName.(name2), p.Unmatched);
+                'axisInfoX', td.getChannelDescriptor(name1), ...
+                'axisInfoY', td.getChannelDescriptor(name2), p.Unmatched);
         end
 
         function plotAnalogGroupMeans3D(td, name1, name2, name3, varargin)
@@ -7473,9 +7480,9 @@ classdef TrialDataConditionAlign < TrialData
 
             td.plotProvidedAnalogDataGroupMeans(3, 'time', tvecCell, ...
                 'data', meanMat, p.Unmatched, ...
-                'axisInfoX', td.getAnalogChannelDescriptor(name1), ...
-                'axisInfoY', td.getAnalogChannelDescriptor(name2), ...
-                'axisInfoZ', td.getAnalogChannelDescriptor(name3));
+                'axisInfoX', td.getChannelDescriptor(name1), ...
+                'axisInfoY', td.getChannelDescriptor(name2), ...
+                'axisInfoZ', td.getChannelDescriptor(name3));
         end
 
         function plotAnalogGroupMeansByConditionAxes(td, name, varargin)

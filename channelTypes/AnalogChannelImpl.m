@@ -47,7 +47,7 @@ classdef AnalogChannelImpl < ChannelImpl
                 sliceArgs = {};
             end
             
-            [dataCell, timeCell] = AnalogChannelGroupImpl.doComputeTransformData(cd, td, 'slice', sliceArgs, varargin{:});
+            [dataCell, timeCell] = AnalogChannelGroupImpl.doComputeTransformData(impl, td, 'slice', sliceArgs, varargin{:});
         end
     end
 end

@@ -2872,6 +2872,7 @@ classdef TrialData
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
             p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('sort', false, @islogical);
             p.KeepUnmatched = false;
             p.parse(varargin{:});
 
@@ -2884,7 +2885,8 @@ classdef TrialData
                 % transformation of another group. this function will handle
                 % the slicing since it might be efficient not to compute the
                 % elements that are not needed
-                [data, time] = cd.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
+                impl = cd.getImpl();
+                [data, time] = impl.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
                     'sort', p.Results.sort);
             else
                 if cd.isColumnOfSharedMatrix
@@ -3849,7 +3851,8 @@ classdef TrialData
                 % transformation of another group. this function will handle
                 % the slicing since it might be efficient not to compute the
                 % elements that are not needed
-                [data, time] = cd.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
+                impl = cd.getImpl();
+                [data, time] = impl.computeTransformDataRaw(td, 'applyScaling', p.Results.applyScaling, ...
                     'slice', sliceArgs, 'sort', p.Results.sort);
 
             else

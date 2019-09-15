@@ -1603,6 +1603,8 @@ classdef ConditionDescriptor
                 cmap = ci.appearanceColorByAxesCmap;
                 if isa(cmap, 'function_handle')
                     cmap = cmap(nVals);
+                elseif isstring(cmap)
+                    cmap = cellstr(cmap);
                 end
 
                 % match appearances to attribute value sets
