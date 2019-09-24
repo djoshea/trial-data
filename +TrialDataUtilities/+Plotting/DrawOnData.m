@@ -14,6 +14,7 @@ classdef DrawOnData
             p.addParameter('clipping', 'on', @ischar);
             p.addParameter('frontLayer', [], @(x) isempty(x) || islogical(x));
             p.addParameter('outline', true, @islogical);
+            p.addParameter('outlineColor', 'w', @(x) true);
             p.addParameter('alpha', 1, @isscalar);
             p.addParameter('outlineAlpha', [], @(x) isempty(x) || isscalar(x));
             p.CaseSensitive = false;
@@ -28,7 +29,7 @@ classdef DrawOnData
             flatten = @(x) x(:);
             alpha = p.Results.alpha;
             if p.Results.outline
-                edge = 'w';
+                edge = p.Results.outlineColor;
                 lineWidth = 0.5;
                 edgeAlpha = p.Results.outlineAlpha;
                 if isempty(edgeAlpha)

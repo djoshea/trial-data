@@ -1327,7 +1327,8 @@ classdef AlignSummary
             
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markOutline', true, @islogical);
-            p.addParameter('markOutlineAlpha', 0.6, @isscalar)
+            p.addParameter('markOutlineAlpha', 0.6, @isscalar);
+            p.addParameter('markOutlineColor', 'w', @(x) true);
             p.addParameter('markSize', 8, @isscalar);
             p.addParameter('intervalAlpha', 1, @isscalar);
             p.addParameter('intervalSize', 8, @isscalar);
@@ -1554,6 +1555,7 @@ classdef AlignSummary
                     % plot mark and provide legend hint
                     h = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markMeanLoc, app, ...
                         p.Results.markSize, 'alpha', p.Results.markAlpha, 'outline', p.Results.markOutline, 'outlineAlpha', p.Results.markOutlineAlpha, ...
+                        'outlineColor', p.Results.markOutlineColor, ...
                         'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, 'clipping', p.Results.clipping);
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(h, as.alignDescriptor.markLabels{iMark});

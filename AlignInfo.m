@@ -1330,6 +1330,7 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('trialIdx', 1:ad.nTrials, @isnumeric);
             p.addParameter('showInLegend', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
+            p.addParameter('clipping', 'on', @ischar);
             p.parse(varargin{:});
             
             data = p.Results.data;
@@ -1353,8 +1354,10 @@ classdef AlignInfo < AlignDescriptor
                 if all(emptyMask), return; end
                 nonEmpty = find(~emptyMask, 1);
                 D = size(data{nonEmpty}, 2);
+                markIntervalClipping = 'off';
             else
                 D = size(data, 3);
+                markIntervalClipping = 'on';
             end
             
             % plot intervals
@@ -1416,7 +1419,7 @@ classdef AlignInfo < AlignDescriptor
                     app = ad.intervalAppear{iInterval};
                     
                     hIntervals{iInterval} = TrialDataUtilities.Plotting.DrawOnData.plotInterval(axh, intLoc, D, ...
-                        app, p.Results.intervalThickness, p.Results.intervalAlpha);
+                        app, p.Results.intervalThickness, p.Results.intervalAlpha, 'clipping', p.Results.clipping);
                     if p.Results.showInLegend
                         TrialDataUtilities.Plotting.showFirstInLegend(hIntervals{iInterval}, ad.intervalLabels{iInterval});
                     else
@@ -1484,7 +1487,7 @@ classdef AlignInfo < AlignDescriptor
                     if ~isempty(markLoc)
                         hMarks{iMark} = TrialDataUtilities.Plotting.DrawOnData.plotMark(axh, markLoc, app, ...
                             p.Results.markSize, 'alpha', p.Results.markAlpha, 'useTranslucentMark3d', p.Results.useTranslucentMark3d, ...
-                            'outline', p.Results.markOutline, 'outlineAlpha', p.Results.markOutlineAlpha);
+                            'outline', p.Results.markOutline, 'outlineAlpha', p.Results.markOutlineAlpha,  'clipping', p.Results.clipping);
                         
                         if p.Results.showInLegend
                             TrialDataUtilities.Plotting.showInLegend(hMarks{iMark}(1), ad.markLabels{iMark});

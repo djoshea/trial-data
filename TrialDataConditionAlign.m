@@ -6789,6 +6789,8 @@ classdef TrialDataConditionAlign < TrialData
             else
                 yOffsetCondition = p.Results.yOffsetBetweenConditions;
             end
+            
+            plotOptions = [{'Clipping', 'off'} p.Results.plotOptions{:}];
 
             % based on dimensionality, check sizes of provided
             if D == 1
@@ -6954,11 +6956,11 @@ classdef TrialDataConditionAlign < TrialData
 %                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(timeC', dataC', ...
 %                                    ones(size(timeC)) * zlevel, ...
 %                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-%                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+%                                    'LineWidth', app(iCond).LineWidth, plotOptions{:});
 %                             else
                                 plotArgs = app(iCond).getPlotArgs();
                                 hData{iCond, iAlign} = plot(axh, timeC', dataC', '-', ...
-                                    plotArgs{:}, p.Results.plotOptions{:});
+                                    plotArgs{:}, plotOptions{:});
                                 if p.Results.alpha < 1
                                     TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
                                 end
@@ -6969,11 +6971,11 @@ classdef TrialDataConditionAlign < TrialData
 %                                hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', ...
 %                                    ones(size(dataC(:, :, 1)')) * zlevel, ...
 %                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-%                                    'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+%                                    'LineWidth', app(iCond).LineWidth, plotOptions{:});
 %                             else
                                 plotArgs = app(iCond).getPlotArgs();
                                 hData{iCond, iAlign} = plot(axh, dataC(:, :, 1)', dataC(:, :, 2)', '-', ...
-                                    plotArgs{:}, p.Results.plotOptions{:});
+                                    plotArgs{:}, plotOptions{:});
                                 if p.Results.alpha < 1
                                     TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
                                 end
@@ -6983,11 +6985,11 @@ classdef TrialDataConditionAlign < TrialData
 %                             if p.Results.alpha < 1
 %                                 hData{iCond, iAlign} = TrialDataUtilities.Plotting.patchline(dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', ...
 %                                    'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-%                                    'LineWidth', app(iCond).LineWidth, 'Parent', axh, p.Results.plotOptions{:});
+%                                    'LineWidth', app(iCond).LineWidth, 'Parent', axh, plotOptions{:});
 %                             else
                                 plotArgs = app(iCond).getPlotArgs();
                                 hData{iCond, iAlign} = plot3(axh, dataC(:, :, 1)', dataC(:, :, 2)', dataC(:, :, 3)', '-', ...
-                                    plotArgs{:}, p.Results.plotOptions{:});
+                                    plotArgs{:}, plotOptions{:});
                                 if p.Results.alpha < 1
                                     TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}, p.Results.alpha);
                                 end
@@ -7017,11 +7019,11 @@ classdef TrialDataConditionAlign < TrialData
 %                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(xvec + tOffset, yvec + yOffset, ...
 %                                            ones(size(yvec)) * zlevel, ...
 %                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-%                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+%                                            'LineWidth', app(iCond).LineWidth, plotOptions{:});
 %                                     else
                                         plotArgs = app(iCond).getPlotArgs();
                                         hData{iCond, iAlign}(iTrial) = plot(axh, xvec + tOffset, yvec + yOffset, '-', ...
-                                            plotArgs{:}, p.Results.plotOptions{:});
+                                            plotArgs{:}, plotOptions{:});
                                         if p.Results.alpha < 1
                                             TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}(iTrial), p.Results.alpha);
                                         end
@@ -7038,11 +7040,11 @@ classdef TrialDataConditionAlign < TrialData
                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(dxvec, dyvec, ...
                                            ones(size(dxvec)) * zlevel, ...
                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                           'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+                                           'LineWidth', app(iCond).LineWidth, plotOptions{:});
                                     else
                                         plotArgs = app(iCond).getPlotArgs();
                                         hData{iCond, iAlign}(iTrial) = plot(axh, dxvec, dyvec, '-', ...
-                                            plotArgs{:}, p.Results.plotOptions{:});
+                                            plotArgs{:}, plotOptions{:});
                                     end
                                 end
 
@@ -7055,11 +7057,11 @@ classdef TrialDataConditionAlign < TrialData
 % %                                     if p.Results.alpha < 1
 % %                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline3(dxvec, dyvec, dzvec, ...
 % %                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-% %                                            'LineWidth', app(iCond).LineWidth, p.Results.plotOptions{:});
+% %                                            'LineWidth', app(iCond).LineWidth, plotOptions{:});
 % %                                     else
                                     plotArgs = app(iCond).getPlotArgs();
                                     hData{iCond, iAlign}(iTrial) = plot3(axh, dxvec, dyvec, dzvec, '-', ...
-                                        plotArgs{:}, p.Results.plotOptions{:});
+                                        plotArgs{:}, plotOptions{:});
                                     hData{iCond, iAlign}(iTrial).Color(4) = p.Results.alpha;
 %                                     end
                                 end
@@ -7112,11 +7114,18 @@ classdef TrialDataConditionAlign < TrialData
                             dataC = bsxfun(@plus, dataC, yOffsetsByCondition{iCond});
                         end
                     end
+                    
+                    if D == 3
+                        markIntervalClipping = 'off';
+                    else
+                        markIntervalClipping = 'on';
+                    end
 
                     td.alignInfoSet{idxAlign}.drawOnDataByTrial('time', timeC, 'data', dataC, ...
                         'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
                         'showInLegend', p.Results.markShowInLegend && iCond == 1, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
                         'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
+                        'clipping', markIntervalClipping, ...
                         'intervalAlpha', p.Results.intervalAlpha, ...
                         'showMarks', p.Results.markShowOnData, ...
                         'markOutline', p.Results.markOutline, ...
@@ -7204,15 +7213,17 @@ classdef TrialDataConditionAlign < TrialData
             box(axh, 'off');
             axis(axh, 'tight');
 
-            au = AutoAxis(axh);
-            if strcmp(axisStyleY, 'scaleBar')
-                au.axisMarginLeft = 0.8;
+            if D < 3
+                au = AutoAxis(axh);
+                if strcmp(axisStyleY, 'scaleBar')
+                    au.axisMarginLeft = 0.8;
+                end
+    %             if strcmp(axisStyleX, 'scaleBar')
+    %                 au.axisMarginBottom = 1;
+    %             end
+                au.update();
+                au.installCallbacks();
             end
-%             if strcmp(axisStyleX, 'scaleBar')
-%                 au.axisMarginBottom = 1;
-%             end
-            au.update();
-            au.installCallbacks();
             hold(axh, 'off');
 
             set(axh, 'SortMethod', 'childorder'); % fix rendering issues
@@ -7869,6 +7880,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('markShowInLegend', true, @islogical);
             p.addParameter('markAlpha', 1, @isscalar);
             p.addParameter('markSize', 4, @isscalar);
+            p.addParameter('markOutline', true, @islogical);
+            p.addParameter('markOutlineColor', 'w', @(x) true);
 
             p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalShowOnAxis', true, @islogical);
@@ -7900,6 +7913,8 @@ classdef TrialDataConditionAlign < TrialData
             yOffset = p.Results.yOffset;
             zOffset = p.Results.zOffset;
 
+            plotOptions = [{'Clipping', 'off'} p.Results.plotOptions{:}];
+            
             % plot the mean and sem for an analog channel vs. time within
             % each condition
             import TrialDataUtilities.Plotting.errorshade;
@@ -8040,7 +8055,7 @@ classdef TrialDataConditionAlign < TrialData
                             % plot quantiles first
                             hQuant = plot(axh, tvec + tOffset + xOffset, qmat + yOffset, '-', ...
                                 'LineWidth', p.Results.lineWidth / 2, 'Parent', axh, ...
-                                plotArgs{:}, p.Results.plotOptions{:});
+                                plotArgs{:}, plotOptions{:});
                             TrialDataUtilities.Plotting.hideInLegend(hQuant);
                         end
 
@@ -8054,7 +8069,7 @@ classdef TrialDataConditionAlign < TrialData
                                 end
                                 hData(iCond, iAlign) = plot(axh, tvec + tOffset + xOffset, dmat + yOffset, '-', ...
                                     'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-                                    plotArgs{:}, p.Results.plotOptions{:});
+                                    plotArgs{:}, plotOptions{:});
                             else
                                 if plotErrorY
                                     [hData(iCond, iAlign), hShade] = TrialDataUtilities.Plotting.errorline(tvec + tOffset + xOffset, dmat + yOffset, errmat, ...
@@ -8093,24 +8108,24 @@ classdef TrialDataConditionAlign < TrialData
                         if p.Results.alpha < 1
                            hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth, 'Parent', axh, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth, 'Parent', axh, plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData(iCond, iAlign) = plot(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, '-', ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-                                plotArgs{:}, p.Results.plotOptions{:});
+                                plotArgs{:}, plotOptions{:});
                         end
 
                     elseif D == 3
                         if p.Results.alpha < 1
                             hData(iCond, iAlign) = TrialDataUtilities.Plotting.patchline(dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, ...
                                'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                               'LineWidth', p.Results.lineWidth,  'Parent', axh, p.Results.plotOptions{:});
+                               'LineWidth', p.Results.lineWidth,  'Parent', axh, plotOptions{:});
                         else
                             plotArgs = app(iCond).getPlotArgs();
                             hData(iCond, iAlign) = plot3(axh, dmat(:, 1) + xOffset, dmat(:, 2) + yOffset, dmat(:, 3) + zOffset, '-', ...
                                 'LineWidth', p.Results.lineWidth, 'Parent', axh, ...
-                                plotArgs{:}, p.Results.plotOptions{:});
+                                plotArgs{:}, plotOptions{:});
                         end
                     end
 
@@ -8136,6 +8151,7 @@ classdef TrialDataConditionAlign < TrialData
                         'xOffset', xOffset, 'yOffset', yOffset, 'zOffset', zOffset, ...
                         'tOffsetZero', timeOffsetByAlign(iAlign), ...
                         'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
+                        'markOutline', p.Results.markOutline, 'markOutlineColor', p.Results.markOutlineColor, ...
                         'intervalAlpha', p.Results.intervalAlpha, ...
                         'showRanges', p.Results.showRangesOnData, ...
                         'showInLegend', p.Results.markShowInLegend', ...
