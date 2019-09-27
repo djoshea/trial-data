@@ -290,7 +290,7 @@ classdef TrialDataConditionAlign < TrialData
             c = td.odc;
             c.alignSummarySet = alignSummarySet;
         end
-        
+
         function alignSummarySet = buildAlignSummarySetWithTrials(td, trialIdx)
             td = td.withTrials(trialIdx);
             alignSummarySet = cell(td.nAlign, 1);
@@ -770,10 +770,10 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = colorByAttributes(td, varargin)
             td.warnIfNoArgOut(nargout);
-            
+
             % add any needed attributes to condition info
             td = td.addAttribute(varargin{1});
-            
+
             td.conditionInfo = td.conditionInfo.colorByAttributes(varargin{:});
         end
 
@@ -964,7 +964,7 @@ classdef TrialDataConditionAlign < TrialData
             td = td.resetConditionInfo();
             td = td.unalign();
         end
-        
+
         function td = resetHard(td)
             % clears temporary and permanent invalid and resets to all trials being valid
             td.warnIfNoArgOut(nargout);
@@ -1035,13 +1035,13 @@ classdef TrialDataConditionAlign < TrialData
             td.conditionInfo = td.conditionInfo.reshapeAxes(varargin{:});
             td = td.postUpdateConditionInfo();
         end
-        
+
         function td = permuteAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.permuteAxes(varargin{:});
             td = td.postUpdateConditionInfo();
         end
-        
+
         function td = transposeAxes(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.conditionInfo = td.conditionInfo.transposeAxes(varargin{:});
@@ -1341,7 +1341,7 @@ classdef TrialDataConditionAlign < TrialData
         function v = get.conditionsAsStrings(td)
             v = td.conditionInfo.conditionsAsStrings;
         end
-        
+
         function tf = get.isGrouped(td)
             tf = td.conditionInfo.nAxes > 0;
         end
@@ -2011,7 +2011,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('raw', false, @islogical);
             p.parse(varargin{:})
-            
+
             offsets = td.alignInfoActive.getZeroByTrial();
             if ~p.Results.raw
                 offsets(~td.valid) = NaN;
@@ -2077,7 +2077,7 @@ classdef TrialDataConditionAlign < TrialData
         end
 
     end
-    
+
     % Adjustment of adjacent trial-trial boundaries
     methods
         function td = adjustAdjacentTrialBoundaries(td, varargin)
@@ -2085,39 +2085,39 @@ classdef TrialDataConditionAlign < TrialData
             % of time, such that the boundary between them could be adjusted:
             %  1. If align start is TrialStart and align stop is Event + offset, removes data from Event + offset from each trial
             %     and moves it to the beginning of the next trial.
-            %  2. If align start is Event + offset and align stop is TrialEnd, removes data from the start of each trial and 
+            %  2. If align start is Event + offset and align stop is TrialEnd, removes data from the start of each trial and
             %     moves it to the end of the previous trial
-            
+
             p = inputParser();
             p.addParameter('interTrialOffset', 1, @isscalar); % number of time units (typically ms) to insert between trials
             p.addParameter('trialSpliceEvent', 'TrialSplice', @TrialDataUtilities.String.isstringlike);
             p.parse(varargin{:});
             interTrialOffset = p.Results.interTrialOffset;
             trialSpliceEvent = p.Results.trialSpliceEvent;
-          
+
             trialId = td.getParamRaw('trialId');
             is_adjacent_with_next = [diff(trialId) == 1; false];
             is_adjacent_with_prev = [false; diff(trialId) == 1];
-            
+
             ai = td.alignInfoActive;
             if ai.isStartTrialStart
                 assert(~ai.isStopTrialEnd, 'Either start or stop alignment must not be TrialStart / TrialEnd');
                 shiftToNext = true;
-                
+
             elseif ai.isStopTrialEnd
                 shiftToNext = false;
-                
+
             else
                 error('Only one of start and stop alignment may be TrialStart / TrialEnd in order to adjust trial boundaries');
             end
-            
+
             % gather all events up front
             align_valid = ai.computedValid;
             ev_trialStart = td.getEventRawFirst('TrialStart');
             ev_trialEnd = td.getEventRawFirst('TrialEnd');
             align_trialStart = ai.timeInfo.start;
             align_trialEnd = ai.timeInfo.stop;
-            
+
             % shift event channels
             channels = setdiff(td.listEventChannels(), ["TrialStart", "TrialEnd", "TimeZero"]);
             prog = ProgressBar(numel(channels), 'Adjusting trial boundaries for event channels');
@@ -2127,7 +2127,7 @@ classdef TrialDataConditionAlign < TrialData
                 cd = td.channelDescriptorsByName.(ch);
                 adjust_boundary_internal(cd.dataFieldPrimary, [], false);
             end
-            
+
             % shift analog channels
             % organize access to analog fields based on their time field since time fields may be shared
             channels = cat(1, td.listAnalogChannels('includeNamedSubChannels', false, 'includeTransformChannels', false), ...
@@ -2141,7 +2141,7 @@ classdef TrialDataConditionAlign < TrialData
                 prog.update(c, 'Adjusting trial boundaries for %d analog channels with time field %s', numel(associatedChannels), timeField);
                 adjust_boundary_internal(timeField, associatedChannels, false);
             end
-            
+
             % shift spike channels
             channels = cat(1, td.listSpikeChannels('includeArraySubChannels', false), ...
                                 td.listExplicitSpikeArrays());
@@ -2150,14 +2150,14 @@ classdef TrialDataConditionAlign < TrialData
                 ch = channels{c};
                 prog.update(c, 'Adjusting trial boundaries for spike %s', ch);
                 cd = td.channelDescriptorsByName.(ch);
-                
+
                 associated_fields = strings(0, 1);
                 if cd.hasWaveforms, associated_fields(end+1) = string(cd.waveformsField); end %#ok<AGROW>
                 if cd.hasBlankingRegions, associated_fields(end+1) = string(cd.blankingRegionsField); end %#ok<AGROW>
                 if cd.hasSortQualityEachTrial, associated_fields(end+1) = string(cd.sortQualityEachTrialField); end %#ok<AGROW>
                 adjust_boundary_internal(cd.dataFieldPrimary, associated_fields, true);
             end
-            
+
             % shift trial start or trial end events and compute trial splice times
             ev_trialSplice = nan(td.nTrials, 1);
             if shiftToNext
@@ -2179,7 +2179,7 @@ classdef TrialDataConditionAlign < TrialData
                         shifted_from_last = 0;
                     end
                 end
-                
+
             else
                 % shift the start event later to match align
                 % and the end event later by the same amount
@@ -2207,8 +2207,8 @@ classdef TrialDataConditionAlign < TrialData
             if ~isempty(trialSpliceEvent)
                 td = td.addEvent(trialSpliceEvent, ev_trialSplice, 'isAligned', false);
             end
-            
-            function adjust_boundary_internal(timeField, associatedFields, eachTrialIsCell) 
+
+            function adjust_boundary_internal(timeField, associatedFields, eachTrialIsCell)
                 if eachTrialIsCell
                     time_data = cat(1, td.data.(timeField));
                 else
@@ -2223,21 +2223,21 @@ classdef TrialDataConditionAlign < TrialData
                         associated_data{iA} = {td.data.(associatedFields{iA})}';
                     end
                 end
-                
-                nDataCol = size(time_data(:, :), 2); % if eachTrialIsCell, data cell will have nTrial rows but have multiple columns 
-                
+
+                nDataCol = size(time_data(:, :), 2); % if eachTrialIsCell, data cell will have nTrial rows but have multiple columns
+
                 if shiftToNext
                     % shift the end of this trial to the beginning of next trial
                     [time_next, time_buffer] = deal(cell(nDataCol, 1)); % end of previous trial to place at beginning of this one
                     [associated_buffers, associated_next] = deal(cell(nA, nDataCol));
                     trialEnd_previous = NaN; % need to keep track of offset from trial end
-                    
+
                     [~, ~, indLastEachTrial] = ai.getAlignedTimesMask(time_data, 'raw', true, 'singleTimepointTolerance', 0, 'edgeTolerance', 0);
                     for iT = 1:td.nTrials-1
                         trialStart_this = ev_trialStart(iT);
-                        
+
                         for iC = 1:nDataCol
-                            if ~is_adjacent_with_next(iT) || ~align_valid(iT) 
+                            if ~is_adjacent_with_next(iT) || ~align_valid(iT)
                                 % not going to remove from the end of this trial, it's not adjacent or we don't know it's true Stop
                                 indLast = numel(time_data{iT, iC});
                             elseif isnan(indLastEachTrial(iT, iC))
@@ -2256,12 +2256,12 @@ classdef TrialDataConditionAlign < TrialData
                                     associated_next{iA, iC} = associated_data{iA}{iT, iC}(indLast+1:end, :, :, :, :, :, :, :, :, :);
                                 end
                             end
-                            
+
                             if ~isempty(time_buffer{iC})
                                 % prepend while slicing, including offsets
-                                % we assume that something that occurred at the end of the previous trial now occurs at 
+                                % we assume that something that occurred at the end of the previous trial now occurs at
                                 % the start of this trial minus interTrialOffset
-                                
+
                                 time_data{iT, iC} = cat(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, time_data{iT, iC}(1:indLast, :));
                                 for iA = 1:nA
                                     associated_data{iA}{iT, iC} = cat(1, associated_buffers{iA, iC}, associated_data{iA}{iT, iC}(1:indLast, :, :, :, :, :, :, :, :, :));
@@ -2274,24 +2274,24 @@ classdef TrialDataConditionAlign < TrialData
                                 end
                             end
                         end
-                        
+
                         % store next trial values in buffer
                         time_buffer = time_next;
                         associated_buffers = associated_next;
                         trialEnd_previous = ev_trialEnd(iT);
                     end
-                    
+
                 else
                     % shift from the beginning of this trial to the end of the previous trial
                     % shift the end of this trial to the beginning of next trial
                     [time_prev, time_buffer] = deal(cell(nDataCol, 1)); % end of previous trial to place at beginning of this one
                     [associated_buffers, associated_prev] = deal(cell(nA, nDataCol));
                     trialStart_next = NaN; % need to keep track of offset from trial end
-                    
+
                     [~, indFirstEachTrial, ~] = ai.getAlignedTimesMask(time_data, 'raw', true, 'singleTimepointTolerance', 0, 'edgeTolerance', 0);
                     for iT = td.nTrials:-1:1
                         trialEnd_this = ev_trialEnd(iT);
-                        
+
                         for iC = 1:nDataCol
                             if ~is_adjacent_with_prev(iT) || ~align_valid(iT)
                                 % not going to remove from the beginning of this trial
@@ -2314,8 +2314,8 @@ classdef TrialDataConditionAlign < TrialData
                             end
 
                             if ~isempty(time_buffer{iC})
-                                % postpend while offsetting times, slice off beginning 
-                                % we assume that something that occurred at the start of the subsequent trial now occurs at 
+                                % postpend while offsetting times, slice off beginning
+                                % we assume that something that occurred at the start of the subsequent trial now occurs at
                                 % the end of this trial plus interTrialOffset
                                 time_data{iT, iC} = cat(1, time_data{iT, iC}(indFirst:end, :), time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
                                 for iA = 1:nA
@@ -2329,15 +2329,15 @@ classdef TrialDataConditionAlign < TrialData
                                 end
                             end
                         end
-                        
+
                         % store next trial values in buffer
                         time_buffer = time_prev;
                         associated_buffers = associated_prev;
                         trialStart_next = ev_trialStart(iT);
                     end
-                    
+
                 end
-                
+
                 if eachTrialIsCell % split back into nTrials x 1 cell of 1 x nDataCol cells
                     time_data = mat2cell(time_data, ones(td.nTrials, 1), nDataCol);
                     for iA = 1:nA
@@ -4675,7 +4675,7 @@ classdef TrialDataConditionAlign < TrialData
                 timesCell(:, :, iA) = td.alignInfoSet{iA}.getAlignedTimesCell(timesCellUnaligned, p.Results.includePadding, 'singleTimepointTolerance', 0);
             end
         end
-        
+
         function [timesMask, indFirst, indLast] = getSpikeTimesMask(td, unitNames, varargin)
             p = inputParser();
             p.addParameter('includeInvalid', true, @islogical); % if true, include a mask on the invalid trials that rejects everything
@@ -4687,11 +4687,11 @@ classdef TrialDataConditionAlign < TrialData
                 timesRaw = td.getRawSpikeTimes(unitNames, 'combine', p.Results.combine);
             else
                 timesRaw = td.getSpikeTimesUnaligned(unitNames, 'combine', p.Results.combine);
-            end    
-            
+            end
+
             [timesMask, indFirst, indLast] = td.alignInfoActive.getAlignedTimesMask(...
                 timesRaw, 'includePadding', p.Results.includePadding, ...
-                'singleTimepointTolerance', 0, 'edgeTolerance', 0);    
+                'singleTimepointTolerance', 0, 'edgeTolerance', 0);
         end
 
         %%%%%
@@ -4797,7 +4797,7 @@ classdef TrialDataConditionAlign < TrialData
             for iA = 1:td.nAlign
                  [countsCell{iA}, tvecCell{iA}, hasSpikesCell{iA}, tBinEdgesCell{iA}] =  td.useAlign(iA).getSpikeBinnedCounts(unitName, varargin{:});
             end
-            
+
             [countsMat, alignVec] = TensorUtils.catWhich(2, countsCell{:});
             tvec = cat(1, tvecCell{:});
             hasSpikesMat = cat(2, hasSpikesCell{:});
@@ -5165,7 +5165,7 @@ classdef TrialDataConditionAlign < TrialData
                     [sub_psthMat, sub_tvec, sub_semMat, sub_stdMat, ~, sub_whichAlign] = ...
                         td.setConditionDescriptor(cdSub).getSpikeRateFilteredGroupMeansEachAlign(unitNames, ...
                         rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
-                    
+
                     % split by align, equalize time vectors for each align,
                     % and recombine
                     psthMat = TensorUtils.splitAlongDimensionByIndex(psthMat, 2, whichAlign);
@@ -5176,7 +5176,7 @@ classdef TrialDataConditionAlign < TrialData
                     sub_semMat = TensorUtils.splitAlongDimensionByIndex(sub_semMat, 2, sub_whichAlign);
                     stdMat = TensorUtils.splitAlongDimensionByIndex(stdMat, 2, whichAlign);
                     sub_stdMat = TensorUtils.splitAlongDimensionByIndex(sub_stdMat, 2, sub_whichAlign);
-                    
+
                     V = 6;
                     nA = numel(psthMat);
                     outByAlign = cell(V, nA);
@@ -5195,13 +5195,13 @@ classdef TrialDataConditionAlign < TrialData
                     [sub_psthMat, sub_tvec, sub_semMat, sub_stdMat] = ...
                         td.setConditionDescriptor(cdSub).getSpikeRateFilteredGroupMeans(unitNames, ...
                         rmfield(p.Results, 'subtractConditionDescriptor'), p.Unmatched);
-                    
+
                     % equalize the time vectors
                     [out, tvec] = TrialDataUtilities.Data.equalizeTimeVectorsForTimeseries({...
                         psthMat, semMat, stdMat, sub_psthMat, sub_semMat, sub_stdMat}, ...
                         {tvec, tvec, tvec, sub_tvec, sub_tvec, sub_tvec}, 2);
                 end
-                
+
                 % do the subtraction
                 psthMat = out{1} - out{4};
 
@@ -5225,7 +5225,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('rangeQuantile', 1, @(x) isscalar(x) || numel(x) == 2); % either width of centered quantile band (e.g. 0.95 --> 0.025 to 0.975) or [low high]
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            
+
             nq = p.Results.noiseQuantile;
             rq = p.Results.rangeQuantile;
             if isscalar(rq)
@@ -5238,12 +5238,12 @@ classdef TrialDataConditionAlign < TrialData
             % single trial estimated average values don't count
             psthMat(semMat == 0) = NaN;
             semMat(semMat == 0) = NaN;
-            
+
             noise = squeeze(TensorUtils.quantileMultiDim(semMat, nq, [1 2]));
             range = squeeze(diff(TensorUtils.quantileMultiDim(psthMat, rq, [1 2]), 1, 1));
             snr = range ./ noise;
         end
-        
+
         function [snr, range, noise]  = getSpikeChannelSNROverConditions(td, unitName, varargin)
             % take range = max - min over conditions at each time and noise = max s.e.m. at each time
             % then take quantile of these snr values over time
@@ -5251,7 +5251,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('quantile', 0.95, @isscalar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            
+
             q = p.Results.quantile;
             [psthMat, ~, semMat] = td.getSpikeRateFilteredGroupMeansEachAlign(unitName, p.Unmatched);
             range = max(psthMat,[],1, 'omitnan') - min(psthMat,[],1, 'omitnan');
@@ -5268,9 +5268,9 @@ classdef TrialDataConditionAlign < TrialData
             s = struct('snr', num2cell(snr), 'range', num2cell(range), 'noise', num2cell(noise));
             tbl = struct2table(s, 'RowNames', units, 'AsArray', true);
         end
-        
-        %   overConditions: at each time, take max - min over conditions at each time, and noise = max s.e.m at each time, then ratio, and take 
-            
+
+        %   overConditions: at each time, take max - min over conditions at each time, and noise = max s.e.m at each time, then ratio, and take
+
 
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
                 getSpikeRateFilteredGroupMeansRandomized(td, unitNames, varargin)
@@ -5739,7 +5739,7 @@ classdef TrialDataConditionAlign < TrialData
                 waveTvec = repmat({waveTvec}, nPlotGroups, 1);
                 groupNames = td.conditionNamesShort;
             end
-            
+
             cdList = td.getChannelDescriptor(unitName);
             waveUnits = cdList(1).waveformsUnits;
 
@@ -6167,10 +6167,10 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function plotRaster(td, unitNames, varargin)
-            
+
             % black + cbrewer Qual Set1
             def_cmap = [0 0 0; 0.894 0.102 0.11;0.216 0.494 0.722;0.302 0.686 0.29;0.596 0.306 0.639;1 0.498 0;1 1 0.2;0.651 0.337 0.157;0.969 0.506 0.749;0.6 0.6 0.6];
-            
+
             p = inputParser();
             p.addParameter('conditionIdx', 1:td.nConditions, @isvector);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
@@ -6216,7 +6216,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('quick', false, @islogical);
 
-            p.addParameter('axh', gca, @ishandle);
+            p.addParameter('axh', [], @(x) true);
 
             p.addParameter('combine', false, @islogical); % combine units as -one, if false, plot spikes in different colorstds
 %             p.KeepUnmatched = true;
@@ -6232,7 +6232,7 @@ classdef TrialDataConditionAlign < TrialData
                 unitNames = td.lookupSpikeChannelByIndex(unitNames);
             end
             unitNames = string(unitNames);
-            
+
             if p.Results.combine
                 nUnits = 1;
                 % wrap in another cell so that loop works
@@ -6414,7 +6414,7 @@ classdef TrialDataConditionAlign < TrialData
                             % draw waveforms in lieu of ticks
                                 TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
                                 'xOffset', tOffsetByAlign(iAlign) + offsetByUnit(iU), 'yOffset', yOffsetByCondition(iC), ...
-                                'color', color, ...
+                                'color', color, 'axh', axh, ...
                                 'waveCell', wavesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), 'waveformTimeRelative', wavesTvec, ...
                                 'normalizeWaveforms', false, ... % already normalized to [0 1]
                                 'waveScaleHeight', p.Results.spikeWaveformScaleHeight, 'waveScaleTime', p.Results.spikeWaveformScaleTime);
@@ -6423,7 +6423,7 @@ classdef TrialDataConditionAlign < TrialData
                             TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
                                 'xOffset', tOffsetByAlign(iAlign) + offsetByUnit(iU), 'yOffset', yOffsetByCondition(iC), ...
                                 'color', color, ...
-                                'tickHeight', p.Results.tickHeight);
+                                'tickHeight', p.Results.tickHeight, 'axh', axh);
                         end
                         hold(axh, 'on');
                     end
@@ -6524,7 +6524,7 @@ classdef TrialDataConditionAlign < TrialData
                     set(axh, 'YTick', flipud(yDividersByCondition(mask)));
                 else
                     mask = trialCounts(conditionIdx) > 0;
-                    set(axh, 'YTick', flipud(yCentersByCondition(mask)), 'YTickLabels', flipud(conditionNames(mask)));
+                    set(axh, 'YTick', flipud(yCentersByCondition(mask)), 'YTickLabel', flipud(conditionNames(mask)));
                 end
             else
                 set(axh, 'YTick', []);
@@ -6533,21 +6533,21 @@ classdef TrialDataConditionAlign < TrialData
             % setup time axis markers
             if p.Results.quick
                 td.alignSummarySet{1}.setupTimeAutoAxis('which', 'x', ...
-                    'style', 'quick');
-%             elseif p.Results.annotateAboveEachCondition
-%                 if iAlign == nAlignUsed
-%                     % just use horizontal scale bar
-%                     au = AutoAxis(axh);
-%                     au.xUnits = td.timeUnitName;
-%                     au.addAutoScaleBarX();
-%                     au.update();
-%                     au.installCallbacks();
-%                 end
+                    'style', 'quick', 'axh', axh);
+            % elseif p.Results.annotateAboveEachCondition
+            %     if iAlign == nAlignUsed
+            %         % just use horizontal scale bar
+            %         au = AutoAxis(axh);
+            %         au.xUnits = td.timeUnitName;
+            %         au.addAutoScaleBarX();
+            %         au.update();
+            %         au.installCallbacks();
+            %     end
             else
                 % use marks or tickBridges via AlignSummary
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
-                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', ...
+                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'which', 'x', ...
                         'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign), 'showRanges', p.Results.showRanges);
                 end
             end
@@ -6597,7 +6597,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('trialIdx', [], @(x) isempty(x) || isvector(x));
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            
+
             trialIdx = p.Results.trialIdx;
             if isempty(trialIdx)
                 alignSummaryActive = td.alignSummaryActive;
@@ -6605,7 +6605,7 @@ classdef TrialDataConditionAlign < TrialData
                 alignSummarySet = td.buildAlignSummarySetWithTrials(trialIdx);
                 alignSummaryActive = alignSummarySet{td.alignInfoActiveIdx};
             end
-                
+
             alignSummaryActive.setupTimeAutoAxis('style', 'tickBridge', p.Unmatched);
         end
 
@@ -6789,7 +6789,7 @@ classdef TrialDataConditionAlign < TrialData
             else
                 yOffsetCondition = p.Results.yOffsetBetweenConditions;
             end
-            
+
             plotOptions = [{'Clipping', 'off'} p.Results.plotOptions{:}];
 
             % based on dimensionality, check sizes of provided
@@ -7114,7 +7114,7 @@ classdef TrialDataConditionAlign < TrialData
                             dataC = bsxfun(@plus, dataC, yOffsetsByCondition{iCond});
                         end
                     end
-                    
+
                     if D == 3
                         markIntervalClipping = 'off';
                     else
@@ -7247,7 +7247,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
-            
+
             % grab raw data (for marking) and grouped data (for plotting)
             if td.hasAnalogChannel(name) || td.hasAnalogChannelGroup(name)
                 [dataByGroup, timeByGroup] = td.getAnalogGroupedEachAlign(name, p.Results);
@@ -7914,7 +7914,7 @@ classdef TrialDataConditionAlign < TrialData
             zOffset = p.Results.zOffset;
 
             plotOptions = [{'Clipping', 'off'} p.Results.plotOptions{:}];
-            
+
             % plot the mean and sem for an analog channel vs. time within
             % each condition
             import TrialDataUtilities.Plotting.errorshade;

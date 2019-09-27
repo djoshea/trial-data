@@ -1,7 +1,7 @@
 function hLine = drawTickRaster(timesCell, varargin)
 
     p = inputParser();
-    p.addParameter('axh', gca, @ishandle);
+    p.addParameter('axh', [], @(x) true);
     p.addParameter('color', 'k', @(x) ischar(x) || isvector(x));
     p.addParameter('lineWidth', 1, @isscalar);
     p.addParameter('xOffset', 0, @isscalar);
@@ -20,6 +20,11 @@ function hLine = drawTickRaster(timesCell, varargin)
     %p.addParameter('waveOffsetY', 0, @isscalar); % offset will be applied before waveScaleHeight
     
     p.parse(varargin{:});
+    
+    axh = p.Results.axh;
+    if isempty(axh)
+        axh = gca;
+    end
     
     rowHeight = p.Results.rowHeight;
     tickHeight = p.Results.tickHeight;
@@ -65,7 +70,7 @@ function hLine = drawTickRaster(timesCell, varargin)
         
         % filter within time limits?
         if ~isempty(X)
-            hLine = plot(X(:), Y(:), 'Parent', p.Results.axh, 'Color', p.Results.color, ...
+            hLine = plot(X(:), Y(:), 'Parent', axh, 'Color', p.Results.color, ...
                 'LineWidth', p.Results.lineWidth);
             if p.Results.alpha < 1
                 TrialDataUtilities.Plotting.setLineOpacity(hLine, p.Results.alpha);
@@ -97,7 +102,7 @@ function hLine = drawTickRaster(timesCell, varargin)
         
         % filter within time limits?
         if ~isempty(X)
-            hLine = line(X, Y, 'Parent', p.Results.axh, 'Color', p.Results.color, ...
+            hLine = line(X, Y, 'Parent', axh, 'Color', p.Results.color, ...
                 'LineWidth', p.Results.lineWidth);
             if p.Results.alpha < 1
                 TrialDataUtilities.Plotting.setLineOpacity(hLine, p.Results.alpha);

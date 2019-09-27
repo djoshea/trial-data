@@ -1065,10 +1065,12 @@ classdef AlignSummary
             tMax = p.Results.tMax;
             allowedRange = p.Results.allowedRange;
             showRanges = p.Results.showRanges;
+            axh = p.Results.axh;
+            if isempty(axh), axh = gca; end
             
             quick = strcmp(style, 'quick');
             if ~quick
-                au = AutoAxis(p.Results.axh);
+                au = AutoAxis(axh);
                 au.xUnits = as.timeUnitName;
             end
             
@@ -1104,11 +1106,11 @@ classdef AlignSummary
                 case 'none'
                     
                 case 'quick'
-                    xlabel(sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
+                    xlabel(axh, sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
                     
                 case 'auto'
                     au.addAutoAxisX();
-                    xlabel(sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
+                    xlabel(axh, sprintf('Time from %s (%s)', zeroLabel, as.timeUnitName));
                     
                 case 'tickBridge'      
                     au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
@@ -1234,7 +1236,7 @@ classdef AlignSummary
                     
             end
             if ~quick
-                axis off;
+                axis(axh, 'off');
 %                 au.update();
 %                 au.installCallbacks();      
             end
