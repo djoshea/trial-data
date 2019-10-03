@@ -2021,26 +2021,28 @@ classdef TrialData
             durations = td.getValidDurations();
 
             blankIntervals = td.getSpikeBlankingRegions(unitName, 'combine', p.Results.combine);
-
-            % blankIntervals are guaranteed to be non-overlapping and lie
-            % within the alignment window, so we can just add up the
-            % individual intervals
-            totalFn = @(mat) sum(mat(:, 2) - mat(:, 1), 1);
-            nUnits = size(blankIntervals, 2);
-            blankDurations = zeros(td.nTrials, nUnits);
-            for iT = 1:td.nTrials
-                for iU = 1:nUnits
-                    if ~isempty(blankIntervals{iT, iU})
-                        blankDurations(iT, iU) = totalFn(blankIntervals{iT, iU});
+            if ~isempty(blankIntervals) 
+                % blankIntervals are guaranteed to be non-overlapping and lie
+                % within the alignment window, so we can just add up the
+                % individual intervals
+                totalFn = @(mat) sum(mat(:, 2) - mat(:, 1), 1);
+                nUnits = size(blankIntervals, 2);
+                blankDurations = zeros(td.nTrials, nUnits);
+            
+                for iT = 1:td.nTrials
+                    for iU = 1:nUnits
+                        if ~isempty(blankIntervals{iT, iU})
+                            blankDurations(iT, iU) = totalFn(blankIntervals{iT, iU});
+                        end
                     end
                 end
-            end
-
-            containsBlanked = blankDurations > 0;
-
-            durations = bsxfun(@minus, durations, blankDurations);
-            if any(durations < 0)
-                error('Internal issue with blanking region durations');
+                containsBlanked = blankDurations > 0;
+                durations = durations - blankDurations;
+                if any(durations < 0)
+                    error('Internal issue with blanking region durations');
+                end
+            else
+                containsBlanked = false(size(durations));
             end
         end
 
@@ -6082,9 +6084,16 @@ classdef TrialData
             end
             nU = numel(unitNames);
             emptyInterval = zeros(0, 2);
-
-            intervalCell = cell(td.nTrials, numel(unitNames));
+            
+            % check if any units have blanking regions first, we can return {} to save time if none does
             channelDescriptors = td.getChannelDescriptor(unitNames);
+            if ~any(arrayfun(@(cd) cd.hasBlankingRegions, channelDescriptors))
+                intervalCell = {};
+                return
+            end
+            
+            intervalCell = cell(td.nTrials, numel(unitNames));
+            
             for iU = 1:nU
                 cd = channelDescriptors(iU);
                 fld = cd.blankingRegionsField;
@@ -6115,11 +6124,12 @@ classdef TrialData
             nU = cd.nChannels;
             
             if ~cd.hasBlankingRegions
-                if p.Results.combine
-                    intervalCell = repmat({emptyInterval}, td.nTrials);
-                else
-                    intervalCell = repmat({emptyInterval}, td.nTrials, nU);
-                end
+                intervalCell = {};
+%                 if p.Results.combine
+%                     intervalCell = repmat({emptyInterval}, td.nTrials);
+%                 else
+%                     intervalCell = repmat({emptyInterval}, td.nTrials, nU);
+%                 end
                 return;
             end
             
@@ -6138,7 +6148,9 @@ classdef TrialData
 
         function intervalCell = getSpikeBlankingRegions(td, unitName, varargin)
             intervalCell = td.getRawSpikeBlankingRegions(unitName, varargin{:});
-            intervalCell = td.replaceInvalidMaskWithValue(intervalCell, []);
+            if ~isempty(intervalCell)
+                intervalCell = td.replaceInvalidMaskWithValue(intervalCell, []);
+            end
         end
 
         function timesCell = getRawSpikeTimes(td, unitNames, varargin)

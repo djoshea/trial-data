@@ -4707,7 +4707,9 @@ classdef TrialDataConditionAlign < TrialData
             intervalCell = getSpikeBlankingRegions@TrialData(td, unitNames, 'combine', p.Results.combine);
 
             % align the intervals to the current align info
-            intervalCell = td.alignInfoActive.getAlignedIntervalCell(intervalCell, p.Results.includePadding);
+            if ~isempty(intervalCell)
+                intervalCell = td.alignInfoActive.getAlignedIntervalCell(intervalCell, p.Results.includePadding);
+            end
         end
 
         function td = blankSpikesWithinAlignWindow(td, spikeCh)
@@ -6179,6 +6181,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('colorSpikesLikeCondition', false, @islogical);
             p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('tickHeight', 1, @isscalar);
+            p.addParameter('tickWidth', 1, @isscalar);
 
             p.addParameter('markAlpha', 0.5, @isscalar);
             p.addParameter('markTickWidth', 2, @isscalar);
@@ -6422,7 +6425,7 @@ classdef TrialDataConditionAlign < TrialData
                             % draw vertical ticks
                             TrialDataUtilities.Plotting.drawTickRaster(timesByAlign{iAlign, iC, iU}(listByConditionMask{iC}), ...
                                 'xOffset', tOffsetByAlign(iAlign) + offsetByUnit(iU), 'yOffset', yOffsetByCondition(iC), ...
-                                'color', color, ...
+                                'color', color, 'lineWidth', p.Results.tickWidth, ...
                                 'tickHeight', p.Results.tickHeight, 'axh', axh);
                         end
                         hold(axh, 'on');
