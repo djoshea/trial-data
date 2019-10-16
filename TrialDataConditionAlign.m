@@ -6190,6 +6190,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
             p.addParameter('gapBetweenConditions', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('plotConditionDividers', false, @islogical);
 
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
 
@@ -6440,6 +6441,15 @@ classdef TrialDataConditionAlign < TrialData
                 td = td.intervalManual(blankRegions, 'Blanking Regions', ...
                     'appear', app, 'showOnData', true, 'showOnAxis', false);
             end
+            
+            if p.Results.plotConditionDividers
+                tLims = [min(tLimitsByAlign(:)); max(tLimitsByAlign(:))];
+                for iC = 1:nConditionsUsed
+                    app = td.conditionAppearances(conditionIdx(iC));
+                    line(axh, tLims, yLimsByCondition([1 1], iC), 'Color', app.Color);
+                    line(axh, tLims, yLimsByCondition([2 2], iC), 'Color', app.Color);
+                end
+            end
 
             if ~p.Results.quick
                 % draw marks and intervals on each raster
@@ -6527,7 +6537,14 @@ classdef TrialDataConditionAlign < TrialData
                     set(axh, 'YTick', flipud(yDividersByCondition(mask)));
                 else
                     mask = trialCounts(conditionIdx) > 0;
-                    set(axh, 'YTick', flipud(yCentersByCondition(mask)), 'YTickLabel', flipud(conditionNames(mask)));
+                    
+%                     yTickLabels = flipud(conditionNames(mask));
+                    yTickLabelsColored = strings(numel(conditionNames), 1);
+                    for iC = 1:numel(conditionNames)
+                        yTickLabelsColored(iC) = sprintf("\\color[rgb]{%.3f,%.3f,%.3f}%s", colors(iC, :), conditionNames{iC});
+                    end
+   
+                    set(axh, 'YTick', flipud(yCentersByCondition(mask)), 'YTickLabel', flipud(yTickLabelsColored(mask)));
                 end
             else
                 set(axh, 'YTick', []);
@@ -6535,6 +6552,7 @@ classdef TrialDataConditionAlign < TrialData
 
             % setup time axis markers
             if p.Results.quick
+                set(axh, 'TickDir', 'out');
                 td.alignSummarySet{1}.setupTimeAutoAxis('which', 'x', ...
                     'style', 'quick', 'axh', axh);
             % elseif p.Results.annotateAboveEachCondition
