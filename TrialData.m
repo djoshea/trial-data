@@ -632,9 +632,11 @@ classdef TrialData
             tf = isstruct(td.datasetMeta) && isfield(td.datasetMeta, key);
         end
 
-        function v = getMetaKey(td, key)
+        function v = getMetaKey(td, key, default)
             if isstruct(td.datasetMeta) && isfield(td.datasetMeta, key)
                 v = td.datasetMeta.(key);
+            elseif nargin > 2
+                v = default;
             else
                 v = [];
             end
@@ -1431,11 +1433,15 @@ classdef TrialData
 
             td.manualValid(mask) = false;
             if nargin > 2
-                assert(ischar(reason));
                 if isempty(td.manualInvalidCause)
                     td.manualInvalidCause = cellvec(td.nTrials);
                 end
-                td.manualInvalidCause(mask) = {reason};
+                reason = cellstr(reason);
+                if numel(reason) == 1
+                    td.manualInvalidCause(mask) = reason;
+                else
+                    td.manualInvalidCause(mask) = reason(mask);
+                end
             end
             td = td.invalidateValid();
         end
@@ -5143,6 +5149,7 @@ classdef TrialData
             p.parse(varargin{:});
 
             %name = p.Results.name;
+            name = char(name);
             values = p.Results.values;
 
             if ~isempty(values)
