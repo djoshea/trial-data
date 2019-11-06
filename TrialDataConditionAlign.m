@@ -15,6 +15,9 @@ classdef TrialDataConditionAlign < TrialData
         % time units elapsing between successive alignments, used mainly
         % for the purposes of plotting
         interAlignGaps
+        
+        % alternatively specify the offset where each align occurs (each align's zero will occur at this offset)
+        manualAlignTimeOffsets
     end
 
     % properties which are stored in odc, see get/set below
@@ -1499,6 +1502,9 @@ classdef TrialDataConditionAlign < TrialData
             for i = 1:td.nAlign
                 td.alignInfoSet{i} = td.alignInfoSet{i}.applyToTrialData(td);
             end
+            
+            td.interAlignGaps = [];
+            td.manualAlignTimeOffsets = [];
             td = td.postUpdateAlignInfo();
         end
 
@@ -1584,6 +1590,17 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             td.interAlignGaps = gaps;
+        end
+        
+        function td = setAlignTimeOffsets(td, offsets)
+            % set .manualAlignTimeOffsets, which represent the time gaps between
+            % successive alignments, mainly when plotting
+            td.warnIfNoArgOut(nargout);
+            
+            if ~isempty(offsets)
+                assert(numel(offsets) == td.nAlign, 'Offsets must be length nAlign');
+                td.manualAlignTimeOffsets = offsets;
+            end
         end
 
         % the following methods pass-thru to alignInfo:
@@ -5124,33 +5141,44 @@ classdef TrialDataConditionAlign < TrialData
 
             % now we need to nan out the regions affected by blanking
             blankingIntervals = td.getSpikeBlankingRegions(unitNames, 'combine', p.Results.combine);
-            [rates, tvec] = TrialDataUtilities.SpikeData.markNanBlankedIntervals(...
-                blankingIntervals, rates, tvec, 'padding', [sf.preWindow sf.postWindow]);
+            if ~isempty(blankingIntervals)
+                [rates, tvec] = TrialDataUtilities.SpikeData.markNanBlankedIntervals(...
+                    blankingIntervals, rates, tvec, 'padding', [sf.preWindow sf.postWindow]);
+            end
         end
 
         function [rates, tvec, hasSpikes, alignVec] = getSpikeRateFilteredAsMatrixEachAlign(td, unitName, varargin)
             p = inputParser;
             p.addParameter('combine', false, @islogical);
+            p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            alignIdx = p.Results.alignIdx;
 
-            if p.Results.combine || ischar(unitName)
-                nUnits = 1;
+            unitName = string(unitName);
+            if p.Results.combine || isstring(unitName)
+                cd = td.getChannelDescriptor(unitName);
+                if isa(cd, 'SpikeArrayChannelDescriptor')
+                    nUnits = cd.nChannels;
+                else
+                    nUnits = 1;
+                end
             else
                 nUnits = numel(unitName);
             end
 
-            ratesCell = cell(td.nAlign, nUnits);
-            tvecCell = cell(td.nAlign, nUnits);
-            hasSpikesMat = nan(td.nTrials, td.nAlign, nUnits);
-            for iA = 1:td.nAlign
+            nAlign = numel(alignIdx);
+            ratesCell = cell(nAlign, 1);
+            tvecCell = cell(nAlign, 1);
+            hasSpikesMat = nan(td.nTrials, nAlign, nUnits);
+            for iA = 1:nAlign
                 [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA, :)] = ...
-                    td.useAlign(iA).getSpikeRateFilteredAsMatrix(unitName, 'combine', p.Results.combine, ...
+                    td.useAlign(alignIdx(iA)).getSpikeRateFilteredAsMatrix(unitName, 'combine', p.Results.combine, ...
                     p.Unmatched);
             end
 
-            [rates, alignVec] = TensorUtils.catWhich(2, ratesCell{:});
-            tvec = cat(1, tvecCell{:});
+            [tvec, alignVec] = td.catTimeVecOverAlignWithSeparator(tvecCell, 'alignIdx', p.Results.alignIdx);
+            rates = td.catDataOverAlignWithSeparator(2, ratesCell);
             hasSpikes = any(hasSpikesMat, 2);
         end
 
@@ -5464,8 +5492,8 @@ classdef TrialDataConditionAlign < TrialData
                 td.getSpikeRateFilteredGroupMeansRandomized('eachAlign', true, varargin{:});
         end
 
-        function [psthMat, tvec, semMat, stdMat, nTrialsMat] = getPSTH(td, varargin)
-            [psthMat, tvec, semMat, stdMat, nTrialsMat] = getSpikeRateFilteredGroupMeans(td, varargin{:});
+        function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = getPSTH(td, varargin)
+            [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = getSpikeRateFilteredGroupMeans(td, varargin{:});
         end
 
 %         function [snr, range, noise] = getSpikeRateFilteredSNR(td, varargin)
@@ -6760,19 +6788,15 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.parse(varargin{:});
 
+            if ~iscell(tvecCell)
+                tvecCell = {tvecCell};
+            end
+  
             % select alignment indices
             alignIdx = 1:td.nAlign;
             alignIdx = alignIdx(p.Results.alignIdx);
             nAlign = numel(alignIdx);
-
-            offsets = nan(nAlign, 1);
-            offsets(1) = 0;
-            currentOffset = 0;
-
-            if ~iscell(tvecCell)
-                tvecCell = {tvecCell};
-            end
-
+            
             % compute start/stop of each alignment
             [mins, maxs] = deal(nanvec(nAlign));
             for iAlign = 1:nAlign
@@ -6787,27 +6811,35 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
 
-            if nAlign == 1
-                % no gaps needed
-                offsets = 0;
-                lims = [mins(1), maxs(1)];
-                return;
-            end
+            if isempty(td.manualAlignTimeOffsets)
+                offsets = nan(nAlign, 1);
+                offsets(1) = 0;
+                currentOffset = 0;
 
-            % determine the inter alignment gaps
-            if isempty(td.interAlignGaps)
-                % no inter align gap specified, determine automatically as
-                % 2% of total span
-                T = sum(maxs - mins);
-                gaps = repmat(0.02 * T, td.nAlign-1, 1);
+                if nAlign == 1
+                    % no gaps needed
+                    offsets = 0;
+                    lims = [mins(1), maxs(1)];
+                    return;
+                end
+
+                % determine the inter alignment gaps
+                if isempty(td.interAlignGaps)
+                    % no inter align gap specified, determine automatically as
+                    % 2% of total span
+                    T = sum(maxs - mins);
+                    gaps = repmat(0.02 * T, td.nAlign-1, 1);
+                else
+                    gaps = td.interAlignGaps;
+                end
+
+                for iAlign = 2:nAlign
+                    currentOffset = currentOffset + maxs(iAlign-1) + ...
+                        gaps(iAlign-1) - mins(iAlign);
+                    offsets(iAlign) = currentOffset;
+                end
             else
-                gaps = td.interAlignGaps;
-            end
-
-            for iAlign = 2:nAlign
-                currentOffset = currentOffset + maxs(iAlign-1) + ...
-                    gaps(iAlign-1) - mins(iAlign);
-                offsets(iAlign) = currentOffset;
+                offsets = td.manualAlignTimeOffsets(alignIdx);
             end
 
             lims = [mins + offsets, maxs + offsets];
@@ -6819,6 +6851,44 @@ classdef TrialDataConditionAlign < TrialData
                     r = nanmax(v1);
                 end
             end
+        end
+        
+        function [tvec, whichAlign] = catTimeVecOverAlignWithSeparator(td, tvecCell, varargin)
+            p = inputParser();
+            p.addParameter('alignIdx', 1:td.nAlign, @isvector);
+            p.parse(varargin{:});
+            alignIdx = p.Results.alignIdx;
+            assert(numel(tvecCell) == numel(alignIdx));
+            
+            nPerAlign = cellfun(@numel, tvecCell);
+            nTotal = sum(nPerAlign) + numel(alignIdx) - 1;
+            
+            tOffsets = td.getAlignPlottingTimeOffsets(tvecCell, 'alignIdx', p.Results.alignIdx);
+            
+            tvec = nan(nTotal, 1);
+            whichAlign = nan(nTotal, 1);
+            offset = 1; 
+            for iAlign = 1:numel(tvecCell)
+                this = tvecCell{iAlign};
+                insert_at = offset + (0:numel(this)-1);
+                tvec(insert_at) = this + tOffsets(iAlign);
+                whichAlign(insert_at) = alignIdx(iAlign);
+                offset = offset + numel(this) + 1;
+            end 
+        end
+        
+        function data = catDataOverAlignWithSeparator(td, time_dim, dataCell)
+            sz = size(dataCell{1});
+            
+            separator_sz = sz;
+            separator_sz(time_dim) = 1;
+            separator = nan(separator_sz, 'like', dataCell{1});
+            
+            catArgs = cell(numel(dataCell)*2 - 1, 1);
+            catArgs(1:2:end) = dataCell;
+            [catArgs{2:2:end}] = deal(separator);
+            
+            data = cat(time_dim, catArgs{:});
         end
 
         function plotProvidedAnalogDataGroupedEachTrial(td, D, varargin)
