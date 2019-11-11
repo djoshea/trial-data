@@ -5155,6 +5155,9 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             alignIdx = p.Results.alignIdx;
 
+            if isnumeric(unitName)
+                unitName = td.lookupSpikeChannelByIndex(unitNames);
+            end
             unitName = string(unitName);
             if p.Results.combine || isstring(unitName)
                 cd = td.getChannelDescriptor(unitName);
@@ -5239,7 +5242,11 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('eachAlign', false, @islogical);
             p.parse(unitNames, varargin{:});
             unitNames = p.Results.unitNames;
-
+            
+            if isnumeric(unitNames)
+                unitNames = td.lookupSpikeChannelByIndex(unitNames);
+            end
+            
             if isempty(p.Results.minTrials)
                 minTrials = 1;
             else
