@@ -5311,11 +5311,8 @@ classdef TrialData
         end
 
         function tf = hasParamChannel(td, name)
-            if td.hasChannel(name)
-                tf = isa(td.getChannelDescriptor(name), 'ParamChannelDescriptor');
-            else
-                tf = false;
-            end
+            tf = td.hasChannel(name, 'includeNamedSubChannels', false, ...
+                'channelDescriptorClass', "ParamChannelDescriptor");
         end
 
         function [names, channelDescriptors] = listParamChannels(td, varargin)
