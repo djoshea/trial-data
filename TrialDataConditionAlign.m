@@ -6230,6 +6230,7 @@ classdef TrialDataConditionAlign < TrialData
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
             p.addParameter('quick', false, @islogical);
+            p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial fraction to average
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
@@ -6247,6 +6248,8 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
 
             retInfo = struct();
+            alignIdx = p.Results.alignIdx;
+            nAlignUsed = numel(alignIdx);
 
             sf = p.Results.spikeFilter;
 
@@ -6254,10 +6257,10 @@ classdef TrialDataConditionAlign < TrialData
 
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
-            [meanMat, semMat, tvecCell, stdMat, timeMask] = deal(cell(td.nAlign, 1));
-            for iAlign = 1:td.nAlign
+            [meanMat, semMat, tvecCell, stdMat, timeMask] = deal(cell(nAlignUsed, 1));
+            for iAlign = 1:nAlignUsed
                 [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getSpikeRateFilteredGroupMeans(unitNames, ...
+                    td.useAlign(alignIdx(iAlign)).getSpikeRateFilteredGroupMeans(unitNames, ...
                     'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
                     'spikeFilter', sf, ...
                     'combine', true, ...
@@ -6290,9 +6293,9 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             if ~isempty(p.Results.showRandomizedQuantiles)
-                quantileData = cell(td.nAlign, 1);
-                for iAlign = 1:td.nAlign
-                    quantileData{iAlign} = td.useAlign(iAlign).getSpikeRateFilteredGroupMeansRandomizedQuantiles(unitNames, ...
+                quantileData = cell(nAlignUsed, 1);
+                for iAlign = 1:nAlignUsed
+                    quantileData{iAlign} = td.useAlign(alignIdx(iAlign)).getSpikeRateFilteredGroupMeansRandomizedQuantiles(unitNames, ...
                         'quantiles', p.Results.showRandomizedQuantiles, ...
                         'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
                         'spikeFilter', sf, ...
@@ -6313,6 +6316,7 @@ classdef TrialDataConditionAlign < TrialData
             retInfo = td.plotProvidedAnalogDataGroupMeans(1, 'time', tvecCell, ...
                 'data', meanMat, 'dataError', errorMat, 'quantileData', quantileData, 'axh', axh, ...
                 'axisInfoX', 'time', 'axisInfoY', struct('name', 'Firing Rate', 'units', 'spikes/sec'), ...
+                'alignIdx', alignIdx, ...
                 'quick', p.Results.quick, 'binAlignmentMode', sf.binAlignmentMode, 'binWidth', sf.timeDelta, 'retInfo', retInfo, p.Unmatched);
 
             if isnumeric(unitNames)
