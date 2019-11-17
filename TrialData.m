@@ -757,7 +757,7 @@ classdef TrialData
             % spike waveforms get handled separately. other partitions live at the channel boundary, but spike waveforms are
             % part of a spike channel
             if p.Results.partitionWaveforms
-                assert(~ismember('waveforms', partitionNames), 'Parttition named waveforms reserved for partitionWaveforms');
+                assert(~ismember('waveforms', partitionNames), 'Partition named waveforms reserved for partitionWaveforms');
 
                 spikeCh = [td.listSpikeChannels('includeArraySubChannels', false); td.listExplicitSpikeArrays()];
                 if ~isempty(spikeCh)
@@ -810,6 +810,11 @@ classdef TrialData
                 chThisPartition = td.expandChannelListGroups(chThisPartition, true);
                 fieldsThisPartition = td.listFieldsReferencedExclusivelyByChannels(chThisPartition);
 
+                if isempty(fieldsThisPartition)
+                    % no need to save empty partitions
+                    continue;
+                end
+                
                 % store the channel descriptors in partition meta
                 partitionMeta.(pname) = struct('channelDescriptorsByName', keepfields(channelDescriptorsByName, chThisPartition));
                 partitionFields.(pname) = fieldsThisPartition;

@@ -46,7 +46,7 @@ classdef SaveArrayIndividualized < handle
                     flds = partitionFieldLists.(partitionNames{iP});
                     
                     % split the partition data from the struct array
-                    partData = keepfields(element, flds); %#ok<NASGU>
+                    partData = keepfields(element, flds);
                     element = rmfield(element, flds);
                     
                     if isempty(callbackFn)
@@ -72,7 +72,7 @@ classdef SaveArrayIndividualized < handle
             
             % save partition meta to separate files
             for iP = 1:numel(partitionNames)
-                partitionMeta = partitionMetaStruct.(partitionNames{iP}); %#ok<NASGU>
+                partitionMeta = partitionMetaStruct.(partitionNames{iP});
                 file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionMetaFileName(locationName, partitionNames{iP});
                 save(file, '-v6', 'partitionMeta'); % assumes less than 2 GB per element, but much faster
             end
