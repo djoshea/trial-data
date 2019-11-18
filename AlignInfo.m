@@ -953,6 +953,7 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('edgeTolerance', NaN, @isscalar); % acceptable tolerance to be within the interval, NaN --> 1e-6 * sampling rate
             p.addParameter('raw', false, @islogical); % ignore current .valid and operate on all trials that are align valid
             p.parse(varargin{:});
+            request_raw = p.Results.raw;
             
             includePadding = p.Results.includePadding;
             singleTimepointTolerance = p.Results.singleTimepointTolerance;
@@ -1008,7 +1009,7 @@ classdef AlignInfo < AlignDescriptor
             
             [indFirst, indLast] = deal(nan(ad.nTrials, J));
             for i = 1:ad.nTrials
-                if p.Results.raw
+                if request_raw
                     valid_this = ~any(isnan([start(i), stop(i), offsets(i)])); 
                 else
                     valid_this = valid(i);
