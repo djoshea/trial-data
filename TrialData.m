@@ -7015,7 +7015,7 @@ classdef TrialData
             end
 
             if isnumeric(names)
-                names = {names};
+                names = td.lookupSpikeChannelByIndex(names);
             end
             if ischar(names) || iscellstr(names) || isstring(names)
                 names = string(names);
