@@ -6,6 +6,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     p.addParameter('sortByClusterPosition', false, @islogical);
     p.addParameter('cluster_ids', seg.cluster_ids, @isvector);
     
+    p.addParameter('addHasDataParam', true, @islogical);
     p.addParameter('include_valid', true, @islogical);
     p.addParameter('include_cutoff', false, @islogical);
     p.parse(varargin{:});
@@ -27,32 +28,6 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     include_valid = p.Results.include_valid;
     include_cutoff = p.Results.include_cutoff;
     
-%     if p.Results.separateArrayPerClusterGroup
-%         for iG = 1:numel(cluster_groups_keep)
-%             
-%             cluster_mask = ismember(seg.cluster_groups(clusterInds), cluster_groups_keep(iG));
-%             if ~any(cluster_mask)
-%                 continue;
-%             end
-%             
-%             clusterIndsThis = clusterInds(cluster_mask);
-%             if p.Results.sortByClusterPosition
-%                 clusterIndsThis = sortClusters(clusterCOM, clusterIndsThis);
-%             end
-%             electrodes = seg.cluster_ids(clusterIndsThis);
-%             units = zeros(numel(electrodes), 1);
-%         
-%             data = seg.spike_times_ms_rel_start(:, clusterIndsThis);
-%                 
-%             arrayName = sprintf('%s_%s', p.Results.arrayPrefix, cluster_groups_keep(iG));
-%             td = td.addSpikeArrayChannel(arrayName, electrodes, units, data, 'isAligned', false, 'raw', true);
-%             
-%             % add metadata
-%             td = td.setChannelMetaKey(arrayName, 'kilosort_pathLeaf', seg.dataset.pathLeaf);
-%             td = td.setChannelMetaKey(arrayName, 'cluster_ids', seg.cluster_ids(clusterIndsThis));
-%             td = td.setChannelMetaKey(arrayName, 'cluster_groups', seg.cluster_groups(clusterIndsThis));
-%         end
-%     else
     cluster_mask = ismember(seg.cluster_groups(clusterInds), cluster_groups_keep);
     if any(cluster_mask)
         clusterInds = clusterInds(cluster_mask);
@@ -63,8 +38,6 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
         % name as array#unit# since electrode isn't meaningful
         units = seg.cluster_ids(clusterInds);
         electrodes = nan(size(units));
-%         electrodes = seg.cluster_ids(clusterInds);
-%         units = zeros(numel(electrodes), 1);
         if include_valid
             if include_cutoff
                 data_valid = seg.spike_times_ms_rel_start(:, clusterInds);
@@ -78,9 +51,11 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
         else
             error('Either valid (include_valid==true) or cutoff (include_cutoff) spikes must be included');
         end
-            
+        
+        % data is now referenced to trial_start, not to "TimeZero", so we pass it in as isAligned==true, 
+        % so that this offset is handled for us automatically
         arrayName = p.Results.arrayPrefix;
-        td = td.addSpikeArrayChannel(arrayName, electrodes, units, data, 'isAligned', false, 'raw', true);
+        td = td.addSpikeArrayChannel(arrayName, electrodes, units, data, 'isAligned', true, 'raw', true);
 
         % add metadata
         td = td.setChannelMetaKey(arrayName, 'kilosort_pathLeaf', seg.dataset.pathLeaf);
@@ -90,9 +65,11 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
         td = td.setChannelMetaKey(arrayName, 'includes_cutoff_spikes', include_cutoff);
     end
 
-    ch_has_data = sprintf('%s_hasData', p.Results.arrayPrefix);
-    td = td.addOrUpdateBooleanParam(ch_has_data, seg.trial_has_data);
-    td = td.setChannelDisplayGroup(ch_has_data, 'neuropixel');
+    if p.Results.addHasDataParam
+        ch_has_data = sprintf('%s_hasData', p.Results.arrayPrefix);
+        td = td.addOrUpdateBooleanParam(ch_has_data, seg.trial_has_data);
+        td = td.setChannelDisplayGroup(ch_has_data, 'neuropixel');
+    end
     
     if isfield(td.saveFastPartitionInfo, 'spikes')
         td.saveFastPartitionInfo.spikes = union(td.saveFastPartitionInfo.spikes, string(arrayName));

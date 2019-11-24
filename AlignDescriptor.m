@@ -553,7 +553,7 @@ classdef AlignDescriptor
 
             ad.startEvent = 'TrialStart';
             ad.stopEvent = 'TrialEnd';
-            ad.zeroEvent = 'TimeZero';
+            ad.zeroEvent = 'TrialStart';
 
             % either use named property value pairs or string syntax
             if nargin == 1 && ischar(varargin{1})

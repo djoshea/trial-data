@@ -1572,7 +1572,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = unalign(td)
             td.warnIfNoArgOut(nargout);
-            td = td.align('TrialStart:TrialEnd @ TimeZero');
+            td = td.align('TrialStart:TrialEnd @ TrialStart');
         end
 
         function td = setInterAlignGap(td, gaps)
