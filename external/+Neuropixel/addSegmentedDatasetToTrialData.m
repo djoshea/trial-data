@@ -5,6 +5,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     %p.addParameter('separateArrayPerClusterGroup', false, @islogical);
     p.addParameter('sortByClusterPosition', false, @islogical);
     p.addParameter('cluster_ids', seg.cluster_ids, @isvector);
+    p.addParameter('cluster_ratings', [], @(x) true);
     
     p.addParameter('addHasDataParam', true, @islogical);
     p.addParameter('include_valid', true, @islogical);
@@ -13,7 +14,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
 
     td = td.reset();
     assert(td.nTrials == seg.nTrials, 'Trial counts do not match');
-
+    
     if p.Results.sortByClusterPosition
         debug('Computing cluster centers of mass\n');
         m = seg.dataset.getMetrics();
@@ -23,6 +24,11 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     cluster_ids = p.Results.cluster_ids;
     clusterInds = seg.lookup_clusterIds(cluster_ids);
     
+    cluster_ratings = p.Results.cluster_ratings;
+    if ~isempty(cluster_ratings)
+        assert(numel(cluster_ratings) == numel(cluster_ids));
+    end
+
     cluster_groups_keep = categorical(p.Results.cluster_groups);
     
     include_valid = p.Results.include_valid;
@@ -63,18 +69,13 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
         td = td.setChannelMetaKey(arrayName, 'cluster_groups', seg.cluster_groups(clusterInds));
         td = td.setChannelMetaKey(arrayName, 'includes_valid_spikes', include_valid);
         td = td.setChannelMetaKey(arrayName, 'includes_cutoff_spikes', include_cutoff);
+        td = td.setChannelMetaKey(arrayName, 'cluster_ratings', cluster_ratings);
     end
 
     if p.Results.addHasDataParam
         ch_has_data = sprintf('%s_hasData', p.Results.arrayPrefix);
         td = td.addOrUpdateBooleanParam(ch_has_data, seg.trial_has_data);
         td = td.setChannelDisplayGroup(ch_has_data, 'neuropixel');
-    end
-    
-    if isfield(td.saveFastPartitionInfo, 'spikes')
-        td.saveFastPartitionInfo.spikes = union(td.saveFastPartitionInfo.spikes, string(arrayName));
-    else
-        td.saveFastPartitionInfo.spikes = string(arrayName);
     end
 end
 
