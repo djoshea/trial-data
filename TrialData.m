@@ -2595,12 +2595,14 @@ classdef TrialData
                 cd = cd.withNoScaling();
 
                 if p.Results.dataInMemoryScale
-                    values = cd.convertMemoryDataCellToAccess(1, values);
+                    impl = cd.getImpl();
+                    values = impl.convertMemoryDataCellToAccess(1, values);
                 end
             else
                 if ~p.Results.dataInMemoryScale
                     % take new data back into scaled values
-                    values = cd.convertAccessDataCellToMemory(1, values);
+                    impl = cd.getImpl();
+                    values = impl.convertAccessDataCellToMemory(1, values);
                 end
             end
 

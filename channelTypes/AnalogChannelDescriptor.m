@@ -220,8 +220,9 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
 
         function cd = inferAttributesFromData(cd, dataCell, timeCell)
             cd.warnIfNoArgOut(nargout);
-            dataClass = ChannelDescriptor.getCellElementClass(dataCell); %#ok<*PROPLC>
-            timeClass = ChannelDescriptor.getCellElementClass(timeCell);
+            impl = cd.getImpl();
+            dataClass = impl.getCellElementClass(dataCell); %#ok<*PROPLC>
+            timeClass = impl.getCellElementClass(timeCell);
             cd.originalDataClassByField = {dataClass, timeClass};
             if strcmp(dataClass, 'cell')
                 cd.elementTypeByField = [cd.CELL, cd.VECTOR];

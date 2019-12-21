@@ -26,7 +26,7 @@ classdef AnalogChannelImpl < ChannelImpl
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 data = ChannelImpl.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
             end
-            data = convertAccessDataCellToMemory@ChannelImpl(cd, fieldIdx, data);
+            data = convertAccessDataCellToMemory@ChannelImpl(impl, fieldIdx, data);
         end
         
         function data = convertAccessDataSingleToMemory(impl, fieldIdx, data)
@@ -34,7 +34,7 @@ classdef AnalogChannelImpl < ChannelImpl
             if fieldIdx == 1 && ~isempty(cd.scaleFromLims) && ~isempty(cd.scaleToLims)
                 data = ChannelImpl.unscaleData(data, cd.scaleFromLims, cd.scaleToLims);
             end
-            data = convertAccessDataSingleToMemory@ChannelImpl(cd, fieldIdx, data);
+            data = convertAccessDataSingleToMemory@ChannelImpl(impl, fieldIdx, data);
         end
         
         function [dataCell, timeCell] = computeTransformDataRaw(impl, td, varargin)
