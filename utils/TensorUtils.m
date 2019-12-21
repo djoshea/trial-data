@@ -2004,7 +2004,9 @@ classdef TensorUtils
             nC = size(coeff, 2);
             szNew(basisDim) = nC;
             score = TensorUtils.undoReshapeByConcatenatingDims(score, {otherDims, basisDim}, szNew);
-            tsquared = reshape(tsquared, szOrig(otherDims));
+            if numel(otherDims) > 1
+                tsquared = reshape(tsquared, szOrig(otherDims));
+            end
 
             mu = TensorUtils.orientSliceAlongDims(mu, basisDim);
         end

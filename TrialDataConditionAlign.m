@@ -4910,25 +4910,27 @@ classdef TrialDataConditionAlign < TrialData
 
             % use hist c to bin the spike counts
             nUnits = size(spikeCell, 2);
-            nTrials = length(spikeCell);
+            nTrials = size(spikeCell, 1);
             countsMat = nan(nTrials, numel(tvec), nUnits);
             for iTrial = 1:nTrials
                 if valid(iTrial)
                     for iU = 1:nUnits
                         if ~isempty(spikeCell{iTrial, iU})
-                            temp = histcounts(spikeCell{iTrial, iU}, tbinsForHistc);
-                            countsMat(iTrial, :, iU) = temp(1:end-1);
+                            countsMat(iTrial, :, iU) = histcounts(spikeCell{iTrial, iU}, tbinsForHistc);
                         else
                             countsMat(iTrial, :, iU) = zeros(1, numel(tvec));
                         end
 
                         % update tbinsValidMat to reflect spike blanking intervals
                         tvecValidMask = makecol(tbinsValidMat(iTrial, :));
-                        bi = blankIntervals{iTrial};
-                        for iInt = 1:size(bi, 1)
-                            % keep regions where the time bin starts after the
-                            % interval or ends before the interval
-                            tvecValidMask = tvecValidMask & makecol(tbinsForHistc(1:end-1) >= bi(iInt, 2) | tbinsForHistc(2:end) <= bi(iInt, 1));
+                        
+                        if ~isempty(blankIntervals)
+                            bi = blankIntervals{iTrial};
+                            for iInt = 1:size(bi, 1)
+                                % keep regions where the time bin starts after the
+                                % interval or ends before the interval
+                                tvecValidMask = tvecValidMask & makecol(tbinsForHistc(1:end-1) >= bi(iInt, 2) | tbinsForHistc(2:end) <= bi(iInt, 1));
+                            end
                         end
 
                         % mark NaN bins not valid on that trial
