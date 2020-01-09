@@ -81,6 +81,9 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                 if strcmp(cls, 'cell')
                     cd.elementTypeByField = cd.CELL;
                     
+                elseif strcmp(cls, 'char')
+                    cd.elementTypeByField = cd.STRING;
+                
                 elseif scalar
                     catData = cat(1, dataCell{:});
                     if strcmp(cls, 'logical') || (strcmp(cls, 'uint8') && all(ismember(catData, uint8([0 1]))))
@@ -88,9 +91,6 @@ classdef ParamChannelDescriptor < ChannelDescriptor
                     else
                         cd.elementTypeByField = cd.SCALAR;
                     end
-
-                elseif strcmp(cls, 'char')
-                    cd.elementTypeByField = cd.STRING;
                     
                 elseif vector
                     cd.elementTypeByField = cd.VECTOR;

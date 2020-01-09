@@ -365,7 +365,8 @@ classdef ChannelImpl
             else
                 nonEmpty = ~cellfun(@isempty, dataCell);
                 if ~any(nonEmpty)
-                    cls = 'double'; % assume double if no values found
+                    cls = class(dataCell{1}); % doing this instead in case its char
+%                     cls = 'double'; % assume double if no values found
                 else
                     first = find(nonEmpty, 1);
                     cls = class(dataCell{first});
