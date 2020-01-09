@@ -1993,7 +1993,13 @@ classdef TensorUtils
 
             % deal gracefully with all nan bases
             validCols = any(~isnan(t), 1);
-            [coeff, score, latent, tsquared, explained, mu] = pca(t(:, validCols), varargin{:});
+           
+            % we do this to save time and to 
+            if nargout > 3
+                [coeff, score, latent, tsquared, explained, mu] = pca(t(:, validCols), varargin{:});
+            else
+                [coeff, score, latent] = pca(t(:, validCols), varargin{:});
+            end
 
             if ~all(validCols)
                 coeff = TensorUtils.inflateMaskedTensor(coeff, 1, validCols, 0);

@@ -838,6 +838,12 @@ classdef AlignInfo < AlignDescriptor
             lengths(lengths < 0) = 0;
         end
         
+        function [TrialStart, TrialStop] = getUnalignedTrialStartStopByTrial(ad)
+            ad.assertApplied();
+            TrialStart = makecol([ad.timeInfoValid.trialStart]);
+            TrialStop = makecol([ad.timeInfoValid.trialStop]);
+        end
+        
         function [start, stop, zero] = getStartStopZeroByTrial(ad)
             ad.assertApplied();
             
@@ -867,6 +873,30 @@ classdef AlignInfo < AlignDescriptor
             stopRel = makecol([ad.timeInfoValid.stop]) - makecol(ad.timeInfoValid.trialStart);
             zeroRel = makecol([ad.timeInfoValid.zero]) - makecol(ad.timeInfoValid.trialStart);
         end
+        
+        function [startRel, stopRel, zeroRel] = getStartStopZeroRelativeToTrialStartByTrialWithPadding(ad)
+            ad.assertApplied();
+            
+            [start, stop, zero] = ad.getStartStopZeroByTrialWithPadding();
+            startRel = start - makecol(ad.timeInfoValid.trialStart);
+            stopRel = stop - makecol(ad.timeInfoValid.trialStart);
+            zeroRel = zero - makecol(ad.timeInfoValid.trialStart);
+        end
+        
+        function [startRel, stopRel] = getStartStopRelativeToZeroByTrial(ad)
+            ad.assertApplied();
+            [start, stop, zero] = ad.getStartStopZeroByTrial();
+            startRel = start - zero;
+            stopRel = stop - zero;
+        end
+        
+        function [startRel, stopRel] = getStartStopRelativeToZeroByTrialWithPadding(ad)
+            ad.assertApplied();
+            [start, stop, zero] = ad.getStartStopZeroByTrialWithPadding();
+            startRel = start - zero;
+            stopRel = stop - zero;
+        end
+        
     end
     
     methods % Trial validity
@@ -1212,20 +1242,6 @@ classdef AlignInfo < AlignDescriptor
             alignedData = cellfun(@(data, mask) data(mask(1:size(data, 1)), :, :, :), ...
                 makecol(dataCell), makecol(rawTimesMask), ...
                 'UniformOutput', false);
-        end
-        
-        function [startRel, stopRel] = getStartStopRelativeToZeroByTrial(ad)
-            ad.assertApplied();
-            [start, stop, zero] = ad.getStartStopZeroByTrial();
-            startRel = start - zero;
-            stopRel = stop - zero;
-        end
-        
-        function [startRel, stopRel] = getStartStopRelativeToZeroByTrialWithPadding(ad)
-            ad.assertApplied();
-            [start, stop, zero] = ad.getStartStopZeroByTrialWithPadding();
-            startRel = start - zero;
-            stopRel = stop - zero;
         end
         
         function [markData, markDataMask] = getAlignedMarkData(ad, includePadding)
