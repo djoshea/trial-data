@@ -460,7 +460,7 @@ classdef TrialData
                     end
 
                     sz = size(td.data(iT).(dataField));
-                    if sz(2) > 1 && sz(1) == 1
+                    if sz(2) > 1 && sz(1) == 1 && ~isGroup(iA)
                         transpose_data(iT) = true;
                         nData = size(td.data(iT).(dataField), 2);
                     else
