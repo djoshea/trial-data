@@ -50,7 +50,7 @@ classdef DatasetCollection < LFADS.DatasetCollection
             p.parse(varargin{:});
             datasetIdx = LFADS.Utils.vectorMaskToIndices(p.Results.datasetIdx);
             
-            if ~isempty(dc.trialDataSet) && ~p.Results.reload
+            if ~isempty(dc.trialDataSet) && ~any(cellfun(@isempty, dc.trialDataSet)) && ~p.Results.reload
                 tdSet = dc.trialDataSet(datasetIdx);
                 return;
             end

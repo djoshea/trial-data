@@ -925,7 +925,13 @@ classdef TrialData
             end
         end
 
-        function td = loadFastMetaOnly(location)
+        function td = loadFastMetaOnly(location, varargin)
+            p = inputParser();
+            p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('loadAllPartitions', [], @(x) isempty(x) || islogical(x));
+            p.addParameter('ignoreMissingPartitions', false, @islogical);
+            p.parse(varargin{:});
+            
             % returns TrialData without the .data field, which will provide
             % access to metadata and channel info but not the data
 
@@ -935,8 +941,25 @@ classdef TrialData
                 loaded = load(fullfile(location, 'td.mat'));
                 td = loaded.td;
                 td.nTrialsManual = TrialData.loadFastTrialCount(location);
+                
+                % load and merge in any partition meta
+                partitionMeta = TrialDataUtilities.Data.SaveArrayIndividualized.loadPartitionMeta(location, ...
+                    'partitions', p.Results.partitions, 'loadAllPartitions', p.Results.loadAllPartitions, ...
+                    'ignoreMissingPartitions', p.Results.ignoreMissingPartitions);
+                partitions = fieldnames(partitionMeta);
+                for iF = 1:numel(partitions)
+                    td.channelDescriptorsByName = structMerge(td.channelDescriptorsByName, partitionMeta.(partitions{iF}).channelDescriptorsByName);
+                end
+                
             else
                 error('Directory %s not found. Did you save with saveFast?', location);
+            end
+            
+            function s = structMerge(s, s2)
+                flds = fieldnames(s2);
+                for f = 1:numel(flds)
+                    s.(flds{f}) = s2.(flds{f});
+                end
             end
         end
 

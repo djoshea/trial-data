@@ -224,6 +224,44 @@ classdef SaveArrayIndividualized < handle
             S = makecol(S);
         end
         
+        function partitionMeta = loadPartitionMeta(locationName, varargin)
+            p = inputParser();
+            p.addParameter('partitions', {}, @(x) isstringlike(x));
+            p.addParameter('loadAllPartitions', [], @(x) isempty(x) || islogical(x));
+            p.addParameter('ignoreMissingPartitions', false, @islogical);
+            p.parse(varargin{:});
+            
+            locationName = GetFullPath(locationName);
+            
+            % figure out which partitions to load, loadAll only if none specified manually
+            partitionsAvailable = TrialDataUtilities.Data.SaveArrayIndividualized.listPartitions(locationName);
+            loadAllPartitions = p.Results.loadAllPartitions;
+            partitions = string(p.Results.partitions);
+            if isempty(loadAllPartitions)
+                loadAllPartitions = isempty(partitions);
+            end
+            if loadAllPartitions
+                partitions = partitionsAvailable;
+            else
+                found = ismember(partitions, partitionsAvailable);
+                if any(~found)
+                    if ~p.Results.ignoreMissingPartitions
+                        error('Partitions %s not found. Partitions found: %s', strjoin(partitions(~found), ', '), strjoin(partitionsAvailable, ', '));
+                    else
+                        partitions = partitions(found);
+                    end
+                end
+            end
+            
+            % load partition meta
+            partitionMeta = struct();
+            for iP = 1:numel(partitions)
+                file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionMetaFileName(locationName, partitions{iP});
+                loaded = load(file); % assumes less than 2 GB per element, but much faster
+                partitionMeta.(partitions{iP}) = loaded.partitionMeta;
+            end
+        end
+        
         function mask = buildPartialLoadMask(N, partialLoadData, partialLoadSpec)
             mask = true(N, 1);
             flds = fieldnames(partialLoadSpec);

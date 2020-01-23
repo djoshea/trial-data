@@ -56,7 +56,7 @@ classdef Run < LFADS.Run
             elseif strcmp(mode, 'alignment')
                 td = r.prepareTrialDataForAlignment(td);
             else
-                error('Unknonw mode %s', mode);
+                error('Unknown mode %s', mode);
             end 
 
             if ~td.hasParamChannel('trialId')
