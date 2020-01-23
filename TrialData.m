@@ -3122,7 +3122,7 @@ classdef TrialData
             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're subclassed
             p.addParameter('continuousNeuralElectrodes', [], @(x) true);
             p.addParameter('isImage', false, @islogical); % shortcut for making image channels since they're subclassed
-
+            p.addParameter('displayGroup', '', @ischar);
             p.parse(varargin{:});
 
             times = p.Results.times;
@@ -3273,6 +3273,7 @@ classdef TrialData
             else
                 cdGroup = p.Results.channelDescriptor;
             end
+            cdGroup.displayGroup = p.Results.displayGroup;
             td = td.addChannel(cdGroup, {}, 'ignoreDataFields', true);
 
             % set the data and time field in td.data

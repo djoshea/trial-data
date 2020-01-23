@@ -3882,6 +3882,86 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
         end
+        
+        function [snr, range, noise]  = getAnalogChannelGroupSNR(td, groupName, varargin)
+            % take range = max - min (or e.g. 0.0.25, 0.975 quantile) and noise = max (or 0.95 quantile) s.e.m.
+            p = inputParser();
+            p.addParameter('noiseQuantile', 0.95, @isscalar);
+            p.addParameter('rangeQuantile', 0.95, @(x) isscalar(x) || numel(x) == 2); % either width of centered quantile band (e.g. 0.95 --> 0.025 to 0.975) or [low high]
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            nq = p.Results.noiseQuantile;
+            rq = p.Results.rangeQuantile;
+            if isscalar(rq)
+                rq = [(1-rq)/2 1-(1-rq)/2];
+            end
+
+            % options same as getAnalogChannelGroupGroupMeans
+            [meanMat, semMat] = td.getAnalogChannelGroupGroupMeans(groupName, p.Unmatched);
+
+            % single trial estimated average values don't count
+            meanMat(semMat == 0) = NaN;
+            semMat(semMat == 0) = NaN;
+
+            noise = squeeze(TensorUtils.quantileMultiDim(semMat, nq, [1 2]));
+            range = squeeze(diff(TensorUtils.quantileMultiDim(meanMat, rq, [1 2]), 1, 1));
+            snr = range ./ noise;
+        end
+
+        function [snr, range, noise]  = getAnalogChannelGroupSNROverConditions(td, groupName, varargin)
+            % take range = max - min over conditions at each time and noise = max s.e.m. at each time
+            % then take quantile of these snr values over time
+            p = inputParser();
+            p.addParameter('quantile', 0.95, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            q = p.Results.quantile;
+            
+            % options same as getAnalogChannelGroupGroupMeans
+            [meanMat, semMat] = td.getAnalogChannelGroupGroupMeans(groupName, p.Unmatched);
+            range = max(meanMat,[],1, 'omitnan') - min(meanMat,[],1, 'omitnan');
+            noise = max(semMat, [], 1, 'omitnan');
+            snr = range ./ noise;
+            snr = squeeze(quantile(snr, q, 2));
+        end
+        
+        function [snr_c, range_c, noise_c] = getAnalogChannelGroupSNREachCondition(td, unitName, varargin)
+            p = inputParser();
+            p.addParameter('noiseQuantile', 0.95, @isscalar);
+            p.addParameter('rangeQuantile', 0.95, @(x) isscalar(x) || numel(x) == 2); % either width of centered quantile band (e.g. 0.95 --> 0.025 to 0.975) or [low high]
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            nq = p.Results.noiseQuantile;
+            rq = p.Results.rangeQuantile;
+            if isscalar(rq)
+                rq = [(1-rq)/2 1-(1-rq)/2];
+            end
+
+            % options same as getAnalogChannelGroupGroupMeans
+            [meanMat, semMat] = td.getAnalogChannelGroupGroupMeans(groupName, p.Unmatched);
+
+            % single trial estimated average values don't count
+            meanMat(semMat == 0) = NaN;
+            semMat(semMat == 0) = NaN;
+  
+            noise_c = squeeze(TensorUtils.quantileMultiDim(semMat, nq, 2));
+            range_c = squeeze(diff(TensorUtils.quantileMultiDim(meanMat, rq, 2), 1, 2));
+            snr_c = range_c ./ noise_c;
+        end
+            
+        function tbl = getAnalogChannelGroupSNRTable(td, groupName, varargin)
+            names = td.listAnalogChannelsInGroupByColumn(groupName);
+            nCols = numel(names);
+            index = (1:nCols)';
+
+            [snr, range, noise] = td.getAnalogChannelGroupSNR(groupName, varargin{:});
+
+            s = struct('col_index', num2cell(index), 'snr', num2cell(snr), 'range', num2cell(range), 'noise', num2cell(noise));
+            tbl = struct2table(s, 'RowNames', string(names), 'AsArray', true);
+        end
 
         function [mat, tvec, alignIdx] = getAnalogMultiAsTensorEachAlign(td, names, varargin)
             % similar to getAnalogMultiAsMatrix, except each alignment will be
