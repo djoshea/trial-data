@@ -24,6 +24,7 @@ function [traceCenters, hLines] = plotStackedTraces(tvec, data, varargin)
 p = inputParser();
 p.addParameter('evenSpacing', false, @islogical); % the vertical space allocated to each stacked trace is the same?
 p.addParameter('normalize', false, @islogical); % the vertical height of each trace is normalized? or in original data units
+p.addParameter('gain', 1, @isscalar);
 p.addParameter('intercalate', false, @islogical); % the traces should be squished together as close as possible without touching
 p.addParameter('spacingFraction', 1.2, @isscalar); % the gap between each trace / the height of those traces
 p.addParameter('colormap', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for superimposed traces 
@@ -114,7 +115,7 @@ if ~iscell(data)
     end
 
     % compute the max range each row
-    rangesNorm = TensorUtils.nanmaxMultiDim(matShift, [1 3]);
+    rangesNorm = TensorUtils.nanmaxMultiDim(matShift, [1 3]) ;
     
     rangesNorm(isnan(rangesNorm)) = 0;
 
@@ -138,12 +139,12 @@ if ~iscell(data)
             %   offset = max_t (traceN+1(t) * spacingFraction - traceN(t))
 
             deltas = matShift(:, 2:end, :) * p.Results.spacingFraction - matShift(:, 1:end-1, :);
-            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]); % max over time and superimposed traces
+            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]) / p.Results.gain; % max over time and superimposed traces
             cs = fliplr(cumsum(fliplr(maxDeltas)));
             traceOffsets = [cs, 0];
 
         else 
-            rangesPadded = makerow(rangesNorm * (p.Results.spacingFraction));
+            rangesPadded = makerow(rangesNorm / p.Results.gain * (p.Results.spacingFraction));
             cs = fliplr(cumsum(fliplr(rangesPadded)));
             traceOffsets = [cs(2:end), 0];
         end

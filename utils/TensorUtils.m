@@ -1171,6 +1171,7 @@ classdef TensorUtils
             end
 
             % order dimensions of out according to whichDims
+            szOut = TensorUtils.expandScalarSize(szOut);
             out = reshape(permute(in, allDims), szOut);
 
             % build labels for output dimensions
@@ -1970,13 +1971,19 @@ classdef TensorUtils
 
             % deal gracefully with all nan bases
             validCols = any(~isnan(t), 1);
-            [coeff, score, latent, tsquared, explained] = pca(t(:, validCols), varargin{:});
+            if nargout > 3
+                [coeff, score, latent, tsquared, explained] = pca(t(:, validCols), varargin{:});
+            else
+                [coeff, score, latent] = pca(t(:, validCols), varargin{:});
+            end
             if ~all(validCols)
                 coeff = TensorUtils.inflateMaskedTensor(coeff, 1, validCols);
             end
             nC = size(coeff, 2);
             score = reshape(score, [szOrig(otherDims), nC]);
-            tsquared = reshape(tsquared, szOrig(otherDims));
+            if nargout > 3
+                tsquared = reshape(tsquared, szOrig(otherDims));
+            end
         end
 
         function [coeff, score, latent, tsquared, explained, mu] = pcaAlongDim(t, basisDim, varargin)
@@ -1984,7 +1991,7 @@ classdef TensorUtils
             % combinations are constructed, and each other dimension
             % represents observations.
             % coeff will be constructed with basisDims reshaped to fill the
-            % last dimension, and otherDims as subsequent dimensions
+            % last dimension, and otherDims as the second dimension
 
             assert(isscalar(basisDim));
             szOrig = size(t);
@@ -2010,11 +2017,31 @@ classdef TensorUtils
             nC = size(coeff, 2);
             szNew(basisDim) = nC;
             score = TensorUtils.undoReshapeByConcatenatingDims(score, {otherDims, basisDim}, szNew);
-            if numel(otherDims) > 1
-                tsquared = reshape(tsquared, szOrig(otherDims));
-            end
+            
+            if nargout > 3
+                if numel(otherDims) > 1
+                    tsquared = reshape(tsquared, szOrig(otherDims));
+                end
 
-            mu = TensorUtils.orientSliceAlongDims(mu, basisDim);
+                mu = TensorUtils.orientSliceAlongDims(mu, basisDim);
+            end
+        end
+        
+        function denoised = pcaDenoiseAlongDim(t, basisDim, numComponents, varargin)
+            [coeff, score] = TensorUtils.pcaAlongDim(t, basisDim, 'NumComponents', numComponents);
+            denoised = TensorUtils.linearCombinationAlongDimension(score, basisDim, coeff);
+        end
+        
+        function denoised = pcaDenoiseMultiDim(t, basisDims, numComponents, varargin)
+            szOrig = size(t);
+            otherDims = TensorUtils.otherDims(szOrig, basisDims);
+            
+            [coeff, score] = TensorUtils.pcaMultiDim(t, basisDims, 'NumComponents', numComponents);
+            % coeff is prod(szOtherdims) x nComponents
+            % score is szBasisDim x nComponents
+            denoised = TensorUtils.linearCombinationAlongDimension(score, 2, coeff);
+            % denoised is szBasisDim x prod(szOtherDims) --> szOrig
+            denoised = TensorUtils.undoReshapeByConcatenatingDims(denoised, {otherDims, basisDims}, szOrig);
         end
     end
 
