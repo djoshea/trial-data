@@ -84,6 +84,7 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
     colMask = ~all(isnan(x), 1);
     x = x(:, colMask);
     [P, Q] = rat(timeDeltaX / timeDeltaY, timeDeltaY*0.001);
+    timeDeltaY = timeDeltaX * Q / P; % this will be the actually realized sampling rate
     [y] = resample(x, P, Q);
     
     % this is the effective time vector of the data in Y after resampling

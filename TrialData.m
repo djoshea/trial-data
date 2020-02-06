@@ -1804,7 +1804,7 @@ classdef TrialData
                         gcd = td.channelDescriptorsByName.(ch);
                         cd(iN) = gcd.buildSubChannelDescriptor(chidx); %#ok<AGROW>
                     else
-                        error('Could not find channel %s', name);
+                        gerror('Could not find channel %s', name);
                     end
                 else
                     if isempty(subNames)
@@ -2344,6 +2344,7 @@ classdef TrialData
             p.addParameter('scaleFromLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('scaleToLims', [], @(x) isempty(x) || isvector(x));
             p.addParameter('dataInMemoryScale', false, @islogical); % if true, treat the data in values as memory class and scaling, so that it can be stored in .data as is
+            p.addParameter('displayGroup', '', @isstringlike);
             p.parse(varargin{:});
             times = p.Results.times;
             values = p.Results.values;
@@ -2442,7 +2443,8 @@ classdef TrialData
 
             cd.scaleFromLims = p.Results.scaleFromLims;
             cd.scaleToLims = p.Results.scaleToLims;
-
+            cd.displayGroup = p.Results.displayGroup;
+            
             td = td.addChannel(cd);
 
             if ~isempty(values)
@@ -2915,6 +2917,11 @@ classdef TrialData
             p.parse(varargin{:});
 
             cd = td.getChannelDescriptor(name);
+            if isa(cd, 'AnalogChannelGroupDescriptor')
+                [data, time] = td.getAnalogChannelGroup(name, varargin{:});
+                return;
+            end
+            
             impl = cd.getImpl();
             assert(isa(cd, 'AnalogChannelDescriptor'), 'Channel %s is not analog', name);
 
@@ -3460,7 +3467,11 @@ classdef TrialData
             % lot of time doing lokup
             %td.assertHasAnalogChannelGroup(groupName);
             cd = td.channelDescriptorsByName.(groupName);
-            sz = cd.getSampleSize(td);
+            if isa(cd, 'AnalogChannelGroup')
+                sz = 1;
+            else
+                sz = cd.getSampleSize(td);
+            end
         end
 
         function td = convertAnalogChannelGroupToNoScaling(td, groupName, varargin)

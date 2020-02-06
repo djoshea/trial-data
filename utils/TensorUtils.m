@@ -2017,7 +2017,7 @@ classdef TensorUtils
             nC = size(coeff, 2);
             szNew(basisDim) = nC;
             score = TensorUtils.undoReshapeByConcatenatingDims(score, {otherDims, basisDim}, szNew);
-            
+
             if nargout > 3
                 if numel(otherDims) > 1
                     tsquared = reshape(tsquared, szOrig(otherDims));

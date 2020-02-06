@@ -2676,6 +2676,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function [means, tvec] = getAnalogMeanOverTimeEachTrial(td, name, varargin)
             [data, tvec] = td.getAnalog(name, varargin{:});
+            nCh = td.getAnalogChannelGroupSize
             means = nanvec(td.nTrials);
             means(td.valid) = cellfun(@nanmean, data(td.valid));
         end
@@ -3614,7 +3615,7 @@ classdef TrialDataConditionAlign < TrialData
             time = getAnalogChannelGroupTime@TrialData(td, groupName);
             time = td.alignInfoActive.getAlignedTimesCell(time, false, 'singleTimepointTolerance', Inf); % no padding
         end
-
+        
         function [rms, ssqByTrial, countByTrial] = getAnalogChannelGroupRMSEachTrial(td, name, varargin)
             p = inputParser();
             p.addParameter('clip', [], @(x) numel(x) <= 2);
@@ -3995,18 +3996,24 @@ classdef TrialDataConditionAlign < TrialData
             [dataUnif, timeUnif] = td.alignInfoActive.getAlignedTimeseries(dataUnif, timeUnif, false);
         end
 
-        function [means, tvec] = getAnalogChannelGroupMeanOverTimeEachTrial(td, name, varargin)
-            [data, tvec] = td.getAnalogChannelGroup(name, varargin{:});
+        function means = getAnalogChannelGroupMeanOverTimeEachTrial(td, name, varargin)
+            [data, ~] = td.getAnalogChannelGroup(name, varargin{:});
             meansValid = cellfun(@(x) nanmean(x, 1), data(td.valid), 'UniformOutput', false);
             means = TensorUtils.inflateMaskedTensor(cat(1, meansValid{:}), 1, td.valid, NaN);
         end
 
-        function [meansCell, tvec] = getAnalogChannelGroupMeanOverTimeEachTrialGrouped(td, name, varargin)
-            [means, tvec] = td.getAnalogChannelGroupMeanOverTimeEachTrial(name, varargin{:});
+        function meansCell = getAnalogChannelGroupMeanOverTimeEachTrialGrouped(td, name, varargin)
+            means = td.getAnalogChannelGroupMeanOverTimeEachTrial(name, varargin{:});
             meansCell = td.groupElements(means);
         end
+        
+        function means = getAnalogChanneMeanOverTimeGroupMeans(td, name, varargin)
+            meansCell = td.getAnalogChannelGroupMeanOverTimeEachTrialGrouped(name, varargin{:});
+            temp = cellfun(@(x) mean(x, 1, 'omitnan'), meansCell, 'UniformOutput', false);
+            means = cat(1, temp{:});
+        end
 
-        function [meanMat, semMat, tvec, stdMat, nTrialsMat] = getAnalogChannelGroupMeanOverTimeEachTrialGroupMeans(td, name, varargin)
+        function [meanMat, semMat, stdMat, nTrialsMat] = getAnalogChannelGroupMeanOverTimeEachTrialGroupMeans(td, name, varargin)
             % *Mat will be nConditions x T x ... matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
@@ -4016,13 +4023,13 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
             minTrials = p.Results.minTrials;
 
-            [meansGrouped, tvec] = td.getAnalogChannelGroupMeanOverTimeEachTrialGrouped(name, p.Unmatched);
+            meansGrouped = td.getAnalogChannelGroupMeanOverTimeEachTrialGrouped(name, p.Unmatched);
 
             ne = find(~cellfun(@isempty, meansGrouped), 1);
             sampleSize = size(meansGrouped{ne});
-            sampleSize = sampleSize(3:end);
+            sampleSize = sampleSize(2:end);
 
-            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.nConditions, numel(tvec), sampleSize]));
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.nConditions, sampleSize]));
             for iC = 1:td.nConditions
                 if ~isempty(meansGrouped{iC})
                     [meanMat(iC, :, :, :, :, :, :), semMat(iC, :, :, :, :, :, :), ...
