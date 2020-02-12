@@ -3915,6 +3915,7 @@ classdef TrialData
                 data = {td.data.(dataField)}';
                 time = {td.data.(timeField)}';
 
+                mask_empty = true(numel(data), 1);
                 for i = 1:numel(data)
                     time{i} = makecol(time{i});
                     if isempty(data{i}), time{i} = nan(0, 1); continue; end
@@ -3925,6 +3926,8 @@ classdef TrialData
                     if isempty(time{i}), data{i} = emptySlice; continue; end
                     assert(size(data{i}, 1) == numel(time{i}), 'Number of timepoints in data on trial %d does not match time', i);
                     assert(size(data{i}, 2) == prod(sampleSize), 'Number of channels on trial %d does not match channel count', i);
+                    
+                    mask_empty(i) = false;
                 end
 
                 % do scaling and convert to double
@@ -3940,9 +3943,10 @@ classdef TrialData
                             data{i} = data{i}(:, sliceArgs{:});
                         end
                     end
-                    emptySlice = emptySlice(:, sliceArgs{:}); %#ok<NASGU>
+                    emptySlice = emptySlice(:, sliceArgs{:});
+                    data(mask_empty) = {emptySlice};
                 end
-
+                
                 if p.Results.sort
                     for iT = 1:td.nTrials
                         [time{iT}, idx] = sort(time{iT}, 'ascend');
@@ -3981,11 +3985,11 @@ classdef TrialData
             if p.Results.averageOverSlice
                 % average the whole slice down to a single timeseries
                 for i = 1:numel(data)
-                    if isempty(data{i})
-                        data{i} = nan(0, 1);
-                    else
+%                     if isempty(data{i})
+%                         data{i} = mean(empty;
+%                     else
                         data{i} = nanmean(data{i}(:, :), 2);
-                    end
+%                     end
                 end
             end
         end
@@ -4117,16 +4121,17 @@ classdef TrialData
         function [data, time] = getAnalogChannelGroup(td, groupName, varargin)
             [data, time] = td.getAnalogChannelGroupRaw(groupName, varargin{:});
 
-            emptySlice = [];
-            for i = 1:numel(data)
-                sz = size(data{i});
-                if sz(2) > 1
-                    emptySlice = nan([0 sz(2:end)]);
-                end
-            end
-
-            data = td.replaceInvalidOrEmptyWithValue(data, emptySlice);
-            time = td.replaceInvalidOrEmptyWithValue(time, nan(0, 1));
+            % now handled within getAnalogChannelGroupRaw so that slice works properly
+%             emptySlice = [];
+%             for i = 1:numel(data)
+%                 sz = size(data{i});
+%                 if sz(2) > 1
+%                     emptySlice = nan([0 sz(2:end)]);
+%                 end
+%             end
+% 
+%             data = td.replaceInvalidOrEmptyWithValue(data, emptySlice);
+%             time = td.replaceInvalidOrEmptyWithValue(time, nan(0, 1));
         end
 
         function td = setAnalogChannelGroup(td, groupName, values, varargin)
