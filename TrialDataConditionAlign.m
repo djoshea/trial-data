@@ -7101,7 +7101,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alignIdx', [], @isnumeric);
             p.addParameter('plotOptions', {}, @(x) iscell(x));
             p.addParameter('alpha', 1, @isscalar);
-
+            p.addParameter('lineWidth', NaN, @isscalar);
             p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
 
             p.addParameter('markShowOnData', false, @islogical);
@@ -7124,9 +7124,11 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('sortOrderMode', 'byTrial', @ischar); % byTrial, byCondition
 
+            p.addParameter('quick', false, @islogical);
             p.addParameter('clickable', false, @islogical); % make interactive and clickable
             p.KeepUnmatched = false;
             p.parse(varargin{:});
+            quick = p.Results.quick;
 
             if td.nTrialsValid == 0
                 error('No valid trials to plot');
@@ -7159,6 +7161,11 @@ classdef TrialDataConditionAlign < TrialData
 
             plotOptions = [{'Clipping', 'off'} p.Results.plotOptions{:}];
 
+            if ~isnan(p.Results.lineWidth)
+                % this will overwrite condition specific line width if specified
+                plotOptions = [{'LineWidth', p.Results.lineWidth}, plotOptions{:}];
+            end
+            
             % based on dimensionality, check sizes of provided
             if D == 1
                 data = p.Results.data;
@@ -7464,50 +7471,57 @@ classdef TrialDataConditionAlign < TrialData
                     error('Unknown sortOrderMode %s. Valid options are byCondition and byTrial.', p.Results.sortOrderMode);
             end
 
-            % plot marks and intervals on top of data
-            for iAlign = 1:nAlignUsed
-                idxAlign = alignIdx(iAlign);
-                for iCond = 1:nConditionsUsed
-                    if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
-                    timeC = time{iCond, iAlign};
-                    dataC = data{iCond, iAlign};
+            if ~quick
+                % plot marks and intervals on top of data
+                for iAlign = 1:nAlignUsed
+                    idxAlign = alignIdx(iAlign);
+                    for iCond = 1:nConditionsUsed
+                        if isempty(td.listByCondition{conditionIdx(iCond)}), continue; end
+                        timeC = time{iCond, iAlign};
+                        dataC = data{iCond, iAlign};
 
-                    if D==1
-                        if iscell(dataC)
-                            for iTrial = 1:numel(dataC)
-                                dataC{iTrial} = dataC{iTrial} + yOffsetsByCondition{iCond}(iTrial);
+                        if D==1
+                            if iscell(dataC)
+                                for iTrial = 1:numel(dataC)
+                                    dataC{iTrial} = dataC{iTrial} + yOffsetsByCondition{iCond}(iTrial);
+                                end
+                            else
+                                dataC = bsxfun(@plus, dataC, yOffsetsByCondition{iCond});
                             end
-                        else
-                            dataC = bsxfun(@plus, dataC, yOffsetsByCondition{iCond});
                         end
+
+                        if D == 3
+                            markIntervalClipping = 'off';
+                        else
+                            markIntervalClipping = 'on';
+                        end
+
+                        td.alignInfoSet{idxAlign}.drawOnDataByTrial('time', timeC, 'data', dataC, ...
+                            'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
+                            'showInLegend', p.Results.markShowInLegend && iCond == 1, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
+                            'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
+                            'clipping', markIntervalClipping, ...
+                            'intervalAlpha', p.Results.intervalAlpha, ...
+                            'showMarks', p.Results.markShowOnData, ...
+                            'markOutline', p.Results.markOutline, ...
+                            'markOutlineAlpha', p.Results.markOutlineAlpha, ...
+                            'showIntervals', p.Results.intervalShowOnData);
                     end
 
-                    if D == 3
-                        markIntervalClipping = 'off';
-                    else
-                        markIntervalClipping = 'on';
+                    % setup time axis for this align
+                    if D == 1
+                        td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle, ...
+                            'tOffsetZero', timeOffsetByAlign(iAlign), 'showMarks', p.Results.markShowOnAxis, 'showRanges', p.Results.showRangesOnAxis);
                     end
-
-                    td.alignInfoSet{idxAlign}.drawOnDataByTrial('time', timeC, 'data', dataC, ...
-                        'trialIdx', td.listByCondition{conditionIdx(iCond)}, ...
-                        'showInLegend', p.Results.markShowInLegend && iCond == 1, 'tOffsetZero', timeOffsetByAlign(iAlign), ...
-                        'axh', axh, 'markAlpha', p.Results.markAlpha, 'markSize', p.Results.markSize, ...
-                        'clipping', markIntervalClipping, ...
-                        'intervalAlpha', p.Results.intervalAlpha, ...
-                        'showMarks', p.Results.markShowOnData, ...
-                        'markOutline', p.Results.markOutline, ...
-                        'markOutlineAlpha', p.Results.markOutlineAlpha, ...
-                        'showIntervals', p.Results.intervalShowOnData);
-                end
-
-                % setup time axis for this align
-                if D == 1
-                    td.alignSummarySet{idxAlign}.setupTimeAutoAxis('which', 'x', 'style', p.Results.timeAxisStyle, ...
-                        'tOffsetZero', timeOffsetByAlign(iAlign), 'showMarks', p.Results.markShowOnAxis, 'showRanges', p.Results.showRangesOnAxis);
                 end
             end
 
             % setup non-time axes
+            if quick
+                axisStyleX = 'label';
+                axisStyleY = 'label';
+                axisStyleZ = 'label';
+            end
             if D == 1
                 if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                     % x is data, y is time
@@ -7580,7 +7594,7 @@ classdef TrialDataConditionAlign < TrialData
             box(axh, 'off');
             axis(axh, 'tight');
 
-            if D < 3
+            if D < 3 && ~quick
                 au = AutoAxis(axh);
                 if strcmp(axisStyleY, 'scaleBar')
                     au.axisMarginLeft = 0.8;
@@ -8247,6 +8261,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('quantileData', [], @(x) isnumeric(x) || iscell(x));
 
+            p.addParameter('showMarkLabels', true, @islogical);
             p.addParameter('markShowOnData', false, @islogical);
             p.addParameter('markShowOnAxis', true, @islogical);
             p.addParameter('markShowInLegend', true, @islogical);
@@ -8255,6 +8270,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('markOutline', true, @islogical);
             p.addParameter('markOutlineColor', 'w', @(x) true);
 
+            p.addParameter('showIntervalLabels', true, @islogical);
             p.addParameter('intervalShowOnData', false, @islogical);
             p.addParameter('intervalShowOnAxis', true, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
@@ -8542,7 +8558,8 @@ classdef TrialDataConditionAlign < TrialData
                         alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'tOffsetZero', timeOffsetByAlign(iAlign) + xOffset, ...
                             'tMin', min(time{iAlign}), 'tMax', max(time{iAlign}), 'timeScaleBarWidth', p.Results.timeScaleBarWidth, ...
                             'style', p.Results.timeAxisStyle,  'showIntervals', p.Results.intervalShowOnAxis, ...
-                            'showMarks', p.Results.markShowOnAxis, 'showRanges', p.Results.showRangesOnAxis);
+                            'showMarks', p.Results.markShowOnAxis, 'showRanges', p.Results.showRangesOnAxis, ...
+                            'showMarkLabels', p.Results.showMarkLabels, 'showIntervalLabels', p.Results.showIntervalLabels);
                     end
                 end
             end
