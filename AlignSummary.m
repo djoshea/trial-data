@@ -1053,6 +1053,8 @@ classdef AlignSummary
             p.addParameter('timeScaleBarWidth', NaN, @isscalar);
             p.addParameter('showRanges', true, @islogical); % show gray intervals indicating the range of each label / interval
             p.addParameter('showMarks', true, @islogical);
+            p.addParameter('showMarkLabels', true, @islogical);
+            p.addParameter('showIntervalLabels', true, @islogical);
             p.addParameter('showScaleBar', true, @islogical);
             p.addParameter('labelFirstMarkOnly', true, @islogical);
             p.addParameter('showIntervals', true, @islogical);
@@ -1140,7 +1142,7 @@ classdef AlignSummary
                             end
                             cvec = ii.appear.Color;
                             errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
-                            if ii.occurrence == 1 || ~p.Results.labelFirstMarkOnly
+                            if p.Results.showIntervalLabels && ii.occurrence == 1 || ~p.Results.labelFirstMarkOnly
                                 name = ii.name;
                             else
                                 name = '';
@@ -1170,7 +1172,7 @@ classdef AlignSummary
                                 end
                                 cvec = li.appear.Color;
                                 errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
-                                if li.occurrence == 1 || ~p.Results.labelFirstMarkOnly
+                                if p.Results.showMarkLabels && li.occurrence == 1 || ~p.Results.labelFirstMarkOnly
                                     name = li.name;
                                 else
                                     name = '';
@@ -1199,7 +1201,7 @@ classdef AlignSummary
 
                                 cvec = li.appear.Color;
                                 errorColor = AppearanceSpec.desaturateColor(cvec, 0.5);
-                                if li.occurrence == 1 || ~p.Results.labelFirstMarkOnly
+                                if p.Results.showMarkLabels && li.occurrence == 1 || ~p.Results.labelFirstMarkOnly
                                     name = li.name;
                                 else
                                     name = '';
