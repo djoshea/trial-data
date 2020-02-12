@@ -3589,17 +3589,20 @@ classdef TrialDataConditionAlign < TrialData
                 if isa(sub, 'function_handle')
                     % call it on each element of data
                     subValues = cellfun(sub, data);
-                elseif ischar(sub)
+                elseif ischar(sub) || isStringScalar(sub)
                     % treat as parameter value
                     subValues = td.getParam(sub);
                 elseif isscalar(sub)
                     subValues = repmat(sub, td.nTrials, 1);
+                elseif iscellstr(sub) || isstring(sub)
+                    subValues = td.getParamMultiAsCell(sub);
+                    subValues = cell2mat(subValues);
                 else
                     subValues = sub;
                 end
 
-                assert(numel(subValues) == td.nTrials, 'subtractTrialBaseline must be scalar of have nTrials entries');
-                data = cellfun(@(data, sub) bsxfun(@minus, data, sub), data, num2cell(subValues), 'UniformOutput', false);
+                assert(size(subValues, 1) == td.nTrials, 'subtractTrialBaseline must be scalar of have nTrials entries');
+                data = cellfun(@(d, s) d - s, data, num2cell(subValues, 2), 'UniformOutput', false);
             end
         end
 
@@ -3720,19 +3723,20 @@ classdef TrialDataConditionAlign < TrialData
 
                 % this is a much faster way of fetching the data whole, and
                 % getAnalogChannelGroup will do the resampling
+                colIdx = td.getAnalogChannelColumnIdxInGroup(names);
                 dataCell = cellvec(td.nTrials);
-                [matCell, timeCell] = td.getAnalogChannelGroup(groupName, 'timeDelta', p.Results.timeDelta, ...
+                [dataCell, timeCell] = td.getAnalogChannelGroup(groupName, 'timeDelta', p.Results.timeDelta, 'slice', colIdx, ...
                     'includeEdgeBins', true, 'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
                     'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
 
                 % then go and grab the correct columns
-                colIdx = td.getAnalogChannelColumnIdxInGroup(names);
-                prog = ProgressBar(td.nTrials, 'Slicing columns from analog channel group');
-                for iT = 1:td.nTrials
-                    prog.update(iT)
-                    dataCell{iT} = matCell{iT}(:, colIdx);
-                end
-                prog.finish();
+%                 colIdx = td.getAnalogChannelColumnIdxInGroup(names);
+%                 prog = ProgressBar(td.nTrials, 'Slicing columns from analog channel group');
+%                 for iT = 1:td.nTrials
+%                     prog.update(iT)
+%                     dataCell{iT} = matCell{iT}(:, colIdx);
+%                 end
+%                 prog.finish();
 
             else
 %                 sameTime = td.checkAnalogChannelsShareTimeField(names);
@@ -6904,7 +6908,7 @@ classdef TrialDataConditionAlign < TrialData
 
     % Plotting Analog each trial
     methods
-        function setupTimeAxis(td, varargin)
+        function aa = setupTimeAxis(td, varargin)
             p = inputParser();
             p.addParameter('trialIdx', [], @(x) isempty(x) || isvector(x));
             p.KeepUnmatched = true;
@@ -6918,7 +6922,7 @@ classdef TrialDataConditionAlign < TrialData
                 alignSummaryActive = alignSummarySet{td.alignInfoActiveIdx};
             end
 
-            alignSummaryActive.setupTimeAutoAxis('style', 'tickBridge', p.Unmatched);
+            aa = alignSummaryActive.setupTimeAutoAxis('style', 'tickBridge', p.Unmatched);
         end
 
         function [offsets, lims] = getAlignPlottingTimeOffsets(td, tvecCell, varargin)
@@ -7635,6 +7639,11 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractTrialBaseline', [], @(x) true);
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('timeDelta', []);
+            p.addParameter('timeReference', 0, @isscalar);
+            p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
+            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
