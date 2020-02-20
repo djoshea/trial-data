@@ -157,9 +157,14 @@ classdef SaveArrayIndividualized < handle
             partitionMeta = struct();
             for iP = 1:numel(partitions)
                 file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionMetaFileName(locationName, partitions{iP});
-                loaded = load(file); % assumes less than 2 GB per element, but much faster
-                partitionMeta.(partitions{iP}) = loaded.partitionMeta;
+                if ~exist(file, 'file')
+                    warning('Partition meta file %s not found', file);
+                else
+                    loaded = load(file); % assumes less than 2 GB per element, but much faster
+                    partitionMeta.(partitions{iP}) = loaded.partitionMeta;
+                end
             end
+            partitions = fieldnames(partitionMeta); % drop the ones we couldn't load
             
             N = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationName);
             
@@ -257,8 +262,12 @@ classdef SaveArrayIndividualized < handle
             partitionMeta = struct();
             for iP = 1:numel(partitions)
                 file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionMetaFileName(locationName, partitions{iP});
-                loaded = load(file); % assumes less than 2 GB per element, but much faster
-                partitionMeta.(partitions{iP}) = loaded.partitionMeta;
+                if ~exist(file, 'file')
+                    warning('Could not find meta info file %s\n', file);
+                else
+                    loaded = load(file); % assumes less than 2 GB per element, but much faster
+                    partitionMeta.(partitions{iP}) = loaded.partitionMeta;
+                end
             end
         end
         
