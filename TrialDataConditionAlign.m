@@ -2485,7 +2485,7 @@ classdef TrialDataConditionAlign < TrialData
         % return aligned analog channel
         function [data, time] = getAnalog(td, name, varargin)
             p = inputParser;
-            p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || ischar(x) || isa(x, 'function_handle'))
+            p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || isscalar(x) || isstringlike(x) || isa(x, 'function_handle'))
             p.addParameter('subtractTrialBaselineAt', '', @ischar);
             p.addParameter('subtractConditionBaselineAt', '', @ischar);
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
@@ -2591,6 +2591,7 @@ classdef TrialDataConditionAlign < TrialData
 
             % subtract baseline on trial by trial basis
             if ~isempty(p.Results.subtractTrialBaselineAt)
+                subtractTrialBaselineAt = p.Results.subtractTrialBaselineAt;
                 if strcmp(p.Results.subtractTrialBaselineAt, '*')
                     tdBaseline = td;
                 else
@@ -2676,7 +2677,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function [means, tvec] = getAnalogMeanOverTimeEachTrial(td, name, varargin)
             [data, tvec] = td.getAnalog(name, varargin{:});
-            nCh = td.getAnalogChannelGroupSize
+            %nCh = td.getAnalogChannelGroupSize(name);
             means = nanvec(td.nTrials);
             means(td.valid) = cellfun(@nanmean, data(td.valid));
         end
@@ -3562,7 +3563,10 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
                     tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baselineByCondition = tdBaseline.getAnalogChannelGroupMeanOverTimeGroupMeans(groupName, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                baselineByCondition = tdBaseline.getAnalogChannelGroupMeanOverTimeGroupMeans(groupName, 'singleTimepointTolerance', p.Results.singleTimepointTolerance, ...
+                    'slice', p.Results.slice, ...
+                    'linearCombinationWeights', p.Results.linearCombinationWeights, ...
+                    'applyScaling', p.Results.applyScaling);
                 sz = size(baselineByCondition);
                 sz(1) = tdBaseline.nTrials;
                 baselineForTrial = nan(sz);
@@ -3579,7 +3583,10 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
                     tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baseline = tdBaseline.getAnalogChannelGroupMeanOverTimeEachTrial(groupName, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                baseline = tdBaseline.getAnalogChannelGroupMeanOverTimeEachTrial(groupName, 'singleTimepointTolerance', p.Results.singleTimepointTolerance, ...
+                    'slice', p.Results.slice, ...
+                    'linearCombinationWeights', p.Results.linearCombinationWeights, ...
+                    'applyScaling', p.Results.applyScaling);
                 data = cellfun(@(data, baseline) bsxfun(@minus, data, baseline), data, TensorUtils.splitAlongDimension(baseline, 1), 'UniformOutput', false);
             end
 
