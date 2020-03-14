@@ -255,7 +255,7 @@ classdef ConditionInfo < ConditionDescriptor
         end
 
         function conditionIdx = buildConditionIdx(ci)
-            if ci.nTrials > 0
+            if ci.nTrials > 0 && ci.nConditions > 0
                 conditionIdx = TensorUtils.subMat2Ind(ci.conditionsSize, ci.conditionSubs);
             else
                 conditionIdx = [];

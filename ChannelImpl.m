@@ -233,11 +233,14 @@ classdef ChannelImpl
                 nanMask = cellfun(@(x) isscalar(x) && ismissing(x), data);
                 if any(~nanMask)
                     data = cat(1, data{~nanMask});
+                    data = TensorUtils.inflateMaskedTensor(data, 1, ~nanMask);
                 else
-                    data = data{1}([], :, :, :, :, :, :);
+                    % changed 20200312 to fix handling of simple scalar params when no trials valid
+                    nTrials = size(data, 1);
+                    data = data{1}(1, :, :, :, :, :, :);
+                    data = repmat(data, nTrials, 1);
 %                     data = zeros(0, 1);
                 end
-                data = TensorUtils.inflateMaskedTensor(data, 1, ~nanMask);
             end
         end
 
