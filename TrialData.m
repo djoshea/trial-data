@@ -2151,27 +2151,27 @@ classdef TrialData
             td = td.dropChannels(name);
         end
 
-        function td = dropAnalogChannelGroup(td, groupName)
+        function td = dropAnalogChannelGroup(td, groupName) %#ok<INUSD>
             error('use dropChannels instead');
-            td.warnIfNoArgOut(nargout);
-
-            groupName = string(groupName);
-            groupName = groupName(td.hasAnalogChannelGroup(groupName));
-
-            for iG = 1:numel(groupName)
-                % first process entire groups to be removed
-                cd = td.channelDescriptorsByName.(groupName{iG});
-                td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, groupName{iG});
-
-                % for the removed data channels' fields, figure out which ones
-                % aren't referenced by any other channels
-                fieldsRemove = cd.dataFields;
-                otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
-                maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
-                fieldsRemove = fieldsRemove(maskRemove);
-
-                td.data = rmfield(td.data, fieldsRemove);
-            end
+%             td.warnIfNoArgOut(nargout);
+% 
+%             groupName = string(groupName);
+%             groupName = groupName(td.hasAnalogChannelGroup(groupName));
+% 
+%             for iG = 1:numel(groupName)
+%                 % first process entire groups to be removed
+%                 cd = td.channelDescriptorsByName.(groupName{iG});
+%                 td.channelDescriptorsByName = rmfield(td.channelDescriptorsByName, groupName{iG});
+% 
+%                 % for the removed data channels' fields, figure out which ones
+%                 % aren't referenced by any other channels
+%                 fieldsRemove = cd.dataFields;
+%                 otherChannelsReferencingFields = td.getChannelsReferencingFields(fieldsRemove);
+%                 maskRemove = cellfun(@isempty, otherChannelsReferencingFields);
+%                 fieldsRemove = fieldsRemove(maskRemove);
+% 
+%                 td.data = rmfield(td.data, fieldsRemove);
+%             end
         end
 
         function td = dropChannels(td, names)
@@ -6170,9 +6170,9 @@ classdef TrialData
             p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
 
-            emptyInterval = zeros(0, 2);
+%             emptyInterval = zeros(0, 2);
             cd = td.getChannelDescriptor(arrayName);
-            nU = cd.nChannels;
+%             nU = cd.nChannels;
             
             if ~cd.hasBlankingRegions
                 intervalCell = {};
@@ -6308,7 +6308,7 @@ classdef TrialData
             mask = falsevec(numel(unitNames));
             for iU = 1:numel(unitNames)
                 unitName = unitNames{iU};
-                if td.hasSpikeChannel(unitName) || td.hasSpikeArrayChannel(unitName);
+                if td.hasSpikeChannel(unitName) || td.hasSpikeArrayChannel(unitName)
                     wavefields{iU} = td.channelDescriptorsByName.(unitName).waveformsField;
                     if isempty(wavefields{iU}), continue; end
                     mask(iU) = true;
@@ -7087,11 +7087,12 @@ classdef TrialData
                         fieldsByName{iN} = {cd.(cdField)};
                         colByName{iN} = cd.primaryDataFieldColumnIndex;
                         fieldIsArrayByName{iN} = false;
-
+                        nColumnsPerName(iN) = 1;
                     elseif isa(cd, 'EventChannelDescriptor')
                         fieldsByName{iN} = {cd.(cdField)};
                         colByName{iN} = 1;
                         fieldIsArrayByName{iN} = false;
+                        nColumnsPerName(iN) = 1;
 
                     elseif isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')
                         % refers to analog channel, use timestamps as
@@ -7099,18 +7100,20 @@ classdef TrialData
                         fieldsByName{iN} = cd.timeField;
                         colByName{iN} = 1;
                         fieldIsArrayByName{iN} = false;
+                        nColumnsPerName(iN) = 1;
 
                     elseif isa(cd, 'SpikeArrayChannelDescriptor')
                         % refers to array directly, include all channels
                         fieldsByName{iN} = repmat({cd.(cdField)}, cd.nChannels, 1);
                         colByName{iN} = (1:cd.nChannels)';
                         fieldIsArrayByName{iN} = true(cd.nChannels, 1);
+                        nColumnsPerName(iN) = cd.nChannels;
+                        
                     else
                         error('Channel type %s not supported', class(cd));
                     end
                     cdByName(iN, 1) = cd; %#ok<AGROW>
-                    nColumnsPerName(iN) = 1;
-
+                    
                 else
                     if contains(name, '(')
                         % parse array(idx) channel name
@@ -7155,7 +7158,7 @@ classdef TrialData
                 end
             end
 
-            catFields = cat(1, fieldsByName{:});
+            [catFields, catWhichName] = TensorUtils.catWhich(1, fieldsByName{:});
             catFields = string(catFields);
             catCols = cat(1, colByName{:});
             catFieldIsArray = cat(1, fieldIsArrayByName{:});
@@ -7168,7 +7171,7 @@ classdef TrialData
                 assignIdxEachField{iF} = assignIntoList(whichUniqueField == iF);
                 colIdxEachField{iF} = catCols(whichUniqueField == iF);
                 fieldIsArray(iF) = catFieldIsArray(exemplarEntry(iF));
-                cdsByField(iF, 1) = cdByName(exemplarEntry(iF)); %#ok<AGROW>
+                cdsByField(iF, 1) = cdByName(catWhichName(exemplarEntry(iF))); %#ok<AGROW>
             end
         end
 
