@@ -5668,6 +5668,20 @@ classdef TrialDataConditionAlign < TrialData
             timesCell = td.getSpikeTimes(unitName, varargin{:});
             timesCellofCells = td.groupElementsFlat(timesCell);
         end
+        
+        function timesCU = getSpikeTimesGroupedByConditionUnit(td, unitName, varargin)
+            timesCell = td.getSpikeTimes(unitName, varargin{:});
+            nU = size(timesCell, 2);
+            timesCell = td.groupElementsFlat(timesCell);
+            nC = numel(timesCell);
+            
+            timesCU = cell(nC, nU);
+            for iC = 1:nC
+                for iU = 1:nU
+                    timesCU{iC, iU} = timesCell{iC}(:, iU);
+                end
+            end
+        end
 
         function timesCellofCells = getSpikeTimesGroupedRandomized(td, unitName, varargin)
             timesCell = td.getSpikeTimes(unitName, varargin{:});
@@ -6520,8 +6534,12 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('axh', [], @(x) true);
 
             p.addParameter('combine', false, @islogical); % combine units as -one, if false, plot spikes in different colorstds
+            
+            p.addParameter('precomputedData', struct(), @isstruct); % special input that allows passing precomputed outputs of getSpikeTimesGrouped to save time when cycling through many units
+            
 %             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            precomputedData = p.Results.precomputedData;
 
             if td.nTrialsValid == 0
                 error('No valid trials found');
@@ -6580,12 +6598,12 @@ classdef TrialDataConditionAlign < TrialData
             else
                 % regular mode where we grab spikes
                 % get grouped spike times by alignment
-                thisC = td.getSpikeTimesGrouped(unitNames, 'combineAligns', true, 'alignIdx', alignIdx, 'combine', p.Results.combine);
-                for iC = 1:nConditionsUsed
-                    idxCond = conditionIdx(iC);
-                    for iU = 1:nUnits
-                        times{iC, iU} = thisC{idxCond}(:, iU);
-                    end
+                if isfield(precomputedData, 'spikeTimesGroupedByConditionUnit')
+                    times = precomputedData.spikeTimesGroupedByConditionUnit;
+                    times = times(conditionIdx, :);
+                else
+                    times = td.getSpikeTimesGroupedByConditionUnit(unitNames, 'combineAligns', true, 'alignIdx', alignIdx, 'combine', p.Results.combine); % nCond {nTrials x nUnits}
+                    times = times(conditionIdx, :);
                 end
 
                 if p.Results.drawSpikeWaveforms
