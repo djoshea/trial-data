@@ -71,8 +71,6 @@ else
    if min(W) <= 0, error(generatemsgid('InvalidRange'),'All the elements of the weight vector must be greater than zero.'), end
 end
 
-if nargin < 6, DIM = []; end
-
 % Compute the projection matrix B
 pp = fix(-F./2):fix(F./2);
 B = TrialDataUtilities.Data.savitzkyGolay(pp,N,DN,pp,W);
