@@ -124,10 +124,10 @@ if ~iscell(data)
         % trace(k) will be offset by spacing * k
         if p.Results.intercalate
             deltas = matShift(:, 2:end, :) * p.Results.spacingFraction - matShift(:, 1:end-1, :);
-            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]); % max over time and superimposed traces
+            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]) / p.Results.gain; % max over time and superimposed traces
             traceOffsets = (nTraces-1:-1:0) * nanmax(maxDeltas);
         else
-            rangesPadded = makerow(rangesNorm * (p.Results.spacingFraction));
+            rangesPadded = makerow(rangesNorm / p.Results.gain * (p.Results.spacingFraction));
             traceOffsets = (nTraces-1:-1:0) * nanmax(rangesPadded);
         end
     else
