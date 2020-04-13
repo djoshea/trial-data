@@ -770,6 +770,11 @@ classdef TrialDataConditionAlign < TrialData
             td.warnIfNoArgOut(nargout);
             td.conditionInfo.nameFn = fn;
         end
+        
+        function td = clearAppearanceModifications(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.conditionInfo = td.conditionInfo.clearAppearanceModifications(varargin{:});
+        end
 
         function td = colorByAttributes(td, varargin)
             td.warnIfNoArgOut(nargout);
@@ -8071,7 +8076,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('trialIdx', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x))); % selection into all trials
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
-            p.addParameter('unitNames', td.listSpikeChannels(), @(x) ischar(x) || isstring(x) || iscellstr(x));
+            p.addParameter('arrayNames', [], @isstringlike);
+            p.addParameter('unitNames', [], @(x) ischar(x) || isstring(x) || iscellstr(x));
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('tickHeight', 1, @isscalar);
@@ -8103,9 +8109,9 @@ classdef TrialDataConditionAlign < TrialData
 
             % for multiple unit simultaneous plotting, can be useful for
             % looking at spike sorting issues
-            unitNames = p.Results.unitNames;
-            if ischar(unitNames)
-                unitNames = {unitNames};
+            unitNames = string(p.Results.unitNames);
+            if isempty(unitNames)  
+                unitNames = td.listSpikeChannels();
             end
             nUnits = numel(unitNames);
 
