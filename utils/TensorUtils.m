@@ -1838,6 +1838,14 @@ classdef TensorUtils
             % result will have size s1 x 1 x 1 x s4
             t = TensorUtils.mapSlicesInPlace(@(slice) var(slice(:), normOpt), dims, t);
         end
+        
+        function c  = covMultiDim(t, dims, varargin)
+            % computes covariance where all dimensions in dims represent individual observations, and the other dims are features / dimensions
+            % if nOther is prod(size(t, otherDims), c will be nOther x nOther
+            otherDims = TensorUtils.otherDims(t, dims);
+            x = TensorUtils.reshapeByConcatenatingDims(t, {dims, otherDims});
+            c = cov(x, varargin{:});
+        end
 
         function t = nanvarMultiDim(t, normOpt, dims)
             % e.g. if t has size [s1, s2, s3, s4], then  mean(t, [2 3])
