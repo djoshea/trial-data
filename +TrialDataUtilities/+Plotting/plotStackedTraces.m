@@ -30,9 +30,11 @@ p.addParameter('spacingFraction', 1.2, @isscalar); % the gap between each trace 
 p.addParameter('colormap', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for superimposed traces 
 p.addParameter('colormapStacked', [], @(x) isempty(x) || isa(x, 'function_handle') || ismatrix(x)); % for stacked traces, only used if colormap is empty
 p.addParameter('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
+p.addParameter('labelPrefix', '', @isstringlike);
 p.addParameter('labels', {}, @(x) isempty(x) || isvector(x)); % labels over nTraces for the y axis
 p.addParameter('labelRotation', 0, @isvector);
-p.addParameter('labelsSuperimposed', {}, @iscell); % labels over the nSuperimposed traces, for clickable descriptions
+p.addParameter('labelsSuperimposed', {}, @isstringlike); % labels over the nSuperimposed traces, for clickable descriptions
+p.addParameter('legendUniqueLabelsOnly', false, @islogical);
 p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the labels on the left axis, slow if too many traces, 'auto' is true if nTraces < 25
 p.addParameter('clickable', false, @islogical); % make each trace clickable and show a description
 p.addParameter('timeUnits', '', @ischar); 
@@ -73,19 +75,32 @@ end
    
 % construct labels by traces
 if isempty(p.Results.labels)
-    labels = arrayfun(@num2str, 1:nTraces, 'UniformOutput', false);
+    labels = arrayfun(@(x) sprintf("%s%d", p.Results.labelPrefix, x), 1:nTraces);
 elseif isnumeric(p.Results.labels)
-    labels = arrayfun(@num2str, p.Results.labels, 'UniformOutput', false);
+    labels = arrayfun(@string, p.Results.labels);
 else
-    labels = p.Results.labels;
+    labels = string(p.Results.labels);
 end
 labels = makecol(labels);
 
 % construct labels for each superimposed line within each trace
 if isempty(p.Results.labelsSuperimposed)
-    labelsLinesWithinEachTrace = arrayfun(@num2str, 1:nSuperimposed, 'UniformOutput', false);
+    labelsLinesWithinEachTrace = arrayfun(@string, 1:nSuperimposed);
 else
-    labelsLinesWithinEachTrace = p.Results.labelsSuperimposed;
+    labelsLinesWithinEachTrace = string(p.Results.labelsSuperimposed);
+end
+
+show_trace_within_legend = true(nTraces, 1);
+show_superimposed_within_legend = true(nSuperimposed, 1);
+
+if p.Results.legendUniqueLabelsOnly
+    show_trace_within_legend(:) = false;
+    [~, ia] = unique(labels);
+    show_trace_within_legend(ia) = true;
+
+    show_superimposed_within_legend(:) = false;
+    [~, ia] = unique(labelsLinesWithinEachTrace);
+    show_superimposed_within_legend(ia) = true;
 end
 
 if ~iscell(data)
@@ -172,10 +187,20 @@ if ~iscell(data)
         if colorByStack
             for iT = 1:nTraces
                 set(hLines(iT, :), 'Color', map(iT, :), 'MarkerFaceColor', map(iT, :), 'MarkerEdgeColor', map(iT, :));
+                if show_trace_within_legend(iT)
+                    TrialDataUtilities.Plotting.showFirstInLegend(hLines(iT, :), labels{iT});
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(hLines(iT, :));
+                end
             end
         else
             for iS = 1:nSuperimposed
                 set(hLines(:, iS), 'Color', map(iS, :), 'MarkerFaceColor', map(iS, :), 'MarkerEdgeColor', map(iS, :));
+                if show_superimposed_within_legend(iS)
+                    TrialDataUtilities.Plotting.showFirstInLegend(hLines(:, iS), labelsLinesWithinEachTrace{iS});
+                else
+                    TrialDataUtilities.Plotting.hideInLegend(hLines(:, iS));
+                end
             end
         end
     end
