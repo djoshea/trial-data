@@ -5272,11 +5272,11 @@ classdef TrialDataConditionAlign < TrialData
             tvec = makecol(tvec);
 
             % now we need to nan out the regions affected by blanking
-            blankingIntervals = td.getSpikeBlankingRegions(unitNames, 'combine', p.Results.combine);
-            if ~isempty(blankingIntervals)
-                [rates, tvec] = TrialDataUtilities.SpikeData.markNanBlankedIntervals(...
-                    blankingIntervals, rates, tvec, 'padding', [sf.preWindow sf.postWindow]);
-            end
+%             blankingIntervals = td.getSpikeBlankingRegions(unitNames, 'combine', p.Results.combine);
+%             if ~isempty(blankingIntervals)
+%                 [rates, tvec] = TrialDataUtilities.SpikeData.markNanBlankedIntervals(...
+%                     blankingIntervals, rates, tvec, 'padding', [sf.preWindow sf.postWindow]);
+%             end
         end
 
         function [rates, tvec, hasSpikes, alignVec] = getSpikeRateFilteredAsMatrixEachAlign(td, unitName, varargin)
@@ -5401,16 +5401,18 @@ classdef TrialDataConditionAlign < TrialData
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             end
 
-            if p.Results.combine || ischar(unitNames) || isStringScalar(unitNames)
-                cd = td.getChannelDescriptor(unitNames);
-                if isa(cd, 'SpikeArrayChannelDescriptor')
-                    nUnits = cd.nChannels;
-                else
-                    nUnits = 1;
-                end
-            else
-                nUnits = numel(unitNames);
-            end
+%             if p.Results.combine || ischar(unitNames) || isStringScalar(unitNames)
+%                 cd = td.getChannelDescriptor(unitNames);
+%                 if isa(cd, 'SpikeArrayChannelDescriptor')
+%                     nUnits = cd.nChannels;
+%                 else
+%                     nUnits = 1;
+%                 end
+%             else
+%                 nUnits = numel(unitNames);
+%             end
+
+            nUnits = size(rateCell{1}, 3);
 
             % remove trials from each group that have no spikes
             if p.Results.removeZeroSpikeTrials

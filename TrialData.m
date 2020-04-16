@@ -6124,6 +6124,9 @@ classdef TrialData
             p = inputParser();
             p.addParameter('combine', false, @islogical);
             p.parse(varargin{:});
+            
+            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames);
+            error('Need to update implementation!')
 
             if isnumeric(unitNames)
                 unitNames = td.lookupSpikeChannelByIndex(unitNames);

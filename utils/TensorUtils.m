@@ -1005,24 +1005,30 @@ classdef TensorUtils
 
         function [out, tvec] = concatenateAlignedToCommonTimeVector(timeCell, dataCell, timeDim, catDim, varargin)
             p = inputParser();
-            p.addParameter('timeVec', [], @isvector);
+            p.addParameter('tvec', [], @isvector);
             p.addParameter('timeDelta', [], @isscalar);
+            p.addParameter('expand', true, @isscalar); % if true, tvec will be the largest inclusive time vector, if false, it will be the overlapping time vector
             p.parse(varargin{:});
 
             if isempty(p.Results.timeVec)
                 timeDelta = p.Results.timeDelta;
                 if isempty(timeDelta)
-                    timeDelta = nanmedian(timeCell{1});
+                    timeDelta = nanmedian(diff(timeCell{1}));
                 end
 
                 % first find common time vector
-                tMin = min(cellfun(@min, timeCell));
-                tMax = min(cellfun(@max, timeCell));
-
+                if p.Results.expand
+                    tMin = min(cellfun(@min, timeCell));
+                    tMax = max(cellfun(@max, timeCell));
+                else
+                    tMin = max(cellfun(@min, timeCell));
+                    tMax = min(cellfun(@max, timeCell));
+                end
+                
                 tvec = tMin:timeDelta:tMax;
             else
                 % use provided time vector
-                tvec = p.Results.timeVec;
+                tvec = p.Results.tvec;
             end
 
             % expand / align each dataCell to live on time vector
@@ -1035,16 +1041,32 @@ classdef TensorUtils
             out = nan(finalSize, 'like', dataCell{1});
 
             % assume uniform sampling
-            Ncat = numel(dataCell);
-            for i = 1:Ncat
-                ti = timeCell{i};
-                idxStart = TensorUtils.argMin(abs(ti(1) - tvec));
-                idxEnd = idxStart + numel(ti) - 1;
+            if p.Results.expand
+                Ncat = numel(dataCell);
+                for i = 1:Ncat
+                    ti = timeCell{i};
+                    idxStart = TensorUtils.argMin(abs(ti(1) - tvec));
+                    idxEnd = idxStart + numel(ti) - 1;
 
-                dims = [catDim, timeDim];
-                masks = {i, idxStart:idxEnd};
+                    dims = [catDim, timeDim];
+                    masks = {i, idxStart:idxEnd};
 
-                out = TensorUtils.assignIntoTensorAlongDimension(out, dataCell{i}, dims, masks);
+                    out = TensorUtils.assignIntoTensorAlongDimension(out, dataCell{i}, dims, masks);
+                end
+            else
+                Ncat = numel(dataCell);
+                for i = 1:Ncat
+                    ti = timeCell{i};
+                    insStart = TensorUtils.argMin(abs(ti - tvec(1)));
+                    insEnd = insStart + numel(tvec) - 1;
+
+                    dims = [catDim, timeDim];
+                    masks = {i, true(numel(tvec), 1)};
+
+                    insert = TensorUtils.selectAlongDimension(dataCell{i}, timeDim, insStart:insEnd);
+                    
+                    out = TensorUtils.assignIntoTensorAlongDimension(out, insert, dims, masks);
+                end
             end
         end
 
