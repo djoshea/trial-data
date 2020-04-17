@@ -117,6 +117,13 @@ classdef TrialDataConditionAlign < TrialData
             td.odc = TrialDataConditionAlignOnDemandCache();
         end
     end
+    
+    methods(Static)
+        function td = loadFast(location, varargin)
+            td = loadFast@TrialData(location, varargin{:});
+            td = TrialDataConditionAlign(td);
+        end
+    end
 
     % Simple dependent getters
     methods
