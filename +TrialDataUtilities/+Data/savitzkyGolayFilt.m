@@ -35,6 +35,7 @@ p = inputParser();
 p.addParameter('frameSize', 31, @(x) rem(x, 2) == 1);
 p.addParameter('differentiationOrder', 0, @isscalar);
 p.addParameter('polynomialOrder', 2, @isscalar);
+p.addParameter('samplingInterval', [], @(x) isempty(x) || isscalar(x));
 p.addParameter('samplingIntervalMs', [], @(x) isempty(x) || isscalar(x));
 p.addParameter('weights', [], @(x) isempty(x) || isvector(x));
 p.addParameter('dim', [], @(x) isempty(x) || isscalar(x));
@@ -47,11 +48,14 @@ DN = p.Results.differentiationOrder;
 W = p.Results.weights;
 DIM = p.Results.dim;
 
-T = p.Results.samplingIntervalMs;
-if isempty(T)
-    scale = (-1)^DN;
-else
+if ~isempty(p.Results.samplingInterval)
+    T = p.Results.samplingInterval;
+    scale = (-1 / T)^DN;
+elseif ~isempty(p.Results.samplingIntervalMs)
+    T = p.Results.samplingIntervalMs;
     scale = (-1 / (T/1000))^DN;
+else
+    scale = (-1)^DN;    
 end
 
 % Check if the input arguments are valid
