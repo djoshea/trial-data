@@ -152,7 +152,7 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
     
     methods(Access=protected)
         function cd = AnalogChannelDescriptor(name, timeField, varargin)
-            cd = cd@ChannelDescriptor(name);
+            cd = cd@ChannelDescriptor(name, varargin{:});
             if nargin < 2
                 timeField = sprintf('%s_time', cd.name);
             end
@@ -258,11 +258,11 @@ classdef AnalogChannelDescriptor < ChannelDescriptor
             p.addParameter('transformChannelNames', {}, @(x) iscellstr(x) || isstring(x));
             p.addParameter('transformFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('transformFnMode', '', @ischar);
-            
+            p.KeepUnmatched = true;
             p.parse(varargin{:});
             
             if isempty(p.Results.channelDescriptor)
-                cd = AnalogChannelDescriptor(name, timeField);
+                cd = AnalogChannelDescriptor(name, timeField, p.Unmatched);
             else
                 cd = p.Results.channelDescriptor;
             end

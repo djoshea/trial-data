@@ -3147,7 +3147,7 @@ classdef TrialData
             p.addParameter('subChannelUnits', [], @(x) isempty(x) || isstring(x) || iscellstr(x));
             p.addParameter('sampleSize', [], @(x) isempty(x) || isvector(x));
             p.addParameter('timeField', '', @ischar);
-            p.addParameter('units', '', @ischar);
+            p.addParameter('units', '', @isstringlike);
             p.addParameter('unitsByChannel', {}, @(x) isempty(x) || iscellstr(x) || isstring(x));
             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're subclassed
             p.addParameter('continuousNeuralElectrodes', [], @(x) true);

@@ -46,8 +46,8 @@ classdef EventChannelDescriptor < ChannelDescriptor
     end
     
     methods(Static)
-        function cd = buildSingleEvent(name, timeUnits)
-            cd = EventChannelDescriptor(name);
+        function cd = buildSingleEvent(name, timeUnits, varargin)
+            cd = EventChannelDescriptor(name, varargin{:});
 %             cd.elementTypeByField = cd.SCALAR;
 %           Switching this to be vector always for consistency
             cd.elementTypeByField = cd.VECTOR;
@@ -56,8 +56,8 @@ classdef EventChannelDescriptor < ChannelDescriptor
             end
         end
         
-        function cd = buildMultipleEvent(name, timeUnits)
-            cd = EventChannelDescriptor(name);
+        function cd = buildMultipleEvent(name, timeUnits, varargin)
+            cd = EventChannelDescriptor(name, varargin{:});
             cd.elementTypeByField = cd.VECTOR;
             if nargin > 1
                 cd.unitsByField = {timeUnits};

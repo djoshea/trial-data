@@ -115,14 +115,14 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.dataFields{1} = name;
         end
         
-        function cd = buildStringParam(name)
-            cd = ParamChannelDescriptor(name);
+        function cd = buildStringParam(name, varargin)
+            cd = ParamChannelDescriptor(name, varargin{:});
             cd.originalDataClassByField = {'char'};
             cd.elementTypeByField = cd.STRING;
         end
         
-        function cd = buildScalarParam(name, dataClass, units)
-            cd = ParamChannelDescriptor(name);
+        function cd = buildScalarParam(name, dataClass, units, varargin)
+            cd = ParamChannelDescriptor(name, varargin{:});
             if nargin < 2
                 dataClass = 'double';
             end
@@ -141,8 +141,8 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.catAlongFirstDimByField = true;
         end 
         
-        function cd = buildVectorParam(name, dataClass, units)
-            cd = ParamChannelDescriptor(name);
+        function cd = buildVectorParam(name, dataClass, units, varargin)
+            cd = ParamChannelDescriptor(name, varargin{:});
             if nargin < 2
                 dataClass = 'double';
             end
@@ -157,8 +157,8 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.VECTOR;
         end 
         
-        function cd = buildNumericParam(name, dataClass, units)
-            cd = ParamChannelDescriptor(name);
+        function cd = buildNumericParam(name, dataClass, units, varargin)
+            cd = ParamChannelDescriptor(name, varargin{:});
             if nargin < 2
                 dataClass = 'double';
             end
@@ -172,20 +172,20 @@ classdef ParamChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.NUMERIC;
         end 
         
-        function cd = buildDatenumParam(name)
-            cd = ParamChannelDescriptor(name);
+        function cd = buildDatenumParam(name, varargin)
+            cd = ParamChannelDescriptor(name, varargin{:});
             cd.originalDataClassByField = {'double'};
             cd.elementTypeByField = cd.DATENUM;
         end 
         
-        function cd = buildBooleanParam(name)
-            cd = ParamChannelDescriptor(name);
+        function cd = buildBooleanParam(name, varargin)
+            cd = ParamChannelDescriptor(name, varargin{:});
             cd.originalDataClassByField = {'logical'};
             cd.elementTypeByField = cd.BOOLEAN;
         end 
         
-        function cd = buildFromValues(name, values, units)
-            cd = ParamChannelDescriptor(name);
+        function cd = buildFromValues(name, values, units, varargin)
+            cd = ParamChannelDescriptor(name, varargin{:});
             cd = cd.inferAttributesFromData(values);
             if nargin < 3
                 units = '';

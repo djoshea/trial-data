@@ -109,9 +109,11 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         function cd = ChannelDescriptor(varargin)
             p = inputParser();
             p.addOptional('name', '', @(x) ischar(x) || isstring(x));
+            p.addParameter('displayGroup', '', @(x) ischar(x) || isstring(x));
             p.parse(varargin{:});
             
             cd.name = p.Results.name;
+            cd.displayGroup = p.Results.displayGroup;
         end
     end
     
