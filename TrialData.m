@@ -2054,7 +2054,8 @@ classdef TrialData
             % region
             durations = td.getValidDurations();
 
-            blankIntervals = td.getSpikeBlankingRegions(unitName, 'combine', p.Results.combine);
+            %blankIntervals = td.getSpikeBlankingRegions(unitName, 'combine', p.Results.combine);
+            blankIntervals = [];
             if ~isempty(blankIntervals) 
                 % blankIntervals are guaranteed to be non-overlapping and lie
                 % within the alignment window, so we can just add up the
@@ -6205,6 +6206,11 @@ classdef TrialData
             if ~isempty(intervalCell)
                 intervalCell = td.replaceInvalidMaskWithValue(intervalCell, []);
             end
+        end
+        
+        function nUnitsTotal = computeSpikeUnitCountFromName(td, unitNames)
+            [~, ~, ~, ~, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames);
+            nUnitsTotal = sum(nColumnsPerName);
         end
 
         function timesCell = getRawSpikeTimes(td, unitNames, varargin)

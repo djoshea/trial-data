@@ -5298,15 +5298,10 @@ classdef TrialDataConditionAlign < TrialData
                 unitName = td.lookupSpikeChannelByIndex(unitNames);
             end
             unitName = string(unitName);
-            if p.Results.combine || isstring(unitName)
-                cd = td.getChannelDescriptor(unitName);
-                if isa(cd, 'SpikeArrayChannelDescriptor')
-                    nUnits = cd.nChannels;
-                else
-                    nUnits = 1;
-                end
+            if p.Results.combine
+                nUnits = 1;
             else
-                nUnits = numel(unitName);
+                nUnits = td.computeSpikeUnitCountFromName(unitName);
             end
 
             nAlign = numel(alignIdx);
