@@ -7444,16 +7444,20 @@ classdef TrialDataConditionAlign < TrialData
                                 dyvec = dataC{iTrial}(:, 2);
 
                                 if ~isempty(dxvec) && ~isempty(dyvec)
-                                    if p.Results.alpha < 1
-                                       hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(dxvec, dyvec, ...
-                                           ones(size(dxvec)) * zlevel, ...
-                                           'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
-                                           'LineWidth', app(iCond).LineWidth, plotOptions{:});
-                                    else
-                                        plotArgs = app(iCond).getPlotArgs();
-                                        hData{iCond, iAlign}(iTrial) = plot(axh, dxvec, dyvec, '-', ...
-                                            plotArgs{:}, plotOptions{:});
-                                    end
+%                                     if p.Results.alpha < 1
+%                                        
+%                                        hData{iCond, iAlign}(iTrial) = TrialDataUtilities.Plotting.patchline(dxvec, dyvec, ...
+%                                            ones(size(dxvec)) * zlevel, ...
+%                                            'EdgeColor', app(iCond).Color, 'EdgeAlpha', p.Results.alpha, ...
+%                                            'LineWidth', app(iCond).LineWidth, plotOptions{:});
+%                                     else
+                                    plotArgs = app(iCond).getPlotArgs();
+                                    hData{iCond, iAlign}(iTrial) = plot(axh, dxvec, dyvec, '-', ...
+                                        plotArgs{:}, plotOptions{:});
+                                    hData{iCond, iAlign}(iTrial).Color(4) = p.Results.alpha;
+%                                     if p.Results.alpha < 1
+%                                         TrialDataUtilities.Plotting.setLineOpacity(hData{iCond, iAlign}(iTrial), p.Results.alpha);
+%                                     end
                                 end
 
                             elseif D==3
