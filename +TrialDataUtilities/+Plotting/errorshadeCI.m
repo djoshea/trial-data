@@ -22,22 +22,8 @@ function [hl, hs] = errorshadeCI(x, ym, yCI, color, varargin)
     hs = TrialDataUtilities.Plotting.errorshadeInterval(x, y1, y2, color, 'axh', axh, p.Unmatched);
     
     if p.Results.showLine
-        if p.Results.lineAlpha < 1
-            % use patchline for drawing translucent lines
-            hl = TrialDataUtilities.Plotting.patchline(x, ym, ...
-               'EdgeColor', color, 'EdgeAlpha', p.Results.lineAlpha, ...
-               'z', z, p.Results.lineArgs{:});
-            TrialDataUtilities.Plotting.hideInLegend(hl);
-        else
-            % use plot for opaque lines
-%             if z ~=0
-%                 zv = z*ones(size(v));
-%                 hl = plot(x, ym, zv, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
-%             else
-                hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
-%             end
-        end
-    else
+        hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
+        TrialDataUtilities.Plotting.setLineOpacity(hl, p.Results.lineAlpha);
         hl = [];
     end
 end
