@@ -3138,7 +3138,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('smoothingMs', NaN, @isscalar); %
             p.addParameter('differentiationOrder', 1, @isscalar);
             p.addParameter('polynomialOrder', 2, @isscalar);
+            p.addParameter('progress', false, @islogical);
             p.parse(varargin{:});
+            progress = p.Results.progress;
 
             name = string(name);
             if numel(name) == 1 
@@ -3157,7 +3159,7 @@ classdef TrialDataConditionAlign < TrialData
             elseif numel(name) > 1
                 [data, time, delta] = td.getAnalogMultiCommonTimeUniformlySampled(name, ...
                     'timeDelta', p.Results.timeDelta, 'interpolateMethod', p.Results.interpolateMethod, ...
-                    'resampleMethod', p.Results.resampleMethod, ...
+                    'resampleMethdbod', p.Results.resampleMethod, ...
                     'ensureUniformSampling', true);
             end
 
@@ -3192,9 +3194,8 @@ classdef TrialDataConditionAlign < TrialData
             else
                 nameStr = name;
             end
-            prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', nameStr);
+            if progress, prog = ProgressBar(td.nTrials, 'Smoothing/Differentiating %s', nameStr); end
             for iT = 1:td.nTrials
-                prog.update(iT);
                 if isempty(data{iT})
                     continue;
                 end
@@ -3207,8 +3208,9 @@ classdef TrialDataConditionAlign < TrialData
                         data{iT}, 'polynomialOrder', p.Results.polynomialOrder, 'differentiationOrder', p.Results.differentiationOrder, ...
                         'frameSize', smoothing, 'samplingIntervalMs', delta / td.timeUnitsPerMs);
                 end
+                if progress, prog.update(iT); end
             end
-            prog.finish();
+            if progress, prog.finish(); end
 
             diffUnits = sprintf('%s/sec', td.getChannelUnitsPrimary(name));
         end
@@ -4013,11 +4015,12 @@ classdef TrialDataConditionAlign < TrialData
             dCell = td.groupElements(mat);
         end
 
-        function [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled(td, name, varargin)
-            [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled@TrialData(td, name, varargin{:});
-
-            [dataUnif, timeUnif] = td.alignInfoActive.getAlignedTimeseries(dataUnif, timeUnif, false);
-        end
+%         function [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled(td, name, varargin)
+%             [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled@TrialData(td, name, varargin{:});
+% 
+%             THIS IS WRONG, getAnalogChannelGroupUniformlySampled@TrialData will returned aligned data because it calls through to a TDCA overriden method
+%             %[dataUnif, timeUnif] = td.alignInfoActive.getAlignedTimeseries(dataUnif, timeUnif, false);
+%         end
 
         function means = getAnalogChannelGroupMeanOverTimeEachTrial(td, name, varargin)
             [data, ~] = td.getAnalogChannelGroup(name, varargin{:});
@@ -6502,6 +6505,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
             p.addParameter('tickHeight', 1, @isscalar);
             p.addParameter('tickWidth', 1, @isscalar);
+            p.addParameter('tickAlpha', 1, @isscalar);
 
             p.addParameter('markAlpha', 0.5, @isscalar);
             p.addParameter('markTickWidth', 2, @isscalar);
@@ -6565,7 +6569,7 @@ classdef TrialDataConditionAlign < TrialData
                 nUnits = 1;
                 % wrap in another cell so that loop works
             else
-                nUnits = numel(unitNames);
+                nUnits = td.computeSpikeUnitCountFromName(unitNames);
             end
 
             axh = td.getRequestedPlotAxis('axh', p.Results.axh);
@@ -6744,7 +6748,7 @@ classdef TrialDataConditionAlign < TrialData
                         % draw waveforms in lieu of ticks
                             TrialDataUtilities.Plotting.drawTickRaster(times{iC, iU}(listByConditionMask{iC}), ...
                             'xOffset', offsetByUnit(iU), 'yOffset', yOffsetByCondition(iC), ...
-                            'color', color, 'axh', axh, ...
+                            'color', color, 'alpha', p.Results.tickAlpha, 'axh', axh, ...
                             'waveCell', waves{iC, iU}(listByConditionMask{iC}), 'waveformTimeRelative', wavesTvec, ...
                             'normalizeWaveforms', false, ... % already normalized to [0 1]
                             'waveScaleHeight', p.Results.spikeWaveformScaleHeight, 'waveScaleTime', p.Results.spikeWaveformScaleTime);
@@ -6752,7 +6756,7 @@ classdef TrialDataConditionAlign < TrialData
                         % draw vertical ticks
                         TrialDataUtilities.Plotting.drawTickRaster(times{iC, iU}(listByConditionMask{iC}), ...
                             'xOffset', offsetByUnit(iU), 'yOffset', yOffsetByCondition(iC), ...
-                            'color', color, 'lineWidth', p.Results.tickWidth, ...
+                            'color', color, 'alpha', p.Results.tickAlpha, 'lineWidth', p.Results.tickWidth, ...
                             'tickHeight', p.Results.tickHeight, 'axh', axh);
                     end
                     hold(axh, 'on');

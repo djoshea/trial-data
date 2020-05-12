@@ -1998,16 +1998,22 @@ classdef TrialData
                 groupNames = td.listChannelGroups();
             end
 
-            [subNames, subChIdx] = arrayfun(@(g) td.channelDescriptorsByName.(g).listNamedSubChannels(), groupNames, 'UniformOutput', false);
-            nSubEach = cellfun(@numel, subNames);
-            subNames = cat(1, subNames{:});
-            subChIdx = cat(1, subChIdx{:});
+            if isempty(groupNames)
+                [subNames, parentNames] = deal(strings(0, 1));
+                subChIdx = nan(0, 1);
+                channelDescriptors = [];
+            else
+                [subNames, subChIdx] = arrayfun(@(g) td.channelDescriptorsByName.(g).listNamedSubChannels(), groupNames, 'UniformOutput', false);
+                nSubEach = cellfun(@numel, subNames);
+                subNames = cat(1, subNames{:});
+                subChIdx = cat(1, subChIdx{:});
 
-            parentNames = arrayfun(@(g, n) repmat(g, n, 1), groupNames, nSubEach, 'UniformOutput', false);
-            parentNames = cat(1, parentNames{:});
+                parentNames = arrayfun(@(g, n) repmat(g, n, 1), groupNames, nSubEach, 'UniformOutput', false);
+                parentNames = cat(1, parentNames{:});
 
-            if nargout > 3 % this is time consuming so only do if requested
-                channelDescriptors = td.getChannelDescriptor(subNames);
+                if nargout > 3 % this is time consuming so only do if requested
+                    channelDescriptors = td.getChannelDescriptor(subNames);
+                end
             end
         end
 
@@ -3734,18 +3740,20 @@ classdef TrialData
 
             p = inputParser();
             p.addParameter('newSampleSize', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('progress', false, @islogical);
             p.parse(varargin{:});
-
+            progress = p.Results.progress;
+            
             cd = td.getChannelDescriptor(groupName);
 
-            prog = ProgressBar(td.nTrials, 'Filtering columns of analog channel group %s', groupName);
+            if progress, prog = ProgressBar(td.nTrials, 'Filtering columns of analog channel group %s', groupName); end
             for t = 1:td.nTrials
-                prog.update(t);
+                if progress, prog.update(t); end
                 if ~isempty(td.data(t).(groupName))
                     td.data(t).(groupName) = td.data(t).(groupName)(:, colIdx);
                 end
             end
-            prog.finish();
+            if progress, prog.finish(); end
 
             % and update the channel descriptor
             cd = cd.filterSubChannels(colIdx, p.Results.newSampleSize);
@@ -4124,6 +4132,8 @@ classdef TrialData
 %         end
 
         function [dataUnif, timeUnif, delta] = getAnalogChannelGroupUniformlySampled(td, groupName, varargin)
+            % WARNING: This will be aligned if td is a trialdataconditionalign instance
+            
 %             [dataUnif, timeUnif, delta] = td.getAnalogChannelGroupRawUniformlySampled(groupName, varargin{:});
 %             dataUnif = td.replaceInvalidMaskWithValue(dataUnif, []);
 %             timeUnif = td.replaceInvalidMaskWithValue(timeUnif, []);
@@ -4600,7 +4610,7 @@ classdef TrialData
 
         function [names, channelDescriptors] = listContinuousNeuralChannelsOnArray(td, arrayName, varargin)
             % [names, channelDescriptors] = getContinuousNeuralChannelsOnArray(td, arrayName)
-            [names, channelDescriptors] = td.listContinuousNeuralChannels(td, 'array', arrayName, varargin{:});
+            [names, channelDescriptors] = td.listContinuousNeuralChannels('array', arrayName, varargin{:});
         end
 
         function [names, channelDescriptors] = listContinuousNeuralChannelsOnArrayElectrode(td, arrayName, electrodeNum, varargin)
@@ -6222,8 +6232,12 @@ classdef TrialData
         end
         
         function nUnitsTotal = computeSpikeUnitCountFromName(td, unitNames)
-            [~, ~, ~, ~, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames);
-            nUnitsTotal = sum(nColumnsPerName);
+            if isempty(unitNames) || strlength(unitNames) == 0
+                nUnitsTotal = 0;
+            else
+                [~, ~, ~, ~, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames);
+                nUnitsTotal = sum(nColumnsPerName);
+            end
         end
 
         function timesCell = getRawSpikeTimes(td, unitNames, varargin)
@@ -6450,6 +6464,15 @@ classdef TrialData
             td.warnIfNoArgOut(nargout);
             % default is TrialStart and TrialEnd, so just pass it along
             td = td.trimSpikeChannelRaw(unitNames);
+        end
+        
+        function tf = getSpikeChannelHasWaveforms(td, unitNames)
+            unitNames = string(unitNames);
+
+            tf = false(numel(unitNames), 1);
+            for iU = 1:numel(unitNames)
+                tf(iU) = strlength(td.getSpikeChannelMultiAccessInfo(unitNames(iU), 'waveforms')) > 0;
+            end
         end
 
         function [wavesCell, waveTvec, timesCell, whichUnitCell] = getRawSpikeWaveforms(td, unitNames, varargin)
@@ -6812,23 +6835,24 @@ classdef TrialData
                 mask = mask & arrayfun(@(cd) cd.isisColumnOfArray, channelDescriptors);
             end
 
-            if ~isempty(p.Results.array)
-                array = arrayfun(@(cd) string(cd.array), channelDescriptors);
-                mask = mask & ismember(array, string(p.Results.array));
+            if nnz(mask) > 0
+                if ~isempty(p.Results.array)
+                    array = arrayfun(@(cd) string(cd.array), channelDescriptors);
+                    mask = mask & ismember(array, string(p.Results.array));
+                end
+                if ~isempty(p.Results.electrode)
+                    electrode = arrayfun(@(cd) cd.electrode, channelDescriptors);
+                    mask = mask & ismember(electrode, p.Results.electrode);
+                end
+                if ~isempty(p.Results.unit)
+                    unit = arrayfun(@(cd) cd.unit, channelDescriptors);
+                    mask = mask & ismember(unit, p.Results.unit);
+                end
+                if ~isempty(p.Results.excludeUnit)
+                    unit = arrayfun(@(cd) cd.unit, channelDescriptors);
+                    mask = mask & ~ismember(unit, p.Results.excludeUnit);
+                end
             end
-            if ~isempty(p.Results.electrode)
-                electrode = arrayfun(@(cd) cd.electrode, channelDescriptors);
-                mask = mask & ismember(electrode, p.Results.electrode);
-            end
-            if ~isempty(p.Results.unit)
-                unit = arrayfun(@(cd) cd.unit, channelDescriptors);
-                mask = mask & ismember(unit, p.Results.unit);
-            end
-            if ~isempty(p.Results.excludeUnit)
-                unit = arrayfun(@(cd) cd.unit, channelDescriptors);
-                mask = mask & ~ismember(unit, p.Results.excludeUnit);
-            end
-
             names = names(mask);
             channelDescriptors = channelDescriptors(mask);
         end

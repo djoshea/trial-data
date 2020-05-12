@@ -9,7 +9,7 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
     p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
     p.addParameter('uniformlySampled', false, @islogical); % can speed things up if you know it's arleady uniform
-    
+    p.addParameter('progress', false, @slogical);
     % these are used as a secondary guard to truncate data within tMin :
     % tMax, when the input data includes padded edges to facilitate
     % resampling
@@ -17,15 +17,15 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     p.addParameter('tMaxExcludingPadding', Inf, @ismatrix);
     p.parse(varargin{:});
     
+    progress = p.Results.progress;
     tMinExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMinExcludingPadding, size(dataCell));
     tMaxExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMaxExcludingPadding, size(dataCell));
    
     timeCell = TensorUtils.singletonExpandToSize(timeCell, size(dataCell));
     tol = p.Results.timeDelta / 1000;
     
-    prog = ProgressBar(numel(dataCell), 'Resampling data');
+    if progress, prog = ProgressBar(numel(dataCell), 'Resampling data'); end
     for iD = 1:numel(dataCell)
-        prog.update(iD);
         if isempty(dataCell{iD}) || size(dataCell{iD}, 1) == 1, continue; end % test for empty or single-sample
         [d, t] = TrialDataUtilities.Data.resampleTensorInTime(dataCell{iD}, 1, timeCell{iD}, ...
             'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
@@ -37,7 +37,8 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
         mask = t >= tMinExcludingPadding(iD) - tol & t <= tMaxExcludingPadding(iD) + tol;
         dataCell{iD} = d(mask, :, :, :);
         timeCell{iD} = t(mask);
+        if progress, prog.update(iD); end
     end
-    prog.finish();
+    if progress, prog.finish(); end
 end
 
