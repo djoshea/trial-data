@@ -714,8 +714,17 @@ classdef TrialData
             p.addParameter('partitionWaveforms', td.saveFastPartitionWaveforms, @islogical);
             p.addParameter('convertCategoricals', true, @islogical);
             p.addParameter('partialLoadParams', ["saveTag", "trialId"], @isstringlike);
+            p.addParameter('separateNonPartitioned', true, @islogical); % if false, td without partitioned channels will be saved together, and only paritioned data will be split into trials
+            p.addParameter('trialsPerChunk', td.saveFastTrialsPerChunk, @isscalar); % split elements into files with this many elements per file
+            p.addParameter('validate', true, @islogical);
             p.parse(varargin{:});
 
+            trialsPerChunk = p.Results.trialsPerChunk;
+            
+            if p.Results.validate
+                td = td.validateData();
+            end
+            
             data = td.data;
 
             % save a separate meta file with these param values
@@ -792,6 +801,9 @@ classdef TrialData
                 pname = partitionNames{p};
 
                 chThisPartition = partitions.(pname);
+                if ischar(chThisPartition)
+                    chThisPartition = {chThisPartition};
+                end
 
                 % check that fields aren't analog channel groups
                 mask = falsevec(numel(chThisPartition));
@@ -837,6 +849,7 @@ classdef TrialData
             % save elements of data
             msg = sprintf('Saving TrialData to %s', location);
             TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg, ...
+                'elementsPerChunk', trialsPerChunk, ...
                 'partitionFieldLists', partitionFields, 'partitionMeta', partitionMeta, 'partialLoadData', partialLoadData);
         end
     end
@@ -8044,6 +8057,7 @@ classdef TrialData
         cacheWithSaveFast = false;
         saveFastPartitionInfo = struct();
         saveFastPartitionWaveforms = false;
+        saveFastTrialsPerChunk = 1;
     end
 
     % CacheCustomSaveLoad impl

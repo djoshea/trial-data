@@ -12,6 +12,7 @@ classdef SaveArrayIndividualized < handle
             p.addParameter('partitionFieldLists', struct(), @isstruct);
             p.addParameter('partitionMeta', struct(), @isstruct);
             p.addParameter('partialLoadData', [], @(x) isempty(x) || isstruct(x));
+            p.addParameter('elementsPerChunk', 1, @isscalar); % split elements into files with this many elements per file
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
@@ -19,6 +20,7 @@ classdef SaveArrayIndividualized < handle
             partitionMetaStruct = p.Results.partitionMeta;
             partitionNames = fieldnames(partitionFieldLists);
             keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
+            elementsPerChunk = p.Results.elementsPerChunk;
             
             assert(isvector(S));
             N = numel(S);
@@ -37,39 +39,42 @@ classdef SaveArrayIndividualized < handle
             else
                 str = sprintf('Saving to %s/', fullPath);
             end
-            prog = ProgressBar(N, str);
-            for i = 1:N 
-                element = S(i);
-                
+            
+            whichChunk = TrialDataUtilities.Data.SaveArrayIndividualized.buildElementChunkLists(N, elementsPerChunk);
+            nChunks = whichChunk(end);
+            prog = ProgressBar(nChunks, str);
+            for c = 1:nChunks 
+                element = S(whichChunk == c);
+
                 for iP = 1:numel(partitionNames)
                     % strip off this partition's data and save it into a separate file
                     flds = partitionFieldLists.(partitionNames{iP});
-                    
+
                     % split the partition data from the struct array
                     partData = keepfields(element, flds);
                     element = rmfield(element, flds);
-                    
+
                     if isempty(callbackFn)
-                        file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, N, i, partitionNames{iP});
+                        file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, nChunks, c, partitionNames{iP});
                         save(file, '-v6', 'partData'); % assumes less than 2 GB per element, but much faster
                     else
                         % pass this element, the location, the id number, and the partition to the callback
-                        callbackFn(partName, fullPath, i, partitionNames{iP});
+                        callbackFn(partName, fullPath, c, partitionNames{iP});
                     end
                 end
-                
+
                 % save this element
                 if isempty(callbackFn)
-                    file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, N, i);   
+                    file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, nChunks, c);   
                     save(file, '-v6', 'element'); % assumes less than 2 GB per element, but much faster
                 else
                     % pass this element, the location, the id number, and indicate not being a partition to the callback
-                    callbackFn(element, fullPath, i, '');
+                    callbackFn(element, fullPath, c, '');
                 end
-                prog.update(i);
+                prog.update(c);
             end
             prog.finish();
-            
+                
             % save partition meta to separate files
             for iP = 1:numel(partitionNames)
                 partitionMeta = partitionMetaStruct.(partitionNames{iP});
@@ -82,7 +87,7 @@ classdef SaveArrayIndividualized < handle
                 
             % create count file containing just N
             countFid = fopen(fullfile(locationName, 'count.txt'), 'w');
-            fprintf(countFid, '%d\n', N); 
+            fprintf(countFid, '%d %d\n', N, elementsPerChunk); 
             fclose(countFid);
             
             % save partial load data to partialLoad.mat
@@ -130,13 +135,19 @@ classdef SaveArrayIndividualized < handle
             
             locationName = GetFullPath(locationName);
             
-            function s = structMerge(s, s2)
-                flds = fieldnames(s2);
-                for f = 1:numel(flds)
-                    s.(flds{f}) = s2.(flds{f});
-                end
+            function s = structMerge(varargin)
+                s2c = cellfun(@struct2cell, varargin, 'UniformOutput', false);
+                flds = cellfun(@fieldnames, varargin, 'UniformOutput', false);
+                s = cell2struct(cat(1, s2c{:}), cat(1, flds{:}), 1);
             end
             
+%             function s = structMerge(s, s2)
+%                 flds = fieldnames(s2);
+%                 for f = 1:numel(flds)
+%                     s.(flds{f}) = s2.(flds{f});
+%                 end
+%             end
+%             
             % check that partitions are found
             partitionsAvailable = TrialDataUtilities.Data.SaveArrayIndividualized.listPartitions(locationName);
             if p.Results.loadAllPartitions
@@ -166,7 +177,7 @@ classdef SaveArrayIndividualized < handle
             end
             partitions = fieldnames(partitionMeta); % drop the ones we couldn't load
             
-            N = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationName);
+            [N, elementsPerChunk] = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationName);
             
             partialLoadSpec = p.Results.partialLoadSpec;
             if ~isempty(partialLoadSpec) && ~isempty(fieldnames(partialLoadSpec))
@@ -189,44 +200,58 @@ classdef SaveArrayIndividualized < handle
                 partialLoadMask(keep) = true;
             end
             
-            nLoad = nnz(partialLoadMask);
             if ~isempty(p.Results.message)
                 str = p.Results.message;
             else
                 str = sprintf('Loading from %s/', locationName);
             end
-            prog = ProgressBar(nLoad, str);
-            for i = N:-1:1 % reverse order to preallocate array
-                if ~partialLoadMask(i), continue, end
+            
+            % figure out which chunks to load
+            whichChunk = TrialDataUtilities.Data.SaveArrayIndividualized.buildElementChunkLists(N, elementsPerChunk);
+            nChunks = whichChunk(end);
+            chunksToLoad = unique(whichChunk(partialLoadMask)); % critical that this ends up in sorted order
+            nChunksToLoad = numel(chunksToLoad);
+            nPartitions = numel(partitions);
+            
+            prog = ProgressBar(nChunksToLoad, str);
+            loadedChunks = cell(nChunksToLoad, 1);
+            for iC = 1:nChunksToLoad
+                chunk_ind = chunksToLoad(iC);
                 
                 if isempty(callbackFn)
-                    file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, N, i);   
+                    file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, nChunks, chunk_ind);   
                     loaded = load(file, 'element');
                     element = loaded.element;
                 else
-                    element = callbackFn(locationName, i, '');
+                    element = callbackFn(locationName, chunk_ind, '');
                 end
                 
                 % load in any partition parts
-                for iP = 1:numel(partitions)
-                    if isempty(callbackFn)
-                        file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, N, i, partitions{iP});
-                        loaded = load(file); % assumes less than 2 GB per element, but much faster
-                        partData = loaded.partData;
-                    else
-                        % pass this element, the location, the id number, and the partition to the callback
-                        partData = callbackFn(locationName, i, partitions{iP});
+                if nPartitions > 0
+                    partData = cell(nPartitions, 1);
+                    for iP = 1:nPartitions
+                        if isempty(callbackFn)
+                            file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, nChunks, chunk_ind, partitions{iP});
+                            loaded = load(file); % assumes less than 2 GB per element, but much faster
+                            partData{iP} = loaded.partData;
+                        else
+                            % pass this element, the location, the id number, and the partition to the callback
+                            partData{iP} = callbackFn(locationName, chunk_ind, partitions{iP});
+                        end
                     end
-                    element = structMerge(element, partData);
+                    element = structMerge(element, partData{:});
                 end
                 
-                S(i) = element;
+                % apply partial load mask
+                partialLoadMask_this_chunk = partialLoadMask(whichChunk == chunk_ind);
+                element = element(partialLoadMask_this_chunk);
+                
+                loadedChunks{iC} = makecol(element);
                 prog.increment();
             end
             prog.finish();
             
-            S = S(partialLoadMask);
-            S = makecol(S);
+            S = cat(1, loadedChunks{:});
         end
         
         function partitionMeta = loadPartitionMeta(locationName, varargin)
@@ -271,6 +296,12 @@ classdef SaveArrayIndividualized < handle
             end
         end
         
+        function [whichChunk, elementsByChunk] = buildElementChunkLists(N, elementsPerChunk)
+            whichChunk = floor((0:N-1)' / elementsPerChunk) + 1; 
+            nChunks = whichChunk(end);
+            elementsByChunk = arrayfun(@(c) find(whichChunk == c), (1:nChunks)', 'UniformOutput', false);
+        end
+        
         function mask = buildPartialLoadMask(N, partialLoadData, partialLoadSpec)
             mask = true(N, 1);
             flds = fieldnames(partialLoadSpec);
@@ -287,10 +318,9 @@ classdef SaveArrayIndividualized < handle
                 tf = ismember(vals, keepVals);
                 mask = mask & tf;
             end
-        end
-                    
+        end         
         
-        function N = getArrayCount(locationName)
+        function [N, elementsPerChunk] = getArrayCount(locationName)
             locationName = GetFullPath(locationName);
             
             % get element count from count.txt file
@@ -299,11 +329,18 @@ classdef SaveArrayIndividualized < handle
             if countFid == -1
                 error('Could not find count file %s', countFname);
             end
-            tokens = textscan(countFid, '%d', 1);
+            tokens = textscan(countFid, '%d', 2);
             fclose(countFid);
-            N = double(tokens{1});
-            if isempty(N)
+            vals = double(tokens{1});
+            if isempty(vals)
                 error('Could not read count file %s', countFname);
+            end
+            N = vals(1);
+            if numel(vals) > 1
+                elementsPerChunk = vals(2);
+            else
+                % wasn't saved in older versions
+                elementsPerChunk = 1;
             end
         end
         
@@ -366,10 +403,12 @@ classdef SaveArrayIndividualized < handle
             end
             
             % check element counts match
-            nSave = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationNameSave);
-            nRef = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationNameRef);
-            assert(nSave == nRef, 'Save location has %d elements but referenced location has %d elements', nSave, nRef);
+            [nSave, nPerChunkSave] = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationNameSave);
+            [nRef, nPerChunkRef] = TrialDataUtilities.Data.SaveArrayIndividualized.getArrayCount(locationNameRef);
+            assert(nSave == nRef && nPerChunkSave == nPerChunkRef, 'Save location has %d (%d) elements but referenced location has %d (%d) elements', ...
+                nSave, nPerChunkSave, nRef, nPerChunkRef);
             N = nSave;
+            C = ceil(nSave / nPerChunkSave);
             
             % check partitions
             partitionsSave = TrialDataUtilities.Data.SaveArrayIndividualized.listPartitions(locationNameSave);
@@ -403,9 +442,9 @@ classdef SaveArrayIndividualized < handle
                 linkFn(fnameRef, fnameSave);
             end
             
-            % do the symlinking for each trial
-            prog = ProgressBar(N, 'Symlinking partition files by trial');
-            for i = 1:N
+            % do the symlinking for each chunk
+            prog = ProgressBar(C, 'Symlinking partition files by trial');
+            for i = 1:C
                 prog.update(i);
                 for iP = 1:numel(partitionsLink)
                     fnameRef =  TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationNameRef, N, i, partitionsLink{iP});
@@ -425,17 +464,18 @@ classdef SaveArrayIndividualized < handle
         function clearLocationContents(locationName)
             if exist(locationName, 'dir')
                 deleteIfPresent(fullfile(locationName, 'el*.mat'));
+                deleteIfPresent(fullfile(locationName, 'partialLoad.mat'));
+                deleteIfPresent(fullfile(locationName, 'partitionMeta_*.mat'));
                 deleteIfPresent(TrialDataUtilities.Data.SaveArrayIndividualized.generateCountFileName(locationName));
                 deleteIfPresent(TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionListFileName(locationName));
             end
             
             function deleteIfPresent(file)
-                if exist(file, 'file')
+                if any(file == '*') || exist(file, 'file')
                     delete(file);
                 end
             end
         end
-                
     end
     
     methods(Static, Hidden)
@@ -473,6 +513,7 @@ classdef SaveArrayIndividualized < handle
             end
         end
         
+        % for individualized files
         function fname = generatePartitionElementFileName(locationName, N, elementIndex, partition)
             nzeros = TrialDataUtilities.Data.SaveArrayIndividualized.numZerosInFileForCount(N);
             fname = fullfile(locationName, sprintf('el%0*d_partition_%s.mat', nzeros, elementIndex, partition));
