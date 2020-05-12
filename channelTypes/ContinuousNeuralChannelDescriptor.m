@@ -76,15 +76,15 @@ classdef ContinuousNeuralChannelDescriptor < AnalogChannelDescriptor
     end
     
     methods(Static)
-        function cd = buildFromTypeArrayElectrode(type, array, electrode, timeField, numElectrodes)
+        function cd = buildFromTypeArrayElectrode(type, array, electrode, timeField, numElectrodes, units, timeUnits, varargin)
             if nargin < 5, numElectrodes = []; end
             name = ContinuousNeuralChannelDescriptor.generateNameFromTypeArrayElectrode(type, array, electrode, numElectrodes);
-            cd = ContinuousNeuralChannelDescriptor(name, timeField);
+            cd = ContinuousNeuralChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits, varargin{:});
         end
         
-        function cd = buildFromArrayElectrode(arrayElectrodeStr, timeField)
+        function cd = buildFromArrayElectrode(arrayElectrodeStr, timeField, units, timeUnits, varargin)
             name = ContinuousNeuralChannelDescriptor.convertArrayElectrodeToChannelName(arrayElectrodeStr);
-            cd = ContinuousNeuralChannelDescriptor(name, timeField);
+            cd = ContinuousNeuralChannelDescriptor.buildVectorAnalog(name, timeField, units, timeUnits, varargin{:});
         end
         
         function [chName] = convertArrayElectrodeToChannelName(arrayElectrodeStr)

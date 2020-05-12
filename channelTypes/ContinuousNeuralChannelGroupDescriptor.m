@@ -32,14 +32,15 @@ classdef ContinuousNeuralChannelGroupDescriptor < AnalogChannelGroupDescriptor
         function cd = buildAnalogGroup(name, timeField, electrodes, units, timeUnits, varargin)
             cd = ContinuousNeuralChannelGroupDescriptor(name, timeField, electrodes);
             cd = AnalogChannelGroupDescriptor.buildAnalogGroup(name, timeField, units, timeUnits, ...
-                'channelDescriptor', cd, varargin{:});
+                'channelDescriptor', cd, 'sampleSize', numel(electrodes), varargin{:});
+            
         end
         
         function cd = buildAnalogGroupFromValues(name, timeField, electrodes, units, timeUnits, dataCell, timeCell, varargin)
             cd = ContinuousNeuralChannelGroupDescriptor(name, timeField, electrodes);
             cd = AnalogChannelGroupDescriptor.buildAnalogGroupFromValues(name, timeField, ...
                 units, timeUnits, dataCell, timeCell, ...
-                'channelDescriptor', cd, varargin{:});
+                'channelDescriptor', cd, 'sampleSize', numel(electrode), varargin{:});
         end
     end
     

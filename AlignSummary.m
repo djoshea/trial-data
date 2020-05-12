@@ -1087,7 +1087,7 @@ classdef AlignSummary
             end
             
             if ~isempty(labelInfo)
-                indLabelZero = find([labelInfo.time] == 0, 1);
+                indLabelZero = find([labelInfo.time] == 0 & [labelInfo.fixed], 1);
             else
                 indLabelZero = [];
             end

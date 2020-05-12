@@ -345,6 +345,11 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
                 unit = str2double(tokens.unit);
             end
         end
+        
+        function [electrode, unit] = parseElectrodeDoUnit(electrodeDotUnit)
+            chName = SpikeChannelDescriptor.convertUnitNameToChannelName(electrodeDotUnit);
+            [~, electrode, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(chName);
+        end
 
         function name = generateNameFromArrayElectrodeUnit(array, electrode, unit, maxElectrode)
             if nargin < 4 || isempty(maxElectrode)

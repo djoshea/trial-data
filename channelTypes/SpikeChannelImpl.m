@@ -10,7 +10,7 @@ classdef SpikeChannelImpl < ChannelImpl
             cd = impl.cd;
             data = convertDataCellOnAccess@ChannelImpl(impl, fieldIdx, data);
             if cd.hasWaveforms && fieldIdx == 2
-                data = ChannelDescriptor.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
+                data = ChannelImpl.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
             end
         end
 
