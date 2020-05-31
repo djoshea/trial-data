@@ -98,6 +98,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             ax.addAnchor(AutoAxis.AnchorInfo(h, AutoAxis.PositionType.Bottom, gca, AutoAxis.PositionType.Top, ax.axisPaddingTop));
             ax.update();
         end
+        
     end
 
     % Time binning here is subtle. There are a few things to consider -
@@ -247,7 +248,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             
             % do the resampling to timeDelta bins
             if p.Results.useTimeDelta && ~TrialDataUtilities.Data.isequaltol(timeDelta, sf.binWidthMs)
-                [rateCell, timeCell] = TrialDataUtilities.Data.resampleDataCellInTime(rateCell, timeCell, 'timeDelta', sf.timeDelta, ...
+                [rateCell, timeCell] = TrialDataUtilities.Data.resampleDataCellInTime(rateCell, timeCell, ...
+                    'timeDelta', sf.timeDelta, 'origDelta', sf.binWidthMs, ...
                     'timeReference', 0, 'binAlignmentMode', sf.binAlignmentMode, ...
                     'resampleMethod', sf.resampleMethod, 'uniformlySampled', true, ...
                     'tMinExcludingPadding', tMinByTrial, 'tMaxExcludingPadding', tMaxByTrial);
