@@ -6,12 +6,14 @@ function [joinIdxInPre, nextIdxInPost, dataCat] = computeBestJoinPoint(dataPre, 
     p.addParameter('joinAfterIndexPre', 0, @isscalar);
     p.addParameter('joinBeforeIndexPost', Inf, @isscalar);
     p.addParameter('commonJoinAcrossTrajectories', false, @islogical);
+    p.addParameter('showPlot', false, @islogical);
     p.parse(varargin{:});
     
     nPre =  size(dataPre, 2);
     nPost = size(dataPost, 2);
     joinAfterIndexPre = p.Results.joinAfterIndexPre;
     joinBeforeIndexPost = p.Results.joinBeforeIndexPost;
+    showPlot = p.Results.showPlot;
 
     sz = size(dataPre);
     nTraj = prod(sz(3:end));
@@ -63,6 +65,9 @@ function [joinIdxInPre, nextIdxInPost, dataCat] = computeBestJoinPoint(dataPre, 
         
     else
         % per-trajectory joining
+        if isscalar(nOverlap)
+            nOverlap = repmat(nOverlap, nTraj, 1);
+        end
         
         % invalidate too early or too late on a per-trajectory basis
         for c = 1:nTraj
@@ -98,15 +103,17 @@ function [joinIdxInPre, nextIdxInPost, dataCat] = computeBestJoinPoint(dataPre, 
         end
     end
     
-%     showPlot = false;
-%     if showPlot
-%         clf;
-%         tPre = 1:nPre;
-%         tPost = (nPre+1:nPre+nPost) - nTimepointsOverlap;
-%         for c = 1:nTraj
-%             plot(tPre(1:joinIdxInPre(c)), dataPre(1, 1:joinIdxInPre(c), c), 'k-');
-%             hold on;
-%             plot(tPost(nextIdxInPost(c):end), dataPost(1, nextIdxInPost(c):end, c), 'r-');
-%         end
-%     end
+    if showPlot
+        figure(); clf;
+        if isscalar(nOverlap)
+            nOverlap = repmat(nOverlap, nTraj, 1);
+        end
+        for c = 1:nTraj
+            tPre = 1:nPre;
+            tPost = (nPre+1:nPre+nPost) - nOverlap(c);
+            plot(tPre(1:joinIdxInPre(c)), dataPre(1, 1:joinIdxInPre(c), c), 'k-');
+            hold on;
+            plot(tPost(nextIdxInPost(c):end), dataPost(1, nextIdxInPost(c):end, c), 'r-');
+        end
+    end
 end

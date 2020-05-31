@@ -22,13 +22,15 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
 %   opts - a structure that can be passed in to ensure splicing with new
 %      data occurs at the exact same locations. 
 
-    nPre = size(dataPre, 2); %#ok<NASGU>
-    nPost = size(dataPost, 2);
-    %nBases = size(dataPre, 1);
-    nTraj = prod(TensorUtils.sizeOtherDims(dataPre, [1 2])); %#ok<NASGU>
-    
     p = inputParser();
     
+    %%%
+    % Dimension parameteris
+    %%%
+
+    p.addParameter('basisDim', 1, @isscalar);
+    p.addParameter('spliceDim', 2, @isscalar);
+
     %%%
     % OVERLAP Parameters
     %%%
@@ -57,8 +59,8 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     
     % OR specify the edges of the range we should search over to
     % constrain the search window for the splice break point
-    p.addParameter('joinAfterIndexPre', 1, @isnumeric);
-    p.addParameter('joinBeforeIndexPost', nPost, @isnumeric); % indices to search into the post trajectory to find the splice point
+    p.addParameter('joinAfterIndexPre', [], @(x) isempty(x) || isnumeric(x));
+    p.addParameter('joinBeforeIndexPost', Inf, @(x) isempty(x) || isnumeric(x)); % indices to search into the post trajectory to find the splice point
     
     % for spline interpolation
     p.addParameter('interpolateMethod', 'spline', @ischar);
@@ -79,7 +81,28 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     p.addParameter('showPlot', false, @islogical);
     
     p.parse(varargin{:});
-    
+
+    % handle permute to put bases along dim 1, splice along dim 2
+    basisDim = p.Results.basisDim;
+    spliceDim = p.Results.spliceDim;
+    dimConditions = TensorUtils.otherDims(size(dataPre), [basisDim, spliceDim]);
+    dataPre = permute(dataPre, [basisDim, spliceDim, dimConditions]);
+    dataPost = permute(dataPost, [basisDim, spliceDim, dimConditions]);
+
+    opts.basisDim = basisDim;
+    opts.spliceDim = spliceDim;
+
+    nPre = size(dataPre, 2); %#ok<NASGU>
+    nPost = size(dataPost, 2);
+    %nBases = size(dataPre, 1);
+    nTraj = prod(TensorUtils.sizeOtherDims(dataPre, [1 2])); %#ok<NASGU>
+
+    joinIdxInPre = p.Results.joinIdxInPre;
+    nextIdxInPost= p.Results.nextIdxInPost;
+    joinBeforeIndexPost = p.Results.joinBeforeIndexPost;
+    joinAfterIndexPre = p.Results.joinAfterIndexPre;
+    showPlot = p.Results.showPlot;
+
     % optional PCA preprocessing of the data to make splicing easier
     if p.Results.usePCA
         dataPCA = cat(2, dataPre, dataPost);
@@ -113,20 +136,22 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     else
         nTimepointsOverlap = p.Results.nTimepointsOverlap;
     end
-    opts.nTimepointsOverlap = nTimepointsOverlap;
+    opts.nTimepointsOverlap = nTimepointsOverlap; % C
     info.nTimepointsOverlap = nTimepointsOverlap;
     opts.commonOverlapAcrossTrajectories = p.Results.commonOverlapAcrossTrajectories;
         
-    if isempty(p.Results.joinIdxInPre) || isempty(p.Results.nextIdxInPost)
+    if isempty(joinIdxInPre) || isempty(nextIdxInPost)
         % then we assume that overlap and use the best splice point on a per
         % trajectory basis (i.e. for each traj along dims 3)
         [opts.joinIdxInPre, opts.nextIdxInPost] = TrialDataUtilities.Splice.computeBestJoinPoint(dataPreProj, dataPostProj, nTimepointsOverlap, ...
-            'joinAfterIndexPre', p.Results.joinAfterIndexPre, 'joinBeforeIndexPost', p.Results.joinBeforeIndexPost, ...
-            'commonJoinAcrossTrajectories', p.Results.commonJoinAcrossTrajectories && p.Results.commonOverlapAcrossTrajectories);
+            'joinAfterIndexPre', joinAfterIndexPre, 'joinBeforeIndexPost', joinBeforeIndexPost, ...
+            'commonJoinAcrossTrajectories', p.Results.commonJoinAcrossTrajectories && p.Results.commonOverlapAcrossTrajectories, ...
+            'showPlot', showPlot);
     else
+        % use the specified splice point (optionally per trajectory)
         szPre = size(dataPre);
-        opts.joinIdxInPre = TensorUtils.scalarExpandToSize(p.Results.joinIdxInPre, szPre(3:end));
-        opts.nextIdxInPost = TensorUtils.scalarExpandToSize(p.Results.nextIdxInPost, szPre(3:end));
+        opts.joinIdxInPre = TensorUtils.scalarExpandToSize(joinIdxInPre, szPre(3:end));
+        opts.nextIdxInPost = TensorUtils.scalarExpandToSize(nextIdxInPost, szPre(3:end));
     end
     info.joinIdxInPre = opts.joinIdxInPre;
     info.nextIdxInPost = opts.nextIdxInPost;
@@ -154,14 +179,15 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     % do smooth interpolation at the join
     if strcmp(p.Results.interpolateMethod, 'spline')
         dataSpliced = TrialDataUtilities.Splice.interpolateSpline(dataCat, info.joinIdxInPre+1, ...
-            p.Results.interpFitWindow, p.Results.interpIgnoreWindow);
+            p.Results.interpFitWindow, p.Results.interpIgnoreWindow, 'showPlot', showPlot);
 
     elseif ismember(p.Results.interpolateMethod, {'linear', 'nearest', 'next', 'previous', 'cspline', 'pchip', 'pchip', 'cubic', 'v5cubic'})
         % do linear interpolation
         dataSpliced = TrialDataUtilities.Splice.interpolateLinear(dataCat, info.joinIdxInPre+1, ...
-            p.Results.interpolateMethod, p.Results.interpFitWindow, p.Results.interpIgnoreWindow);
-    elseif isempty(p.Results.interpolateMethod)
-        
+            p.Results.interpolateMethod, p.Results.interpFitWindow, p.Results.interpIgnoreWindow, ...
+            'showPlot', showPlot);
+    elseif ismember(p.Results.interpolateMethod, {'', 'none'})
+        % do simple concatenation
         dataSpliced = dataCat;
     else
         error('Unknown interpolateMethod %s', p.Results.interpolateMethod);
@@ -170,7 +196,7 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     info.spliceStart = info.joinIdxInPre+1 - p.Results.interpFitWindow - p.Results.interpIgnoreWindow;
     info.spliceStop = info.joinIdxInPre+1 + p.Results.interpFitWindow + p.Results.interpIgnoreWindow;
     
-    if p.Results.showPlot
+    if showPlot
         % plot traces and traces ends in red
         plot3(dataPreProj(1, :), dataPreProj(2, :), dataPreProj(3, :), 'k.');
         hold on;
@@ -189,5 +215,7 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
 
         set(findall(gca, 'Type', 'line'), 'Clipping', 'off');
     end
+
+    dataSpliced = ipermute(dataSpliced, [basisDim, spliceDim, dimConditions]);
 
 end

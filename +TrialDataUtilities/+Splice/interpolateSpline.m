@@ -48,6 +48,10 @@ function dataSpliced = interpolateSpline(dataCat, joinIdx, ...
         dataSpliced(:, :, c) = cat(2, dataPreSmoothed, dataPostSmoothed);
 
         if p.Results.showPlot
+            if c == 1
+                figure(); clf;
+            end
+            
             % plot traces and traces ends in red
             plot3(dataPre(1, :), dataPre(2, :), dataPre(3, :), 'k.');
             hold on;
@@ -57,11 +61,11 @@ function dataSpliced = interpolateSpline(dataCat, joinIdx, ...
             plot3(dataPost(1, 1), dataPost(2, 1), dataPost(3, 1), 'ro', 'MarkerFaceColor', 'r');
 
             % plot last timepoints retained for splicing in green
-            plot3(dataPre(1, end), dataPre(2, end), dataPre(3, end), 'go', 'MarkerFaceColor', 'g');
-            plot3(dataPost(1, 1), dataPost(2, 1), dataPost(3, 1), 'go', 'MarkerFaceColor', 'g');
+            plot3(dataPre(1, end-splineIgnoreWindow), dataPre(2, end-splineIgnoreWindow), dataPre(3, end-splineIgnoreWindow), 'go', 'MarkerFaceColor', 'g');
+            plot3(dataPost(1, splineIgnoreWindow+1), dataPost(2, splineIgnoreWindow+1), dataPost(3, splineIgnoreWindow+1), 'go', 'MarkerFaceColor', 'g');
 
             % plot splice results
-            plot3(dataSpliced(1, :), dataSpliced(2, :), dataSpliced(3, :), 'r');
+            plot3(dataSpliced(1, :, c), dataSpliced(2, :, c), dataSpliced(3, :, c), 'r');
 
             set(findall(gca, 'Type', 'line'), 'Clipping', 'off');
         end
