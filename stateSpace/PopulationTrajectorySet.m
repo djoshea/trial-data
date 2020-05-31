@@ -563,6 +563,7 @@ classdef PopulationTrajectorySet
             pset.alignSummaryData;
             pset.alignSummaryAggregated;
             pset.dataNTrials;
+            pset.dataByTrialCommonTimeGrouped;
             pset.dataDifferenceOfTrialsScaledNoiseEstimate;
         end
 
@@ -3937,8 +3938,8 @@ classdef PopulationTrajectorySet
             % nAlign cellvec with N x C x T --> N x C x TA --> N x TA x C
             dataMeanTensor = permute(cat(3, pset.dataMean{:}), [1 3 2]);
 
-            % A x N x C --> TA x N x C --> N x TA x C
-            dataNTrials = permute(repmat(max(pset.dataNTrials, [], 1), [sum(pset.nTimeDataMean) 1 1]), [2 1 3]);
+            % N x C -->  N x 1 x C
+            dataNTrials = permute(pset.dataNTrials, [1 3 2]);
 
             dataSumTensor = dataMeanTensor .* dataNTrials;
 
