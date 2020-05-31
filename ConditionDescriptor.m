@@ -2535,8 +2535,8 @@ classdef ConditionDescriptor
                     % flatten any subgroupings of values in the value list
                     if ci.attributeAsVector(iA) && iscell(valueList)
                         valueList = [valueList{:}];
-                    elseif ~ci.attributeAsVector(iA) && ~iscellstr(valueList) && ~ischar(valueList)
-                        valueList = [valueList{:}];
+                    elseif ~ci.attributeAsVector(iA) && ~ischar(valueList)
+                        valueList = [valueList(:)];
                     end
                     % wrap in cell to avoid scalar expansion
                     values = assignIntoStructArray(values, ci.attributeNames{iA}, {valueList});
