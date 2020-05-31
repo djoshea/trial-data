@@ -149,7 +149,12 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
             
 %             interpToTime = timeNew + p.Results.binAlignmentMode.getOffsetToBinCenter(timeDelta);
 %             data = interp1(time, data, interpToTime, interpolateMethod);
-%             
+%
+        case 'nearest'
+            interpInputTimes =  time + binAlignmentMode.getOffsetToBinCenter(origDelta);
+            interpOutputTimes = timeNew + binAlignmentMode.getOffsetToBinCenter(timeDelta);
+            data = interp1(interpInputTimes, data, interpOutputTimes, 'nearest', 'extrap');
+
         otherwise
             error('Unknown resampleMethod %s', p.Results.resampleMethod)
     end

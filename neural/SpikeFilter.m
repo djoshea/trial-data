@@ -36,8 +36,8 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         end
         
         function sf = set.resampleMethod(sf, v)
-            validList = {'filter', 'repeat', 'average', 'interp'};
-            assert(ismember(v, validList), 'Resample method must be one of filter, repeat, average, interp');
+            validList = {'filter', 'repeat', 'average', 'interp', 'nearest'};
+            assert(ismember(v, validList), 'Resample method must be one of filter, repeat, average, interp, nearest');
     
             sf.resampleMethod = v;
         end
@@ -146,7 +146,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             p = inputParser();
             p.addParameter('timeDelta', 1, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar);
+            p.addParameter('resampleMethod', 'interp', @ischar);
             p.parse(varargin{:});
             
             sf.timeDelta = p.Results.timeDelta; % sampling interval for the filtered output
@@ -178,7 +178,8 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             % calls checkOkay
             % don't do resampling within since we'll do it all at once
             % below, by setting useTimeDelta false
-            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, 'useTimeDelta', false);
+            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, ...
+                multiplierToSpikesPerSec, 'useTimeDelta', false);
             
             % convert to matrix
             [rates, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(rateCell, timeCell, ...
