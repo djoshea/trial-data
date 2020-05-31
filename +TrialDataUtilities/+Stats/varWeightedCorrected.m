@@ -14,7 +14,9 @@ function y = varWeightedCorrected(x, w, dim, asFrequencyWeights)
     % make w same size as x
     w = abs(w);
     if isvector(w)
-        w = TensorUtils.orientVectorAlongDim(w, dim);
+        if size(w, dim) ~= size(x, dim)
+            w = TensorUtils.orientVectorAlongDim(w, dim);
+        end
         w = w .* ones(size(x));
     end
     assert(isequal(size(x), size(w)));

@@ -10,8 +10,10 @@ end
 if nargin < 5
     w = ones(size(x));
 end
-if isvector(w)
-    w = TensorUtils.orientVectorAlongDim(w, dim);
+if isvector(w) 
+    if size(w, dim) ~= size(x, dim)
+        w = TensorUtils.orientVectorAlongDim(w, dim);
+    end
     w = w .* ones(size(x));
 end
 assert(isequal(size(x), size(w)));
