@@ -13,6 +13,7 @@ classdef SaveArrayIndividualized < handle
             p.addParameter('partitionMeta', struct(), @isstruct);
             p.addParameter('partialLoadData', [], @(x) isempty(x) || isstruct(x));
             p.addParameter('elementsPerChunk', 1, @isscalar); % split elements into files with this many elements per file
+            p.addParameter('progress', true, @islogical);
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
@@ -21,6 +22,7 @@ classdef SaveArrayIndividualized < handle
             partitionNames = fieldnames(partitionFieldLists);
             keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
             elementsPerChunk = p.Results.elementsPerChunk;
+            progress = p.Results.progress;
             
             assert(isvector(S));
             N = numel(S);
@@ -42,7 +44,9 @@ classdef SaveArrayIndividualized < handle
             
             whichChunk = TrialDataUtilities.Data.SaveArrayIndividualized.buildElementChunkLists(N, elementsPerChunk);
             nChunks = whichChunk(end);
-            prog = ProgressBar(nChunks, str);
+            if progress
+                prog = ProgressBar(nChunks, str);
+            end
             for c = 1:nChunks 
                 element = S(whichChunk == c);
 
@@ -71,9 +75,9 @@ classdef SaveArrayIndividualized < handle
                     % pass this element, the location, the id number, and indicate not being a partition to the callback
                     callbackFn(element, fullPath, c, '');
                 end
-                prog.update(c);
+                if progress, prog.update(c); end
             end
-            prog.finish();
+            if progress, prog.finish(); end
                 
             % save partition meta to separate files
             for iP = 1:numel(partitionNames)
@@ -121,6 +125,7 @@ classdef SaveArrayIndividualized < handle
         
         function [S, partitionMeta, partialLoadMask] = loadArray(locationName, varargin)
             p = inputParser();
+            p.addParameter('progress', true, @islogical);
             p.addParameter('message', '', @ischar);
             p.addParameter('maxElements', Inf, @isscalar);
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
@@ -132,6 +137,7 @@ classdef SaveArrayIndividualized < handle
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
+            progress = p.Results.progress;
             
             locationName = GetFullPath(locationName);
             
@@ -213,7 +219,9 @@ classdef SaveArrayIndividualized < handle
             nChunksToLoad = numel(chunksToLoad);
             nPartitions = numel(partitions);
             
-            prog = ProgressBar(nChunksToLoad, str);
+            if progress
+                prog = ProgressBar(nChunksToLoad, str);
+            end
             loadedChunks = cell(nChunksToLoad, 1);
             for iC = 1:nChunksToLoad
                 chunk_ind = chunksToLoad(iC);
@@ -247,9 +255,9 @@ classdef SaveArrayIndividualized < handle
                 element = element(partialLoadMask_this_chunk);
                 
                 loadedChunks{iC} = makecol(element);
-                prog.increment();
+                if progress, prog.increment(); end
             end
-            prog.finish();
+            if progress, prog.finish(); end
             
             S = cat(1, loadedChunks{:});
         end

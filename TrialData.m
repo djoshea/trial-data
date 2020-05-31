@@ -717,9 +717,11 @@ classdef TrialData
             p.addParameter('separateNonPartitioned', true, @islogical); % if false, td without partitioned channels will be saved together, and only paritioned data will be split into trials
             p.addParameter('trialsPerChunk', td.saveFastTrialsPerChunk, @isscalar); % split elements into files with this many elements per file
             p.addParameter('validate', true, @islogical);
+            p.addParameter('progress', true, @islogical);
             p.parse(varargin{:});
 
             trialsPerChunk = p.Results.trialsPerChunk;
+            progress = p.Results.progress;
             
             if p.Results.validate
                 td = td.validateData();
@@ -848,7 +850,7 @@ classdef TrialData
 
             % save elements of data
             msg = sprintf('Saving TrialData to %s', location);
-            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg, ...
+            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(location, data, 'message', msg, 'progress', progress, ...
                 'elementsPerChunk', trialsPerChunk, ...
                 'partitionFieldLists', partitionFields, 'partitionMeta', partitionMeta, 'partialLoadData', partialLoadData);
         end
@@ -874,8 +876,10 @@ classdef TrialData
             p.addParameter('loadAllPartitions', [], @(x) isempty(x) || islogical(x));
             p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.addParameter('validate', true, @islogical);
+            p.addParameter('progress', true, @islogical);
             p.KeepUnmatched = true; % unmatched fields will match parameter values that were provided to load fast
             p.parse(varargin{:});
+            
             % strip extension
             %             [path, name, ext] = fileparts(location);
             %             location = fullfile(path, name);
@@ -886,6 +890,7 @@ classdef TrialData
             if isempty(loadAllPartitions)
                 loadAllPartitions = isempty(partitions);
             end
+            progress = p.Results.progress;
 
             if exist(location, 'file') == 2
                 ld = load(location);
@@ -906,7 +911,7 @@ classdef TrialData
                 % load elements of data
                 msg = sprintf('Loading TrialData from %s', location);
                 [data, partitionMeta, partialLoadMask] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
-                    'message', msg, 'maxElements', p.Results.maxTrials, ...
+                    'message', msg, 'progress', progress, 'maxElements', p.Results.maxTrials, ...
                     'partitions', partitions, 'loadAllPartitions', loadAllPartitions, ...
                     'ignoreMissingPartitions', p.Results.ignoreMissingPartitions, 'partialLoadSpec', p.Unmatched);
                 td.data = TensorUtils.inflateMaskedTensor(makecol(data), 1, partialLoadMask); % we'll select the partially loaded trials later, but for now needs to be numel(td.data) == nTrials (full)
