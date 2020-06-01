@@ -2190,7 +2190,7 @@ classdef TensorUtils
 
             if p.Results.normalizeCoefficientsByNumNonNaN
                 % do the reweighting
-                reweightMat = bsxfun(@rdivide, reweightMat, nValidMat);
+                reweightMat = reweightMat ./ nValidMat;
             end
 
             if p.Results.addToOriginal
@@ -2201,7 +2201,7 @@ classdef TensorUtils
                 % NaN out where nValidMat is zero
                 mask = ones(size(nValidMat));
                 mask(nValidMat == 0) = NaN;
-                reweightMat = bsxfun(@times, reweightMat, mask);
+                reweightMat = reweightMat ./ mask;
             end
 
             reweightedTensor = ipermute(reshape(reweightMat, newSz(pdims)), pdims);
@@ -2223,6 +2223,65 @@ classdef TensorUtils
                 parts{iNew} = TensorUtils.mapSlices(fnSelect, dim, t);
             end
             newTensor = cell2mat(cat(dim, parts{:}));
+        end
+        
+        function out = addInQuadratureAlongDimension(t, dim, weightsNewByOld, varargin)
+            % this function is very similar in operation to linearCombinationAlongDimension, except that
+            % it is used to propagate uncertainty estimates along the new linear combinations by adding in 
+            % quadrature.
+            % i.e. out = sqrt(|w1| * t1^2 + |w2| * t2^2)
+
+            p = inputParser();
+            p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
+            p.addParameter('keepNaNIfAllNaNs', false, @islogical); % when replaceNaNWithZero is true, keep the result as NaN if every entry being combined is NaN
+            % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis
+            % this enables nanmean like computations
+            p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical);
+            p.parse(varargin{:});
+
+            nOld = size(t, dim);
+            assert(size(weightsNewByOld, 2) == nOld, 'Size of weight matrix must have nOld==%d columns', nOld);
+            nNew = size(weightsNewByOld, 1);
+
+            sz = size(t);
+            newSz = sz;
+            newSz(dim) = nNew;
+
+            % put combination dimension first
+            pdims = [dim, TensorUtils.otherDims(sz, dim)];
+            tp = permute(t, pdims);
+
+            % should be nOld x prod(size-t-other-dims)
+            tpMat = tp(:, :);
+
+            if p.Results.normalizeCoefficientsByNumNonNaN || p.Results.keepNaNIfAllNaNs
+                % count the number of values in each row
+                nValidMat = sum(~isnan(tpMat), 1);
+            end
+
+            if p.Results.replaceNaNWithZero
+                tpMat(isnan(tpMat)) = 0;
+            end
+
+            % should be nNew x prod(size-t-other-dims)
+            % we'll take sqrt later
+            reweightMat = abs(weightsNewByOld) * tpMat.^2;
+
+            if p.Results.normalizeCoefficientsByNumNonNaN
+                % do the reweighting
+                reweightMat = reweightMat ./ nValidMat;
+            end
+
+            if p.Results.keepNaNIfAllNaNs
+                % NaN out where nValidMat is zero
+                mask = ones(size(nValidMat));
+                mask(nValidMat == 0) = NaN;
+                reweightMat = reweightMat ./ mask;
+            end
+            
+            reweightMat = sqrt(reweightMat);
+
+            out = ipermute(reshape(reweightMat, newSz(pdims)), pdims);
         end
 
         function in = assignValueMaskedSelectionAlongDimension(in, dims, mask, value)
