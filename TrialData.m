@@ -6295,7 +6295,7 @@ classdef TrialData
             hasSpikes = counts > 0;
         end
 
-        function [rates, durations, containsBlanked] = getSpikeMeanRate(td, unitName, varargin)
+        function [rates, durations, containsBlanked, poissonCountMultipliers] = getSpikeMeanRate(td, unitName, varargin)
             p = inputParser();
             p.addParameter('invalidIfBlanked', false, @islogical); % if true, any trial that is partially blanked will be NaN, if false, the blanked region will be ignored and will not contribute to the time window used as the denominator for the rate calculation
             p.addParameter('combine', false, @islogical);
@@ -6308,6 +6308,7 @@ classdef TrialData
                 durations(containsBlanked) = NaN;
             end
             rates = counts ./ durations * td.timeUnitsPerSecond;
+            poissonCountMultipliers = 1 ./ durations * td.timeUnitsPerSecond;
         end
 
         function [tf, blankingRegionsField] = hasBlankingRegions(td, unitName)

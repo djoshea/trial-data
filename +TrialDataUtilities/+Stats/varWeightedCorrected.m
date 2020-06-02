@@ -32,6 +32,7 @@ function y = varWeightedCorrected(x, w, dim, asFrequencyWeights)
     if asFrequencyWeights
         denom = sum(w, dim) - 1;
     else
+        % as reliability weights
         v1 = sum(w, dim, 'omitnan');
         v2 = sum(w.^2, dim, 'omitnan');
         denom = v1 - (v2 ./ v1);

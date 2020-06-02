@@ -5102,6 +5102,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.addParameter('assumePoissonStatistics', false, @islogical); % comutes the sem and std assuming Poisson statistics (i.e. var == mean)
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             unitName = p.Results.unitName;
@@ -5137,7 +5138,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(countsGrouped{iC})
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
+                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction, 'assumePoissonStatistics', p.Results.assumePoissonStatistics);
                 end
             end
         end
@@ -5151,6 +5152,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.addParameter('assumePoissonStatistics', false, @islogical); % comutes the sem and std assuming Poisson statistics (i.e. var == mean)
+            
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             unitName = p.Results.unitName;
@@ -5185,7 +5188,8 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(countsGrouped{iC})
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction);
+                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction, ...
+                        'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', 1); % poison multiplier is 1 since these are raw counts
                 end
             end
         end
@@ -5215,7 +5219,7 @@ classdef TrialDataConditionAlign < TrialData
     end
 
     methods % Filtered spike rates
-        function [rateCell, timeCell, hasSpikes] = getSpikeRateFiltered(td, unitName, varargin)
+        function [rateCell, timeCell, hasSpikes, poissonCountMultipliers] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
             p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.addParameter('combine', false, @islogical);
@@ -5329,35 +5333,33 @@ classdef TrialDataConditionAlign < TrialData
             hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
-        function [rateCell, timeCell, hasSpikesGrouped] = getSpikeRateFilteredGroupedRandomized(td, unitName, varargin)
+        function [rateCell, timeCell, hasSpikesGrouped, poissonCountMultipliersCell] = getSpikeRateFilteredGroupedRandomized(td, unitName, varargin)
             [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
             rateCell = td.groupElementsFlatRandomized(rateCell);
             timeCell = td.groupElementsFlatRandomized(timeCell);
             hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGrouped(td, unitNames, varargin)
+        function [rateCell, tvec, hasSpikesGrouped, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGrouped(td, unitNames, varargin)
             [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
             rateCell = td.groupElementsFlat(rates);
             hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped] = getSpikeRateFilteredAsMatrixGroupedRandomized(td, unitNames, varargin)
+        function [rateCell, tvec, hasSpikesGrouped, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGroupedRandomized(td, unitNames, varargin)
             [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
             rateCell = td.groupElementsFlatRandomized(rates);
             hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped, alignVec] = getSpikeRateFilteredAsMatrixGroupedEachAlign(td, unitName, varargin)
-            [rates, tvec, hasSpikes, alignVec] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
-            rateCell = td.groupElementsFlat(rates);
-            hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
+        function [rateCell, tvec, hasSpikesGrouped, alignVec, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGroupedEachAlign(td, unitName, varargin)
+            [rates, tvec, hasSpikes, alignVec, poissonCountMultipliers] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
+            [rateCell, poissonCountMultipliersCell, hasSpikesGrouped] = td.groupElementsFlat(rates, poissonCountMultipliers, hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped, alignVec] = getSpikeRateFilteredAsMatrixGroupedRandomizedEachAlign(td, unitName, varargin)
-            [rates, tvec, hasSpikes, alignVec] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
-            rateCell = td.groupElementsFlatRandomized(rates);
-            hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
+        function [rateCell, tvec, hasSpikesGrouped, alignVec, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGroupedRandomizedEachAlign(td, unitName, varargin)
+            [rates, tvec, hasSpikes, alignVec, poissonCountMultipliers] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
+            [rateCell, poissonCountMultipliersCell, hasSpikesGrouped] = td.groupElementsFlatRandomized(rates, poissonCountMultipliers, hasSpikes);
         end
 
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
@@ -5372,6 +5374,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.addParameter('assumePoissonStatistics', false, @islogical);
 
             p.addParameter('combine', false, @islogical);
 
@@ -5433,7 +5436,7 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(rateCell{iC})
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
+                        TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction, 'assumePoissonStatistics', p.Results.assumePoissonStatistics);
                 end
             end
 
@@ -5587,7 +5590,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addRequired('unitNames', @(x) ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
-
+            p.addParameter('assumePoissonStatistics', false, @islogical);
+                
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
@@ -5641,7 +5645,7 @@ classdef TrialDataConditionAlign < TrialData
                 for iC = 1:td.nConditions
                     if ~isempty(rateCell{iC})
                         [psthMat(iC, :, iR), semMat(iC, :, iR), nTrialsMat(iC, :, iR), stdMat(iC, :, iR)] = ...
-                            nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction);
+                            nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction, 'assumePoissonStatistics', p.Results.assumePoissonStatistics);
                     end
                 end
             end
@@ -5710,7 +5714,7 @@ classdef TrialDataConditionAlign < TrialData
             countsCell = td.groupElementsFlatRandomized(counts);
         end
 
-        function [rates, durations, containsBlanked] = getSpikeMeanRateAllAlign(td, unitName, varargin)
+        function [rates, durations, containsBlanked, poissonCountMultipliers] = getSpikeMeanRateAllAlign(td, unitName, varargin)
             p = inputParser();
             p.addParameter('invalidIfBlanked', false, @islogical); % if true, any trial that is partially blanked will be NaN, if false, the blanked region will be ignored and will not contribute to the time window used as the denominator for the rate calculation
             p.addParameter('combine', false, @islogical);
@@ -5730,16 +5734,17 @@ classdef TrialDataConditionAlign < TrialData
                 durations(containsBlanked) = NaN;
             end
             rates = counts ./ durations * td.timeUnitsPerSecond;
+            poissonCountMultipliers = 1 ./ durations * td.timeUnitsPerSecond;
         end
 
-        function [rateCell, durationCell, containsBlankedCell] = getSpikeMeanRateGrouped(td, unitName, varargin)
-            [rates, durations, containsBlanked] = td.getSpikeMeanRate(unitName, varargin{:});
-            [rateCell, durationCell, containsBlankedCell] = td.groupElementsFlat(rates, durations, containsBlanked);
+        function [rateCell, durationCell, containsBlankedCell, poissonCountMultipliersCell] = getSpikeMeanRateGrouped(td, unitName, varargin)
+            [rates, durations, containsBlanked, poissonCountMultipliers] = td.getSpikeMeanRate(unitName, varargin{:});
+            [rateCell, durationCell, containsBlankedCell, poissonCountMultipliersCell] = td.groupElementsFlat(rates, durations, containsBlanked, poissonCountMultipliers);
         end
 
-        function [rateCell, durationCell, containsBlankedCell] = getSpikeMeanRateGroupedAllAlign(td, unitName, varargin)
-            [rates, durations, containsBlanked] = td.getSpikeMeanRateAllAlign(unitName, varargin{:});
-            [rateCell, durationCell, containsBlankedCell] = td.groupElementsFlat(rates, durations, containsBlanked);
+        function [rateCell, durationCell, containsBlankedCell, poissonCountMultipliersCell] = getSpikeMeanRateGroupedAllAlign(td, unitName, varargin)
+            [rates, durations, containsBlanked, poissonCountMultipliersCell] = td.getSpikeMeanRateAllAlign(unitName, varargin{:});
+            [rateCell, durationCell, containsBlankedCell, poissonCountMultipliersCell] = td.groupElementsFlat(rates, durations, containsBlanked, poissonCountMultipliersCell);
         end
 
         function rateCell = getSpikeMeanRateGroupedRandomized(td, unitName, varargin)
@@ -5748,30 +5753,63 @@ classdef TrialDataConditionAlign < TrialData
         end
 
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeans(td, unitName, varargin)
-            rateCell = td.getSpikeMeanRateGrouped(unitName, varargin{:});
+             p = inputParser();
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('assumePoissonStatistics', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [rateCell, ~, ~, poissonCountMultipliersCell] = td.getSpikeMeanRateGrouped(unitName, p.Unmatched);
+            
+            [meanByGroup, semByGroup, nByGroup, stdByGroup] = cellfun(@(rates, poissonCountMultipliers) TrialDataUtilities.Data.nanMeanSemMinCount(rates, 1, p.Results.minTrials, p.Results.minTrialFraction, ...
+                'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', poissonCountMultipliers), ...
+                rateCell, poissonCountMultipliersCell, 'UniformOutput', true);
 
-            meanByGroup = cell2mat(cellfun(@(x) nanmean(x, 1), rateCell, 'UniformOutput', false));
-            semByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
-            stdByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
-            nByGroup = cell2mat(cellfun(@(x) sum(~isnan(x), 1), rateCell, 'UniformOutput', false));
+%             meanByGroup = cell2mat(cellfun(@(x) nanmean(x, 1), rateCell, 'UniformOutput', false));
+%             semByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
+%             stdByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
+%             nByGroup = cell2mat(cellfun(@(x) sum(~isnan(x), 1), rateCell, 'UniformOutput', false));
         end
 
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeansAllAlign(td, unitName, varargin)
-            rateCell = td.getSpikeMeanRateGroupedAllAlign(unitName, varargin{:});
+            p = inputParser();
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('assumePoissonStatistics', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [rateCell, ~, ~, poissonCountMultipliersCell] = td.getSpikeMeanRateGroupedAllAlign(unitName, p.Unmatched);
+            
+            [meanByGroup, semByGroup, nByGroup, stdByGroup] = cellfun(@(rates, poissonCountMultipliers) TrialDataUtilities.Data.nanMeanSemMinCount(rates, 1, p.Results.minTrials, p.Results.minTrialFraction, ...
+                'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', poissonCountMultipliers), ...
+                rateCell, poissonCountMultipliersCell, 'UniformOutput', true);
 
-            meanByGroup = cellfun(@nanmean, rateCell);
-            semByGroup = cellfun(@nansem, rateCell);
-            stdByGroup = cellfun(@nanstd, rateCell);
-            nByGroup = cellfun(@(x) nnz(~isnan(x)), rateCell);
+%             meanByGroup = cellfun(@nanmean, rateCell);
+%             semByGroup = cellfun(@nansem, rateCell);
+%             stdByGroup = cellfun(@nanstd, rateCell);
+%             nByGroup = cellfun(@(x) nnz(~isnan(x)), rateCell);
         end
 
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeansRandomized(td, unitName, varargin)
-            rateCell = td.getSpikeMeanRateGroupedRandomized(unitName, varargin{:});
+            p = inputParser();
+            p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
+            p.addParameter('assumePoissonStatistics', false, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
+            [rateCell, ~, ~,  poissonCountMultipliersCell] = td.getSpikeMeanRateGroupedRandomized(unitName, varargin{:});
+            
+            [meanByGroup, semByGroup, nByGroup, stdByGroup] = cellfun(@(rates, poissonCountMultipliers) TrialDataUtilities.Data.nanMeanSemMinCount(rates, 1, p.Results.minTrials, p.Results.minTrialFraction, ...
+                'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', poissonCountMultipliers), ...
+                rateCell, poissonCountMultipliersCell, 'UniformOutput', true);
 
-            meanByGroup = cellfun(@nanmean, rateCell);
-            semByGroup = cellfun(@nansem, rateCell);
-            stdByGroup = cellfun(@nanstd, rateCell);
-            nByGroup = cellfun(@numel, rateCell);
+%             meanByGroup = cellfun(@nanmean, rateCell);
+%             semByGroup = cellfun(@nansem, rateCell);
+%             stdByGroup = cellfun(@nanstd, rateCell);
+%             nByGroup = cellfun(@numel, rateCell);
         end
 
         function quantilesByGroup = getSpikeMeanRateGroupMeansRandomizedQuantiles(td, unitName, varargin)
@@ -6386,6 +6424,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial fraction to average
+            p.addParameter('assumePoissonStatistics', false, @islogical);
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.addParameter('errorType', '', @(s) ismember(s, {'sem', 'std', ''}));
@@ -6415,6 +6454,7 @@ classdef TrialDataConditionAlign < TrialData
                 [meanMat{iAlign}, tvecCell{iAlign}, semMat{iAlign}, stdMat{iAlign}] = ...
                     td.useAlign(alignIdx(iAlign)).getSpikeRateFilteredGroupMeans(unitNames, ...
                     'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
+                    'assumePoissonStatistics', p.Results.assumePoissonStatistics, ...
                     'spikeFilter', sf, ...
                     'combine', true, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials, ...
