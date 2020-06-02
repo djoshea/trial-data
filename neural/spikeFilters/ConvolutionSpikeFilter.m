@@ -151,14 +151,12 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             t = (sf.indZero - 1)*sf.binWidthMs;
         end
         
-%         function tf = getIsCausal(sf) % allows subclasses to override
-%             tf = sf.getPostWindow() <= 0 && sf.binAlignmentMode == BinAlignmentMode.Causal;
-%         end
-
         % spikeCell is nTrains x 1 cell array of time points which will include 
         % times in the preceding and postceding padding window.
-        
-        function [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec, varargin)
+        %
+        % poissonCountMultipliers is used for computing the variance according to poissonStatistics
+        % here we return a scalar value, but this could be a cell the same size as rateCell
+        function [rateCell, timeCell, poissonCountMultipliers] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec, varargin)
             p = inputParser();
             p.addParameter('useTimeDelta', true, @islogical);
             p.parse(varargin{:});
@@ -245,6 +243,9 @@ classdef ConvolutionSpikeFilter < SpikeFilter
                     end
                 end
             end
+            
+            % expected var is 1/dt^2 * sum( filter_i^2 * counts_i) ~= 1/dt * sum(w_i^2) * filtered rate estimate
+            poissonCountMultipliers = sum(filt.^2) * multiplierToSpikesPerSec / sf.binWidthMs;
             
             % do the resampling to timeDelta bins
             if p.Results.useTimeDelta && ~TrialDataUtilities.Data.isequaltol(timeDelta, sf.binWidthMs)

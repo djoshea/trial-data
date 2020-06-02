@@ -83,6 +83,8 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         % sf.binAlignmentMode, and sf.resampleMethod. We could do this work
         % here, but not doing so leaves flexibility to the subclass
         [rateCell, timeCell] = subclassFilterSpikeTrains(sf, spikeCell, tWindowPerTrial, multiplierToSpikesPerSec)
+        
+        
     end
     
     methods(Access=protected) % Subclasses may wish to override these 
@@ -154,15 +156,15 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             sf.resampleMethod = p.Results.resampleMethod;
         end
        
-        function [rateCell, timeCell] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
+        function [rateCell, timeCell, poissonCountMultipliers] = filterSpikeTrainsWindowByTrial(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
             % filters each trial individually, using a cell array to return
             % filtered rates and timeCell 
             sf.checkOkay();
             tWindowMat = [makecol(tMinByTrial), makecol(tMaxByTrial)];
-            [rateCell, timeCell] = sf.subclassFilterSpikeTrains(spikeCell, tWindowMat, multiplierToSpikesPerSec, varargin{:});
+            [rateCell, timeCell, poissonCountMultipliers] = sf.subclassFilterSpikeTrains(spikeCell, tWindowMat, multiplierToSpikesPerSec, varargin{:});
         end
         
-        function [rates, tvec] = filterSpikeTrainsWindowByTrialAsMatrix(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
+        function [rates, tvec, poissonCountMultipliers] = filterSpikeTrainsWindowByTrialAsMatrix(sf, spikeCell, tMinByTrial, tMaxByTrial, multiplierToSpikesPerSec, varargin)
             % filters each trial individually and then embeds each filtered
             % trace in a nTrials x nTime x nUnits matrix, where missing samples are left as NaN
             % before and after each trial. tvec is the time vector that
@@ -178,7 +180,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             % calls checkOkay
             % don't do resampling within since we'll do it all at once
             % below, by setting useTimeDelta false
-            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, ...
+            [rateCell, timeCell, poissonCountMultipliers] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, ...
                 multiplierToSpikesPerSec, 'useTimeDelta', false);
             
             % convert to matrix

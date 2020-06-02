@@ -5219,7 +5219,7 @@ classdef TrialDataConditionAlign < TrialData
     end
 
     methods % Filtered spike rates
-        function [rateCell, timeCell, hasSpikes, poissonCountMultipliers] = getSpikeRateFiltered(td, unitName, varargin)
+        function [rateCell, timeCell, hasSpikes, poissonCountMultiplier] = getSpikeRateFiltered(td, unitName, varargin)
             p = inputParser;
             p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.addParameter('combine', false, @islogical);
@@ -5240,7 +5240,7 @@ classdef TrialDataConditionAlign < TrialData
             % will be in (when called in this class)
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
-            [rateCell, timeCell] = sf.filterSpikeTrainsWindowByTrial(spikeCell, ...
+            [rateCell, timeCell, poissonCountMultiplier] = sf.filterSpikeTrainsWindowByTrial(spikeCell, ...
                 tMinByTrial, tMaxByTrial, td.timeUnitsPerSecond);
 
             % now we need to nan out the regions affected by blanking
@@ -5249,7 +5249,7 @@ classdef TrialDataConditionAlign < TrialData
                 blankingIntervals, rateCell, timeCell, 'padding', [sf.preWindow sf.postWindow]);
         end
 
-        function [rates, tvec, hasSpikes] = getSpikeRateFilteredAsMatrix(td, unitNames, varargin)
+        function [rates, tvec, hasSpikes, poissonCountMultiplier] = getSpikeRateFilteredAsMatrix(td, unitNames, varargin)
             p = inputParser;
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('combine', false, @islogical);
@@ -5278,7 +5278,7 @@ classdef TrialDataConditionAlign < TrialData
 
             % convert to .zero relative times since that's what spikeCell
             % will be in (when called in this class)
-            [rates, tvec] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
+            [rates, tvec, poissonCountMultiplier] = sf.filterSpikeTrainsWindowByTrialAsMatrix(spikeCell, ...
                 tMinByTrialWithPadding, tMaxByTrialWithPadding, td.timeUnitsPerSecond, ...
                 'showProgress', p.Results.showProgress, ...
                 'tMinByTrialExcludingPadding', tMinByTrialExcludingPadding, ...
@@ -5293,7 +5293,7 @@ classdef TrialDataConditionAlign < TrialData
 %             end
         end
 
-        function [rates, tvec, hasSpikes, alignVec] = getSpikeRateFilteredAsMatrixEachAlign(td, unitName, varargin)
+        function [rates, tvec, hasSpikes, alignVec, poissonCountMultiplier] = getSpikeRateFilteredAsMatrixEachAlign(td, unitName, varargin)
             p = inputParser;
             p.addParameter('combine', false, @islogical);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
@@ -5316,7 +5316,7 @@ classdef TrialDataConditionAlign < TrialData
             tvecCell = cell(nAlign, 1);
             hasSpikesMat = nan(td.nTrials, nAlign, nUnits);
             for iA = 1:nAlign
-                [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA, :)] = ...
+                [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA, :), poissonCountMultiplier] = ...
                     td.useAlign(alignIdx(iA)).getSpikeRateFilteredAsMatrix(unitName, 'combine', p.Results.combine, ...
                     p.Unmatched);
             end
@@ -5333,33 +5333,33 @@ classdef TrialDataConditionAlign < TrialData
             hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
-        function [rateCell, timeCell, hasSpikesGrouped, poissonCountMultipliersCell] = getSpikeRateFilteredGroupedRandomized(td, unitName, varargin)
-            [rateCell, timeCell] = td.getSpikeRateFiltered(unitName, varargin{:});
+        function [rateCell, timeCell, hasSpikesGrouped, poissonCountMultiplier] = getSpikeRateFilteredGroupedRandomized(td, unitName, varargin)
+            [rateCell, timeCell, poissonCountMultiplier] = td.getSpikeRateFiltered(unitName, varargin{:});
             rateCell = td.groupElementsFlatRandomized(rateCell);
             timeCell = td.groupElementsFlatRandomized(timeCell);
             hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGrouped(td, unitNames, varargin)
-            [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
+        function [rateCell, tvec, hasSpikesGrouped, poissonCountMultiplier] = getSpikeRateFilteredAsMatrixGrouped(td, unitNames, varargin)
+            [rates, tvec, hasSpikes, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
             rateCell = td.groupElementsFlat(rates);
             hasSpikesGrouped = td.groupElementsFlat(hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGroupedRandomized(td, unitNames, varargin)
-            [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
+        function [rateCell, tvec, hasSpikesGrouped, poissonCountMultiplier] = getSpikeRateFilteredAsMatrixGroupedRandomized(td, unitNames, varargin)
+            [rates, tvec, hasSpikes, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrix(unitNames, varargin{:});
             rateCell = td.groupElementsFlatRandomized(rates);
             hasSpikesGrouped = td.groupElementsFlatRandomized(hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped, alignVec, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGroupedEachAlign(td, unitName, varargin)
-            [rates, tvec, hasSpikes, alignVec, poissonCountMultipliers] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
-            [rateCell, poissonCountMultipliersCell, hasSpikesGrouped] = td.groupElementsFlat(rates, poissonCountMultipliers, hasSpikes);
+        function [rateCell, tvec, hasSpikesGrouped, alignVec, poissonCountMultiplier] = getSpikeRateFilteredAsMatrixGroupedEachAlign(td, unitName, varargin)
+            [rates, tvec, hasSpikes, alignVec, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
+            [rateCell, hasSpikesGrouped] = td.groupElementsFlat(rates, hasSpikes);
         end
 
-        function [rateCell, tvec, hasSpikesGrouped, alignVec, poissonCountMultipliersCell] = getSpikeRateFilteredAsMatrixGroupedRandomizedEachAlign(td, unitName, varargin)
-            [rates, tvec, hasSpikes, alignVec, poissonCountMultipliers] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
-            [rateCell, poissonCountMultipliersCell, hasSpikesGrouped] = td.groupElementsFlatRandomized(rates, poissonCountMultipliers, hasSpikes);
+        function [rateCell, tvec, hasSpikesGrouped, alignVec, poissonCountMultiplier] = getSpikeRateFilteredAsMatrixGroupedRandomizedEachAlign(td, unitName, varargin)
+            [rates, tvec, hasSpikes, alignVec, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixEachAlign(unitName, varargin{:});
+            [rateCell, hasSpikesGrouped] = td.groupElementsFlatRandomized(rates, hasSpikes);
         end
 
         function [psthMat, tvec, semMat, stdMat, nTrialsMat, whichAlign] = ...
@@ -5401,10 +5401,10 @@ classdef TrialDataConditionAlign < TrialData
 
             % pick the right function to call
             if p.Results.eachAlign
-                 [rateCell, tvec, hasSpikesGrouped, whichAlign] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitNames, ...
+                 [rateCell, tvec, hasSpikesGrouped, whichAlign, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitNames, ...
                      'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
             else
-                [rateCell, tvec, hasSpikesGrouped] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
+                [rateCell, tvec, hasSpikesGrouped, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
                     'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             end
@@ -5436,7 +5436,8 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(rateCell{iC})
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction, 'assumePoissonStatistics', p.Results.assumePoissonStatistics);
+                        TrialDataUtilities.Data.nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction, ...
+                        'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', poissonCountMultiplier);
                 end
             end
 
@@ -5471,7 +5472,7 @@ classdef TrialDataConditionAlign < TrialData
                             {tvec{iA}, tvec{iA}, tvec{iA}, sub_tvec{iA}, sub_tvec{iA}, sub_tvec{iA}}, 2);
                     end
                     out = cell(V, 1);
-                    for i = 1:V
+                    for i = 1:Vdbquit
                         out{i} = cat(2, outByAlign{i, :});
                     end
                     tvec = cat(1, tvecByAlign{:});
@@ -5615,11 +5616,11 @@ classdef TrialDataConditionAlign < TrialData
 
             % grab the data ungrouped
             if ~p.Results.eachAlign
-                [rates, tvec, hasSpikes] = td.getSpikeRateFilteredAsMatrix(unitNames,...
+                [rates, tvec, hasSpikes, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrix(unitNames,...
                     'spikeFilter', p.Results.spikeFilter, 'timeDelta', p.Results.timeDelta);
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             else
-                [rates, tvec, hasSpikes, whichAlign] = td.getSpikeRateFilteredAsMatrixEachAlign(unitNames, ...
+                [rates, tvec, hasSpikes, whichAlign, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixEachAlign(unitNames, ...
                     'spikeFilter', p.Results.spikeFilter, 'timeDelta', p.Results.timeDelta);
             end
 
@@ -5645,7 +5646,8 @@ classdef TrialDataConditionAlign < TrialData
                 for iC = 1:td.nConditions
                     if ~isempty(rateCell{iC})
                         [psthMat(iC, :, iR), semMat(iC, :, iR), nTrialsMat(iC, :, iR), stdMat(iC, :, iR)] = ...
-                            nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction, 'assumePoissonStatistics', p.Results.assumePoissonStatistics);
+                            nanMeanSemMinCount(rateCell{iC}, 1, minTrials, minTrialFraction, ...
+                            'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultiplier', poissonCountMultiplier);
                     end
                 end
             end
