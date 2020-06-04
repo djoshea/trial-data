@@ -132,7 +132,7 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     % the trajectories, unless specified as input
     if isempty(p.Results.nTimepointsOverlap)
         nTimepointsOverlap = TrialDataUtilities.Splice.computeBestOverlap(dataPreProj, dataPostProj, ...
-            p.Results.minOverlap, p.Results.maxOverlap, 'commonAcrossTrajectories', p.Results.commonOverlapAcrossTrajectories, 'showPlot', false);
+            p.Results.minOverlap, p.Results.maxOverlap, 'commonAcrossTrajectories', p.Results.commonOverlapAcrossTrajectories, 'showPlot', showPlot);
     else
         nTimepointsOverlap = p.Results.nTimepointsOverlap;
     end

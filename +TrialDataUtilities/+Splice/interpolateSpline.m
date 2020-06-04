@@ -21,31 +21,41 @@ function dataSpliced = interpolateSpline(dataCat, joinIdx, ...
         dataFitSpline = cat(2, dataPre(:, end-splineIgnoreWindow-splineFitWindow+1:end-splineIgnoreWindow), ...
             dataPost(:, splineIgnoreWindow+1:splineIgnoreWindow+splineFitWindow));
 
-        % use technique from cscvn but use smoothing spline rather than
-        % interpolation
-        if size(dataFitSpline, 1)==1
-            dt = 0;
-        else
-            dt = sum((diff(dataFitSpline').^2).'); 
-        end
-        tFitSpline = cumsum([0,dt.^(1/4)]);
-        tEvalSpline = linspace(min(tFitSpline), max(tFitSpline), nOverwritePre + nOverwritePost);
+        basisMask = all(~isnan(dataFitSpline), 2);
         
-        % cs = csaps(tFitSpline, dataFitSpline, 'variational');
-        cs = csaps(tFitSpline, dataFitSpline(:, :));
+        if any(basisMask)
+            dataFitSpline = dataFitSpline(basisMask, :);
 
-        % evaluate on even time grid that matches original data but
-        % excludes numTimepointsDrop (which can be negative, such that we
-        % add additional points)
-        dataEvalSpline = fnval(cs, tEvalSpline);
+            % use technique from cscvn but use smoothing spline rather than
+            % interpolation
+            if size(dataFitSpline, 1)==1
+                dt = 0;
+            else
+                dt = sum((diff(dataFitSpline').^2).'); 
+            end
+            tFitSpline = cumsum([0,dt.^(1/4)]);
+            tEvalSpline = linspace(min(tFitSpline), max(tFitSpline), nOverwritePre + nOverwritePost);
 
-        dataPreSmoothed = dataPre(:, :);
-        dataPreSmoothed(:, end-nOverwritePre+1:end) = dataEvalSpline(:, 1:nOverwritePre);
+            % cs = csaps(tFitSpline, dataFitSpline, 'variational');
+            cs = csaps(tFitSpline, dataFitSpline(:, :));
 
-        dataPostSmoothed = dataPost(:, :);
-        dataPostSmoothed(:, 1:nOverwritePost) = dataEvalSpline(:, nOverwritePre+1:end);
+            % evaluate on even time grid that matches original data but
+            % excludes numTimepointsDrop (which can be negative, such that we
+            % add additional points)
+            dataEvalSpline = fnval(cs, tEvalSpline);
 
-        dataSpliced(:, :, c) = cat(2, dataPreSmoothed, dataPostSmoothed);
+            dataPreSmoothed = dataPre(:, :);
+            dataPreSmoothed(basisMask, end-nOverwritePre+1:end) = dataEvalSpline(:, 1:nOverwritePre);
+
+            dataPostSmoothed = dataPost(:, :);
+            dataPostSmoothed(basisMask, 1:nOverwritePost) = dataEvalSpline(:, nOverwritePre+1:end);
+
+            dataSpliced(:, :, c) = cat(2, dataPreSmoothed, dataPostSmoothed);
+        else
+            % nothing to do here, just copy in the NaNs
+            dataSpliced(:, :, c) = cat(2, dataPre, dataPost);
+            
+        end
 
         if p.Results.showPlot
             if c == 1
