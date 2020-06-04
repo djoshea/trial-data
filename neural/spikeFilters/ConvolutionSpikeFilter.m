@@ -99,6 +99,11 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             ax.update();
         end
         
+        function mult = getPoissonCountMultiplier(sf, multiplierToSpikesPerSec)
+            filt = sf.getFilter();
+            filt = filt ./ sum(filt);
+            mult = sum(filt.^2) * multiplierToSpikesPerSec / sf.binWidthMs;
+        end
     end
 
     % Time binning here is subtle. There are a few things to consider -

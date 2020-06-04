@@ -80,6 +80,9 @@ classdef PopulationTrajectorySet
 
         % quantile of trial data to use for dataIntervalHigh
         dataIntervalQuantileHigh
+
+        % if true, use Poisson assumptions to derive variance rather than empirical variance
+        assumePoissonStatistics = false;
     end
 
     % alignDescriptors, conditionDescriptor, and translationNormalization
@@ -831,10 +834,14 @@ classdef PopulationTrajectorySet
             else
                 zeroSpikeMode = 'keep all';
             end
+
             tcprintf('inline', '{yellow}Zero Spike Trial Mode: {none}%s\n', zeroSpikeMode);
             if pset.hasDataRandomized
                 tcprintf('inline', '{yellow}Data Randomized: {none}%d random samples, {red}%s\n', ...
                     pset.nRandomSamples, pset.conditionDescriptorRandomized.randomizationDescription);
+            end
+            if pset.assumePoissonStatistics
+                tcprintf('{yellow}Assuming Poisson stats for variance\n');
             end
 
             fprintf('\n');
@@ -1042,6 +1049,15 @@ classdef PopulationTrajectorySet
             if ~isempty(old) % no need to invalidate on initialization
                 pset = pset.invalidateRandomizedTrialAveragedData();
             end
+        end
+
+        function pset = set.assumePoissonStatistics(pset, tf)
+            assert(islogical(tf) && isscalar(tf));
+            old = pset.assumePoissonStatistics;
+            if tf ~= old
+                pset.assumePoissonStatistics = tf;
+                pset = pset.invalidateTrialAveragedData();
+            end 
         end
 
         % revised by using pass thru to ConditionDescriptor
@@ -3146,6 +3162,8 @@ classdef PopulationTrajectorySet
             timeDelta = pset.timeDelta;
             minTrialsForTrialAveraging = pset.minTrialsForTrialAveraging;
             minFractionTrialsForTrialAveraging = pset.minFractionTrialsForTrialAveraging;
+            assumePoissonStatistics = pset.assumePoissonStatistics;
+            poissonCountMultiplier = pset.spikeFilter.getPoissonCountMultiplier(pset.timeUnitsPerSecond);
 
             trialLists = pset.trialLists;
 
@@ -3204,6 +3222,7 @@ classdef PopulationTrajectorySet
                     byCondition = cellfun(@(idx) byTrialValid(idx,:), trialLists(iBasis, :)', ...
                         'UniformOutput', false);
 
+
                     for iCondition = 1:pset.nConditions
                         %                         if ~conditionHasValidTrialAverageAllAlignsBases(iCondition), continue, end
                         if ~cMask(iCondition), continue; end
@@ -3211,21 +3230,25 @@ classdef PopulationTrajectorySet
                         nTrials = size(mat, 1);
                         if nTrials == 0, continue, end
 
-                        % minimum trial count at each time point needed to
-                        % compute an average, otherwise NaN
-                        minTrials = max(minTrialsForTrialAveraging, ...
-                            ceil(nTrials * minFractionTrialsForTrialAveraging));
+                        [dataMean{iAlign}(iBasis, iCondition, :), dataSem{iAlign}(iBasis, iCondition, :)] = ...
+                            TrialDataUtilities.Data.nanMeanSemMinCount(mat, 1, minTrialsForTrialAveraging, minFractionTrialsForTrialAveraging, ...
+                            'assumePoissonStatistics', assumePoissonStatistics, 'poissonCountMultipliers', poissonCountMultiplier);
 
-                        nTrialsByTime = sum(~isnan(mat), 1);
+                        % % minimum trial count at each time point needed to
+                        % % compute an average, otherwise NaN
+                        % minTrials = max(minTrialsForTrialAveraging, ...
+                        %     ceil(nTrials * minFractionTrialsForTrialAveraging));
 
-                        % compute mean, sem, and trial count
-                        m = nanmean(mat, 1)';
-                        m(nTrialsByTime < minTrials) = NaN;
+                        % nTrialsByTime = sum(~isnan(mat), 1);
 
-                        se = nansem(mat, 1)';
-                        se(nTrialsByTime < minTrials) = NaN;
-                        dataMean{iAlign}(iBasis, iCondition, :) = m;
-                        dataSem{iAlign}(iBasis, iCondition, :) = se;
+                        % % compute mean, sem, and trial count
+                        % m = nanmean(mat, 1)';
+                        % m(nTrialsByTime < minTrials) = NaN;
+
+                        % se = nansem(mat, 1)';
+                        % se(nTrialsByTime < minTrials) = NaN;
+                        % dataMean{iAlign}(iBasis, iCondition, :) = m;
+                        % dataSem{iAlign}(iBasis, iCondition, :) = se;
                     end
                 end
 

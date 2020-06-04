@@ -5138,7 +5138,8 @@ classdef TrialDataConditionAlign < TrialData
             for iC = 1:td.nConditions
                 if ~isempty(countsGrouped{iC})
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
-                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction, 'assumePoissonStatistics', p.Results.assumePoissonStatistics);
+                        TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction, ...
+                        'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', 1); % poisson multiplier is 1 since these are raw counts
                 end
             end
         end
@@ -5189,7 +5190,7 @@ classdef TrialDataConditionAlign < TrialData
                 if ~isempty(countsGrouped{iC})
                     [psthMat(iC, :, :), semMat(iC, :, :), nTrialsMat(iC, :, :), stdMat(iC, :, :)] = ...
                         TrialDataUtilities.Data.nanMeanSemMinCount(countsGrouped{iC}, 1, minTrials, minTrialFraction, ...
-                        'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', 1); % poison multiplier is 1 since these are raw counts
+                        'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', 1); % poisson multiplier is 1 since these are raw counts
                 end
             end
         end

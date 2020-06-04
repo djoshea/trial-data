@@ -193,6 +193,10 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
                 'tMinExcludingPadding', p.Results.tMinByTrialExcludingPadding, ...
                 'tMaxExcludingPadding', p.Results.tMaxByTrialExcludingPadding); 
         end
+        
+        function mult = getPoissonCountMultiplier(sf, multiplierToSpikesPerSec) %#ok<STOUT,INUSD>
+            error('getPoissonCountMultiplier not implemented');
+        end
     end
     
     methods(Static)
