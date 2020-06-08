@@ -1296,7 +1296,7 @@ classdef PopulationTrajectorySet
                 v = pset.odc.dataByTrialCommonTimeGrouped;
                 if isempty(v)
                     pset.buildDataByTrialCommonTimeGrouped();
-                    v = pset.odc.dataByTrial;
+                    v = pset.odc.dataByTrialCommonTimeGrouped;
                 end
             else
                 v = pset.dataByTrialCommonTimeGroupedManual;
@@ -3445,7 +3445,7 @@ classdef PopulationTrajectorySet
                     % grab the valid time portion of the nTrials x
                     % nTime data matrix
                     thisMat = pset.dataByTrial{iBasis, iAlign};
-                    dataByTrial{iBasis, iAlign} = nan(size(thisMat, 1), numel(tvecDataMean{1}));
+                    dataByTrial{iBasis, iAlign} = nan(size(thisMat, 1), numel(tvecDataMean{iAlign}));
                     dataByTrial{iBasis, iAlign}(:, tMaskInsert) = pset.dataByTrial{iBasis, iAlign}(:, tMaskValid);
                 end
                 prog.finish();
