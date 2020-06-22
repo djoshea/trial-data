@@ -52,6 +52,8 @@ p.KeepUnmatched = true;
 p.CaseSensitive = false;
 p.parse(varargin{:});
 
+newplot;
+
 if ~iscell(data)
     % all traces share common time vector
     nTraces = size(data, 2);
