@@ -1801,6 +1801,25 @@ classdef TensorUtils
             shift = -placeAlongDim + 2;
             t = TensorUtils.mapSlicesInPlace(@(slice) shiftdim(quantile(slice(:), p), shift), dim, t);
         end
+        
+        function idx = findAlongDim(t, dim, direction)
+            if nargin < 3 
+                direction = 'first';
+            end 
+            if ~islogical(t)
+                t = t ~= 0;
+            end
+            
+            if strcmp(direction, 'first')
+                [val, idx] = max(t, [], dim);
+                idx(~val) = NaN; % set to NaN where we did not find anything
+            else
+                S = size(t, dim);
+                [val, idx] = max(flip(t, dim), [], dim); % compute max on flipped tensor
+                idx(~val) = NaN; % set to NaN where we did not find anything
+                idx = S - idx + 1; % account for flipping
+            end   
+        end
 
         function idxTensor = findNAlongDim(t, dim, N, direction)
             % idxTensor = findNAlongDim(t, dim, N, direction)
