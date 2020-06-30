@@ -1477,7 +1477,7 @@ classdef TensorUtils
         end
 
         function out = repmatAlongDims(in, dims, toSz)
-            sz = size(in);
+            sz = TensorUtils.sizeNDims(in, max(dims));
             repmatArg = sz;
             repmatArg(:) = 1;
             repmatArg(dims) = toSz;
