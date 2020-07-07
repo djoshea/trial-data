@@ -2071,7 +2071,7 @@ classdef TensorUtils
             if nargout > 3
                 [coeff, score, latent, tsquared, explained, mu] = pca(t(:, validCols), varargin{:});
             else
-                [coeff, score, latent] = pca(t(:, validCols), varargin{:});
+                [coeff, score, latent, ~, ~, mu] = pca(t(:, validCols), varargin{:});
             end
 
             if ~all(validCols)
