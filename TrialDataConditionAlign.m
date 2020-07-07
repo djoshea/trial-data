@@ -5767,12 +5767,11 @@ classdef TrialDataConditionAlign < TrialData
             
             [meanByGroup, semByGroup, nByGroup, stdByGroup] = cellfun(@(rates, poissonCountMultipliers) TrialDataUtilities.Data.nanMeanSemMinCount(rates, 1, p.Results.minTrials, p.Results.minTrialFraction, ...
                 'assumePoissonStatistics', p.Results.assumePoissonStatistics, 'poissonCountMultipliers', poissonCountMultipliers), ...
-                rateCell, poissonCountMultipliersCell, 'UniformOutput', true);
-
-%             meanByGroup = cell2mat(cellfun(@(x) nanmean(x, 1), rateCell, 'UniformOutput', false));
-%             semByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
-%             stdByGroup = cell2mat(cellfun(@(x) nansem(x, 1), rateCell, 'UniformOutput', false));
-%             nByGroup = cell2mat(cellfun(@(x) sum(~isnan(x), 1), rateCell, 'UniformOutput', false));
+                rateCell, poissonCountMultipliersCell, 'UniformOutput', false);
+            meanByGroup = cat(1, meanByGroup{:});
+            semByGroup = cat(1, semByGroup{:});
+            nByGroup = cat(1, nByGroup{:});
+            stdByGroup = cat(1, stdByGroup{:});
         end
 
         function [meanByGroup, semByGroup, stdByGroup, nByGroup] = getSpikeMeanRateGroupMeansAllAlign(td, unitName, varargin)
