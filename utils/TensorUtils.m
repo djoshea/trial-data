@@ -402,6 +402,17 @@ classdef TensorUtils
     end
 
     methods(Static) % Mask generation and mask utilities
+        function order = sortIdxToRank(sortIdx, N)
+            % given sortIdx which selects elements in sorted order, as in [sorted, sortIdx] = sort(x)
+            % returns the location of each element of x in sorted, i.e. if sortIdx = [2 3 1], order = [3 1 2] 
+
+            if nargin < 2
+                N = max(sortIdx);
+            end
+            [tf, order] = ismember(1:N, sortIdx);
+            order(~tf) = NaN;
+        end
+        
        function idx = vectorMaskToIndices(mask)
             if islogical(mask)
                 idx = TensorUtils.makecol(find(mask));
@@ -1515,6 +1526,12 @@ classdef TensorUtils
             end
             s = RandStream('mt19937ar', 'Seed', seed);
             RandStream.setGlobalStream(s);
+        end
+        
+        function t = shuffleAlongDimension(t, dim)
+            n = size(t, dim);
+            idx = randsample(n, n, false);
+            t = TensorUtils.selectAlongDimension(t, dim, idx);
         end
 
         % Each of these methods apply to cell tensors containing vector
