@@ -330,12 +330,17 @@ classdef ConditionDescriptor
         end
 
         function printDescription(ci)
-            if any(~ci.conditionIncludeMask)
-                tcprintf('inline', '{yellow}%s: {none}%d conditions, {bright red}%d selected\n', ...
-                    class(ci), ci.nConditions, nnz(ci.conditionIncludeMask));
+            if isa(ci, 'ConditionInfo') && ci.applied %#ok<MCNPN>
+                occupiedConditionsStr = sprintf(' (%d w/ trials)', nnz(ci.countByCondition)); %#ok<MCNPN>
             else
-                tcprintf('inline', '{yellow}%s: {none}%d conditions\n', ...
-                    class(ci), ci.nConditions);
+                occupiedConditionsStr = '';
+            end
+            if any(~ci.conditionIncludeMask)
+                tcprintf('inline', '{yellow}%s: {none}%d conditions%s, {bright red}%d selected\n', ...
+                    class(ci), ci.nConditions, occupiedConditionsStr, nnz(ci.conditionIncludeMask));
+            else
+                tcprintf('inline', '{yellow}%s: {none}%d conditions%s\n', ...
+                    class(ci), ci.nConditions, occupiedConditionsStr);
             end
 
             tcprintf('inline', '  {bright blue}Attributes:\n');
