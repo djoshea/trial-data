@@ -22,18 +22,18 @@ classdef SaveArrayIndividualized < handle
             partitionNames = fieldnames(partitionFieldLists);
             keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
             elementsPerChunk = p.Results.elementsPerChunk;
-            progress = p.Results.progress;
+            progress = p.Results.progress && exist('ProgressBar', 'class');
             
             assert(isvector(S));
             N = numel(S);
             
             % create the directory as path/name
-            fullPath = GetFullPath(char(locationName));
+            fullPath = TrialDataUtilities.Path.GetFullPath(char(locationName));
             
             if exist(fullPath, 'dir')
                 TrialDataUtilities.Data.SaveArrayIndividualized.clearLocationContents(fullPath);
             else
-                mkdirRecursive(fullPath);
+                TrialDataUtilities.Save.mkdirRecursive(fullPath);
             end
             
             if ~isempty(p.Results.message)
@@ -103,7 +103,7 @@ classdef SaveArrayIndividualized < handle
         end
         
         function tf = isValidLocation(locationName)
-            locationName = GetFullPath(locationName);
+            locationName = TrialDataUtilities.Path.GetFullPath(locationName);
             if ~exist(locationName, 'dir')
                 tf = false; return;
             end
@@ -129,7 +129,7 @@ classdef SaveArrayIndividualized < handle
             p.addParameter('message', '', @ischar);
             p.addParameter('maxElements', Inf, @isscalar);
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
-            p.addParameter('partitions', {}, @(x) isstringlike(x));
+            p.addParameter('partitions', {}, @(x) TrialDataUtilities.String.isstringlike(x));
             p.addParameter('loadAllPartitions', false, @islogical);
             p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.addParameter('partialLoadSpec', [], @(x) isempty(x) || isstruct(x));
@@ -137,9 +137,9 @@ classdef SaveArrayIndividualized < handle
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
-            progress = p.Results.progress;
+            progress = p.Results.progress && exist('ProgressBar', 'class');
             
-            locationName = GetFullPath(locationName);
+            locationName = TrialDataUtilities.Path.GetFullPath(locationName);
             
             function s = structMerge(varargin)
                 s2c = cellfun(@struct2cell, varargin, 'UniformOutput', false);
@@ -254,7 +254,7 @@ classdef SaveArrayIndividualized < handle
                 partialLoadMask_this_chunk = partialLoadMask(whichChunk == chunk_ind);
                 element = element(partialLoadMask_this_chunk);
                 
-                loadedChunks{iC} = makecol(element);
+                loadedChunks{iC} = TrialDataUtilities.makecol(element);
                 if progress, prog.increment(); end
             end
             if progress, prog.finish(); end
@@ -264,12 +264,12 @@ classdef SaveArrayIndividualized < handle
         
         function partitionMeta = loadPartitionMeta(locationName, varargin)
             p = inputParser();
-            p.addParameter('partitions', {}, @(x) isstringlike(x));
+            p.addParameter('partitions', {}, @(x) TrialDataUtilities.String.isstringlike(x));
             p.addParameter('loadAllPartitions', [], @(x) isempty(x) || islogical(x));
             p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.parse(varargin{:});
             
-            locationName = GetFullPath(locationName);
+            locationName = TrialDataUtilities.Path.GetFullPath(locationName);
             
             % figure out which partitions to load, loadAll only if none specified manually
             partitionsAvailable = TrialDataUtilities.Data.SaveArrayIndividualized.listPartitions(locationName);
@@ -329,7 +329,7 @@ classdef SaveArrayIndividualized < handle
         end         
         
         function [N, elementsPerChunk] = getArrayCount(locationName)
-            locationName = GetFullPath(locationName);
+            locationName = TrialDataUtilities.Path.GetFullPath(locationName);
             
             % get element count from count.txt file
             countFname = TrialDataUtilities.Data.SaveArrayIndividualized.generateCountFileName(locationName);
@@ -353,7 +353,7 @@ classdef SaveArrayIndividualized < handle
         end
         
         function list = listPartitions(locationName)
-            locationName = GetFullPath(locationName);
+            locationName = TrialDataUtilities.Path.GetFullPath(locationName);
             
             TrialDataUtilities.Data.SaveArrayIndividualized.assertValidLocation(locationName);
                 
