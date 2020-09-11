@@ -824,6 +824,12 @@ classdef TensorUtils
             % returns a cell array tCell such that tCell{i} = squeezeSelectAlongDimension(t, dim, i)
             tCell = TensorUtils.selectEachAlongDimension(t, dim, true);
         end
+        
+        function slice = emptySliceAlongDim(t, dim)
+            sz = TensorUtils.sizeNDims(t, dim);
+            sz(dim) = 0;
+            slice = repmat(t(1), sz);
+        end
 
         function out = splitAlongDimensionBySubscripts(t, dim, outSz, subs)
             % given an n-dimensional tensor t, split t into a cell with size outsz
@@ -858,7 +864,15 @@ classdef TensorUtils
             else
                 [subsSorted,subSortIdx] = sort(subsExp);
             end
-            out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, zeros(0, 1, 'like', t));
+            
+            emptySlice = TensorUtils.emptySliceAlongDim(t, dim);
+            
+            if ~isstruct(t)
+                % not a struct, can use accumarray
+                out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, emptySlice);
+            else
+                error('Not implemented for struct yet')
+            end
 
             % reshape out{:} back to tensors
             szInnerArgs = num2cell(szT);
