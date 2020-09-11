@@ -14,15 +14,16 @@ classdef SaveArrayIndividualized < handle
             p.addParameter('partialLoadData', [], @(x) isempty(x) || isstruct(x));
             p.addParameter('elementsPerChunk', 1, @isscalar); % split elements into files with this many elements per file
             p.addParameter('progress', true, @islogical);
+            p.addParameter('use_parallel', ~isempty(gcp('nocreate')), @islogical);
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
             partitionFieldLists = p.Results.partitionFieldLists;
             partitionMetaStruct = p.Results.partitionMeta;
             partitionNames = fieldnames(partitionFieldLists);
-            keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
             elementsPerChunk = p.Results.elementsPerChunk;
             progress = p.Results.progress && exist('ProgressBar', 'class');
+            use_parallel = p.Results.use_parallel;
             
             assert(isvector(S));
             N = numel(S);
@@ -47,37 +48,56 @@ classdef SaveArrayIndividualized < handle
             if progress
                 prog = ProgressBar(nChunks, str);
             end
-            for c = 1:nChunks 
-                element = S(whichChunk == c);
-
-                for iP = 1:numel(partitionNames)
-                    % strip off this partition's data and save it into a separate file
-                    flds = partitionFieldLists.(partitionNames{iP});
-
-                    % split the partition data from the struct array
-                    partData = keepfields(element, flds);
-                    element = rmfield(element, flds);
-
-                    if isempty(callbackFn)
-                        file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, nChunks, c, partitionNames{iP});
-                        save(file, '-v6', 'partData'); % assumes less than 2 GB per element, but much faster
-                    else
-                        % pass this element, the location, the id number, and the partition to the callback
-                        callbackFn(partName, fullPath, c, partitionNames{iP});
-                    end
+            
+            nByChunk = histcounts(whichChunk, 0.5:nChunks+0.5)';
+            S_by_chunk = mat2cell(S, nByChunk);
+            if use_parallel
+                if progress, prog.enableParallel(); end
+                parfor c = 1:nChunks 
+                    element = S_by_chunk{c};
+                    TrialDataUtilities.Data.SaveArrayIndividualized.internal_saveChunk(element, locationName, nChunks, c, partitionNames, partitionFieldLists, callbackFn);
+                    if progress, prog.update(c); end %#ok<PFBNS>
                 end
-
-                % save this element
-                if isempty(callbackFn)
-                    file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, nChunks, c);   
-                    save(file, '-v6', 'element'); % assumes less than 2 GB per element, but much faster
-                else
-                    % pass this element, the location, the id number, and indicate not being a partition to the callback
-                    callbackFn(element, fullPath, c, '');
+            else 
+                for c = 1:nChunks 
+                    element = S_by_chunk{c};
+                    TrialDataUtilities.Data.SaveArrayIndividualized.internal_saveChunk(element, locationName, nChunks, c, partitionNames, partitionFieldLists, callbackFn);
+                    if progress, prog.update(c); end
                 end
-                if progress, prog.update(c); end
             end
             if progress, prog.finish(); end
+            
+%             for c = 1:nChunks 
+%                 element = S(whichChunk == c);
+% 
+%                 for iP = 1:numel(partitionNames)
+%                     % strip off this partition's data and save it into a separate file
+%                     flds = partitionFieldLists.(partitionNames{iP});
+% 
+%                     % split the partition data from the struct array
+%                     partData = keepfields(element, flds);
+%                     element = rmfield(element, flds);
+% 
+%                     if isempty(callbackFn)
+%                         file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, nChunks, c, partitionNames{iP});
+%                         save(file, '-v6', 'partData'); % assumes less than 2 GB per element, but much faster
+%                     else
+%                         % pass this element, the location, the id number, and the partition to the callback
+%                         callbackFn(partName, fullPath, c, partitionNames{iP});
+%                     end
+%                 end
+% 
+%                 % save this element
+%                 if isempty(callbackFn)
+%                     file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, nChunks, c);   
+%                     save(file, '-v6', 'element'); % assumes less than 2 GB per element, but much faster
+%                 else
+%                     % pass this element, the location, the id number, and indicate not being a partition to the callback
+%                     callbackFn(element, fullPath, c, '');
+%                 end
+%                 if progress, prog.update(c); end
+%             end
+%             if progress, prog.finish(); end
                 
             % save partition meta to separate files
             for iP = 1:numel(partitionNames)
@@ -99,6 +119,36 @@ classdef SaveArrayIndividualized < handle
             if ~isempty(partialLoadData) && ~isempty(fieldnames(partialLoadData))
                 fname = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartialLoadDataFileName(locationName);
                 save(fname, 'partialLoadData');
+            end
+        end
+        
+        function internal_saveChunk(element, locationName, nChunks, chunk_ind, partitionNames, partitionFieldLists, callbackFn)
+            keepfields = @(s, flds) rmfield(s, setdiff(fieldnames(s), flds));
+            
+            for iP = 1:numel(partitionNames)
+                % strip off this partition's data and save it into a separate file
+                flds = partitionFieldLists.(partitionNames{iP});
+
+                % split the partition data from the struct array
+                partData = keepfields(element, flds);
+                element = rmfield(element, flds);
+
+                if isempty(callbackFn)
+                    file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, nChunks, chunk_ind, partitionNames{iP});
+                    save(file, '-v6', 'partData'); % assumes less than 2 GB per element, but much faster
+                else
+                    % pass this element, the location, the id number, and the partition to the callback
+                    callbackFn(partName, fullPath, c, partitionNames{iP});
+                end
+            end
+
+            % save this element
+            if isempty(callbackFn)
+                file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, nChunks, chunk_ind);   
+                save(file, '-v6', 'element'); % assumes less than 2 GB per element, but much faster
+            else
+                % pass this element, the location, the id number, and indicate not being a partition to the callback
+                callbackFn(element, fullPath, chunk_ind, '');
             end
         end
         
@@ -133,27 +183,16 @@ classdef SaveArrayIndividualized < handle
             p.addParameter('loadAllPartitions', false, @islogical);
             p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.addParameter('partialLoadSpec', [], @(x) isempty(x) || isstruct(x));
+            p.addParameter('use_parallel', ~isempty(gcp('nocreate')), @islogical);
             
             p.parse(varargin{:});
             
             callbackFn = p.Results.callbackFn;
             progress = p.Results.progress && exist('ProgressBar', 'class');
+            use_parallel = p.Results.use_parallel;
             
             locationName = TrialDataUtilities.Path.GetFullPath(locationName);
             
-            function s = structMerge(varargin)
-                s2c = cellfun(@struct2cell, varargin, 'UniformOutput', false);
-                flds = cellfun(@fieldnames, varargin, 'UniformOutput', false);
-                s = cell2struct(cat(1, s2c{:}), cat(1, flds{:}), 1);
-            end
-            
-%             function s = structMerge(s, s2)
-%                 flds = fieldnames(s2);
-%                 for f = 1:numel(flds)
-%                     s.(flds{f}) = s2.(flds{f});
-%                 end
-%             end
-%             
             % check that partitions are found
             partitionsAvailable = TrialDataUtilities.Data.SaveArrayIndividualized.listPartitions(locationName);
             if p.Results.loadAllPartitions
@@ -217,49 +256,70 @@ classdef SaveArrayIndividualized < handle
             nChunks = whichChunk(end);
             chunksToLoad = unique(whichChunk(partialLoadMask)); % critical that this ends up in sorted order
             nChunksToLoad = numel(chunksToLoad);
-            nPartitions = numel(partitions);
+            
+            partialLoadMaskByChunk = cell(nChunksToLoad, 1);
+            for iC = 1:nChunksToLoad
+                partialLoadMaskByChunk{iC} = partialLoadMask(whichChunk == chunksToLoad(iC));
+            end
             
             if progress
                 prog = ProgressBar(nChunksToLoad, str);
             end
             loadedChunks = cell(nChunksToLoad, 1);
-            for iC = 1:nChunksToLoad
-                chunk_ind = chunksToLoad(iC);
-                
-                if isempty(callbackFn)
-                    file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, nChunks, chunk_ind);   
-                    loaded = load(file, 'element');
-                    element = loaded.element;
-                else
-                    element = callbackFn(locationName, chunk_ind, '');
+            
+            if use_parallel
+                if progress, prog.enableParallel(); end
+                parfor iC = 1:nChunksToLoad
+                    chunk_ind = chunksToLoad(iC);
+                    loadedChunks{iC} = TrialDataUtilities.Data.SaveArrayIndividualized.internal_loadChunk(locationName, nChunks, chunk_ind, callbackFn, partitions, partialLoadMaskByChunk{iC});
+                    if progress, prog.update(iC); end %#ok<PFBNS>
                 end
-                
-                % load in any partition parts
-                if nPartitions > 0
-                    partData = cell(nPartitions, 1);
-                    for iP = 1:nPartitions
-                        if isempty(callbackFn)
-                            file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, nChunks, chunk_ind, partitions{iP});
-                            loaded = load(file); % assumes less than 2 GB per element, but much faster
-                            partData{iP} = loaded.partData;
-                        else
-                            % pass this element, the location, the id number, and the partition to the callback
-                            partData{iP} = callbackFn(locationName, chunk_ind, partitions{iP});
-                        end
-                    end
-                    element = structMerge(element, partData{:});
+            else
+                for iC = 1:nChunksToLoad
+                    chunk_ind = chunksToLoad(iC);
+                    loadedChunks{iC} = TrialDataUtilities.Data.SaveArrayIndividualized.internal_loadChunk(locationName, nChunks, chunk_ind, callbackFn, partitions, partialLoadMaskByChunk{iC});
+                    if progress, prog.update(iC); end
                 end
-                
-                % apply partial load mask
-                partialLoadMask_this_chunk = partialLoadMask(whichChunk == chunk_ind);
-                element = element(partialLoadMask_this_chunk);
-                
-                loadedChunks{iC} = TrialDataUtilities.makecol(element);
-                if progress, prog.increment(); end
             end
             if progress, prog.finish(); end
-            
+           
             S = cat(1, loadedChunks{:});
+        end
+        
+        function element = internal_loadChunk(locationName, nChunks, chunk_ind, callbackFn, partitions, partialLoadMask_this_chunk)
+            if isempty(callbackFn)
+                file = TrialDataUtilities.Data.SaveArrayIndividualized.generateElementFileName(locationName, nChunks, chunk_ind);   
+                loaded = load(file, 'element');
+                element = loaded.element;
+            else
+                element = callbackFn(locationName, chunk_ind, '');
+            end
+                
+            nPartitions = numel(partitions);
+            % load in any partition parts
+            if nPartitions > 0
+                partData = cell(nPartitions, 1);
+                for iP = 1:nPartitions
+                    if isempty(callbackFn)
+                        file = TrialDataUtilities.Data.SaveArrayIndividualized.generatePartitionElementFileName(locationName, nChunks, chunk_ind, partitions{iP});
+                        loaded = load(file); % assumes less than 2 GB per element, but much faster
+                        partData{iP} = loaded.partData;
+                    else
+                        % pass this element, the location, the id number, and the partition to the callback
+                        partData{iP} = callbackFn(locationName, chunk_ind, partitions{iP});
+                    end
+                end
+                element = structMerge(element, partData{:});
+            end
+                
+            % apply partial load mask
+            element = TrialDataUtilities.makecol(element(partialLoadMask_this_chunk));
+                
+            function s = structMerge(varargin)
+                s2c = cellfun(@struct2cell, varargin, 'UniformOutput', false);
+                flds = cellfun(@fieldnames, varargin, 'UniformOutput', false);
+                s = cell2struct(cat(1, s2c{:}), cat(1, flds{:}), 1);
+            end
         end
         
         function partitionMeta = loadPartitionMeta(locationName, varargin)
@@ -396,7 +456,7 @@ classdef SaveArrayIndividualized < handle
             p = inputParser();
             p.addParameter('mode', 'symlink', @ischar); % 'symlink' or 'copy'
             p.addParameter('overwrite', false, @islogical);
-            p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x));
+            p.addParameter('partitions', {}, @TrialDataUtilities.String.isstringlike);
             p.addParameter('linkAllPartitions', false, @islogical);
             p.parse(varargin{:});
             
