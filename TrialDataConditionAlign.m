@@ -4988,16 +4988,19 @@ classdef TrialDataConditionAlign < TrialData
         % Binned spike counts
         %%%%%%%
 
-        function [countsMat, tvec, hasSpikes, tBinEdges, td] = getSpikeBinnedCounts(td, unitName, varargin)
-            % countsMat is nTrials x T x nUnits, tvec is T x 1, hasSpikes
+        function [counts, tvec, hasSpikes, tBinEdges, td] = getSpikeBinnedCounts(td, unitName, varargin)
+            % if raggedCell is false (default): counts is nTrials x T x nUnits, tvec is T x 1
+            % if raggedCell is true (default): counts is nTrials { T x nUnits }, tvec is nTrials {T x 1}
             % is nTrials x nUnits
             p = inputParser;
             p.addParameter('binWidthMs', 1, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Causal, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('combine', false, @islogical);
+            p.addParameter('raggedCell', false, @islogical); % false, returns countsTensor
             p.parse(varargin{:});
             binWidth = p.Results.binWidthMs;
             binAlignmentMode = p.Results.binAlignmentMode;
+            raggedCell = p.Results.raggedCell;
 
             % pad a bit forward or backwards depending on binning
             td = td.padForTimeBinning(binWidth, binAlignmentMode, false, true);
@@ -5015,41 +5018,82 @@ classdef TrialDataConditionAlign < TrialData
             tMinByTrial = [timeInfo.start] - [timeInfo.zero];
             tMaxByTrial = [timeInfo.stop] - [timeInfo.zero];
 
-            [tvec, tbinsForHistc, tbinsValidMat] = binAlignmentMode.generateCommonBinnedTimeVector(...
+            [tvec_common, tbinsForHistc, tbinsValidMat] = binAlignmentMode.generateCommonBinnedTimeVector(...
                 tMinByTrial, tMaxByTrial, binWidth);
 
             % get spike blanking regions
-            blankIntervals = td.getSpikeBlankingRegions(unitName);
+            %blankIntervals = td.getSpikeBlankingRegions(unitName);
+            blankIntervals = {};
 
             % use hist c to bin the spike counts
             nUnits = size(spikeCell, 2);
             nTrials = size(spikeCell, 1);
-            countsMat = nan(nTrials, numel(tvec), nUnits);
-            for iTrial = 1:nTrials
-                if valid(iTrial)
-                    for iU = 1:nUnits
-                        if ~isempty(spikeCell{iTrial, iU})
-                            countsMat(iTrial, :, iU) = histcounts(spikeCell{iTrial, iU}, tbinsForHistc);
-                        else
-                            countsMat(iTrial, :, iU) = zeros(1, numel(tvec));
-                        end
-
-                        % update tbinsValidMat to reflect spike blanking intervals
-                        tvecValidMask = makecol(tbinsValidMat(iTrial, :));
-                        
-                        if ~isempty(blankIntervals)
-                            bi = blankIntervals{iTrial};
-                            for iInt = 1:size(bi, 1)
-                                % keep regions where the time bin starts after the
-                                % interval or ends before the interval
-                                tvecValidMask = tvecValidMask & makecol(tbinsForHistc(1:end-1) >= bi(iInt, 2) | tbinsForHistc(2:end) <= bi(iInt, 1));
+            
+            if ~raggedCell
+                tvec = tvec_common;
+                counts = nan(nTrials, numel(tvec), nUnits);
+                for iTrial = 1:nTrials
+                    if valid(iTrial)
+                        for iU = 1:nUnits
+                            if ~isempty(spikeCell{iTrial, iU})
+                                counts(iTrial, :, iU) = histcounts(spikeCell{iTrial, iU}, tbinsForHistc);
+                            else
+                                counts(iTrial, :, iU) = zeros(1, numel(tvec));
                             end
-                        end
 
-                        % mark NaN bins not valid on that trial
-                        countsMat(iTrial, ~tvecValidMask, iU) = NaN;
+                            % update tbinsValidMat to reflect spike blanking intervals
+                            tvecValidMask = makecol(tbinsValidMat(iTrial, :));
+
+                            if ~isempty(blankIntervals)
+                                bi = blankIntervals{iTrial};
+                                for iInt = 1:size(bi, 1)
+                                    % keep regions where the time bin starts after the
+                                    % interval or ends before the interval
+                                    tvecValidMask = tvecValidMask & makecol(tbinsForHistc(1:end-1) >= bi(iInt, 2) | tbinsForHistc(2:end) <= bi(iInt, 1));
+                                end
+                            end
+
+                            % mark NaN bins not valid on that trial
+                            counts(iTrial, ~tvecValidMask, iU) = NaN;
+                        end
                     end
                 end
+            else
+                [counts, tvec] = deal(cell(nTrials, 1));
+                for iTrial = 1:nTrials
+                    if valid(iTrial)
+                        % tbinsValidMat is nTrials x nTime, find first and last time
+                        tindFirst = find(tbinsValidMat(iTrial, :), 1, 'first');
+                        tindLast = find(tbinsValidMat(iTrial, :), 1, 'last');
+                        
+                        nTimeThis = tindLast - tindFirst + 1;
+                        counts{iTrial} = zeros(nTimeThis, nUnits);
+                        
+                        for iU = 1:nUnits
+                            if ~isempty(spikeCell{iTrial, iU})
+                                counts{iTrial}(:, iU) = histcounts(spikeCell{iTrial, iU}, tbinsForHistc(tindFirst:tindLast+1))';
+                            end
+
+%                             % update tbinsValidMat to reflect spike blanking intervals
+%                             tvecValidMask = makecol(tbinsValidMat(iTrial, :));
+% 
+%                             if ~isempty(blankIntervals)
+%                                 bi = blankIntervals{iTrial};
+%                                 for iInt = 1:size(bi, 1)
+%                                     % keep regions where the time bin starts after the
+%                                     % interval or ends before the interval
+%                                     tvecValidMask = tvecValidMask & makecol(tbinsForHistc(1:end-1) >= bi(iInt, 2) | tbinsForHistc(2:end) <= bi(iInt, 1));
+%                                 end
+%                             end
+% 
+%                             % mark NaN bins not valid on that trial
+%                             counts(iTrial, ~tvecValidMask, iU) = NaN;
+                        end
+                    else
+                        counts{iTrial} = zeros(0, nUnits);
+                    end
+                end
+                 
             end
 
             tBinEdges = tbinsForHistc;

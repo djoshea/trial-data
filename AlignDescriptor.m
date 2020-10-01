@@ -1064,6 +1064,12 @@ classdef AlignDescriptor
             ad.outsideOfTrialMode = AlignDescriptor.TRUNCATE;
             ad = ad.update();
         end
+        
+        function ad = setOutsideOfTrialIgnore(ad)
+            ad.warnIfNoArgOut(nargout);
+            ad.outsideOfTrialMode = AlignDescriptor.IGNORE;
+            ad = ad.update();
+        end
 
         % store an abbreviation for an event name
         function ad = abbrev(ad, eventName, abbrev)

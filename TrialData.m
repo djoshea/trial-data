@@ -6238,7 +6238,9 @@ classdef TrialData
         
         function nUnitsTotal = computeSpikeUnitCountFromName(td, unitNames)
             unitNames = string(unitNames);
-            if strlength(unitNames) == 0
+            if isempty(unitNames)
+                nUnitsTotal = 0;
+            elseif strlength(unitNames) == 0
                 nUnitsTotal = 0;
             else
                 [~, ~, ~, ~, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames);
