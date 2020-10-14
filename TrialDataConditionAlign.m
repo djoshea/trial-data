@@ -2256,7 +2256,7 @@ classdef TrialDataConditionAlign < TrialData
                 indLast = nan(nTrials, nC);
                 for iF = 1:nTrials
                     for iC = 1:nC
-                        mask = time_cell{iF, iC} <= new_trialEnd(iR);
+                        mask = time_cell{iF, iC} <= new_trialEnd(iF);
                         if any(mask)
                             indLast(iF, iC) = find(mask, 1, 'first');
                         else
@@ -2275,7 +2275,7 @@ classdef TrialDataConditionAlign < TrialData
                 indFirst = nan(nTrials, nC);
                 for iF = 1:nTrials
                     for iC = 1:nC
-                        mask = time_cell{iF, iC} >= new_trialStart(iR);
+                        mask = time_cell{iF, iC} >= new_trialStart(iF);
                         if any(mask)
                             indFirst(iF, iC) = find(mask, 1, 'first');
                         else
@@ -5067,6 +5067,7 @@ classdef TrialDataConditionAlign < TrialData
                         tindLast = find(tbinsValidMat(iTrial, :), 1, 'last');
                         
                         nTimeThis = tindLast - tindFirst + 1;
+                        tvec{iTrial} = tvec_common(tindFirst:tindLast);
                         counts{iTrial} = zeros(nTimeThis, nUnits);
                         
                         for iU = 1:nUnits
@@ -6743,9 +6744,9 @@ classdef TrialDataConditionAlign < TrialData
                 % C x U
                 hasSpikesData = cellfun(@(thisC) ~cellfun(@isempty, thisC), times, 'UniformOutput', false);
                 % C x 1
-                hasSpikesAnyAlignData = arrayfun(@(iC) TensorUtils.anyMultiDim(cat(2, hasSpikesData{:, iC}), 2), (1:nConditionsUsed)', 'UniformOutput', false);
+                hasSpikesAnyUnit = arrayfun(@(iC) TensorUtils.anyMultiDim(cat(2, hasSpikesData{iC, :}), 2), (1:nConditionsUsed)', 'UniformOutput', false);
 
-                listByConditionMask = hasSpikesAnyAlignData;
+                listByConditionMask = hasSpikesAnyUnit;
             else
                 listByConditionMask = cellfun(@(x) true(size(x)), listByCondition, 'UniformOutput', false);
             end
