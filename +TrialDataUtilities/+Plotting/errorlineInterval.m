@@ -15,13 +15,20 @@ function [hMean, hError] = errorlineInterval(x,y,lo,hi, varargin)
    
     axh = p.Results.axh;
     if isempty(axh)
-        axh = gca;
+        axh_args = {};
+        hold_args = {};
+        newplot;
+    else
+        hold_args = {axh};
+        axh_args = {'Parent', axh};
     end
 
-    hMean = plot(x,y, '-', 'Parent', axh, 'Color', p.Results.Color, ...
+    hMean = plot(x,y, '-', axh_args{:}, 'Color', p.Results.Color, ...
         'LineWidth', p.Results.LineWidth, p.Unmatched);
-    hold(axh, 'on');
-    hError = plot([x'; x'], [lo'; hi'], 'Parent', axh, ...
+    hold(hold_args{:}, 'on');
+    hError = plot([x'; x'], [lo'; hi'], axh_args{:}, ...
         'Color', p.Results.Color, 'LineWidth', p.Results.LineWidth);
     TrialDataUtilities.Plotting.hideInLegend(hError);
+    hold(hold_args{:}, 'off');
+    
 end

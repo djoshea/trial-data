@@ -2108,8 +2108,8 @@ classdef TensorUtils
         end
         
         function denoised = pcaDenoiseAlongDim(t, basisDim, numComponents, varargin)
-            [coeff, score] = TensorUtils.pcaAlongDim(t, basisDim, 'NumComponents', numComponents);
-            denoised = TensorUtils.linearCombinationAlongDimension(score, basisDim, coeff);
+            [coeff, score, ~, ~, ~, mu] = TensorUtils.pcaAlongDim(t, basisDim, 'NumComponents', numComponents);
+            denoised = TensorUtils.linearCombinationAlongDimension(score, basisDim, coeff) + mu;
         end
         
         function denoised = pcaDenoiseMultiDim(t, basisDims, numComponents, varargin)

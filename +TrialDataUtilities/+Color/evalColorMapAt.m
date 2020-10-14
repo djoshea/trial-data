@@ -16,8 +16,10 @@ function ceval = evalColorMapAt(cmap, at, clim)
     at = clamp(at, clim(1), clim(2));
     
     cmapOrigAt = (0:N-1) / (N-1) * (clim(2)-clim(1)) + clim(1);
-    
+    cmap = TrialDataUtilities.Color.convert('RGB->LCH', cmap);
     ceval = interp1(cmapOrigAt, cmap, at);
+    ceval = TrialDataUtilities.Color.convert('LCH>RGB', ceval);
+    
     ceval = max(min(ceval, 1), 0);
 end
 
@@ -25,3 +27,4 @@ function val = clamp(val, lo, hi)
     val(val < lo) = lo;
     val(val > hi) = hi;
 end
+

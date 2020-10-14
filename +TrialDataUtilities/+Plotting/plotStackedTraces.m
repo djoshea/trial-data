@@ -286,7 +286,7 @@ traceHighs = traceOffsets + rangesNorm;
 traceLows = traceOffsets;
 dataHighOrig = dataLowOrig + rangesOrig;
 
-ylim([nanmin(traceLows) nanmax(traceHighs)]);
+ylim([nanmin(traceLows) nanmax(traceHighs) + eps]);
 
 if strcmp(p.Results.showLabels, 'auto')
     showLabels = nTraces < 25;
