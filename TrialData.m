@@ -3903,6 +3903,7 @@ classdef TrialData
             % then the weightedCombination is used
             % then the averaging is performed
             p.addParameter('slice', {}, @(x) true); % this is used to index specifically into each sample
+            p.addParameter('sliceSelectSubChannels', {}, @(x) true);
             p.addParameter('linearCombinationWeights', [], @(x) true); % alternatively, take a weighted combination over samples in the slice, size should be [size of analog channel, number of weighted combinations]
 
 			% these apply to the weighted combination operation
@@ -3917,7 +3918,14 @@ classdef TrialData
             cd = td.channelDescriptorsByName.(groupName);
 
             sliceArgs = p.Results.slice;
-            if ~isempty(sliceArgs) && ~iscell(sliceArgs)
+            if isempty(sliceArgs) && ~isempty(p.Results.sliceSelectSubChannels)
+                % lookup channels by name
+                sliceSelectSubChannels = string(p.Results.sliceSelectSubChannels);
+                [allNamedChannels, channelColIdx] = td.listAnalogChannelsInGroup(groupName);
+                [tf, ind] = ismember(sliceSelectSubChannels, allNamedChannels);
+                assert(all(tf), 'Some specified sliceSelectSubChannels not found in group %s', groupName);
+                sliceArgs = {channelColIdx(ind)};
+            elseif ~isempty(sliceArgs) && ~iscell(sliceArgs)
                 sliceArgs = {sliceArgs};
             end
             sampleSize = cd.getSampleSize(td);
@@ -7430,7 +7438,8 @@ classdef TrialData
                 cds = cds(~has);
             elseif isstruct(cds)
                 flds = fieldnames(cds);
-                has = structfun(@(cd) td.hasChannel(cd.name), cds);
+                %has = structfun(@(cd) td.hasChannel(cd.name), cds);
+                has = structfun(@(cd) isfield(td.channelDescriptorsByName, cd.name), cds);
                 cds = rmfield(cds, flds(has));
             else
                 error('Must be cell array or struct of ChannelDescriptors');
