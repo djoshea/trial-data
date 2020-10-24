@@ -495,7 +495,11 @@ classdef TensorUtils
                 elseif islogical(maskedTensor)
                     fillWith = false;
                 else
-                    val = maskedTensor(1);
+                    if isempty(maskedTensor)
+                        val = zeros(1,1, 'like', maskedTensor);
+                    else
+                        val = maskedTensor(1);
+                    end
                     val(1) = missing;
                     fillWith = val;
                 end
@@ -1161,7 +1165,7 @@ classdef TensorUtils
             %       o3 = sub2ind(s4, i4) == s4;
             % This ensures that along out dim 1, all elements of in-dim 1
             % will remain together for dim2=1, then all elements along
-            % in-dim 1 for dim2=2, etc. That is, the first dimension will
+            % in-dim 1 for in-dim2=2, etc. That is, the first dimension will
             % be swept with the later dimensions constant. This is the
             % reverse of how you would implement this using nested for loops,
             % i.e. [1 2] means for j = 1:size(in, 2), for i = 1:size(in, 1)
@@ -2394,5 +2398,10 @@ classdef TensorUtils
             end
         end
 
+        function data = smoothAlongDim(data, dim, varargin)
+            % same args as smooth excluding the first
+           
+            data = TensorUtils.mapSlices(@(d) smooth(d, varargin{:}), dim, data);
+        end
     end
 end

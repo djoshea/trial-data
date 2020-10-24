@@ -2592,26 +2592,28 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td;
                 else
                     tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
-                    tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                    tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                baselineByCondition = tdBaseline.getAnalogMeanOverTimeEachTrialGroupMeans(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
                 baselineForTrial = nanvec(tdBaseline.nTrials);
                 mask = ~isnan(tdBaseline.conditionIdx);
                 baselineForTrial(mask) = baselineByCondition(tdBaseline.conditionIdx(mask));
-                data = cellfun(@minus, data, num2cell(baselineForTrial), 'UniformOutput', false);
+                baselineForTrial_splitTrials = mat2cell(baselineForTrial, ones(size(baselineForTrial, 1), 1), size(baselineForTrial, 2));
+                data = cellfun(@minus, data, baselineForTrial_splitTrials, 'UniformOutput', false);
             end
 
             % subtract baseline on trial by trial basis
             if ~isempty(p.Results.subtractTrialBaselineAt)
                 subtractTrialBaselineAt = p.Results.subtractTrialBaselineAt;
-                if strcmp(p.Results.subtractTrialBaselineAt, '*')
+                if strcmp(subtractTrialBaselineAt, '*')
                     tdBaseline = td;
                 else
-                    tdBaseline = td.align(p.Results.subtractTrialBaselineAt);
+                    tdBaseline = td.align(subtractTrialBaselineAt);
                     tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
                 baseline = tdBaseline.getAnalogMeanOverTimeEachTrial(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
-                data = cellfun(@minus, data, num2cell(baseline), 'UniformOutput', false);
+                baseline_splitTrials = mat2cell(baseline, ones(size(baselineForTrial, 1), 1), size(baselineForTrial, 2));
+                data = cellfun(@minus, data, baseline_splitTrials, 'UniformOutput', false);
             end
 
             % subtract manual offset from each trial
@@ -2704,9 +2706,31 @@ classdef TrialDataConditionAlign < TrialData
             meansCell = td.groupElementsRandomized(means);
         end
 
-        function [means, tvec] = getAnalogMeanOverTimeGroupMeansRandomized(td, name, varargin)
+        function [means, tvec] = getAnalogMeanOverTimeEachTrialGroupMeansRandomized(td, name, varargin)
             [meansCell, tvec] = td.getAnalogMeanOverTimeEachTrialGroupedRandomized(name, varargin{:});
             means = cellfun(@nanmean, meansCell);
+        end
+        
+        function [meanMat, semMat, stdMat, nTrialsMat] = getAnalogMeanOverTimeEachTrialGroupMeans(td, name, varargin)
+            % *Mat will be nConditions x T x ... matrices
+            import TrialDataUtilities.Data.nanMeanSemMinCount;
+            p = inputParser();
+            p.addParameter('minTrials', 1, @isscalar); % minimum trial count to average
+            p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            minTrials = p.Results.minTrials;
+
+            meansGrouped = td.getAnalogMeanOverTimeEachTrialGrouped(name, p.Unmatched);
+
+            [meanMat, semMat, nTrialsMat, stdMat] = deal(nan([td.nConditions, 1]));
+            for iC = 1:td.nConditions
+                if ~isempty(meansGrouped{iC})
+                    [meanMat(iC, :, :, :, :, :, :), semMat(iC, :, :, :, :, :, :), ...
+                        nTrialsMat(iC, :, :, :, :, :, :), stdMat(iC, :, :, :, :, :, :)] = ...
+                        nanMeanSemMinCount(meansGrouped{iC}, 1, minTrials, p.Results.minTrialFraction);
+                end
+            end
         end
 
         function [rms, ssqByTrial, countByTrial] = getAnalogRMSEachTrial(td, name, varargin)
@@ -3033,7 +3057,7 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
                     tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baselineByCondition = tdBaseline.getAnalogMeanOverTimeGroupMeans(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
+                baselineByCondition = tdBaseline.getAnalogMeanOverTimeEachTrialGroupMeans(name, 'singleTimepointTolerance', p.Results.singleTimepointTolerance);
                 baselineForTrial = nanvec(tdBaseline.nTrials);
                 mask = ~isnan(tdBaseline.conditionIdx);
                 baselineForTrial(mask) = baselineByCondition(tdBaseline.conditionIdx(mask));
@@ -3518,6 +3542,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
             p.addParameter('interpolateMethod', 'linear', @ischar);
 
+            p.addParameter('sliceSelectSubChannels', {}, @(x) true);
             p.addParameter('slice', {}, @(x) true); % subscript args to slice the data from each sample
             p.addParameter('averageOverSlice', false, @islogical); % average within each slice
 
@@ -3532,7 +3557,7 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
 
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName, ...
-                'slice', p.Results.slice, 'averageOverSlice', p.Results.averageOverSlice, ...
+                'slice', p.Results.slice, 'sliceSelectSubChannels',  p.Results.sliceSelectSubChannels, 'averageOverSlice', p.Results.averageOverSlice, ...
                 'linearCombinationWeights', p.Results.linearCombinationWeights, ...
                 'replaceNaNWithZero', p.Results.replaceNaNWithZero, ...
                 'keepNaNIfAllNaNs', p.Results.keepNaNIfAllNaNs, ...
@@ -3575,9 +3600,9 @@ classdef TrialDataConditionAlign < TrialData
                     tdBaseline = td;
                 else
                     tdBaseline = td.align(p.Results.subtractConditionBaselineAt);
-                    tdBaseline = tdBaseline.setManualValidTo(~td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
+                    tdBaseline = tdBaseline.setManualValidTo(td.valid); % this shouldn't matter since the samples will be nans anyway, but just in case
                 end
-                baselineByCondition = tdBaseline.getAnalogChannelGroupMeanOverTimeGroupMeans(groupName, 'singleTimepointTolerance', p.Results.singleTimepointTolerance, ...
+                baselineByCondition = tdBaseline.getAnalogChannelGroupMeanOverTimeEachTrialGroupMeans(groupName, 'singleTimepointTolerance', p.Results.singleTimepointTolerance, ...
                     'slice', p.Results.slice, ...
                     'linearCombinationWeights', p.Results.linearCombinationWeights, ...
                     'applyScaling', p.Results.applyScaling);
@@ -3586,7 +3611,8 @@ classdef TrialDataConditionAlign < TrialData
                 baselineForTrial = nan(sz);
                 mask = tdBaseline.valid;
                 baselineForTrial(mask, :, :, :, :, :, :, :, :) = baselineByCondition(tdBaseline.conditionIdx(mask), :, :, :, :, :, :, :, :);
-                data = cellfun(@(data, baseline) bsxfun(@minus. data, baseline), data, num2cell(baselineForTrial), 'UniformOutput', false);
+                baselineForTrial_splitTrials = mat2cell(baselineForTrial, ones(size(baselineForTrial, 1), 1), size(baselineForTrial, 2));
+                data = cellfun(@minus, data, baselineForTrial_splitTrials, 'UniformOutput', false);
             end
 
             % subtract baseline on trial by trial basis
@@ -3601,7 +3627,7 @@ classdef TrialDataConditionAlign < TrialData
                     'slice', p.Results.slice, ...
                     'linearCombinationWeights', p.Results.linearCombinationWeights, ...
                     'applyScaling', p.Results.applyScaling);
-                data = cellfun(@(data, baseline) bsxfun(@minus, data, baseline), data, TensorUtils.splitAlongDimension(baseline, 1), 'UniformOutput', false);
+                data = cellfun(@minus, data, TensorUtils.splitAlongDimension(baseline, 1), 'UniformOutput', false);
             end
 
             % subtract manual offset from each trial
@@ -3879,7 +3905,7 @@ classdef TrialDataConditionAlign < TrialData
         function [dataCell, tvec] = getAnalogChannelGroupAsTensorGrouped(td, nameCell, varargin)
             % dataCell will be size(td.conditions)
             % contents will be nTrials x T x nChannels
-            tdValid = td.selectValidTrials();
+            tdValid = td.selectValidTrials(); % saves memory to slice trials first to avoid nan-fills on large tensors
             [data, tvec] = tdValid.getAnalogChannelGroupAsTensor(nameCell, varargin{:});
             dataCell = tdValid.groupElements(data);
         end
@@ -4033,11 +4059,11 @@ classdef TrialDataConditionAlign < TrialData
             meansCell = td.groupElements(means);
         end
         
-        function means = getAnalogChanneMeanOverTimeGroupMeans(td, name, varargin)
-            meansCell = td.getAnalogChannelGroupMeanOverTimeEachTrialGrouped(name, varargin{:});
-            temp = cellfun(@(x) mean(x, 1, 'omitnan'), meansCell, 'UniformOutput', false);
-            means = cat(1, temp{:});
-        end
+%         function means = getAnalogChanneMeanOverTimeGroupMeans(td, name, varargin)
+%             meansCell = td.getAnalogChannelGroupMeanOverTimeEachTrialGrouped(name, varargin{:});
+%             temp = cellfun(@(x) mean(x, 1, 'omitnan'), meansCell, 'UniformOutput', false);
+%             means = cat(1, temp{:});
+%         end
 
         function [meanMat, semMat, stdMat, nTrialsMat] = getAnalogChannelGroupMeanOverTimeEachTrialGroupMeans(td, name, varargin)
             % *Mat will be nConditions x T x ... matrices
@@ -4505,7 +4531,7 @@ classdef TrialDataConditionAlign < TrialData
             values = cellfun(@getUnique, vCell, 'UniformOutput', false);
 
             function values = getUnique(vals)
-                if ~iscell(vals)
+                if ~iscell(vals) && ~isstring(vals)
                     vals = removenan(vals);
                 end
                 values = unique(vals);
@@ -8416,6 +8442,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('quick', false, @islogical);
             p.addParameter('clickable', false, @islogical);
+            p.addParameter('Clipping', false, @islogical);
 
             p.addParameter('axh', [], @(x) true); % pass thru to getRequestedPlotAxis
             p.addParameter('deferUpdate', false, @islogical);
@@ -8431,7 +8458,8 @@ classdef TrialDataConditionAlign < TrialData
             yOffset = p.Results.yOffset;
             zOffset = p.Results.zOffset;
 
-            plotOptions = [{'Clipping', 'off'} p.Results.plotOptions{:}];
+            clipping = p.Results.Clipping;
+            plotOptions = [{'Clipping', clipping} p.Results.plotOptions{:}];
 
             % plot the mean and sem for an analog channel vs. time within
             % each condition
@@ -8581,7 +8609,7 @@ classdef TrialDataConditionAlign < TrialData
                             if numel(tvec) > 1
                                 if plotErrorY
                                     hShade = TrialDataUtilities.Plotting.errorshade(tvec + tOffset + xOffset, dmat + yOffset, ...
-                                        errmat, app(iCond).Color, 'axh', axh, ...
+                                        errmat, app(iCond).Color, 'axh', axh, 'Clipping', clipping, ...
                                         'alpha', p.Results.errorAlpha, 'z', zOffset, 'showLine', false); % we'll plot the mean line ourselves
                                     TrialDataUtilities.Plotting.hideInLegend(hShade);
                                 end
