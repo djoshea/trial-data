@@ -149,7 +149,7 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
             'showPlot', showPlot);
     else
         % use the specified splice point (optionally per trajectory)
-        szPre = size(dataPre);
+        szPre = TensorUtils.sizeNDims(dataPre, 3);
         opts.joinIdxInPre = TensorUtils.scalarExpandToSize(joinIdxInPre, szPre(3:end));
         opts.nextIdxInPost = TensorUtils.scalarExpandToSize(nextIdxInPost, szPre(3:end));
     end
