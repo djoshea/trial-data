@@ -7,6 +7,7 @@ function hs = errorshadeInterval(x, lo, hi, color, varargin)
     p.addParameter('axh', [], @(x) true);
     p.addParameter('alpha', 1, @isscalar);
     p.addParameter('z', 0, @isscalar); % used for visual stacking on 2-d plots
+    p.addParameter('Clipping', true, @islogical);
     p.parse(varargin{:}); 
     
     color = TrialDataUtilities.Plotting.convertColorsToMatrix(color);
@@ -66,7 +67,7 @@ function hs = errorshadeInterval(x, lo, hi, color, varargin)
         mask = regionStart:regionEnd;
         
         hs = shadeSimple(axh, x(mask), y1(mask), y2(mask), z, 'FaceColor', shadeColor, ...
-            'alpha', p.Results.alpha, p.Results.shadeArgs{:});
+            'alpha', p.Results.alpha, 'Clipping', p.Results.Clipping, p.Results.shadeArgs{:});
         TrialDataUtilities.Plotting.hideInLegend(hs);
         
         offset = regionEnd + 1;
@@ -79,6 +80,7 @@ p = inputParser();
 p.addParameter('FaceColor', [0.8 0.8 1], @(x) true);
 p.addParameter('EdgeColor', 'none', @(x) true);
 p.addParameter('alpha', 1, @isscalar);
+p.addParameter('Clipping', true, @islogical);
 p.KeepUnmatched = false;
 p.parse(varargin{:});
 
@@ -91,7 +93,7 @@ zv = z * ones(size(xv));
 
 ha = patch(xv, yv, zv, 'k', 'Parent', axh);
 set(ha, 'FaceColor', faceColor, ...
-    'EdgeColor', edgeColor, 'Parent', axh, 'FaceAlpha', p.Results.alpha);
+    'EdgeColor', edgeColor, 'Parent', axh, 'FaceAlpha', p.Results.alpha, 'Clipping', p.Results.Clipping);
 
 % hide shading from legend
 set(get(get(ha, 'Annotation'), 'LegendInformation'), 'IconDisplayStyle', 'off');

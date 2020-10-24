@@ -6,8 +6,13 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
     p.addParameter('showLine', true, @islogical);
     p.addParameter('lineArgs', {}, @iscell);
     p.addParameter('lineAlpha', 1, @isscalar);
+    p.addParameter('Clipping', true, @islogical);
     p.KeepUnmatched = true;
     p.parse(varargin{:});
+    
+    x = makecol(x);
+    ym = makecol(ym);
+    ye = makecol(ye);
     
     y1 = ym - ye;
     y2 = ym + ye;
@@ -19,7 +24,7 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
     end
    
     hold(axh, 'on');
-    hs = TrialDataUtilities.Plotting.errorshadeInterval(x, y1, y2, color, 'axh', axh, p.Unmatched);
+    hs = TrialDataUtilities.Plotting.errorshadeInterval(x, y1, y2, color, 'axh', axh, 'Clipping', p.Results.Clipping, p.Unmatched);
     
     if p.Results.showLine
         if p.Results.lineAlpha < 1
@@ -34,7 +39,7 @@ function [hl, hs] = errorshade(x, ym, ye, color, varargin)
 %                 zv = z*ones(size(v));
 %                 hl = plot(x, ym, zv, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
 %             else
-                hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
+                hl = plot(x, ym, 'Color', color, 'Parent', axh, 'Clipping', p.Results.Clipping, p.Results.lineArgs{:});
 %             end
         end
     else
