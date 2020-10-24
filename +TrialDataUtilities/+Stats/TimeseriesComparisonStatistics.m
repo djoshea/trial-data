@@ -175,10 +175,11 @@ classdef TimeseriesComparisonStatistics
             % and determine the number of timepoints
             Tmat = cellfun(@(x) size(x, 2), dataAxisFirst);
             T = max(Tmat(:));
+            C = size(dataAxisFirst{1}, 3);
 
             nArg = nargout - 1;
 %             nArg = nargout(fn);
-            [varargout{1:nArg}] = deal(nan([T, sizeOtherAxes]));
+            [varargout{1:nArg}] = deal(nan([T, sizeOtherAxes, C]));
 
             for iOtherAxes = 1:nOtherAxes
                 % nAlongAxis x 1
@@ -187,7 +188,7 @@ classdef TimeseriesComparisonStatistics
 
                 for iArg = 1:nArg
                     argPerm = ipermute(argThis{iArg}, dimPerm); % reorient the way it was
-                    varargout{iArg}(:, iOtherAxes) = argThis{iArg};
+                    varargout{iArg}(:, iOtherAxes, :) = reshape(argPerm, [T 1 C]);
                 end
             end
 
@@ -235,22 +236,30 @@ classdef TimeseriesComparisonStatistics
         end
 
         function pValVsTime = kwFun(inCell)
+            % supports channels on dim 3
             [dataCat, group] = TensorUtils.catWhich(1, inCell{:});
-            T = size(dataCat, 2);
-            pValVsTime = nanvec(T);
+            T = size(dataCat, 2); % tRials x Time (x channels)
+            C = size(dataCat, 3);
+            pValVsTime = nan(T, C);
             for iT = 1:T
-                keep = ~isnan(dataCat(:, iT));
-                pValVsTime(iT) = kruskalwallis(dataCat(keep, iT), group(keep), 'off');
+                for iC = 1:C
+                    keep = ~isnan(dataCat(:, iT, iC));
+                    pValVsTime(iT, iC) = kruskalwallis(dataCat(keep, iT, iC), group(keep), 'off');
+                end
             end
         end
 
         function pValVsTime = anova1Fun(inCell)
+            % supports channels on dim 3
             [dataCat, group] = TensorUtils.catWhich(1, inCell{:});
             T = size(dataCat, 2);
-            pValVsTime = nanvec(T);
+            C = size(dataCat, 3);
+            pValVsTime = nan(T, C);
             for iT = 1:T
-                keep = ~isnan(dataCat(:, iT));
-                pValVsTime(iT) = anova1(dataCat(keep, iT), group(keep), 'off');
+                for iC = 1:C
+                    keep = ~isnan(dataCat(:, iT, iC));
+                    pValVsTime(iT, iC) = anova1(dataCat(keep, iT, iC), group(keep), 'off');
+                end
             end
         end
     end
