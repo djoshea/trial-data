@@ -2284,6 +2284,13 @@ classdef TensorUtils
             % it is used to propagate uncertainty estimates along the new linear combinations by adding in 
             % quadrature.
             % i.e. out = sqrt(|w1| * t1^2 + |w2| * t2^2)
+            %
+            % this is appropriate for standard error of the mean. Let std_i be the standard deviation along dim i
+            % and se_i be the standard error of the mean s_i = std_i / sqrt(n_i).
+            % then in projecting through W, variances add:
+            % se^2 = (w_1 se_1)^2 + (w2 se_2)^2 + ...
+            % se - sqrt(
+            % then the 
 
             p = inputParser();
             p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero

@@ -1,4 +1,8 @@
-function ceval = evalColorMapAt(cmap, at, clim)
+function ceval = evalColorMapAt(cmap, at, clim, colorspace)
+    if nargin < 4
+        colorspace = 'luv'; % interpolation colorspace
+    end
+    
     if isa(cmap, 'function_handle')
         cmap = cmap(1000);
     end
@@ -16,9 +20,13 @@ function ceval = evalColorMapAt(cmap, at, clim)
     at = clamp(at, clim(1), clim(2));
     
     cmapOrigAt = (0:N-1) / (N-1) * (clim(2)-clim(1)) + clim(1);
-    cmap = TrialDataUtilities.Color.convert('RGB->luv', cmap);
-    ceval = interp1(cmapOrigAt, cmap, at);
-    ceval = TrialDataUtilities.Color.convert('luv>RGB', ceval);
+    if strcmp(colorspace, 'rgb')
+        ceval = interp1(cmapOrigAt, cmap, at);
+    else
+        cmap = TrialDataUtilities.Color.convert(sprintf('RGB->%s', colorspace), cmap);
+        ceval = interp1(cmapOrigAt, cmap, at);
+        ceval = TrialDataUtilities.Color.convert(sprintf('%s->RGB', colorspace), ceval);
+    end
     
     ceval = max(min(ceval, 1), 0);
 end
