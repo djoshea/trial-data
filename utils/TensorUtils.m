@@ -2289,8 +2289,7 @@ classdef TensorUtils
             % and se_i be the standard error of the mean s_i = std_i / sqrt(n_i).
             % then in projecting through W, variances add:
             % se^2 = (w_1 se_1)^2 + (w2 se_2)^2 + ...
-            % se - sqrt(
-            % then the 
+            % se - sqrt(w_1^2 se_1^2 + w2^2 se_2^2 + ... )
 
             p = inputParser();
             p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero
@@ -2326,7 +2325,7 @@ classdef TensorUtils
 
             % should be nNew x prod(size-t-other-dims)
             % we'll take sqrt later
-            reweightMat = abs(weightsNewByOld) * tpMat.^2;
+            reweightMat = (weightsNewByOld).^2 * tpMat.^2;
 
             if p.Results.normalizeCoefficientsByNumNonNaN
                 % do the reweighting
