@@ -3771,7 +3771,7 @@ classdef TrialDataConditionAlign < TrialData
                 % this is a much faster way of fetching the data whole, and
                 % getAnalogChannelGroup will do the resampling
                 colIdx = td.getAnalogChannelColumnIdxInGroup(names);
-                dataCell = cellvec(td.nTrials);
+%                 dataCell = cellvec(td.nTrials);
                 [dataCell, timeCell] = td.getAnalogChannelGroup(groupName, 'timeDelta', p.Results.timeDelta, 'slice', colIdx, ...
                     'includeEdgeBins', true, 'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
                     'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
@@ -3979,7 +3979,7 @@ classdef TrialDataConditionAlign < TrialData
             snr = squeeze(quantile(snr, q, 2));
         end
         
-        function [snr_c, range_c, noise_c] = getAnalogChannelGroupSNREachCondition(td, unitName, varargin)
+        function [snr_c, range_c, noise_c] = getAnalogChannelGroupSNREachCondition(td, groupName, varargin)
             p = inputParser();
             p.addParameter('noiseQuantile', 0.95, @isscalar);
             p.addParameter('rangeQuantile', 0.95, @(x) isscalar(x) || numel(x) == 2); % either width of centered quantile band (e.g. 0.95 --> 0.025 to 0.975) or [low high]
@@ -4915,11 +4915,12 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('combine', false, @islogical);
+            p.addParameter('slice', [], @(x) true); % for subselecting units from array
             p.addParameter('combineAligns', false, @islogical);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.parse(varargin{:});
 
-            timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine);
+            timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine, 'slice', p.Results.slice);
             
             if ~p.Results.combineAligns
                 timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, ...
@@ -5022,6 +5023,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('binWidthMs', 1, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Causal, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('combine', false, @islogical);
+            p.addParameter('slice', [], @(x) true); % for subselecting units from array
             p.addParameter('raggedCell', false, @islogical); % false, returns countsTensor
             p.parse(varargin{:});
             binWidth = p.Results.binWidthMs;
@@ -5030,7 +5032,7 @@ classdef TrialDataConditionAlign < TrialData
 
             % pad a bit forward or backwards depending on binning
             td = td.padForTimeBinning(binWidth, binAlignmentMode, false, true);
-            spikeCell = td.getSpikeTimes(unitName, 'includePadding', true, 'combine', p.Results.combine);
+            spikeCell = td.getSpikeTimes(unitName, 'includePadding', true, 'combine', p.Results.combine, 'slice', p.Results.slice);
 
             % provide an indication as to which trials have spikes
             hasSpikes = ~cellfun(@isempty, spikeCell);
@@ -7035,10 +7037,11 @@ classdef TrialDataConditionAlign < TrialData
 
             axisMarginLeft = p.Results.axisMarginLeft;
             if isempty(axisMarginLeft)
+                scale = getFigureSizeScale();
                 if td.isGrouped
-                    axisMarginLeft = 2.5;
+                    axisMarginLeft = 1.5 * scale;
                 else
-                    axisMarginLeft = 0.5;
+                    axisMarginLeft = 0.5 * scale;
                 end
             end
             if ~p.Results.quick
@@ -7195,7 +7198,7 @@ classdef TrialDataConditionAlign < TrialData
             end 
         end
         
-        function data = catDataOverAlignWithSeparator(td, time_dim, dataCell)
+        function data = catDataOverAlignWithSeparator(td, time_dim, dataCell) %#ok<INUSL>
             sz = size(dataCell{1});
             
             separator_sz = sz;
@@ -7435,7 +7438,7 @@ classdef TrialDataConditionAlign < TrialData
 
                 % plot one condition at a time
                 for iCond = 1:nConditionsUsed
-                    zlevel = iCond / (2*nConditionsUsed);
+%                     zlevel = iCond / (2*nConditionsUsed);
 
                     % determine whether we can plot all trials simultaneously
                     % (matrix format with shared time vector) or one at a time
@@ -7675,7 +7678,7 @@ classdef TrialDataConditionAlign < TrialData
             if quick
                 axisStyleX = 'label';
                 axisStyleY = 'label';
-                axisStyleZ = 'label';
+%                 axisStyleZ = 'label';
             end
             if D == 1
                 if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')

@@ -3971,7 +3971,7 @@ classdef TrialData
                     emptySlice = impl.convertDataCellOnAccess(1, emptySlice);
                 end
 
-                if ~isempty(p.Results.slice)
+                if ~isempty(sliceArgs)
                     % take a slice through the data
                     for i = 1:numel(data)
                         if ~isempty(data{i})
@@ -6261,9 +6261,10 @@ classdef TrialData
             % if combine is true, all spikes will be interleaved
             p = inputParser();
             p.addParameter('combine', false, @islogical);
+            p.addParameter('slice', [], @(x) true); % for subselecting units from array
             p.parse(varargin{:});
 
-            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames);
+            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames, 'times', p.Results.slice);
             nUnits = sum(nColumnsPerName);
             nFields = numel(fieldList);
             timesCellByUnit = cell(td.nTrials, nUnits);
@@ -7098,7 +7099,7 @@ classdef TrialData
         end
 
         function [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName, cdsByField] = ...
-                getSpikeChannelMultiAccessInfo(td, names, type)
+                getSpikeChannelMultiAccessInfo(td, names, type, slice)
             % internal method for arranging efficient access to multiple
             % array or non array spike fields at once. also supports
             % event channels and analog channels (marked as the time samples)
@@ -7118,6 +7119,9 @@ classdef TrialData
             if nargin < 3
                 type = 'times';
             end
+            if nargin < 4
+                slice = [];
+            end
 
             if isnumeric(names)
                 names = td.lookupSpikeChannelByIndex(names);
@@ -7136,6 +7140,17 @@ classdef TrialData
                 otherwise
                     error('Unknown type %s', type);
             end
+            
+            if ~isempty(slice)
+                if iscell(slice)
+                    assert(numel(slice) == numel(names));
+                elseif numel(names) == 1
+                    slice = {slice};
+                else
+                    error('Must provide one slice cell element for each unitNames element');
+                end
+            end
+            sliceErrMsg = 'Slice argument not supported unless accessing SpikeArrayChannelDescriptor';
 
             % first lookup by names
             for iN = 1:numel(names)
@@ -7151,11 +7166,14 @@ classdef TrialData
                         colByName{iN} = cd.primaryDataFieldColumnIndex;
                         fieldIsArrayByName{iN} = false;
                         nColumnsPerName(iN) = 1;
+                        assert(isempty(slice), sliceErrMsg);
+                        
                     elseif isa(cd, 'EventChannelDescriptor')
                         fieldsByName{iN} = {cd.(cdField)};
                         colByName{iN} = 1;
                         fieldIsArrayByName{iN} = false;
                         nColumnsPerName(iN) = 1;
+                        assert(isempty(slice), sliceErrMsg);
 
                     elseif isa(cd, 'AnalogChannelDescriptor') || isa(cd, 'AnalogChannelGroupDescriptor')
                         % refers to analog channel, use timestamps as
@@ -7164,6 +7182,7 @@ classdef TrialData
                         colByName{iN} = 1;
                         fieldIsArrayByName{iN} = false;
                         nColumnsPerName(iN) = 1;
+                        assert(isempty(slice), sliceErrMsg);
 
                     elseif isa(cd, 'SpikeArrayChannelDescriptor')
                         % refers to array directly, include all channels
@@ -7172,12 +7191,19 @@ classdef TrialData
                         fieldIsArrayByName{iN} = true(cd.nChannels, 1);
                         nColumnsPerName(iN) = cd.nChannels;
                         
+                        if ~isempty(slice) && ~isempty(slice{iN})
+                            colByName{iN} = colByName{iN}(slice{iN});
+                            fieldsByName{iN} = fieldsByName{iN}(slice{iN});
+                            nColumnsPerName(iN) = numel(colByName{iN});
+                        end 
                     else
                         error('Channel type %s not supported', class(cd));
                     end
                     cdByName(iN, 1) = cd; %#ok<AGROW>
                     
                 else
+                    assert(isempty(slice), sliceErrMsg);
+                    
                     if contains(name, '(')
                         % parse array(idx) channel name
                         [tf, array, chidx] = td.parseIndexedSpikeArrayChannelName(name);
@@ -7220,7 +7246,7 @@ classdef TrialData
                     nColumnsPerName(iN) = numel(chidx);
                 end
             end
-
+            
             [catFields, catWhichName] = TensorUtils.catWhich(1, fieldsByName{:});
             catFields = string(catFields);
             catCols = cat(1, colByName{:});

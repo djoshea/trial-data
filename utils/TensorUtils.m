@@ -873,7 +873,7 @@ classdef TensorUtils
             
             if ~isstruct(t)
                 % not a struct, can use accumarray
-                out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, emptySlice);
+                out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, {emptySlice});
             else
                 error('Not implemented for struct yet')
             end
@@ -1371,7 +1371,15 @@ classdef TensorUtils
             out = TensorUtils.mapSlices(@selectIdx, dim, in, idxThatDim);
             if ~iscell(in)
                 out = cell2mat(out);
-                out(~maskValid) = NaN;
+                if isfloat(out)
+                    out(~maskValid) = NaN;
+                elseif isinteger(out)
+                    out(~maskValid) = zeros(1,1, 'like', 'out');
+                elseif islogical(out)
+                    out(~maskValid) = false;
+                else
+                    error('Unknown class');
+                end
             else
                 if dim == 1
                     out = cat(2, out{:});

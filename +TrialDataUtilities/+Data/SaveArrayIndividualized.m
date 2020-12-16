@@ -26,6 +26,7 @@ classdef SaveArrayIndividualized < handle
             use_parallel = p.Results.use_parallel;
             
             assert(isvector(S));
+            S = makecol(S);
             N = numel(S);
             
             % create the directory as path/name
