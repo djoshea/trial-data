@@ -5,6 +5,13 @@ function str = strjoin(strCell, join)
     %
     % e.g. strCell = {'a','b'}, join = ', ' [ default ] --> str = 'a, b'
 
+    assert(isstring(strCell) || iscellstr(strCell));
+    if isstring(strCell) || isstring(join)
+        asString = true;
+    else
+        asString = false;
+    end
+    
     if nargin < 2
         join = ', ';
     end
@@ -24,11 +31,16 @@ function str = strjoin(strCell, join)
                 end
                 assert(ischar(strCell{i}) || isstring(strCell{i}), 'Contents of strCell must be strings');
             end
+        elseif isstring(strCell)
+            strCell = cellstr(strCell);
         end
         
         str = cellfun(@(str) [str join], strCell, ...
             'UniformOutput', false);
         str = [str{:}]; 
         str = str(1:end-length(join));
+    end
+    if asString
+        str = string(str);
     end
 end

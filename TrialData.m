@@ -1249,7 +1249,7 @@ classdef TrialData
                 for iG = 1:numel(groups)
                     sz = numel(groupChannels{iG});
                     tcprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
-                        TrialDataUtilities.String.strjoin(sz, ','), ...
+                        TrialDataUtilities.String.strjoin(string(sz), ','), ...
                         TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                 end
             end
@@ -1268,7 +1268,7 @@ classdef TrialData
                     if groupsNamedMask(iG)
                         sz = td.getAnalogChannelGroupSize(groups{iG});
                         tcprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
-                            TrialDataUtilities.String.strjoin(sz, ','), ...
+                            TrialDataUtilities.String.strjoin(string(sz), ','), ...
                             TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                     end
                 end
@@ -1284,7 +1284,7 @@ classdef TrialData
                             end
                             sz = td.getAnalogChannelGroupSize(groups{iG});
                             gstr = [gstr, sprintf('{bright blue}%s {none}(%s)%s', groups{iG}, ...
-                                TrialDataUtilities.String.strjoin(sz, ','), commaStr)]; %#ok<AGROW>
+                                TrialDataUtilities.String.strjoin(string(sz), ','), commaStr)]; %#ok<AGROW>
                         end
                     end
                     tcprintf('inline', gstr);

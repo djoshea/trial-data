@@ -679,8 +679,13 @@ classdef ConditionInfo < ConditionDescriptor
                     end
                 end
             elseif iscellstr(vals) || iscategorical(vals) || isstring(vals)
-                valueList = unique(vals);
+                if iscellstr(vals)
+                    vals = string(vals);
+                end
+                mask = ~ismissing(vals);
+                valueList = unique(vals(mask));
             else
+                warning('Unknown attribute type for attribute %d', attrIdx);
                 valueList = TrialDataUtilities.Data.uniqueCellTol(vals);
             end
         end
@@ -1147,9 +1152,9 @@ classdef ConditionInfo < ConditionDescriptor
                 % critical to update attribute numeric here!
 
                 % TODO fix this to deal with string arrays correctly
-                if isstring(vals)
-                    vals = cellstr(vals);
-                end
+%                 if isstring(vals)
+%                     vals = cellstr(vals);
+%                 end
                 if iscell(vals)
                     ci.attributeNumeric(iAttr) = false;
                     ci.attributeAsVector(iAttr) = false;

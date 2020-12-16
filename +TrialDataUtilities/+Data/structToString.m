@@ -16,62 +16,62 @@ function str = structToString(s, varargin)
     
     fields = fieldnames(s);
     if isempty(fields)
-        str = '';
+        str = "";
         return;
     end
-    vals = cellfun(@(fld) convertToString(s.(fld), fld), fieldnames(s), 'UniformOutput', false);
+    vals = cellfun(@(fld) convertToString(s.(fld), fld), fieldnames(s), 'UniformOutput', true);
 
-    str = TrialDataUtilities.String.strjoin(vals, separator);
+    str = string(TrialDataUtilities.String.strjoin(vals, separator));
     
     function str = convertToString(v, fld)
-        if isfield(suffixByField, fld) && ~isempty(suffixByField.(fld))
-            suffix = [' ' char(suffixByField.(fld))];
+        if isfield(suffixByField, fld) && strlength(suffixByField.(fld)) > 0
+            suffix = " " + string(suffixByField.(fld));
         else
-            suffix = '';
+            suffix = "";
         end
         
         if isfield(fieldNameSubstitutions, fld) && ~isempty(isfield(fieldNameSubstitutions, fld))
-            fldSub = fieldNameSubstitutions.(fld);
+            fldSub = string(fieldNameSubstitutions.(fld));
         else
-            fldSub = fld;
+            fldSub = string(fld);
         end
         
         if includeFieldNames
-            prefix = [fldSub '='];
+            prefix = fldSub + "=";
         else
-            prefix = '';
+            prefix = "";
         end
         
-        if ischar(v) || isstring(v)
-            str = [prefix char(v) suffix];
+        if ischar(v) || (isstring(v) && numel(v) == 1)
+            str = prefix + string(v) + suffix;
         elseif islogical(v) && p.Results.useFieldNameForBoolean
             if p.Results.removeIsForLogical
                 if strncmp(fldSub, 'Is ', 3)
-                    fldSub = fldSub(4:end);
+                    fldSub = extractAfter(fldSub, "Is ");
                 end
             end
             if v
-                str = [fldSub, suffix];
+                str = fldSub + suffix;
             else
-                str = [p.Results.logicalNotPrefix, fldSub, suffix];
+                str = string(p.Results.logicalNotPrefix) + fldSub + suffix;
             end
         elseif isempty(v)
-            str = [prefix '[]'];
+            str = prefix + "[]";
         elseif isnumeric(v) || islogical(v)
             if int32(v) == v
                 vstr = mat2str(v);
             else
                 vstr = mat2str(v, 3);
             end
-            str = [prefix, vstr, suffix];
+            str = prefix + string(vstr) + suffix;
         elseif iscategorical(v)
             if isscalar(v)
-                str = [prefix char(v)];
+                str = prefix + string(v);
             else
-                str = [prefix '[' strjoin(arrayfun(@char, v, 'UniformOutput', false), ', ') ']'];
+                str = prefix + "[" + strjoin(string(v), ", ") + "]";
             end
-        elseif iscellstr(v)
-            str = [prefix, '{', strjoin(v, [suffix ',']), '}'];
+        elseif iscellstr(v) || isstring(v) % scalar string handled above
+            str = prefix + "{" + strjoin(string(v), suffix + ",") + "}";
         else
             error('Could not convert struct field value');
         end

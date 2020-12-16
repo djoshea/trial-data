@@ -2275,15 +2275,16 @@ classdef ConditionDescriptor
             p.addParameter('includeUnits', true, @islogical); % .attribute = units struct
             p.parse(varargin{:});
 
-            separator = p.Results.separator;
+            separator = string(p.Results.separator);
 
             if ci.nAxes == 0
                 values = {TrialDataUtilities.Data.structToString(ci.conditions)};
             else
                 valueLists = ci.generateAxisValueListsAsStrings(p.Results);
-                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
-                    valueLists, 'asCell', true);
+                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(string(varargin), separator),...
+                    valueLists, 'asCell', false);
             end
+            values = string(values);
         end
 
         function ci = sortWithinConditionsBy(ci, sortByList)
@@ -2715,17 +2716,17 @@ classdef ConditionDescriptor
                                 ci.AttributeValueBinsAutoQuantiles}
                             % convert valueList from 1 x 2 vector to '#-#' string
                             for iV = 1:numel(valueLists{iX})
-                                if ~iscellstr(valueLists{iX}(iV).(attr{iA}))
+                                if ~iscellstr(valueLists{iX}(iV).(attr{iA})) && ~isstring(valueLists{iX}(iV).(attr{iA}))
                                     if all(TrialDataUtilities.Data.isintegertol(cell2mat(valueLists{iX}(iV).(attr{iA}))))
-                                        valueLists{iX}(iV).(attr{iA}) = sprintf('%d-%d', round(cell2mat(valueLists{iX}(iV).(attr{iA}))));
+                                        valueLists{iX}(iV).(attr{iA}) = sprintf("%d-%d", round(cell2mat(valueLists{iX}(iV).(attr{iA}))));
                                     else
-                                        valueLists{iX}(iV).(attr{iA}) = sprintf('%.3g-%.3g', cell2mat(valueLists{iX}(iV).(attr{iA})));
+                                        valueLists{iX}(iV).(attr{iA}) = sprintf("%.3g-%.3g", cell2mat(valueLists{iX}(iV).(attr{iA})));
                                     end
                                 end
                             end
                     end
 
-                    % check whether a manual value list as stirings is used
+                    % check whether a manual value list as strings is used
                     % for this attribute (per-value display as)
                     if p.Results.useDisplayAs && ...
                             ismember(ci.attributeValueModes(attrIdx(iA)), [ci.AttributeValueBinsManual, ci.AttributeValueListManual])
@@ -2752,16 +2753,16 @@ classdef ConditionDescriptor
                     separator, 'includeFieldNames', ~shortNames, 'fieldNameSubstitutions', displayAsLookup,  'suffixByField', unitsLookup, ...
                     'logicalNotPrefix', p.Results.logicalNotPrefix), ...
                     valueLists{iX}, ...
-                   'UniformOutput', false);
+                   'UniformOutput', true);
 
                 % append randomization indicator when axis is randomized
                 if ci.axisRandomizeModes(iX) ~= ci.AxisOriginal && ~shortNames
                     if ci.axisRandomizeModes(iX) == ci.AxisResampledFromSpecified
                         % indicate which attribute
-                        strCell{iX} = cellfun(@(s, from) [s ' resampled from ' TrialDataUtilities.Data.structToString(from)], ...
-                            strCell{iX}, ci.axisRandomizeResampleFromList{iX}, 'UniformOutput', false);
+                        strCell{iX} = arrayfun(@(s, from) s + " resampled from " + TrialDataUtilities.Data.structToString(from), ...
+                            strCell{iX}, ci.axisRandomizeResampleFromList{iX});
                     else
-                        strCell{iX} = cellfun(@(s) [s ' ' randStrCell{iX}], strCell{iX}, 'UniformOutput', false);
+                        strCell{iX} = cellfun(@(s) s + " " + string(randStrCell{iX}), strCell{iX});
                     end
                 end
             end
@@ -2793,10 +2794,13 @@ classdef ConditionDescriptor
                     fn = @ConditionDescriptor.defaultNameFn;
                 end
                 names = fn(ci, p.Results);
-                assert(iscellstr(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
+                if iscellstr(names) %#ok<ISCLSTR>
+                    names = string(names);
+                end
+                assert(isstring(names) && TensorUtils.compareSizeVectors(size(names), ci.conditionsSize), ...
                     'nameFn must return cellstr with same size as .conditions');
             else
-                names = {};
+                names = strings(0, 1);
             end
         end
 
