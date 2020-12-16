@@ -6,6 +6,7 @@ arguments
         baselineValue = 0;
         args.width = [];
         args.color = 'k';
+        args.drawBaseline (1, 1) logical = true;
         args.baselineArgs = struct();
         args.barArgs = struct();
     end
@@ -29,10 +30,13 @@ arguments
     Y = [y1; y2; y2; y1];
     
     washolding = ishold;
-    hbaseline = plot([xb_lo, xb_hi], [baselineValue baselineValue], '-', 'Color', args.color, baselineArgs{:});
-    hold on;
-    hbars = fill(X, Y, args.color, barArgs{:});
     
+    hbars = fill(X, Y, args.color, 'EdgeColor', args.color, barArgs{:});
+    
+    if args.drawBaseline
+        hold on;
+        hbaseline = plot([xb_lo, xb_hi], [baselineValue baselineValue], '-', 'Color', args.color, baselineArgs{:});
+    end
     if ~washolding
         hold off;
     end
