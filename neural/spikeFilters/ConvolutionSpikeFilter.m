@@ -177,6 +177,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             if isempty(spikeCell)
                 rateCell = cell(size(spikeCell));
                 timeCell = cell(size(spikeCell, 1), 0);
+                poissonCountMultipliers = zeros(0, 1);
                 return;
             end
             
@@ -202,11 +203,11 @@ classdef ConvolutionSpikeFilter < SpikeFilter
                 window = [-sf.preWindow sf.postWindow];
             end
             
-            tMinByTrial = floor(tWindowByTrial(:, 1));
-            tMaxByTrial = floor(tWindowByTrial(:, 2));
+            tMinByTrial = TrialDataUtilities.Data.floortol(tWindowByTrial(:, 1));
+            tMaxByTrial = TrialDataUtilities.Data.floortol(tWindowByTrial(:, 2));
             
-           [timeLabels, tbinsForHistcByTrial] = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
-                    tMinByTrial+window(1), tMaxByTrial+window(2), sf.binWidthMs); %#ok<ASGLU> % timeLabels is useful for debugging
+            [timeLabels, tbinsForHistcByTrial] = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
+                 tMinByTrial+window(1), tMaxByTrial+window(2), sf.binWidthMs); %#ok<ASGLU> % timeLabels is useful for debugging
                 
             % then construct timeCell, which contains time vector without the extra samples
             % needed for the convolution, but WTIH the potential extra

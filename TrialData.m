@@ -5581,7 +5581,7 @@ classdef TrialData
             valueTable = td.getParamMultiAsTable(names);
             valueTable = valueTable(td.valid, :);
 
-            [uniqTable, ~, which] = unique(valueTable);
+            [uniqTable, ~, which] = TrialDataUtilities.Data.uniqueSingleNaN(valueTable);
             uniqTable.Properties.RowNames = {};
 
             counts = hist(which, 1:max(which))'; %#ok<HIST>
@@ -5607,7 +5607,9 @@ classdef TrialData
             %             if ~iscell(vals)
             %                 vals = removenan(vals);
             %             end
-            values = unique(vals);
+            if ~iscell(vals)
+                values = TrialDataUtilities.Data.uniqueSingleNaN(vals);
+            end
         end
 
         % this does no data transformations at all, just copies out fields
@@ -6273,13 +6275,17 @@ classdef TrialData
                 col = colIdxEachField{iF};
                 idx = assignIdxEachField{iF};
 
-                if fieldIsArray(iF)
-                    catData = cat(1, td.data.(fld));
-                    assert(size(catData, 1) == td.nTrials);
+                if td.nTrialsValid > 0
+                    if fieldIsArray(iF)
+                        catData = cat(1, td.data.(fld));
+                        assert(size(catData, 1) == td.nTrials);
+                    else
+                        catData = {td.data.(fld)}';
+                    end
+                    timesCellByUnit(:, idx) = catData(:, col);
                 else
-                    catData = {td.data.(fld)}';
+                    timesCellByUnit(:, idx) = zeros(0, numel(col));
                 end
-                timesCellByUnit(:, idx) = catData(:, col);
             end
 
             if p.Results.combine

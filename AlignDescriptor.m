@@ -128,6 +128,8 @@ classdef AlignDescriptor
     end
 
     properties(Dependent, Hidden)
+        timeDeltaEpsilon % used for adjusting small offsets to avoid 
+        
         padWindow
         markLabels
         markLabelsShort

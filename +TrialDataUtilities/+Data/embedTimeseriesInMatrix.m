@@ -95,7 +95,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     szTime = cellfun(@numel, timeCell);
     
     if isempty(szData) || isempty(szTime)
-        mat = nan(size(dataCell, 1), 0, 0);
+        mat = nan(size(dataCell, 1), 0, size(dataCell, 2));
         tvec = zeros(0, 1);
         return;
     end

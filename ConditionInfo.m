@@ -279,6 +279,7 @@ classdef ConditionInfo < ConditionDescriptor
         end
 
         function [membership, reasonInvalid] = buildConditionMembershipRaw(ci)
+            % membership is trials x conditions
             [matchesFilters, reasonInvalid] = ci.computeTrialsMatchingAttributeFilters();
             explained = ~matchesFilters;
 
@@ -311,7 +312,7 @@ classdef ConditionInfo < ConditionDescriptor
                     end
 
                 else
-                    membership = false(ci.nTrials, ci.nAxes);
+                    membership = false(ci.nTrials, ci.nConditions);
                 end
 
                 % allow the user function to override values manually
@@ -866,6 +867,11 @@ classdef ConditionInfo < ConditionDescriptor
                             end
 
                             matchesThis = TrialDataUtilities.Data.ismembertol(attrVals, valsThis);
+                            if any(ismissing(valsThis))
+                                % if the value list explicitly includes NaN or <missing>, 
+                                % then any trials with NaN or <missing> should be considered matching it.
+                                matchesThis(ismissing(attrVals)) = true;
+                            end
                             mask(:, iV) = mask(:, iV) & matchesThis;
 
                             whichField(isnan(whichField(:, iV)) & ~matchesThis) = iF;

@@ -347,13 +347,13 @@ classdef ConditionDescriptor
             attrDesc = ci.generateAttributeDescriptions(true);
             for i = 1:ci.nAttributes
                 tcprintf('inline', '    %s: {white}%s\n', attrDesc{i}, ...
-                    tcprintfEscape(strjoin(ci.attributeValueListsAsStrings{i}, ', ')));
+                    tcprintfEscape(TrialDataUtilities.String.strjoin(ci.attributeValueListsAsStrings{i}, ', ')));
             end
             axisDesc = ci.generateAxisDescriptions(true);
             tcprintf('inline', '  {bright blue}Axes:\n');
             for i = 1:ci.nAxes
                 tcprintf('inline', '    %s: {white}%s\n', axisDesc{i}, ...
-                    tcprintfEscape(strjoin(ci.axisValueListsAsStringsShort{i}, ', ')));
+                    tcprintfEscape(TrialDataUtilities.String.strjoin(ci.axisValueListsAsStringsShort{i}, ', ')));
             end
 
             nRandom = nnz(ci.axisRandomizeModes ~= ci.AxisOriginal);
@@ -367,7 +367,7 @@ classdef ConditionDescriptor
             end
 
             if ~isempty(ci.attributeSortByList)
-                tcprintf('inline', '  {bright blue}Sort: {purple}%s\n', strjoin(ci.attributeSortByList, ', '));
+                tcprintf('inline', '  {bright blue}Sort: {purple}%s\n', TrialDataUtilities.String.strjoin(ci.attributeSortByList, ', '));
             end
             if ci.isResampledWithinConditions
                 tcprintf('inline', '  {bright red}Randomization active: {darkGray}(seed=%g) {none}Trials resampled within conditions\n', ci.randomSeed);
@@ -379,7 +379,7 @@ classdef ConditionDescriptor
             if ci.nAxes == 0
                 axisStr = 'no grouping axes';
             else
-                axisStr = strjoin(ci.axisDescriptions, ' , ');
+                axisStr = TrialDataUtilities.String.strjoin(ci.axisDescriptions, ' , ');
             end
 
             attrFilter = ci.attributeNames(ci.attributeActsAsFilter);
@@ -479,7 +479,7 @@ classdef ConditionDescriptor
             names = cellvec(ci.nAxes);
             for iX = 1:ci.nAxes
                 attr = ci.axisAttributes{iX};
-                names{iX} = strjoin(attr, ' x ');
+                names{iX} = TrialDataUtilities.String.strjoin(attr, ' x ');
             end
         end
 
@@ -495,7 +495,7 @@ classdef ConditionDescriptor
             if ci.isResampledWithinConditions
                 axisModeStr{end+1} = 'trials resampled within conditions';
             end
-            str = strjoin(axisModeStr, ', ');
+            str = TrialDataUtilities.String.strjoin(axisModeStr, ', ');
         end
 
         function desc = generateAxisDescriptions(ci, useColor)
@@ -524,10 +524,10 @@ classdef ConditionDescriptor
                 end
                 if useColor
                     desc{iX} = sprintf('{purple}%s {darkGray}(%d%s{bright red}%s%s{darkGray})', ...
-                        strjoin(attr, ' x '), nv, vlStr, filterStr, randStr);
+                        TrialDataUtilities.String.strjoin(attr, ' x '), nv, vlStr, filterStr, randStr);
                 else
                     desc{iX} = sprintf('%s (%d%s%s)', ...
-                        strjoin(attr, ' x '), nv, vlStr, randStr);
+                        TrialDataUtilities.String.strjoin(attr, ' x '), nv, vlStr, randStr);
                 end
             end
         end
@@ -575,13 +575,13 @@ classdef ConditionDescriptor
             ci.warnIfNoArgOut(nargout);
 
             p = inputParser;
-            p.addOptional('attributes', {}, @(x) ischar(x) || iscellstr(x));
+            p.addOptional('attributes', {}, @(x) ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('name', '', @ischar);
             p.addParameter('valueList', {}, @(x) true);
             p.parse(varargin{:});
 
             if ~iscell(p.Results.attributes)
-                attr = {p.Results.attributes};
+                attr = cellstr(p.Results.attributes);
             else
                 attr = p.Results.attributes;
             end
@@ -989,7 +989,7 @@ classdef ConditionDescriptor
                 end
 
                 assert(~isnan(idx(iAttr)), 'Axis with attributes %s not found', ...
-                    strjoin(attr{iAttr}, ' x '));
+                    TrialDataUtilities.String.strjoin(attr{iAttr}, ' x '));
             end
 
         end
@@ -1770,9 +1770,9 @@ classdef ConditionDescriptor
             [tf, idx] = ci.hasAttribute(name);
             if ~all(tf)
                 if isnumeric(name)
-                    name = strjoin(name(~tf), ', ');
+                    name = TrialDataUtilities.String.strjoin(name(~tf), ', ');
                 elseif iscell(name)
-                    name = strjoin(name(~tf));
+                    name = TrialDataUtilities.String.strjoin(name(~tf));
                 end
                 error('Attribute(s) %s not found', name);
             end
@@ -1906,7 +1906,7 @@ classdef ConditionDescriptor
                 if isempty(ci.attributeUnits{i})
                     unitStr = '';
                 else
-                    unitStr = [' in ', ci.attributeUnits{i}];
+                    unitStr = " in " + ci.attributeUnits(i);
                 end
                 if ~useColor
                     desc{i} = sprintf('%s as %s (%s%s%s)%s', name, displayAs, numericStr, suffix, filterStr, unitStr);
@@ -2281,7 +2281,7 @@ classdef ConditionDescriptor
                 values = {TrialDataUtilities.Data.structToString(ci.conditions)};
             else
                 valueLists = ci.generateAxisValueListsAsStrings(p.Results);
-                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(string(varargin), separator),...
+                values = TensorUtils.mapFromAxisLists(@(varargin) TrialDataUtilities.String.strjoin(string(varargin), separator),...
                     valueLists, 'asCell', false);
             end
             values = string(values);
@@ -2579,7 +2579,7 @@ classdef ConditionDescriptor
                 values = {structToString(ci.conditions)};
             else
                 valueLists = ci.axisValueListsAsStrings;
-                values = TensorUtils.mapFromAxisLists(@(varargin) strjoin(varargin, separator),...
+                values = TensorUtils.mapFromAxisLists(@(varargin) TrialDataUtilities.String.strjoin(varargin, separator),...
                     valueLists, 'asCell', true);
             end
         end
@@ -2915,7 +2915,7 @@ classdef ConditionDescriptor
                                 else
                                     valueList{i} = cellfun(@(i) sprintf('%.3g%s', i, unitStr), valueList{i}, 'UniformOutput', false);
                                 end
-                                valueList{i} = cellfun(@(vals) strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
+                                valueList{i} = cellfun(@(vals) TrialDataUtilities.String.strjoin(vals, ','), valueList{i}, 'UniformOutput', false);
                             else
                                 if TrialDataUtilities.Data.isintegertol(valueList{i})
                                     valueList{i} = arrayfun(@(i) sprintf('%d%s', i, unitStr), round(valueList{i}), 'UniformOutput', false);

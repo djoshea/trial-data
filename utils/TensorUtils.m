@@ -845,6 +845,11 @@ classdef TensorUtils
             assert(size(subs, 2) == numel(outSz), 'Number of elements in outSz should match number of columns in subs');
             otherDims = TensorUtils.otherDims(size(t), dim);
             szT = size(t);
+            
+            if isstruct(t)
+                error('Not implemented for struct yet')
+            end
+            
 
             mask = ~any(isnan(subs) | subs == 0, 2);
             if any(~mask)
@@ -870,18 +875,18 @@ classdef TensorUtils
             end
             
             emptySlice = TensorUtils.emptySliceAlongDim(t, dim);
-            
-            if ~isstruct(t)
-                % not a struct, can use accumarray
-                out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, {emptySlice});
-            else
-                error('Not implemented for struct yet')
-            end
-
-            % reshape out{:} back to tensors
             szInnerArgs = num2cell(szT);
             szInnerArgs{dim} = [];
-            out = cellfun(@(x) reshape(x, szInnerArgs{:}), out, 'UniformOutput', false);
+            
+            if isempty(subsSorted)
+                % accumarray won't return a cell if it never evaluates the function handle
+                out = repmat({zeros(szInnerArgs{:}, 'like', t)}, outSz);
+            else
+                % not a struct, can use accumarray
+                out = accumarray(subsSorted, t(subSortIdx), outSz, @(x) {x}, {emptySlice});
+                % reshape out{:} back to tensors
+                out = cellfun(@(x) reshape(x, szInnerArgs{:}), out, 'UniformOutput', false);
+            end
         end
 
         function out = splitAlongDimensionByIndex(t, dim, which, outSz)

@@ -87,11 +87,20 @@ classdef Run < LowRankLFADS.Run
             
             tdSet = cell(numel(datasetIdx), 1);
             
-            prog = ProgressBar(numel(datasetIdx), 'Preparing trialData from datasets');
+            prog = ProgressBar(numel(datasetIdx), 'Loading trialData from datasets');
             for iiDS = 1:numel(datasetIdx)
+                tdSet{iiDS} = r.datasets(datasetIdx(iiDS)).loadData();
+                
+            end
+            prog.finish();
+            
+            % set this here as prepareTrialDataForLFADS may need to see the full set
+            r.trialDataSet = tdSet;
+            
+            prog = ProgressBar(numel(datasetIdx), 'Preparing trialData');
+            for iiDS = 1:numel(datasetIdx)
+                tdSet{iiDS} = r.prepareTrialDataForLFADS(tdSet{iiDS});
                 prog.update(iiDS);
-                td = r.datasets(datasetIdx(iiDS)).loadData();
-                tdSet{iiDS} = r.prepareTrialDataForLFADS(td);
             end
             prog.finish();
             

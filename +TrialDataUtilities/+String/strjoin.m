@@ -5,6 +5,17 @@ function str = strjoin(strCell, join)
     %
     % e.g. strCell = {'a','b'}, join = ', ' [ default ] --> str = 'a, b'
 
+    if isempty(strCell)
+        str = "";
+        return;
+    end
+    if ischar(strCell)
+        strCell = {strCell};
+    end
+    if nargin < 2
+        join = ', ';
+    end
+
     assert(isstring(strCell) || iscellstr(strCell));
     if isstring(strCell) || isstring(join)
         asString = true;
@@ -12,9 +23,6 @@ function str = strjoin(strCell, join)
         asString = false;
     end
     
-    if nargin < 2
-        join = ', ';
-    end
 
     if isempty(strCell)
         str = '';
@@ -34,7 +42,7 @@ function str = strjoin(strCell, join)
         elseif isstring(strCell)
             strCell = cellstr(strCell);
         end
-        
+        join = char(join);
         str = cellfun(@(str) [str join], strCell, ...
             'UniformOutput', false);
         str = [str{:}]; 

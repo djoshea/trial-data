@@ -267,7 +267,7 @@ classdef PopulationTrajectorySet
         % these are computed from dataByTrial if dataSourceManual is false,
         % else stored in the corresponding *Manual property
 
-        % nBases x nAlign cell each containing nTrials x nTime analog data
+        % nConditions x nBases x nAlign cell each containing nTrials x nTime analog data
         % for that bases for tha alignment in order by trial number. These
         % will be guaranteed to share the same time vector across bases,
         % unlike dataByTrial. This time vector will be given by pset.tvecDataMean
