@@ -40,6 +40,10 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     p.addParameter('origDelta', [], @(x) isempty(x) || isvector(x)); % specify manually to save time if known, otherwise will be inferred
     p.addParameter('ignoreNaNSamples', false, @islogical); % ignore NaN data samples when inferring origDelta (time skips among successive non-nan samples)
     
+    % manually dictate time boundaries if specified, otherwise auto
+    p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); 
+    p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+    
    % p.addParamValue('interpolateMethod', 'linear', @ischar);
     p.parse(timeCell, varargin{:});
 
@@ -48,6 +52,9 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     binAlignmentMode = p.Results.binAlignmentMode;
     interpolate = p.Results.interpolate;
     %interpolateMethod = p.Results.interpolateMethod;
+    
+    tMinForce = p.Results.tMin;
+    tMaxForce = p.Results.tMax;
    
     % compute the global min / max timestamps or each trial
     if p.Results.fixNonmonotonicTimes
@@ -68,6 +75,7 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     % clean up small discrepancies
     tMinRaw = TrialDataUtilities.Data.removeSmallTimeErrors(tMinRaw, timeDelta, p.Results.timeReference);
     tMaxRaw = TrialDataUtilities.Data.removeSmallTimeErrors(tMaxRaw, timeDelta, p.Results.timeReference);
+    
     
     % need to factor in the excluded padding before we generate the bin
     % aligned time vector, since we don't want to throw off the locations
@@ -110,12 +118,23 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
     end
 
     % build the global time vector
-    tMinGlobal = nanmin(tMin(:));
-    tMaxGlobal = nanmax(tMax(:));
+    
+    if ~isempty(tMinForce)
+        % adjust so that it lies 
+        tMinGlobal = TrialDataUtilities.Data.removeSmallTimeErrors(tMinForce, timeDelta, timeReference);
+    else
+        tMinGlobal = nanmin(tMin(:));
+    end
+    if ~isempty(tMaxForce)
+        tMaxGlobal = TrialDataUtilities.Data.removeSmallTimeErrors(tMaxForce, timeDelta, timeReference);
+    else
+        tMaxGlobal = nanmax(tMax(:));
+    end
     if timeDelta == 0 && tMinGlobal == tMaxGlobal
         tvec = tMinGlobal;
     else
-        tvec = makecol(tMinGlobal:timeDelta:tMaxGlobal);
+        tvec = TrialDataUtilities.Data.linspaceIntercept(tMinGlobal, timeDelta, tMaxGlobal, timeReference);
+%         tvec = makecol(tMinGlobal:timeDelta:tMaxGlobal);
     end
     tMinCell = tMin;
     tMaxCell = tMax;

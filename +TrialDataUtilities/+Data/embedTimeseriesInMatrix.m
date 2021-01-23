@@ -58,6 +58,9 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
 %
 %    trialValid : mask of which trials to consider when computing minTrials
 %    and minTrialFraction
+%
+%    tMin / tMax - manually dictate time boundaries if specified, otherwise auto
+%
 
     p = inputParser();
     p.addRequired('dataCell', @(x) iscell(x));
@@ -83,6 +86,10 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     p.addParameter('tMinExcludingPadding', [], @ismatrix);
     p.addParameter('tMaxExcludingPadding', [], @ismatrix);
     
+    % manually dictate time boundaries if specified, otherwise auto
+    p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); 
+    p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+            
     p.addParameter('origDelta', [], @(x) isempty(x) || isscalar(x)); % specify manually to save time if known, otherwise will be inferred
     p.addParameter('ignoreNaNSamples', false, @islogical); % ignore NaN data samples when inferring origDelta (time skips among successive non-nan samples)
     
@@ -154,12 +161,14 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     else
         origDelta = p.Results.origDelta;
     end
+    
     [tvec, tMin, tMax] = TrialDataUtilities.Data.inferCommonTimeVectorForTimeseriesData(timeCell, dataCell, ...
         'timeDelta', timeDelta, 'timeReference', p.Results.timeReference, ...
         'binAlignmentMode', p.Results.binAlignmentMode, ...
         'origDelta', origDelta, ...
         'fixNonmonotonicTimes', false, ... % consider already fixed
-        'tMinExcludingPadding', p.Results.tMinExcludingPadding, 'tMaxExcludingPadding', p.Results.tMaxExcludingPadding);
+        'tMinExcludingPadding', p.Results.tMinExcludingPadding, 'tMaxExcludingPadding', p.Results.tMaxExcludingPadding, ...
+        'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
     
     timeCell = TrialDataUtilities.Data.removeSmallTimeErrors(timeCell, origDelta, p.Results.timeReference);
     

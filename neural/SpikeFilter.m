@@ -168,13 +168,18 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             % filters each trial individually and then embeds each filtered
             % trace in a nTrials x nTime x nUnits matrix, where missing samples are left as NaN
             % before and after each trial. tvec is the time vector that
-            % indicates time along the columns.=
+            % indicates time along the columns.
+            %
+            % there are several tMin/tMax's here:
+            % tMin/MaxByTrial : the region of time for each trial we expect to extract, which determine the output tvec into which we embed
             p = inputParser;
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('interpolateMethod', 'linear', @ischar);
             p.addParameter('showProgress', true, @islogical);    
             p.addParameter('tMinByTrialExcludingPadding', [], @isvector);
             p.addParameter('tMaxByTrialExcludingPadding', [], @isvector);
+            p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
+            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
             p.parse(varargin{:});
             
             % calls checkOkay
@@ -191,7 +196,8 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
                 'origDelta', sf.binWidthMs, ... % saves time if this is provided rather than inferred, requires 'useTimeDelta' false above
                 'timeDelta', sf.timeDelta, ...
                 'tMinExcludingPadding', p.Results.tMinByTrialExcludingPadding, ...
-                'tMaxExcludingPadding', p.Results.tMaxByTrialExcludingPadding); 
+                'tMaxExcludingPadding', p.Results.tMaxByTrialExcludingPadding, ...
+                'tMin', p.Results.tMin, 'tMax', p.Results.tMax); 
         end
         
         function mult = getPoissonCountMultiplier(sf, multiplierToSpikesPerSec) %#ok<STOUT,INUSD>

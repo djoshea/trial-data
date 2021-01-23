@@ -670,6 +670,10 @@ classdef AlignInfo < AlignDescriptor
                 [t.invalidCause{maskInvalid}] = deal(sprintf('Overlapped invalidating event %s', ad.invalidateUnabbreviatedLabels{i}));
             end
             
+            % regardless of outsideOfTrialMode, also store truncated times so that padded window fits within the trial
+            t.startTruncated = max(t.trialStart, t.start);
+            t.stopTruncated = min(t.trialStop, t.stop);
+            
             % handle windows which extend outside of trial
             if strcmp(ad.outsideOfTrialMode, ad.TRUNCATE) || ...
                     strcmp(ad.outsideOfTrialMode, ad.INVALIDATE)
@@ -717,6 +721,8 @@ classdef AlignInfo < AlignDescriptor
             % Here we consider computedValid AND manualValid
             t.startPad(~valid) = NaN;
             t.stopPad(~valid) = NaN;
+            t.startTruncated(~valid) = NaN;
+            t.stopTruncated(~valid) = NaN;
             t.start(~valid) = NaN;
             t.stop(~valid) = NaN;
             t.zero(~valid) = NaN;
@@ -860,6 +866,14 @@ classdef AlignInfo < AlignDescriptor
             zero = makecol([ad.timeInfoValid.zero]);
         end
         
+        function [start, stop, zero] = getStartStopZeroByTrialTruncated(ad)
+            ad.assertApplied();
+            
+            start = makecol([ad.timeInfoValid.startTruncated]);
+            stop = makecol([ad.timeInfoValid.stopTruncated]);
+            zero = makecol([ad.timeInfoValid.zero]);
+        end
+        
         % note that this should return NaNs for invalid trials
         function zero = getZeroByTrial(ad)
             ad.assertApplied();
@@ -893,6 +907,13 @@ classdef AlignInfo < AlignDescriptor
         function [startRel, stopRel] = getStartStopRelativeToZeroByTrialWithPadding(ad)
             ad.assertApplied();
             [start, stop, zero] = ad.getStartStopZeroByTrialWithPadding();
+            startRel = start - zero;
+            stopRel = stop - zero;
+        end
+        
+        function [startRel, stopRel] = getStartStopRelativeToZeroByTrialTruncated(ad)
+            ad.assertApplied();
+            [start, stop, zero] = ad.getStartStopZeroByTrialTruncated();
             startRel = start - zero;
             stopRel = stop - zero;
         end
@@ -940,7 +961,7 @@ classdef AlignInfo < AlignDescriptor
             for iF = 1:numel(flds)
                 fld = flds{iF};
                 ad.eventData.(fld) = ad.eventData.(fld)(mask, :);
-                ad.eventCounts.(fld) = ad.eventCounts.(fld)(mask);
+                ad.eventCounts.(fld) = ad.eventCounts.(fld)(mask, :);
             end
             
             ad.timeInfo = [];
@@ -952,25 +973,26 @@ classdef AlignInfo < AlignDescriptor
             %                 ad.timeInfoValid.(fld) = ad.timeInfoValid.(fld)(mask);
             %             end
             %
-            if ~isempty(ad.odc.markData)
-                ad.markCounts = ad.markCounts(mask, :);
-                nMax = max(ad.markCounts, [], 1)';
-                for iM = 1:ad.nMarks
-                    ad.markData{iM} = ad.markData{iM}(mask, 1:nMax(iM));
-                end
-            end
-            
-            if ~isempty(ad.odc.intervalStartData)
-                ad.intervalCounts = ad.intervalCounts(mask, :);
-                nMax = max(ad.intervalCounts, [], 1)';
-                for iI = 1:ad.nIntervals
-                    ad.intervalStartData{iI} = ad.intervalStartData{iI}(mask, 1:nMax(iI));
-                    ad.intervalStopData{iI} = ad.intervalStopData{iI}(mask, 1:nMax(iI));
-                end
-            end
-            
+%             if ~isempty(ad.odc.markData)
+%                 ad.markCounts = ad.markCounts(mask, :);
+%                 nMax = max(ad.markCounts, [], 1)';
+%                 for iM = 1:ad.nMarks
+%                     ad.markData{iM} = ad.markData{iM}(mask, 1:nMax(iM));
+%                 end
+%             end
+%             
+%             if ~isempty(ad.odc.intervalStartData)
+%                 ad.intervalCounts = ad.intervalCounts(mask, :);
+%                 nMax = max(ad.intervalCounts, [], 1)';
+%                 for iI = 1:ad.nIntervals
+%                     ad.intervalStartData{iI} = ad.intervalStartData{iI}(mask, 1:nMax(iI));
+%                     ad.intervalStopData{iI} = ad.intervalStopData{iI}(mask, 1:nMax(iI));
+%                 end
+%             end
+
             ad.manualInvalid = ad.manualInvalid(mask);
-            ad.computedValid = ad.computedValid(mask);
+            ad = ad.update();
+%             ad.computedValid = ad.computedValid(mask);
         end
     end
     

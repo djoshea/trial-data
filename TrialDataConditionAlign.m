@@ -2793,6 +2793,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('assumeUniformSampling', false, @islogical);
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
+            
+            p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
+            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
             p.parse(varargin{:});
 
             % build nTrials cell of data/time vectors, and have getAnalog
@@ -2815,7 +2818,8 @@ classdef TrialDataConditionAlign < TrialData
                 'assumeUniformSampling', true, ... % since getAnalog already ensured uniform sampling
                 'minTrials', p.Results.minTrials, ...
                 'fixNonmonotonicTimes', false, ... % already ensured by uniform sampling
-                'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
+                'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid, ...
+                'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
         end
 
         function [matCell, tvec] = getAnalogAsMatrixGrouped(td, name, varargin)
@@ -5328,6 +5332,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.addParameter('combine', false, @islogical);
             p.addParameter('showProgress', true, @islogical);
+            p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
+            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
             p.parse(varargin{:});
 
             sf = p.Results.spikeFilter;
@@ -5346,7 +5352,7 @@ classdef TrialDataConditionAlign < TrialData
             spikeCell = td.getSpikeTimes(unitNames, 'includePadding', true, 'combine', p.Results.combine);
             [tMinByTrialExcludingPadding, tMaxByTrialExcludingPadding] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
             [tMinByTrialWithPadding, tMaxByTrialWithPadding] = td.alignInfoActive.getStartStopRelativeToZeroByTrialWithPadding();
-
+            
             % provide an indication as to which trials have spikes
             hasSpikes = ~cellfun(@isempty, spikeCell);
 
@@ -5356,7 +5362,9 @@ classdef TrialDataConditionAlign < TrialData
                 tMinByTrialWithPadding, tMaxByTrialWithPadding, td.timeUnitsPerSecond, ...
                 'showProgress', p.Results.showProgress, ...
                 'tMinByTrialExcludingPadding', tMinByTrialExcludingPadding, ...
-                'tMaxByTrialExcludingPadding', tMaxByTrialExcludingPadding);
+                'tMaxByTrialExcludingPadding', tMaxByTrialExcludingPadding, ...
+                'tMin', p.Results.tMin, ...
+                'tMax', p.Results.tMax);
             tvec = makecol(tvec);
 
             % now we need to nan out the regions affected by blanking
@@ -5371,6 +5379,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('combine', false, @islogical);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
+            p.addParameter('tMin', [], @(x) isempty(x) || isvector(x)); % manually dictate time boundaries if specified, otherwise auto
+            p.addParameter('tMax', [], @(x) isempty(x) || isvector(x)); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             alignIdx = p.Results.alignIdx;
@@ -5392,6 +5402,7 @@ classdef TrialDataConditionAlign < TrialData
             for iA = 1:nAlign
                 [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA, :), poissonCountMultiplier] = ...
                     td.useAlign(alignIdx(iA)).getSpikeRateFilteredAsMatrix(unitName, 'combine', p.Results.combine, ...
+                    'tMin', p.Results.tMin(iA), 'tMax', p.Results.tMax, ...
                     p.Unmatched);
             end
 
@@ -5454,6 +5465,10 @@ classdef TrialDataConditionAlign < TrialData
 
             % these are to enable this function to support multiple roles
             p.addParameter('eachAlign', false, @islogical);
+            
+            % manually dictate time boundaries if specified, otherwise auto
+            p.addParameter('tMin', [], @(x) isempty(x) || isvector(x)); 
+            p.addParameter('tMax', [], @(x) isempty(x) || isvector(x)); 
             p.parse(unitNames, varargin{:});
             unitNames = p.Results.unitNames;
             
@@ -5476,10 +5491,10 @@ classdef TrialDataConditionAlign < TrialData
             % pick the right function to call
             if p.Results.eachAlign
                  [rateCell, tvec, hasSpikesGrouped, whichAlign, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitNames, ...
-                     'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
+                     'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine, 'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
             else
                 [rateCell, tvec, hasSpikesGrouped, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
-                    'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine);
+                    'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine, 'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             end
 
