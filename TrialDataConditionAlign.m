@@ -5400,9 +5400,19 @@ classdef TrialDataConditionAlign < TrialData
             tvecCell = cell(nAlign, 1);
             hasSpikesMat = nan(td.nTrials, nAlign, nUnits);
             for iA = 1:nAlign
+                if isempty(p.Results.tMin)
+                    tMinThis = [];
+                else
+                    tMinThis = p.Results.tMin(iA);
+                end
+                if isempty(p.Results.tMax)
+                    tMaxThis = [];
+                else
+                    tMaxThis = p.Results.tMax(iA);
+                end
                 [ratesCell{iA}, tvecCell{iA}, hasSpikesMat(:, iA, :), poissonCountMultiplier] = ...
                     td.useAlign(alignIdx(iA)).getSpikeRateFilteredAsMatrix(unitName, 'combine', p.Results.combine, ...
-                    'tMin', p.Results.tMin(iA), 'tMax', p.Results.tMax, ...
+                    'tMin', tMinThis, 'tMax', tMaxThis, ...
                     p.Unmatched);
             end
 

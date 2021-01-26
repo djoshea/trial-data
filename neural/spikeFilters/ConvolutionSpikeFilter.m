@@ -31,6 +31,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
     properties(Dependent)
         filter % cache the filter here so as to avoid recomputation
         indZero
+        tvec_filter
     end
 
     methods 
@@ -40,6 +41,11 @@ classdef ConvolutionSpikeFilter < SpikeFilter
 
         function ind = get.indZero(sf)
             [~, ind] = sf.getFilter();
+        end
+        
+        function tvec = get.tvec_filter(sf)
+            [filt, indZero] = sf.getFilter(); %#ok<PROP>
+            tvec = ((1:numel(filt))' - indZero) * sf.binWidthMs; %#ok<PROP>
         end
     end
 
