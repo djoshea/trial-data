@@ -59,8 +59,12 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     
     % OR specify the edges of the range we should search over to
     % constrain the search window for the splice break point
-    p.addParameter('joinAfterIndexPre', [], @(x) isempty(x) || isnumeric(x));
-    p.addParameter('joinBeforeIndexPost', Inf, @(x) isempty(x) || isnumeric(x)); % indices to search into the post trajectory to find the splice point
+    p.addParameter('joinAfterIndexPre', NaN, @(x) isempty(x) || isnumeric(x));
+    p.addParameter('joinBeforeIndexPost', NaN, @(x) isempty(x) || isnumeric(x)); % indices to search into the post trajectory to find the splice point
+    p.addParameter('joinAfterIndexPost', NaN, @(x) isempty(x) || isnumeric(x));
+    p.addParameter('joinBeforeIndexPre', NaN, @(x) isempty(x) || isnumeric(x));
+    p.addParameter('joinAfterWithin', NaN, @isnumeric); % indices to search into the post trajectory to find the splice point
+    p.addParameter('joinBeforeWithin', NaN, @isnumeric); % indices to search into the post trajectory to find the splice point
     
     % for spline interpolation
     p.addParameter('interpolateMethod', 'spline', @ischar);
@@ -101,13 +105,19 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     nextIdxInPost= p.Results.nextIdxInPost;
     joinBeforeIndexPost = p.Results.joinBeforeIndexPost;
     joinAfterIndexPre = p.Results.joinAfterIndexPre;
+    joinBeforeIndexPre = p.Results.joinBeforeIndexPre;
+    joinAfterIndexPost = p.Results.joinAfterIndexPost;
+    joinAfterWithin = p.Results.joinAfterWithin;
+    joinBeforeWithin = p.Results.joinBeforeWithin;
     showPlot = p.Results.showPlot;
 
     % optional PCA preprocessing of the data to make splicing easier
     if p.Results.usePCA
         dataPCA = cat(2, dataPre, dataPost);
         if isempty(p.Results.pcaCoeff) || isempty(p.Results.pcaMeans)
+            sWarn = warning('off', 'stats:pca:ColRankDefX'); % we're not using tsquared
             [coeff, ~, ~, ~, ~, mu] = TensorUtils.pcaAlongDim(dataPCA, 1, 'NumComponents', p.Results.nPCs);
+            warning(sWarn);
         else
             coeff = p.Results.pcaCoeff;
             mu = p.Results.pcaMeans;
@@ -145,6 +155,8 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
         % trajectory basis (i.e. for each traj along dims 3)
         [opts.joinIdxInPre, opts.nextIdxInPost] = TrialDataUtilities.Splice.computeBestJoinPoint(dataPreProj, dataPostProj, nTimepointsOverlap, ...
             'joinAfterIndexPre', joinAfterIndexPre, 'joinBeforeIndexPost', joinBeforeIndexPost, ...
+            'joinBeforeIndexPre', joinBeforeIndexPre, 'joinAfterIndexPost', joinAfterIndexPost, ...
+            'joinAfterWithin', joinAfterWithin, 'joinBeforeWithin', joinBeforeWithin, ...
             'commonJoinAcrossTrajectories', p.Results.commonJoinAcrossTrajectories && p.Results.commonOverlapAcrossTrajectories, ...
             'showPlot', showPlot);
     else

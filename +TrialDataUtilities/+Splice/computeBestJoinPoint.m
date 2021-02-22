@@ -1,29 +1,42 @@
 function [joinIdxInPre, nextIdxInPost, dataCat] = computeBestJoinPoint(dataPre, dataPost, nOverlap, varargin)
 % time along dim 2, bases along dim 1, joinIdx will have size of dims 3 and
-% beyond. joinIndex is guaranteed to correspond to 
+% beyond.
+%
+% If either of joinAfterIndexPre or joinBeforeIndexPost is NaN, you can specify joinWithin to indicate, 
+% splice within joinWithin samples of the specified bound. Both cannot be NaN though.
+
 
     p = inputParser();
-    p.addParameter('joinAfterIndexPre', 0, @isscalar);
+    p.addParameter('joinAfterIndexPre', -Inf, @isscalar);
     p.addParameter('joinBeforeIndexPost', Inf, @isscalar);
+    p.addParameter('joinAfterIndexPost', -Inf, @isscalar);
+    p.addParameter('joinBeforeIndexPre', Inf, @isscalar);
+    p.addParameter('joinAfterWithin', NaN, @isscalar);
+    p.addParameter('joinBeforeWithin', NaN, @isscalar);
     p.addParameter('commonJoinAcrossTrajectories', false, @islogical);
     p.addParameter('showPlot', false, @islogical);
     p.parse(varargin{:});
     
     nPre =  size(dataPre, 2);
     nPost = size(dataPost, 2);
-    joinAfterIndexPre = p.Results.joinAfterIndexPre;
-    joinBeforeIndexPost = p.Results.joinBeforeIndexPost;
     showPlot = p.Results.showPlot;
 
     sz = size(dataPre);
     nTraj = prod(sz(3:end));
     
-    if isscalar(joinAfterIndexPre)
-        joinAfterIndexPre = repmat(joinAfterIndexPre, nTraj, 1);
+    function v = rep_ntraj(v)
+        if isscalar(v)
+            v = repmat(v, nTraj, 1);
+        else
+            assert(numel(v) == nTraj);
+        end
     end
-    if isscalar(joinBeforeIndexPost)
-        joinBeforeIndexPost = repmat(joinBeforeIndexPost, nTraj, 1);
-    end
+    joinAfterIndexPre = rep_ntraj(p.Results.joinAfterIndexPre);
+    joinBeforeIndexPost = rep_ntraj(p.Results.joinBeforeIndexPost);
+    joinAfterIndexPost = rep_ntraj(p.Results.joinAfterIndexPost);
+    joinBeforeIndexPre = rep_ntraj(p.Results.joinBeforeIndexPre);
+    joinAfterWithin = rep_ntraj(p.Results.joinAfterWithin);
+    joinBeforeWithin = rep_ntraj(p.Results.joinBeforeWithin);
     
     [joinIdxInPre, nextIdxInPost] = deal(nan(nTraj, 1));
         
@@ -32,27 +45,30 @@ function [joinIdxInPre, nextIdxInPost, dataCat] = computeBestJoinPoint(dataPre, 
     szCat(2) = nPre + nPost - min(nOverlap(:));
     dataCat = nan(szCat);
     
+    % quick debug plotting
+%     clf;
+%     plot(sum(dataPre, [1 3]))
+%     hold on
+%     plot((1:size(dataPost, 2)) + nPre - nOverlap, sum(dataPost, [1 3]));
+    
     if p.Results.commonJoinAcrossTrajectories
         nOverlap = nOverlap(1);
         X = dataPre(:, end-nOverlap+1:end, :);
         Y = dataPost(:, 1:nOverlap, :);
         
-        nCat = nPre + nPost - nOverlap;
+%         nCat = nPre + nPost - nOverlap;
         preIndexX = nPre-nOverlap + 1: nPre;
         postIndexY = 1:nOverlap;
+        joinAfterIndexPre = max(joinAfterIndexPre);
+        joinBeforeIndexPost = min(joinBeforeIndexPost);
+        joinBeforeWithin = min(joinBeforeWithin);
+        joinAfterWithin = min(joinAfterWithin);
 
         % take a squared distance between the overlapping points
         cost = sum(sum((X - Y).^2, 1, 'omitnan'), 3, 'omitnan');
 
-        valid = true(nOverlap, 1);
-        valid(preIndexX < min(joinAfterIndexPre)) = false;
-        if ~any(valid)
-            error('joinAfterIndexPre is too large');
-        end
-        valid(postIndexY > max(joinBeforeIndexPost)) = false;
-        if ~any(valid)
-            error('joinBeforeIndexPost is too small');
-        end
+        valid = computeValid(preIndexX, postIndexY, joinAfterIndexPre, joinBeforeIndexPost, ...
+            joinBeforeIndexPre, joinAfterIndexPost, joinBeforeWithin, joinAfterWithin);     
         cost(~valid) = Inf;
 
         [~, joinIdxInOverlap] = min(cost);
@@ -75,22 +91,15 @@ function [joinIdxInPre, nextIdxInPost, dataCat] = computeBestJoinPoint(dataPre, 
             X = dataPre(:, end-nOverlap(c)+1:end, c);
             Y = dataPost(:, 1:nOverlap(c), c);
 
-            nCat = nPre + nPost - nOverlap(c);
+%             nCat = nPre + nPost - nOverlap(c);
             preIndexX = nPre-nOverlap(c) + 1: nPre;
             postIndexY = 1:nOverlap(c);
 
             % take a squared distance between the overlapping points
             cost = sum((X - Y).^2, 1, 'omitnan');
 
-            valid = true(nOverlap(c), 1);
-            valid(preIndexX < joinAfterIndexPre(c)) = false;
-            if ~any(valid)
-                error('joinAfterIndexPre is too large');
-            end
-            valid(postIndexY > joinBeforeIndexPost(c)) = false;
-            if ~any(valid)
-                error('joinBeforeIndexPost is too small');
-            end
+            valid = computeValid(preIndexX, postIndexY, joinAfterIndexPre(c), joinBeforeIndexPost(c), ...
+                joinBeforeIndexPre(c), joinAfterIndexPost(c), joinBeforeWithin(c), joinAfterWithin(c));
             cost(~valid) = Inf;
 
             [~, joinIdxInOverlap] = min(cost);
@@ -115,5 +124,46 @@ function [joinIdxInPre, nextIdxInPost, dataCat] = computeBestJoinPoint(dataPre, 
             hold on;
             plot(tPost(nextIdxInPost(c):end), dataPost(1, nextIdxInPost(c):end, c), 'r-');
         end
+    end
+end
+
+function valid = computeValid(preIndex, postIndex, joinAfterIndexPre, joinBeforeIndexPost, joinBeforeIndexPre, joinAfterIndexPost, joinBeforeWithin, joinAfterWithin)
+    valid = true(numel(preIndex), 1);
+    if ~isnan(joinAfterIndexPre)
+        valid(preIndex < min(joinAfterIndexPre)) = false;
+        if ~any(valid)
+            error('joinAfterIndexPre is too large');
+        end
+    end
+    if ~isnan(joinBeforeIndexPost)
+        valid(postIndex > max(joinBeforeIndexPost)) = false;
+        if ~any(valid)
+            error('joinBeforeIndexPost is too small');
+        end
+    end
+    if ~isnan(joinBeforeIndexPre)
+        valid(preIndex > max(joinBeforeIndexPre)) = false;
+        if ~any(valid)
+            error('joinBeforeIndexPre is too small');
+        end
+    end
+    if ~isnan(joinAfterIndexPost)
+        valid(postIndex < min(joinAfterIndexPost)) = false;
+        if ~any(valid)
+            error('joinAfterIndexPost is too large');
+        end
+    end
+    
+    if ~isnan(joinBeforeWithin)
+        % assume joinBefore is specified, we need to be in one of the last joinBeforeWithin samples that precede
+        assert(~isnan(joinAfterWithin));
+        indFirst = find(valid, 1, 'first');
+        indWithin = min(numel(valid), indFirst + joinBeforeWithin);
+        valid(indWithin+1:end) = false;
+    elseif ~isnan(joinAfterWithin)
+        % assume joinAfter is specified, we need to splice in one of the first joinAfterWithin samples that follow
+        indLast = find(valid, 1, 'first');
+        indWithin = min(numel(valid), indLast + joinAfterWithin);
+        valid(indWithin+1:end) = false;
     end
 end

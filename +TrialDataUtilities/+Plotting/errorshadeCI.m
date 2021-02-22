@@ -6,6 +6,7 @@ function [hl, hs] = errorshadeCI(x, ym, yCI, color, varargin)
     p.addParameter('showLine', true, @islogical);
     p.addParameter('lineArgs', {}, @iscell);
     p.addParameter('lineAlpha', 1, @isscalar);
+    p.addParameter('DisplayName', "", @isstringlike);
     p.KeepUnmatched = true;
     p.parse(varargin{:});
     
@@ -22,7 +23,7 @@ function [hl, hs] = errorshadeCI(x, ym, yCI, color, varargin)
     hs = TrialDataUtilities.Plotting.errorshadeInterval(x, y1, y2, color, 'axh', axh, p.Unmatched);
     
     if p.Results.showLine
-        hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:});
+        hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:}, 'DisplayName', p.Results.DisplayName);
         TrialDataUtilities.Plotting.setLineOpacity(hl, p.Results.lineAlpha);
         hl = [];
     end
