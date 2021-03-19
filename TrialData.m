@@ -2041,7 +2041,7 @@ classdef TrialData
         end
 
         function [names, channelDescriptors] = listSpecialChannels(td, varargin)
-            [names, channelDescriptors] = td.listChannels(varargin{:});
+            [names, channelDescriptors] = td.listChannels(varargin{:}, 'includeNamedSubChannels', false);
             mask = arrayfun(@(cd) cd.special, channelDescriptors);
             names = names(mask);
             channelDescriptors = channelDescriptors(mask);
@@ -4916,14 +4916,9 @@ classdef TrialData
             eventName = timeField;
         end
 
-        function [tf, cd] = hasEventChannel(td, name)
-            if td.hasChannel(name)
-                cd = td.getChannelDescriptor(name);
-                tf = isa(cd, 'EventChannelDescriptor');
-            else
-                tf = false;
-                cd = [];
-            end
+        function tf = hasEventChannel(td, name)
+            tf = td.hasChannel(name, 'includeNamedSubChannels', false, ...
+                'channelDescriptorClass', "EventChannelDescriptor");
         end
 
         function td = setEventColor(td, name, color)
@@ -5604,12 +5599,18 @@ classdef TrialData
         function values = getParamUnique(td, name)
             vals = td.getParam(name);
             vals = vals(td.valid);
-            %             if ~iscell(vals)
-            %                 vals = removenan(vals);
-            %             end
             if ~iscell(vals)
-                values = TrialDataUtilities.Data.uniqueSingleNaN(vals);
+                if isstring(vals)
+                    if any(ismissing(vals))
+                        values = [unique(vals); string(missing)];
+                    else
+                        values = unique(vals);
+                    end
+                else
+                    values = TrialDataUtilities.Data.uniqueTolSingleNaN(vals);
+                end
             end
+                
         end
 
         % this does no data transformations at all, just copies out fields

@@ -13,7 +13,8 @@ function graphicsSortInPlaceAs(hvec)
     
     mask = arrayfun(@(h) ~isa(h, 'matlab.graphics.GraphicsPlaceholder'), hvec);
     if ~any(mask)
-        error('No non-placeholders found');
+        return;
+        warning('No non-placeholders found');
     end
     hvec = hvec(mask);
     ax = TrialDataUtilities.Plotting.getParentAxis(hvec(1));

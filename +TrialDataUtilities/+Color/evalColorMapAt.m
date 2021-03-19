@@ -7,7 +7,7 @@ function ceval = evalColorMapAt(cmap, at, clim, colorspace)
         cmap = cmap(1000);
     end
     if nargin < 3
-        clim = [min(at(:), 'omitnan') max(at(:), 'omitnan')];
+        clim = [min(at(:), [], 'omitnan') max(at(:), [], 'omitnan')];
     end
     
     clim = cast(clim, 'like', cmap);

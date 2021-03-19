@@ -202,7 +202,7 @@ classdef TimeseriesComparisonStatistics
 
     end
 
-    methods(Static, Access=protected)
+    methods(Static)
         function [dprime, dprimeHigh, dprimeLow] = dprimeFn(alpha, inCell)
             assert(numel(inCell) == 2, 'd'' only supported for axes with 2 conditions');
             delta = nanmean(inCell{1}, 1) - nanmean(inCell{2}, 1);
