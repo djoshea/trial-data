@@ -5606,6 +5606,8 @@ classdef TrialData
                     else
                         values = unique(vals);
                     end
+                elseif islogical(vals)
+                    values = unique(vals);
                 else
                     values = TrialDataUtilities.Data.uniqueTolSingleNaN(vals);
                 end
@@ -7228,7 +7230,7 @@ classdef TrialData
                         % parse as arrayElec_unit name
                         [array, electrode, unit] = SpikeChannelDescriptor.parseArrayElectrodeUnit(name);
                         if isempty(array)
-                            error('Channel %s was not not found or parsed successfully', name);
+                             error('Channel %s was not not found or parsed successfully', name);
                         end
                         if ~isfield(td.channelDescriptorsByName, array)
                             error('Channel %s not found', array);

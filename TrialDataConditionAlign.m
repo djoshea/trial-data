@@ -2359,7 +2359,8 @@ classdef TrialDataConditionAlign < TrialData
                 if cd.hasWaveforms, associated_fields(end+1) = string(cd.waveformsField); end %#ok<AGROW>
                 if cd.hasBlankingRegions, associated_fields(end+1) = string(cd.blankingRegionsField); end %#ok<AGROW>
                 if cd.hasSortQualityEachTrial, associated_fields(end+1) = string(cd.sortQualityEachTrialField); end %#ok<AGROW>
-                adjust_boundary_internal(cd.dataFieldPrimary, associated_fields, true);
+                isArray = isa(cd, 'SpikeArrayChannelDescriptor');
+                adjust_boundary_internal(cd.dataFieldPrimary, associated_fields, isArray);
             end
             if showProgress, prog.finish(); end
 
@@ -2431,14 +2432,14 @@ classdef TrialDataConditionAlign < TrialData
                                 else
                                     retainTime = time_data{iT, iC}(1:indLast, :);
                                 end
-                                time_data{iT, iC} = cat(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, retainTime);
+                                time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, retainTime);
                                 for iA = 1:nA
                                     if copyDataAcrossBoundary
                                         retainData = associated_data{iA}{iT, iC};
                                     else
                                         retainData = associated_data{iA}{iT, iC}(1:indLast, :, :, :, :, :, :, :, :, :);
                                     end
-                                    associated_data{iA}{iT, iC} = cat(1, associated_buffers{iA, iC}, retainData);
+                                    associated_data{iA}{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, associated_buffers{iA, iC}, retainData);
                                 end
                             elseif ~copyDataAcrossBoundary
                                 % no need to prepend, just slice off end
@@ -2488,14 +2489,14 @@ classdef TrialDataConditionAlign < TrialData
                                     retainTime = time_data{iT, iC}(indFirst:end, :);
                                 end
                                 
-                                time_data{iT, iC} = cat(1, retainTime, time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
+                                time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, retainTime, time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
                                 for iA = 1:nA
                                     if copyDataAcrossBoundary
                                         retainData = associated_data{iA}{iT, iC};
                                     else
                                         retainData = associated_data{iA}{iT, iC}(indFirst:end, :, :, :, :, :, :, :, :, :);
                                     end
-                                    associated_data{iA}{iT, iC} = cat(1, retainData,  associated_buffers{iA, iC});
+                                    associated_data{iA}{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, retainData,  associated_buffers{iA, iC});
                                 end
                                 
                             elseif ~copyDataAcrossBoundary

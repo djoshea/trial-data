@@ -265,6 +265,8 @@ classdef SaveArrayIndividualized < handle
             
             if progress
                 prog = ProgressBar(nChunksToLoad, str);
+            else
+                prog.update = @(ind) true;
             end
             loadedChunks = cell(nChunksToLoad, 1);
             

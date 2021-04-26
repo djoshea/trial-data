@@ -7,6 +7,9 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     p.addParameter('cluster_ids', seg.cluster_ids, @isvector);
     p.addParameter('cluster_ratings', [], @(x) true);
     
+    p.addParameter('markNoDataIfNoSpikes', true, @islogical); % if a trial has 0 spikes in the segmented KS dataset, consider it as having no data in the file
+    p.addParameter('markNoDataFilterContiguousTrials', 10, @isscalar); % filter trials with spikes to be in contigous groups of at least this many to count (removes patchy ends from the group)
+    
     p.addParameter('addHasDataParam', true, @islogical);
     p.addParameter('include_valid', true, @islogical);
     p.addParameter('include_cutoff', false, @islogical);
@@ -74,7 +77,20 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
 
     if p.Results.addHasDataParam
         ch_has_data = sprintf('%s_hasData', p.Results.arrayPrefix);
-        td = td.addOrUpdateBooleanParam(ch_has_data, seg.trial_has_data);
+        
+        if p.Results.markNoDataIfNoSpikes
+            trial_has_data = seg.trial_has_data & seg.trial_has_nonzero_spikes;
+        else
+            trial_has_data = seg.trial_has_data;
+        end
+        
+        if p.Results.markNoDataFilterContiguousTrials > 0
+            % try to find a band where trial_has_data is true and trial_has_nonzero_spikes > 0.1 median
+            mask_contiguous = imopen(seg.trial_has_nonzero_spikes, ones(p.Results.markNoDataFilterContiguousTrials, 1)); 
+            trial_has_data = trial_has_data & mask_contiguous;
+        end
+        
+        td = td.addOrUpdateBooleanParam(ch_has_data, trial_has_data);
         td = td.setChannelDisplayGroup(ch_has_data, 'neuropixel');
     end
 end
