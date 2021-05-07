@@ -499,7 +499,7 @@ function [map, colorByStack] = getColormap(cmapStacked, nStacked, cmapSuperimpos
             map = [0 0 0];
             colorByStack = false;
         else
-            map =  TrialDataUtilities.Plotting.expandWrapColormap(@TrialDataUtilities.Color.hslmap, nSuperimposed);
+            map =  TrialDataUtilities.Plotting.expandWrapColormap(@TrialDataUtilities.Colormaps.linspecer, nSuperimposed);
             colorByStack = false;
         end
     end
