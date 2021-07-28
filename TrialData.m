@@ -872,7 +872,7 @@ classdef TrialData
         function td = loadFast(location, varargin)
             p = inputParser();
             p.addParameter('maxTrials', Inf, @isscalar);
-            p.addParameter('partitions', {}, @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addParameter('partitions', {}, @(x) isempty(x) || ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('loadAllPartitions', [], @(x) isempty(x) || islogical(x));
             p.addParameter('ignoreMissingPartitions', false, @islogical);
             p.addParameter('validate', true, @islogical);
@@ -885,7 +885,7 @@ classdef TrialData
             %             location = fullfile(path, name);
 
             % by default, load all
-            partitions = p.Results.partitions;
+            partitions = string(p.Results.partitions);
             loadAllPartitions = p.Results.loadAllPartitions;
             if isempty(loadAllPartitions)
                 loadAllPartitions = isempty(partitions);

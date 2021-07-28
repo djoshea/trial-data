@@ -281,6 +281,7 @@ else
     end
 end
 
+
 traceCenters = (traceOffsets + rangesNorm / 2)';
 traceHighs = traceOffsets + rangesNorm;
 traceLows = traceOffsets;

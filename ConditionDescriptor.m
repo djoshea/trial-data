@@ -1445,7 +1445,7 @@ classdef ConditionDescriptor
 
         function ci = colorByAttributes(ci, attributes, varargin)
             p = inputParser();
-            p.addOptional('cmapFn', @TrialDataUtilities.Color.linspecer, ...
+            p.addOptional('cmapFn', @TrialDataUtilities.Colormaps.linspecer, ...
                 @(x) ismatrix(x) || isa(x, 'function_handle'));
             p.parse(varargin{:});
 
@@ -1461,7 +1461,7 @@ classdef ConditionDescriptor
 
         function ci = colorByAxes(ci, axesSpec, varargin)
             p = inputParser();
-            p.addOptional('cmapFn', @TrialDataUtilities.Color.linspecer, ...
+            p.addOptional('cmapFn', @TrialDataUtilities.Colormaps.linspecer, ...
                 @(x) ismatrix(x) || isa(x, 'function_handle'));
             p.parse(varargin{:});
 

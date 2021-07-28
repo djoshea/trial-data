@@ -352,7 +352,7 @@ classdef TrialDataConditionAlign < TrialData
             % don't copy in build methods
             c = td.odc;
             c.valid = valid;
-            c.invalidCause = cause;
+            c.invalidCause = string(cause);
             td.odc = c;
         end
     end
@@ -3900,7 +3900,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            assert(iscell(names));
+            assert(isstring(names) || iscell(names));
 
             % pick common sampling rate up front
             timeDelta = p.Results.timeDelta;

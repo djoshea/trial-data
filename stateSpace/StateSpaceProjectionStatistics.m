@@ -588,7 +588,7 @@ classdef StateSpaceProjectionStatistics
             if ~isempty(p.Results.showMarginalizedThresholdsAt) && marginalize
                 for m = 1:s.nMarginalizations
                     thresh = p.Results.showMarginalizedThresholdsAt(m);
-                    if isnan(thresh), continue, end;
+                    if isnan(thresh), continue, end
                     
                     if p.Results.fractional
                         % make the thresh fractional relative to the total
@@ -1084,7 +1084,7 @@ classdef StateSpaceProjectionStatistics
                 end
                 if p.Results.verbose, prog.finish(); end
                 
-                s.cumSignalVarByBasis_shared = max(0, s.cumSignalVarByBasis_shared);
+                s.cumVarByBasis_shared = max(0, s.cumVarByBasis_shared);
                 s.cumFracVarByBasis_shared = s.cumVarByBasis_shared / s.totalVar_shared;
             
                 % compute variance through decoder

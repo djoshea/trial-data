@@ -1141,6 +1141,18 @@ classdef TensorUtils
                 which = TensorUtils.indicesIntoMaskToOriginalIndices(whichMasked, ~isEmpty);
             end
         end
+        
+        function out = catFillMissingSliceWhereEmpty(dim, varargin)
+            % cats along a new dimension (where all inputs have size 1 along dim)
+            % if a given vararin{i} is empty, inserts a slice of missing values
+           
+            isEmpty = cellfun(@isempty, varargin);
+            szDim = cellfun(@(x) size(x, dim), varargin);
+            assert(all(szDim == 1 | isEmpty), 'All inputs mut be size 1 along dim or empty');
+            
+            out = cat(dim, varargin{~isEmpty});
+            out = TensorUtils.inflateMaskedTensor(out, dim, ~isEmpty);
+        end
 
         function [out, which] = catInnerDimOverOuterDim(t, innerDim, outerDim)
             % for each entry in t along dimension outerDim, concatenates
