@@ -264,3 +264,7 @@ if nargin == 0
 else
     cmap = TrialDataUtilities.Color.evalColorMapAt(mako_lut, linspace(0, 1, nColors));
 end
+
+if nargout == 0
+    colormap(cmap);
+end
