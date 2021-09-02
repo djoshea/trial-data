@@ -6,6 +6,10 @@ p = inputParser();
 p.addParameter('xError', [], @(x) true);
 p.addParameter('yError', [], @(x) true);
 
+% or these (N x 2)
+p.addParameter('yCI', [], @(x) true);
+p.addParameter('xCI', [], @(x) true);
+
 % or these:
 p.addParameter('xConfHigh', [], @(x) true);
 p.addParameter('yConfHigh', [], @(x) true);
@@ -39,10 +43,16 @@ xErrorHigh = xData;
 if ~isempty(p.Results.xConfHigh)
     xErrorHigh = p.Results.xConfHigh(:);
     xErrorLow = p.Results.xConfLow(:);
+    
+elseif ~isempty(p.Results.yCI)
+    xErrorLow = p.Results.xCI(:, 1);
+    xErrorHigh = p.Results.xCI(:, 2);
+    
 % use error bars if specified
 elseif ~isempty(p.Results.xError)
     xErrorHigh = xData + p.Results.xError(:);
     xErrorLow = xData - p.Results.xError(:);
+
 end
 
 yErrorLow = yData;
@@ -50,10 +60,20 @@ yErrorHigh = yData;
 if ~isempty(p.Results.yConfHigh)
     yErrorHigh = p.Results.yConfHigh(:);
     yErrorLow = p.Results.yConfLow(:);
+    
+elseif ~isempty(p.Results.yCI)
+    yErrorLow = p.Results.yCI(:, 1);
+    yErrorHigh = p.Results.yCI(:, 2);
+ 
 elseif ~isempty(p.Results.yError)
     yErrorHigh = yData + p.Results.yError(:);
     yErrorLow = yData - p.Results.yError(:);
 end
+
+assert(numel(yErrorHigh) == numel(yData));
+assert(numel(yErrorLow) == numel(yData));
+assert(numel(xErrorHigh) == numel(xData));
+assert(numel(xErrorLow) == numel(xData));
 
 xLine = [makerow(xErrorLow), makerow(xData); makerow(xErrorHigh), makerow(xData)];
 yLine = [makerow(yData), makerow(yErrorLow); makerow(yData), makerow(yErrorHigh)];

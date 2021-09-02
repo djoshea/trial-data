@@ -454,10 +454,13 @@ classdef TensorUtils
             if ~iscell(masks)
                 masks = {masks};
             end
+            keep_all = false(numel(masks), 1);
             for i = 1:numel(masks)
                 if ~islogical(masks{i})
                     masks{i} = TensorUtils.vectorIndicesToMask(masks{i}, max(masks{i}));
                 end
+                
+                keep_all(i) = all(masks{i});
             end
 
             assert(all(cellfun(@(x) islogical(x) && isvector(x), masks)), ...
@@ -475,6 +478,11 @@ classdef TensorUtils
             % check size along selected dims
             assert(isequal(TensorUtils.makecol(TensorUtils.sizeMultiDim(maskedTensor, dims)), nSelectedVec), ...
                 'Size along each masked dimension must match nnz(mask)');
+            
+            if all(keep_all)
+                inflated = maskedTensor;
+                return
+            end
 
             % compute inflated size
             inflatedSize = size(maskedTensor);
