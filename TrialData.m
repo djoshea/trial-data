@@ -310,21 +310,29 @@ classdef TrialData
             % wrapper for validateDataInternal that allows this to be done
             % internally
             td.warnIfNoArgOut(nargout);
+            
+            p = inputParser();
+            p.addParameter('progress', true, @islogical);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            progress = p.Results.progress;
 
-            [td.data, td.channelDescriptorsByName] = td.validateDataInternal(td.data, td.channelDescriptorsByName, varargin{:});
+            [td.data, td.channelDescriptorsByName] = td.validateDataInternal(td.data, td.channelDescriptorsByName, 'progress', progress, p.Unmatched);
 
-            td = td.fixCheckAnalogDataMatchesTimeVectors();
+            td = td.fixCheckAnalogDataMatchesTimeVectors('progress', progress);
 
             td = td.fixAnalogChannelGroups();
         end
 
         function [data, channelDescriptorsByName] = validateDataInternal(td, data, channelDescriptorsByName, varargin) %#ok<INUSL>
             p = inputParser();
+            p.addParameter('progress', true, @islogical);
             p.addParameter('addMissingFields', false, @islogical); % if true, don't complain about missing channels, just add the missing fields
             p.addParameter('suppressWarnings', false, @islogical); % don't warn about any minor issues
             p.parse(varargin{:});
             suppressWarnings = p.Results.suppressWarnings;
 
+            progress = p.Results.progress;
             names = fieldnames(channelDescriptorsByName);
             nChannels = numel(names); %#ok<*PROPLC>
 
@@ -375,9 +383,13 @@ classdef TrialData
 
             % here we both change classes of data in memory and update
             % channelDescriptors depending on what we find
-            prog = ProgressBar(nChannels, 'Repairing and converting channel data');
+            if progress
+                prog = ProgressBar(nChannels, 'Repairing and converting channel data');
+            end
             for iChannel = 1:nChannels
-                prog.update(iChannel, 'Repairing and converting %s', names{iChannel});
+                if progress
+                    prog.update(iChannel, 'Repairing and converting %s', names{iChannel});
+                end
                 chd = channelDescriptorsByName.(names{iChannel});
                 impl = chd.getImpl();
                 if isa(chd, 'AnalogChannelDescriptor') && chd.isColumnOfSharedMatrix, continue, end
@@ -399,10 +411,17 @@ classdef TrialData
                 channelDescriptorsByName.(names{iChannel}) = chd;
             end
 
-            prog.finish();
+            if progress
+                prog.finish();
+            end
         end
 
-        function [td, globalOkay] = fixCheckAnalogDataMatchesTimeVectors(td)
+        function [td, globalOkay] = fixCheckAnalogDataMatchesTimeVectors(td, varargin)
+            p = inputParser();
+            p.addParameter('progress', true, @islogical);
+            p.parse(varargin{:});
+            progress = p.Results.progress;
+            
             td.warnIfNoArgOut(nargout);
 
             td = td.reset();
@@ -440,9 +459,13 @@ classdef TrialData
                 primaryChannelName{iA} = groupNames{iA};
             end
 
-            prog = ProgressBar(nTotal, 'Checking sample count vs. times for analog channels');
+            if progress
+                prog = ProgressBar(nTotal, 'Checking sample count vs. times for analog channels');
+            end
             for iA = 1:nTotal
-                prog.update(iA, 'Checking sample count vs. times for %s', dataFields{iA});
+                if progress
+                    prog.update(iA, 'Checking sample count vs. times for %s', dataFields{iA});
+                end
 
                 dataField = dataFields{iA};
                 timeField = timeFields{iA};
@@ -482,7 +505,9 @@ classdef TrialData
                 end
 
                 if any(~okay)
-                    prog.pause_for_output();
+                    if progress
+                        prog.pause_for_output();
+                    end
                     warning('%d trials have differing number of data samples in %s as timestamps in %s. Fixing by clearing data and time fields.', ...
                         nnz(~okay), dataField, timeField);
                     globalOkay = false;
@@ -509,7 +534,7 @@ classdef TrialData
 
                 timeData = {td.data.(timeField)}';
                 emptyMask = cellfun(@(t) numel(t) < 2, timeData);
-                timeDelta = nanmedian(cellfun(@(x) nanmedian(diff(x)), timeData(~emptyMask)));
+                timeDelta = median(cellfun(@(x) median(diff(x), 'omitnan'), timeData(~emptyMask)), 'omitnan');
 
                 % check sorted and no duplicates
                 resort = truevec(td.nTrials);
@@ -519,7 +544,9 @@ classdef TrialData
                     resort(iT) = ~issorted(timeThis) || numel(timeThis) > numel(unique(timeThis));
                 end
                 if any(resort)
-                    prog.pause_for_output();
+                    if progress
+                        prog.pause_for_output();
+                    end
                     warning('%d trials have duplicate or non-monotonically increasing timestamps for %s. Fixing by deleting non-montonic samples.', nnz(resort), dataField);
 
                     % sort all affected channels so that the shared time field can be preserved
@@ -559,7 +586,9 @@ classdef TrialData
                 end
 
             end
-            prog.finish();
+            if progress
+                prog.finish();
+            end
 
             function [time, sortIdx] = getTimeSorted(time)
                 time = TrialDataUtilities.Data.removeSmallTimeErrors(time, timeDelta, 0);
@@ -929,7 +958,7 @@ classdef TrialData
                 td = td.rebuildOnDemandCache();
 
                 if p.Results.validate
-                    td = td.validateData();
+                    td = td.validateData('progress', progress);
                 end
             else
                 error('Directory %s not found. Did you save with saveFast?', location);
@@ -1822,7 +1851,7 @@ classdef TrialData
                         gcd = td.channelDescriptorsByName.(ch);
                         cd(iN) = gcd.buildSubChannelDescriptor(chidx); %#ok<AGROW>
                     else
-                        gerror('Could not find channel %s', name);
+                        error('Could not find channel %s', name);
                     end
                 else
                     if isempty(subNames)
@@ -1896,6 +1925,13 @@ classdef TrialData
         function tf = isChannelCategorical(td, name)
             cd = td.channelDescriptorsByName.(name);
             tf = ~cd.collectAsCellByField(1) && strcmp(cd.accessClassByField{1}, 'categorical');
+        end
+        
+        function td= setChannelMeta(td, name, meta)
+            td.warnIfNoArgOut(nargout);
+            assert(isstruct(meta) && isscalar(meta));
+            
+            td.channelDescriptorsByName.(name).meta = meta;
         end
 
         function td = setChannelMetaKey(td, name, key, value)
@@ -2146,7 +2182,7 @@ classdef TrialData
                 % the field is written
                 if ~isfield(td.data, fields{iF}), continue; end
                 %                 assert(isfield(td.data, fields{iF}), 'TrialData does not have data field %s', fields{iF});
-                [mask, whichField] = structfun(@(chFields) ismember(fields{iF}, chFields), fieldsByChannel);
+                [mask, whichField] = structfun(@(chFields) ismember(string(fields{iF}), string(chFields)), fieldsByChannel);
                 namesByField{iF} = channels(mask);
                 fieldIdxEach{iF} = whichField(mask);
             end
@@ -2291,6 +2327,11 @@ classdef TrialData
             td = td.dropChannels(list);
         end
 
+        function td = trimAllChannelsToTrialStartEnd(td)
+            td.warnIfNoArgOut(nargout);
+            td = td.trimAllChannelsRaw(); % defaults to TrialStart / TrialEnd
+        end
+        
         function td = trimAllChannelsRaw(td, varargin)
             % Timepoints that lie outside of TrialStart (or startTimes and TrialStop (or endTimes) will
             % never be accessible via getTimes since they will be filtered
@@ -4200,6 +4241,7 @@ classdef TrialData
             if ~p.Results.raw % don't update invalid trials
                 mask = mask & td.valid;
             end
+            groupName = char(groupName);
 
             subChList = td.listAnalogChannelsInGroup(groupName);
             nCh = numel(subChList);
@@ -5223,7 +5265,7 @@ classdef TrialData
             p.addParameter('channelDescriptor', [], @(x) isa(x, 'ChannelDescriptor'));
             p.addParameter('like', '', @ischar);
             p.addParameter('units', '', @ischar);
-            p.addParameter('displayGroup', '', @ischar);
+            p.addParameter('displayGroup', '', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 

@@ -121,7 +121,7 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
                 timeField = sprintf('%s_time', cd.name);
             end
             
-            cd.dataFields = {name, timeField};
+            cd.dataFields = {char(name), char(timeField)};
             cd.originalDataClassByField = {'double', 'double'};
             cd.elementTypeByField = [cd.NUMERIC, cd.VECTOR];
             cd.sampleSize = sampleSize;

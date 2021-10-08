@@ -1046,7 +1046,7 @@ classdef AlignSummary
             p.addParameter('which', 'x', @(x) ismember(x, {'x', 'y', 'z'}));
             p.addParameter('axh', [], @(x) isempty(x) || isscalar(x));
             p.addParameter('tOffsetZero', 0, @isscalar); % x position of t=0 on the axis
-            p.addParameter('style', 'tickBridge', @ischar); % 'tickBridge', 'tickBridgeStartStop', or 'marker'
+            p.addParameter('style', 'tickBridge', @isstringlike); % 'tickBridge', 'tickBridgeStartStop', or 'marker'
             p.addParameter('tMin', as.startMin, @isscalar); % time minimum for style 'tickBridge'
             p.addParameter('tMax', as.stopMax, @isscalar); % time maximum for style 'tickBridge'
             p.addParameter('tUnits', 'ms', @ischar); % units for time

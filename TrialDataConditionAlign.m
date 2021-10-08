@@ -461,6 +461,13 @@ classdef TrialDataConditionAlign < TrialData
 
         % print a short description
         function disp(td)
+            if numel(td) > 1
+                for i = 1:numel(td)
+                    td(i).printDescriptionShort();
+                end
+                return
+            end
+            
             td.printDescriptionShort();
 
             td.conditionInfo.printDescription();
@@ -1024,6 +1031,15 @@ classdef TrialDataConditionAlign < TrialData
 
             drop = cat(1, listsDrop{:});
             td = td.markTrialsTemporarilyInvalid(drop, 'withFirstNTrialsEachCondition');
+        end
+        
+        function td = withFirstNValidTrials(td, n)
+            td.warnIfNoArgOut(nargout);
+            
+            drop = true(td.nTrials, 1);
+            inds = find(td.valid, n, 'first');
+            drop(inds) = false;
+            td = td.markTrialsTemporarilyInvalid(drop, 'withFirstNValidTrials');
         end
 
         function td = withTrials(td, mask, desc)
@@ -7941,12 +7957,16 @@ classdef TrialDataConditionAlign < TrialData
         function retInfo = plotProvidedAnalogDataGroupMeans(td, D, varargin)
             p = inputParser();
             p.addParameter('time', [], @(x) true);
+            p.addParameter('timeAxisStyle', 'tickBridge', @isstringlike);
             p.addParameter('alignIdx', 1:td.nAlign, @(x) true);
             p.addParameter('retInfo', struct(), @isstruct);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
             alignTimeOffsets = td.getAlignPlottingTimeOffsets(p.Results.time, 'alignIdx', p.Results.alignIdx);
+            res = rmfield(p.Results, 'timeAxisStyle');
+            res.xAxisStyle = p.Results.timeAxisStyle;
+            
             retInfo = TrialDataConditionAlign.plotConditionAlignedAnalogDataGroupMeans(D, p.Results, p.Unmatched, ...
                 'conditionDescriptor', td.conditionInfo, ...
                 'alignSummarySet', td.alignSummarySet, ...
@@ -8508,7 +8528,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showRangesOnData', false, @islogical); % show ranges for marks on traces
             p.addParameter('showRangesOnAxis', true, @islogical); % show ranges for marks below axis
 
-            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @isstringlike);
             p.addParameter('timeScaleBarWidth', NaN, @isscalar);
 
             p.addParameter('useThreeVector', true, @islogical);

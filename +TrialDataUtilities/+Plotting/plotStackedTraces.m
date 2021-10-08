@@ -22,6 +22,8 @@ function [traceCenters, hLines] = plotStackedTraces(tvec, data, varargin)
 % TODO : fix intercalate - probably not working anymore
 
 p = inputParser();
+p.addParameter('data_ci', [], @(x) isnumeric(x) || iscell(x) || isempty(x)); % time x stack x superimposed dims x 2 (one more dim than data), or cell with the same
+p.addParameter('ci_alpha', 0.5, @isscalar);
 p.addParameter('evenSpacing', false, @islogical); % the vertical space allocated to each stacked trace is the same?
 p.addParameter('normalize', false, @islogical); % the vertical height of each trace is normalized? or in original data units
 p.addParameter('gain', 1, @isscalar);
@@ -52,7 +54,10 @@ p.KeepUnmatched = true;
 p.CaseSensitive = false;
 p.parse(varargin{:});
 
-newplot;
+axh = newplot;
+
+data_ci = p.Results.data_ci;
+ci_alpha = p.Results.ci_alpha;
 
 if ~iscell(data)
     % all traces share common time vector
@@ -67,12 +72,18 @@ if ~iscell(data)
     if ~isfloat(data)
         data = single(data);
     end
+    
 else
     % everytraces has different time vector
     nTraces = size(data, 1);
     nSuperimposed = size(data, 2);
     emptyMask = cellfun(@isempty, data);
     data(emptyMask) = {NaN}; % prevents errors with cellfun later
+    
+    if isempty(data_ci)
+        data_ci = cell(size(data));
+        [data_ci{:}] = deal(NaN);
+    end
 end
    
 % construct labels by traces
@@ -106,46 +117,55 @@ if p.Results.legendUniqueLabelsOnly
 end
 
 if ~iscell(data)
+    has_ci = ~isempty(data_ci);
+    
     % invert the order of the traces so the first is plotted at the top
     if p.Results.maintainScaleSuperimposed
-        % subtract the min so each group of traces has min == 0
-        minEachGroup = TensorUtils.nanminMultiDim(data, [1 3]);
-        dataLowOrig = minEachGroup;
-        matShift = bsxfun(@minus, data, minEachGroup);
-
-        rangesOrig = TensorUtils.nanmaxMultiDim(matShift, [1 3]);
-        if p.Results.normalize
-            norms = rangesOrig;
-            matShift = bsxfun(@rdivide, matShift, norms);
-        else
-            norms = onesvec(nTraces);
-        end
+        rangeDims = [1 3];
     else
-        % subtract the min so each trace has min at zero
-        dataLowOrig = nanmin(data, [], 1);
-        matShift = bsxfun(@minus, data, dataLowOrig);
+        rangeDims = 1;
+    end
+    
+    % subtract the min so each group of traces has min == 0
+    if has_ci
+        data_lo = data_ci(:, :, :, 1);
+        data_hi = data_ci(:, :, :, 2);
+    else
+        data_lo = data;
+        data_hi = data;
+    end
 
-        if p.Results.normalize
-            maxEach = range(matShift, 1);
-            matShift = bsxfun(@rdivide, matShift, maxEach);
-        end
+    minEachGroup = min(data_lo, [], rangeDims, 'omitnan');
+    dataLowOrig = minEachGroup;
+    data = data - minEachGroup;
+    data_lo = data_lo - minEachGroup;
+    data_hi = data_hi - minEachGroup;
+
+    rangesOrig = max(data_hi, [], rangeDims, 'omitnan');
+
+    if p.Results.normalize
+        norms = rangesOrig;
+        data = data ./ norms;
+        data_lo = data_lo ./ norms;
+        data_hi = data_hi ./ norms;
+    else
+        norms = onesvec(nTraces);
     end
 
     % compute the max range each row
-    rangesNorm = TensorUtils.nanmaxMultiDim(matShift, [1 3]) ;
-    
+    rangesNorm = max(data_hi, [], [1 3], 'omitnan');
     rangesNorm(isnan(rangesNorm)) = 0;
 
     % figure out where each trace should start
     if p.Results.evenSpacing
         % trace(k) will be offset by spacing * k
         if p.Results.intercalate
-            deltas = matShift(:, 2:end, :) * p.Results.spacingFraction - matShift(:, 1:end-1, :);
-            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]) / p.Results.gain; % max over time and superimposed traces
-            traceOffsets = (nTraces-1:-1:0) * nanmax(maxDeltas);
+            deltas = data(:, 2:end, :) * p.Results.spacingFraction - data(:, 1:end-1, :);
+            maxDeltas = max(deltas, [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
+            traceOffsets = (nTraces-1:-1:0) * max(maxDeltas, [], 'omitnan');
         else
             rangesPadded = makerow(rangesNorm / p.Results.gain * (p.Results.spacingFraction));
-            traceOffsets = (nTraces-1:-1:0) * nanmax(rangesPadded);
+            traceOffsets = (nTraces-1:-1:0) * max(rangesPadded, [], 'omitnan');
         end
     else
         if p.Results.intercalate
@@ -155,11 +175,10 @@ if ~iscell(data)
             % or:
             %   offset = max_t (traceN+1(t) * spacingFraction - traceN(t))
 
-            deltas = matShift(:, 2:end, :) * p.Results.spacingFraction - matShift(:, 1:end-1, :);
-            maxDeltas = TensorUtils.nanmaxMultiDim(deltas, [1 3]) / p.Results.gain; % max over time and superimposed traces
+            deltas = data_hi(:, 2:end, :) * p.Results.spacingFraction - data_lo(:, 1:end-1, :);
+            maxDeltas = max(deltas, [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
             cs = fliplr(cumsum(fliplr(maxDeltas)));
             traceOffsets = [cs, 0];
-
         else 
             rangesPadded = makerow(rangesNorm / p.Results.gain * (p.Results.spacingFraction));
             cs = fliplr(cumsum(fliplr(rangesPadded)));
@@ -167,22 +186,37 @@ if ~iscell(data)
         end
     end  
 
-    matShift = bsxfun(@plus, matShift, traceOffsets);
+    % time x stack x superimposed
+    data = data + traceOffsets;
+    data_lo = data_lo + traceOffsets;
+    data_hi = data_hi + traceOffsets;
 
     % expand colormap to be exactly nSuperimposed long
     [map, colorByStack] = getColormap(p.Results.colormapStacked, nTraces, p.Results.colormap, nSuperimposed);
 
     if nSuperimposed == 1 && ~colorByStack
         % plot simultaneously
-        hLines = plot(tvec, matShift, '-', 'Color', map(1, :), 'MarkerFaceColor', map(1, :), 'MarkerEdgeColor', map(1, :), p.Unmatched);
-    else
-%         set(gca, 'ColorOrder', map); % the map will superimpose automatically
+        TrialDataUtilities.Plotting.errorshadeInterval(tvec, data_lo, data_hi, map(1, :), 'axh', axh);
         hold on;
-
+        hLines = plot(tvec, data, '-', 'Color', map(1, :), 'MarkerFaceColor', map(1, :), 'MarkerEdgeColor', map(1, :), 'axh', axh, p.Unmatched);
+    else
         % here we arrange so that all traces are stacked vertically but that
         % all positions along dim 2 are grouped together 
-        matShiftCat = TensorUtils.reshapeByConcatenatingDims(matShift, {1 [3 2]});
-
+        matShiftCat = TensorUtils.reshapeByConcatenatingDims(data, {1 [3, 2]});
+        
+        if has_ci
+            for iSuper = 1:nSuperimposed
+                for iStack = 1:nTraces
+                    if colorByStack
+                        color_this = map(iStack, :);
+                    else
+                        color_this = map(iSuper, :);
+                    end
+                    TrialDataUtilities.Plotting.errorshadeInterval(tvec, data_lo(:, iStack, iSuper), data_hi(:, iStack, iSuper), color_this, 'axh', axh, 'alpha', ci_alpha);
+                    hold on;
+                end
+            end
+        end
         hLines = plot(tvec, matShiftCat, '-', p.Unmatched);
         hLines = reshape(hLines, [nSuperimposed nTraces])';
         

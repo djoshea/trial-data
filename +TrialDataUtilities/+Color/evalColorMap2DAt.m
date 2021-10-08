@@ -35,6 +35,10 @@ function ceval = evalColorMap2DAt(img, at1, at2, lim1, lim2, colorspace)
     
     ceval = nan(numel(at1), 1);
     
+    clamp = @(x, lim) min(max(x, lim(1)), lim(2));
+    at1 = clamp(at1, lim1);
+    at2 = clamp(at2, lim2);
+    
     ceval(:, 1) = gi{1}(at1, at2);
     ceval(:, 2) = gi{2}(at1, at2);
     ceval(:, 3) = gi{3}(at1, at2);

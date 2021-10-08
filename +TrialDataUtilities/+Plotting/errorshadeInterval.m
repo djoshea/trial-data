@@ -36,10 +36,12 @@ function hs = errorshadeInterval(x, lo, hi, color, varargin)
     % desaturate the color for shading if not translucent
     if isempty(p.Results.errorColor)
         if p.Results.alpha < 1
-            shadeColor = color;
+%             shadeColor = color;
+            shadeColor = TrialDataUtilities.Color.brighten(color, 0.5);
         else
             % move half the distance to white
-            shadeColor = 1 - (1-color)*0.5;
+            %shadeColor = 1 - (1-color)*0.5;
+            shadeColor = TrialDataUtilities.Color.brighten(color, 0.5);
         end
     else
         shadeColor = p.Results.errorColor;

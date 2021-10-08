@@ -23,6 +23,7 @@ classdef ConditionDescriptor
         allValueListsManual % true if all attribute lists and axis lists are manually (not automatically determined)
 
         attributeValueListIsBinned
+        axisValueListIsBinned
     end
 
     % the following properties are computed dynamically on the fly as they
@@ -422,6 +423,18 @@ classdef ConditionDescriptor
         function tf = get.attributeValueListIsBinned(ci)
             tf = ismember(ci.attributeValueModes, [ci.AttributeValueBinsManual, ci.AttributeValueBinsAutoUniform, ci.AttributeValueBinsAutoQuantiles]);
         end
+        
+        function tf = get.axisValueListIsBinned(ci)
+            nA = ci.nAxes;
+            tf = false(nA, 1);
+            attr_binned = ci.attributeValueListIsBinned;
+            for iA = 1:ci.nAxes
+                if numel(ci.axisAttributes{iA}) == 1
+                    tf(iA) = attr_binned(ci.getAttributeIdx(ci.axisAttributes{iA}));
+                end
+            end
+        end
+                
 
         function tf = get.allAttributeValueListsManual(ci)
             % returns true if all attribute value lists
@@ -799,6 +812,12 @@ classdef ConditionDescriptor
                 if isvector(valueList) && ~isstruct(valueList) && ~iscell(valueList)
                     valueList = num2cell(valueList);
                 end
+                
+                if ismatrix(valueList) && size(valueList, 2) == 2 && ci.axisValueListIsBinned(idx)
+                    % matrix of bins, split by rows
+                    valueList = mat2cell(valueList, ones(size(valueList, 1), 1),  2);
+                end
+                
                 if iscell(valueList) && ~isstruct(valueList{1})
                     % for one axis with single attribute, valueList can simply be a cell
                     % array of values
@@ -809,7 +828,7 @@ classdef ConditionDescriptor
                 end
             end
 
-            assert(isstruct(valueList) && isvector(valueList), ....
+            assert(isstruct(valueList) && ismatrix(valueList) && size(valueList, 2) <= 2, ....
                 'Value list must be a struct vector');
             assert(isempty(setxor(fieldnames(valueList), ci.axisAttributes{idx})), ...
                 'Value list fields must match axis attributes');
