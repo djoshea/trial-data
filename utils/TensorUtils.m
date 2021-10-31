@@ -1545,6 +1545,19 @@ classdef TensorUtils
             repmatArg(dims) = toSz;
             out = repmat(in, repmatArg);
         end
+        
+        function out = repelemEach(v, n, dim)
+            % repeats value v(i) n(i) times along dimension dim
+            if nargin < 2
+                dim = 1;
+            end
+                
+            nc = num2cell(n);
+            % split v into 
+            uc = TensorUtils.splitAlongDimension(v, dim, 1);
+            uc = cellfun(@(vthis, uthis) TensorUtils.repmatAlongDims(vthis, dim, nthis), uc, nc, 'UniformOutput', false);
+            out = cat(dim, uc{:});
+        end
 
         function t = expandOrTruncateToSize(t, dims, makeSize, fillWith)
             % along each dims(i), truncate or expand with NaN to be size sz(i)
@@ -1987,14 +2000,14 @@ classdef TensorUtils
             t = bsxfun(@rdivide, t, stdTensor);
         end
 
-        function t = zscoreSoftMultiDim(t, alongDims, denomOffset)
+        function [t, mu, stdTensor] = zscoreSoftMultiDim(t, alongDims, denomOffset)
             % for each subscript in dimension(s) alongDims, computes the mean
             % along all other dimensions and subtracts it. this ensures
             % that the mean along any slice in alongDims will have zero
             % mean. Then normalizes by the std along all other dimensions.
-            t = TensorUtils.centerSlicesSpanningDimension(t, alongDims);
+            [t, mu] = TensorUtils.centerSlicesSpanningDimension(t, alongDims);
             stdTensor = TensorUtils.nanstdMultiDim(t, alongDims) + denomOffset;
-            t = bsxfun(@rdivide, t, stdTensor);
+            t =  t ./ stdTensor;
         end
 
         function ss = ssqMultiDim(t, alongDims)

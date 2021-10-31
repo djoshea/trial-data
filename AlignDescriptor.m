@@ -1503,6 +1503,7 @@ classdef AlignDescriptor
             if nargin < 5
                 abbrev = false;
             end
+            name = char(name);
 
             % determine the appropriate abbreviation
             if isempty(name)

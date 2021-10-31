@@ -18,6 +18,8 @@ function [hl, hs] = errorshadeCI(x, ym, yCI, color, varargin)
     else
         axh = p.Results.axh;
     end
+    
+    washolding = ishold(axh);
    
     hold(axh, 'on');
     hs = TrialDataUtilities.Plotting.errorshadeInterval(x, y1, y2, color, 'axh', axh, p.Unmatched);
@@ -26,5 +28,9 @@ function [hl, hs] = errorshadeCI(x, ym, yCI, color, varargin)
         hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:}, 'DisplayName', p.Results.DisplayName);
         TrialDataUtilities.Plotting.setLineOpacity(hl, p.Results.lineAlpha);
         hl = [];
+    end
+    
+    if ~washolding
+        hold(axh, 'off');
     end
 end

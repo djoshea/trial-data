@@ -130,37 +130,47 @@ if ~iscell(data)
     if has_ci
         data_lo = data_ci(:, :, :, 1);
         data_hi = data_ci(:, :, :, 2);
+        
+        data_lo_scaling = min(data, data_ci(:, :, :, 1), 'omitnan');
+        data_hi_scaling = max(data, data_ci(:, :, :, 2), 'omitnan');
     else
         data_lo = data;
         data_hi = data;
+        
+        data_lo_scaling = data;
+        data_hi_scaling = data;
     end
 
-    minEachGroup = min(data_lo, [], rangeDims, 'omitnan');
+    minEachGroup = min(data_lo_scaling, [], rangeDims, 'omitnan');
     dataLowOrig = minEachGroup;
     data = data - minEachGroup;
     data_lo = data_lo - minEachGroup;
     data_hi = data_hi - minEachGroup;
+    data_lo_scaling = data_lo_scaling - minEachGroup;
+    data_hi_scaling = data_hi_scaling - minEachGroup;
 
-    rangesOrig = max(data_hi, [], rangeDims, 'omitnan');
+    rangesOrig = max(data_hi_scaling, [], rangeDims, 'omitnan');
 
     if p.Results.normalize
         norms = rangesOrig;
         data = data ./ norms;
         data_lo = data_lo ./ norms;
         data_hi = data_hi ./ norms;
+        data_lo_scaling = data_lo_scaling ./ norms;
+        data_hi_scaling = data_hi_scaling ./ norms;
     else
         norms = onesvec(nTraces);
     end
 
     % compute the max range each row
-    rangesNorm = max(data_hi, [], [1 3], 'omitnan');
+    rangesNorm = max(data_hi_scaling, [], [1 3], 'omitnan');
     rangesNorm(isnan(rangesNorm)) = 0;
 
     % figure out where each trace should start
     if p.Results.evenSpacing
         % trace(k) will be offset by spacing * k
         if p.Results.intercalate
-            deltas = data(:, 2:end, :) * p.Results.spacingFraction - data(:, 1:end-1, :);
+            deltas = data_hi_scaling(:, 2:end, :) * p.Results.spacingFraction - data_lo_scaling(:, 1:end-1, :);
             maxDeltas = max(deltas, [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
             traceOffsets = (nTraces-1:-1:0) * max(maxDeltas, [], 'omitnan');
         else
@@ -175,7 +185,7 @@ if ~iscell(data)
             % or:
             %   offset = max_t (traceN+1(t) * spacingFraction - traceN(t))
 
-            deltas = data_hi(:, 2:end, :) * p.Results.spacingFraction - data_lo(:, 1:end-1, :);
+            deltas = data_hi_scaling(:, 2:end, :) * p.Results.spacingFraction - data_lo_scaling(:, 1:end-1, :);
             maxDeltas = max(deltas, [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
             cs = fliplr(cumsum(fliplr(maxDeltas)));
             traceOffsets = [cs, 0];

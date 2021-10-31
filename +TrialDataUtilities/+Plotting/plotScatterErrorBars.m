@@ -1,6 +1,6 @@
 function [hPoints, hError] = plotScatterErrorBars(xData, yData, varargin)
 
-iscolor = @(x) ischar(x) || (isnumeric(x) && isvector(x) && numel(x) == 3);
+iscolor = @(x) isstringlike(x) || (isnumeric(x) && isvector(x) && numel(x) == 3);
 p = inputParser();
 % specify these:
 p.addParameter('xError', [], @(x) true);
