@@ -24,7 +24,7 @@ classdef AlignDescriptor
     end
         
     properties(SetAccess=protected, Hidden)
-        nameDefault
+        nameDefault = true;
         
         % how to handle the window falling outside of the trial
         outsideOfTrialMode = AlignDescriptor.TRUNCATE; % TRUNCATE or INVALIDATE or IGNORE
@@ -257,7 +257,7 @@ classdef AlignDescriptor
         end
         
         function name = get.name(ad)
-            if isempty(ad.name)
+            if isempty(ad.name) || isempty(ad.nameDefault) || ad.nameDefault
                 name = ad.getStartStopZeroDescription();
             else
                 name = ad.name;
@@ -1156,6 +1156,21 @@ classdef AlignDescriptor
             ad.zeroOffset = ad.zeroOffset - tDelay;
             ad = ad.update();
         end
+
+        function adPre = buildPreStartAlign(ad, varargin)
+            % generates a copy of this align descriptor that starts at a new start, and ends at the existing start
+            adPre = ad;
+            adPre = adPre.stop(ad.startEvent, ad.startOffset, 'index', ad.startEventIndex, 'as', ad.startLabelStored, 'mark', ad.startMark, 'appear', ad.startAppear);
+            adPre = adPre.start(varargin{:});
+        end
+            
+        function adPost = buildPostStopAlign(ad, varargin)
+            % generates a copy of this align descriptor that starts at a new start, and ends at the existing start
+            adPost = ad;
+            adPost = adPost.start(ad.stopEvent, ad.stopOffset, 'index', ad.stopEventIndex, 'as', ad.stopLabelStored, 'mark', ad.stopMark, 'appear', ad.stopAppear);
+            adPost = adPost.stop(varargin{:});
+        end
+
     end
 
     methods % post-hoc appearance specification

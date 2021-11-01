@@ -1877,6 +1877,18 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateAlignInfo();
         end
 
+        function td = alignPreStart(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.buildPreStartAlign(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+
+        function td = alignPostStop(td, varargin)
+            td.warnIfNoArgOut(nargout);
+            td.alignInfoActive = td.alignInfoActive.buildPostStopAlign(varargin{:});
+            td = td.postUpdateAlignInfo();
+        end
+
         function td = truncateBefore(td, varargin)
             td.warnIfNoArgOut(nargout);
             td.alignInfoActive = td.alignInfoActive.truncateBefore(varargin{:});
