@@ -176,14 +176,14 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     % trial
     tvec = makecol(tvec);
     
-    tMinGlobal = nanmin(tvec);
+    tMinGlobal = min(tvec, [], 'omitnan');
     timeDelta = p.Results.timeDelta;
     if isempty(timeDelta)
         if numel(tvec) == 1
             % special case with one sample
             timeDelta = 1;
         else
-            timeDelta = nanmin(origDelta);
+            timeDelta = min(origDelta, [], 'omitnan');
         end
     end
     
@@ -223,7 +223,7 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
                     indTake = timeCell{i, g} + err >= tvec(indPutStart(i, g)) & timeCell{i,g} <= tvec(indPutStop(i, g)) + err;
                     mat(i, indPutStart(i,g):indPutStop(i,g), :, g) = dataCell{i,g}(indTake, :);
                 else
-                    mask = ~all(isnan(dataCell{i, g}), 2);
+                    mask = ~all(isnan(dataCell{i, g}(:, :)), 2);
 
                     % use resampleTensorInTime to support multiple resampling
                     % methods

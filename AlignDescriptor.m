@@ -738,6 +738,11 @@ classdef AlignDescriptor
             ad = ad.update();
         end
         
+        function ad = setCurrentZero(ad)
+            ad.warnIfNoArgOut(nargout);
+            ad.zeroDefault = false;
+        end 
+        
         function idx = findInterval(ad, eventStart, indexStart, offsetStart, ...
                 eventStop, indexStop, offsetStop)
             if ad.nIntervals == 0
@@ -1158,19 +1163,34 @@ classdef AlignDescriptor
         end
 
         function adPre = buildPreStartAlign(ad, varargin)
+            p = inputParser();
+            p.addOptional('startEvent', 'TrialStart', @isstringlike);
+            p.addOptional('startOffset', 0, @isscalar);
+            p.addParameter('gap', 0, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
             % generates a copy of this align descriptor that starts at a new start, and ends at the existing start
             adPre = ad;
-            adPre = adPre.stop(ad.startEvent, ad.startOffset, 'index', ad.startEventIndex, 'as', ad.startLabelStored, 'mark', ad.startMark, 'appear', ad.startAppear);
-            adPre = adPre.start(varargin{:});
+            adPre = adPre.setCurrentZero(); % keep zero as is
+            adPre = adPre.stop(ad.startEvent, ad.startOffset - p.Results.gap, 'index', ad.startEventIndex, 'as', ad.startLabelStored, 'mark', ad.startMark, 'appear', ad.startAppear);
+            adPre = adPre.start(p.Results.startEvent, p.Results.startOffset, p.Unmatched);
         end
             
         function adPost = buildPostStopAlign(ad, varargin)
+            p = inputParser();
+            p.addOptional('stopEvent', 'TrialEnd', @isstringlike);
+            p.addOptional('stopOffset', 0, @isscalar);
+            p.addParameter('gap', 0, @isscalar);
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+            
             % generates a copy of this align descriptor that starts at a new start, and ends at the existing start
             adPost = ad;
-            adPost = adPost.start(ad.stopEvent, ad.stopOffset, 'index', ad.stopEventIndex, 'as', ad.stopLabelStored, 'mark', ad.stopMark, 'appear', ad.stopAppear);
-            adPost = adPost.stop(varargin{:});
+            adPost = adPost.setCurrentZero(); % keep zero as is
+            adPost = adPost.start(ad.stopEvent, p.Results.gap + ad.stopOffset, 'index', ad.stopEventIndex, 'as', ad.stopLabelStored, 'mark', ad.stopMark, 'appear', ad.stopAppear);
+            adPost = adPost.stop(p.Results.stopEvent, p.Results.stopOffset, p.Unmatched);
         end
-
     end
 
     methods % post-hoc appearance specification

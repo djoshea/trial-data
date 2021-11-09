@@ -41,7 +41,7 @@ p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the
 p.addParameter('clickable', false, @islogical); % make each trace clickable and show a description
 p.addParameter('timeUnits', '', @ischar); 
 p.addParameter('timeScaleBar', false, @islogical); % use scale bar instead of tick bridge for time axis?
-p.addParameter('dataUnits', [], @(x) ischar(x) || (isvector(x) && iscellstr(x))); % either a string describing units for all traces, or a nTraces x 1 cell of units for each set of traces running vertically
+p.addParameter('dataUnits', [], @isstringlike); % either a string describing units for all traces, or a nTraces x 1 cell of units for each set of traces running vertically
 p.addParameter('verticalScaleBarHideLabel', false, @islogical);
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
 p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
@@ -204,11 +204,11 @@ if ~iscell(data)
     % expand colormap to be exactly nSuperimposed long
     [map, colorByStack] = getColormap(p.Results.colormapStacked, nTraces, p.Results.colormap, nSuperimposed);
 
-    if nSuperimposed == 1 && ~colorByStack
+    if false && nSuperimposed == 1 && ~colorByStack
         % plot simultaneously
         TrialDataUtilities.Plotting.errorshadeInterval(tvec, data_lo, data_hi, map(1, :), 'axh', axh);
         hold on;
-        hLines = plot(tvec, data, '-', 'Color', map(1, :), 'MarkerFaceColor', map(1, :), 'MarkerEdgeColor', map(1, :), 'axh', axh, p.Unmatched);
+        hLines = plot(tvec, data, '-', 'Color', map(1, :), 'MarkerFaceColor', map(1, :), 'MarkerEdgeColor', map(1, :), 'Parent', axh, p.Unmatched);
     else
         % here we arrange so that all traces are stacked vertically but that
         % all positions along dim 2 are grouped together 
