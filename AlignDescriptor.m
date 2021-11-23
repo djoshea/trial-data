@@ -769,7 +769,7 @@ classdef AlignDescriptor
             p.addParameter('offsetStop', 0, @isscalar);
             p.addParameter('indexStart', ':', @(x) ischar(x) || isscalar(x));
             p.addParameter('indexStop', ':', @(x) ischar(x) || isscalar(x));
-            p.addParameter('as', AlignDescriptor.AUTO, @ischar);
+            p.addParameter('as', AlignDescriptor.AUTO, @isstringlike);
             p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
             p.addParameter('showOnData', true, @islogical);

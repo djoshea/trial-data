@@ -18,13 +18,16 @@ p.addParameter('yConfLow', [], @(x) true);
 
 p.addParameter('axh', [], @(x) isempty(x) || ishandle(x));
 p.addParameter('edgeColor', 'none', iscolor);
+p.addParameter('edgeWidth', 1, @isscalar);
 p.addParameter('edgeAlpha', 0.6, @isscalar);
-p.addParameter('color', [0.1 0.1 0.1], @(x) isempty(x) || iscolor(x));
+p.addParameter('color', [0.1 0.1 0.1], @(x) isempty(x) || iscolor(x) || ismatrix(x));
 p.addParameter('alpha', 0.8, @isscalar);
-p.addParameter('markerSize', 3, @isscalar);
+p.addParameter('markerSize', 20, @isscalar);
 p.addParameter('errorLineWidth', 1, @isscalar);
 p.addParameter('errorLineAlpha', 0.8, @isscalar);
-p.addParameter('errorLineColor', [], @(x) isempty(x) || iscolor(x));
+p.addParameter('errorLineColor', [], @(x) isempty(x) || iscolor(x) || ismatrix(x));
+
+p.addParameter('Clipping', 'on', @(x) true);
 p.CaseSensitive = false;
 p.parse(varargin{:});
 
@@ -44,7 +47,7 @@ if ~isempty(p.Results.xConfHigh)
     xErrorHigh = p.Results.xConfHigh(:);
     xErrorLow = p.Results.xConfLow(:);
     
-elseif ~isempty(p.Results.yCI)
+elseif ~isempty(p.Results.xCI)
     xErrorLow = p.Results.xCI(:, 1);
     xErrorHigh = p.Results.xCI(:, 2);
     
@@ -84,19 +87,36 @@ else
     errorLineColor = p.Results.errorLineColor;
 end
 
+N = numel(xData);
+if size(errorLineColor, 1) == 1
+    errorLineColor = repmat(errorLineColor, N, 1);
+end
+
+if size(errorLineColor, 1) == N
+    errorLineColor = repmat(errorLineColor, 2, 1);
+end
+
 hold(axh, 'on');
-hError = line(xLine, yLine, 'LineWidth', p.Results.errorLineWidth, ...
-    'Color', errorLineColor, 'Parent', axh);
+hError = line(xLine, yLine, 'LineWidth', p.Results.errorLineWidth, 'Parent', axh);
+
+
+for iH = 1:2*N
+    hError(iH).Color = errorLineColor(iH, :);
+end
+    
+
 TrialDataUtilities.Plotting.setLineOpacity(hError, p.Results.errorLineAlpha);
 TrialDataUtilities.Plotting.hideInLegend(hError);
 
 % draw points on top
-hPoints = plot(xData, yData, 'o', 'Parent', axh, ...
-    'MarkerSize', p.Results.markerSize, ...
-    'MarkerFaceColor', p.Results.color, ...
-    'MarkerEdgeColor', p.Results.edgeColor);
-TrialDataUtilities.Plotting.setMarkerOpacity(hPoints, p.Results.alpha, p.Results.edgeAlpha);
+% hPoints = plot(xData, yData, 'o', 'Parent', axh, ...
+%     'MarkerSize', p.Results.markerSize, ...
+%     'MarkerFaceColor', p.Results.color, ...
+%     'MarkerEdgeColor', p.Results.edgeColor);
+% TrialDataUtilities.Plotting.setMarkerOpacity(hPoints, p.Results.alpha, p.Results.edgeAlpha);
 
+hPoints = scatter(xData, yData, p.Results.markerSize, p.Results.color, 'filled', ...
+    'MarkerEdgeColor', p.Results.edgeColor, 'MarkerFaceAlpha', p.Results.alpha, 'MarkerEdgeAlpha', p.Results.edgeAlpha, 'Clipping', p.Results.Clipping, 'LineWidth', p.Results.edgeWidth);
 
 end
 

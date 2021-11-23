@@ -5095,9 +5095,17 @@ classdef TrialData
         function counts = getEventCount(td, name)
             counts = cellfun(@numel, td.getEvent(name));
         end
+        
+        function counts = getEventCountRaw(td, name)
+            counts = cellfun(@numel, td.getEventRaw(name));
+        end
 
         function tfList = getEventOccurred(td, name)
             tfList = ~cellfun(@isempty, td.getEvent(name));
+        end
+        
+        function tfList = getEventOccurredRaw(td, name)
+            tfList = ~cellfun(@isempty, td.getEventRaw(name));
         end
 
         function times = getEventNth(td, name, n)
@@ -5116,13 +5124,46 @@ classdef TrialData
                 end
             end
         end
+        
+        function times = getEventNthRaw(td, name, n)
+            if strcmp(n, 'end')
+                times = td.getEventLastRaw(name);
+                return;
+            end
+
+            times = cellfun(@getNth, td.getEventRaw(name));
+
+            function t = getNth(times)
+                if numel(times) >= n
+                    t = times(n);
+                else
+                    t = NaN;
+                end
+            end
+        end
 
         function times = getEventFirst(td, name)
             times = getEventNth(td, name, 1);
         end
+        
+        function times = getEventFirstRaw(td, name)
+            times = getEventNthRaw(td, name, 1);
+        end
 
         function times = getEventLast(td, name)
             times = cellfun(@getLast, td.getEvent(name));
+
+            function t = getLast(times)
+                if ~isempty(times)
+                    t = times(end);
+                else
+                    t = NaN;
+                end
+            end
+        end
+        
+        function times = getEventLastRaw(td, name)
+            times = cellfun(@getLast, td.getEventRaw(name));
 
             function t = getLast(times)
                 if ~isempty(times)
@@ -6329,7 +6370,7 @@ classdef TrialData
                     end
                     timesCellByUnit(:, idx) = catData(:, col);
                 else
-                    timesCellByUnit(:, idx) = zeros(0, numel(col));
+                    timesCellByUnit(:, idx) = {zeros(0, numel(col))};
                 end
             end
 

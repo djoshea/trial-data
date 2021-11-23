@@ -1,9 +1,15 @@
 function out = catPromoteNumeric(dim, varargin)
 
+empty = cellfun(@(x) isempty(x), varargin);
 types = cellfun(@(x) string(class(x)), varargin);
 
+if any(empty) && ~all(empty)
+    indNonEmpty = find(~empty, 1, 'first');
+    types(empty) = types(indNonEmpty);
+end
+
 if numel(unique(types)) == 1
-    out = cat(dim, varargin{:});
+    out = cat(dim, varargin{~empty});
 else
     if any(types == "double")
         outtype = "double";
@@ -31,6 +37,6 @@ else
         end
     end
     
-    varargin = cellfun(@(x) cast(x, outtype), varargin, 'UniformOutput', false);
+    varargin = cellfun(@(x) cast(x, outtype), varargin(~empty), 'UniformOutput', false);
     out = cat(dim, varargin{:});
 end

@@ -824,7 +824,7 @@ classdef ConditionDescriptor
                     %debug('Auto converting value list for single attribute axis\n');
                     valueCell = valueList;
                     if ~iscell(valueCell), valueCell = num2cell(valueCell); end
-                    valueList = struct(ci.axisAttributes{idx}{1}, valueCell);
+                    valueList = makecol(struct(ci.axisAttributes{idx}{1}, valueCell));
                 end
             end
 

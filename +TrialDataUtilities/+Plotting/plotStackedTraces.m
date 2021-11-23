@@ -36,11 +36,12 @@ p.addParameter('labelPrefix', '', @isstringlike);
 p.addParameter('labels', {}, @(x) isempty(x) || isvector(x)); % labels over nTraces for the y axis
 p.addParameter('labelRotation', 0, @isvector);
 p.addParameter('labelsSuperimposed', {}, @isstringlike); % labels over the nSuperimposed traces, for clickable descriptions
+p.addParameter('labelInterpreter', 'none', @isstringlike);
 p.addParameter('legendUniqueLabelsOnly', false, @islogical);
 p.addParameter('showLabels', 'auto', @(x) islogical(x) || ischar(x)); % show the labels on the left axis, slow if too many traces, 'auto' is true if nTraces < 25
 p.addParameter('clickable', false, @islogical); % make each trace clickable and show a description
-p.addParameter('timeUnits', '', @ischar); 
-p.addParameter('timeScaleBar', false, @islogical); % use scale bar instead of tick bridge for time axis?
+p.addParameter('timeUnits', '', @isstringlike); 
+p.addParameter('timeScaleBar', false, @(x) islogical(x) || isscalar(x)); % use scale bar instead of tick bridge for time axis?
 p.addParameter('dataUnits', [], @isstringlike); % either a string describing units for all traces, or a nTraces x 1 cell of units for each set of traces running vertically
 p.addParameter('verticalScaleBarHideLabel', false, @islogical);
 p.addParameter('showVerticalScaleBars', false, @(x) islogical(x) || ischar(x)); % show intelligent y axis scale bars on the right hand side
@@ -349,8 +350,11 @@ if ~p.Results.quick
     au = AutoAxis(gca);
 
     au.xUnits = p.Results.timeUnits;
-    if p.Results.timeScaleBar
+    if p.Results.timeScaleBar > 0
         au.addAutoScaleBarX();
+        if ~islogical(p.Results.timeScaleBar)
+            au.scaleBarLenX = p.Results.timeScaleBar;
+        end
     else
         au.addAutoAxisX();
         au.xlabel(xlab);
@@ -364,7 +368,7 @@ if ~p.Results.quick
         end
         spans = [makerow(traceLows); makerow(traceHighs)];
         au.addLabeledSpan('y', 'span', spans, 'label', labels, 'color', colormapStacked, ...
-            'rotation', p.Results.labelRotation, 'showSpanLines', p.Results.showSpanLines);
+            'rotation', p.Results.labelRotation, 'showSpanLines', p.Results.showSpanLines, 'interpreter', p.Results.labelInterpreter);
     end
 
     hold off;

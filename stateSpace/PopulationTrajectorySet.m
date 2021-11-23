@@ -42,6 +42,9 @@ classdef PopulationTrajectorySet
         % using .saveFast or caching via CacheManger
         % Setting it to false will save space on disk
         keepComputedOnSaveFast = false;
+        
+        showProgress = true;
+        verbose = true;
     end
 
     properties(SetAccess=protected, Hidden)
@@ -673,6 +676,20 @@ classdef PopulationTrajectorySet
 
     % initialization, cache invalidation
     methods
+        function pbar = ProgressBar(pset, n, varargin)
+            if pset.showProgress
+                pbar = ProgressBar(n, varargin{:});
+            else
+                if pset.verbose
+                    msg = string(sprintf(varargin{:}));
+                    debug(msg + "\n");
+                end
+                pbar.update = @(varargin) true;
+                pbar.increment = @(varargin) true;
+                pbar.finish = @(varargin) true;
+            end
+        end
+        
         function pset = initialize(pset)
             pset.warnIfNoArgOut(nargout);
 
@@ -905,8 +922,8 @@ classdef PopulationTrajectorySet
             for iA = 1:pset.nAlign
                 if ~isempty(listByAlign{iA})
                     [newMinAC, newMaxAC] = pset.computeNewTimeWindowValidAfterInvalidatingBases(listByAlign{iA});
-                    newMinA = nanmin(newMinAC, [], 2);
-                    newMaxA = nanmax(newMaxAC, [], 2);
+                    newMinA = min(newMinAC, [], 2, 'omitnan');
+                    newMaxA = max(newMaxAC, [], 2, 'omitnan');
                     hcprintf('  Align %d : [%g - %g %s], would be [%g - %g %s] without %d bases\n', ...
                         iA, pset.tMinForDataMean(iA), pset.tMaxForDataMean(iA), pset.timeUnitName, ...
                         newMinA(iA), newMaxA(iA), pset.timeUnitName, numel(listByAlign{iA}));
@@ -1467,7 +1484,7 @@ classdef PopulationTrajectorySet
                 tMinABC(~hasAvg) = NaN;
                 tMinABC(:, :, ~cMask) = NaN;
 
-                v = TensorUtils.squeezeDims(nanmax(tMinABC, [], 2),  2);
+                v = TensorUtils.squeezeDims(max(tMinABC, [], 2, 'omitnan'),  2);
                 %                 v = nanmax(pset.tMinValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
                 %                 % but then reexpand this to have the full complement of
                 %                 % conditions, using NaNs for non-contributing conditions
@@ -1493,7 +1510,7 @@ classdef PopulationTrajectorySet
                 tMaxABC(~hasAvg) = NaN;
                 tMaxABC(:, :, ~cMask) = NaN;
 
-                v = TensorUtils.squeezeDims(nanmin(tMaxABC, [], 2),  2);
+                v = TensorUtils.squeezeDims(min(tMaxABC, [], 2, 'omitnan'),  2);
                 %                 v = nanmin(pset.tMaxValidByAlignBasisCondition(:, pset.basisValidWithTrialAverageAllNonEmptyConditionAligns, cMask), [], 2);
                 %                 v = TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
             end
@@ -1508,7 +1525,7 @@ classdef PopulationTrajectorySet
                 for iBasis = 1:pset.nBases
 
                     isNonNanZero = @(x) ~isnan(x) & x~=0;
-                    masksByAlign = cellfun(@(x) isNonNanZero(nanmax(x, [], 2)), pset.dataByTrial(iBasis, :), 'UniformOutput', false);
+                    masksByAlign = cellfun(@(x) isNonNanZero(max(x, [], 2, 'omitnan')), pset.dataByTrial(iBasis, :), 'UniformOutput', false);
                     masksCat = cat(2, masksByAlign{:});
                     maskAny = any(masksCat, 2);
                     masks{iBasis} = maskAny;
@@ -1604,8 +1621,8 @@ classdef PopulationTrajectorySet
                 % but then reexpand this to have the full complement of
                 % conditions, using NaNs for non-contributing conditions
                 inflate = @(v) TensorUtils.squeezeDims(TensorUtils.inflateMaskedTensor(v, 3, cMask, NaN), 2);
-                tMinValidAllBasesByAlignCondition = inflate(nanmax(tMinABC(:, basisValid, cMask), [], 2));
-                tMaxValidAllBasesByAlignCondition = inflate(nanmin(tMaxABC(:, basisValid, cMask), [], 2));
+                tMinValidAllBasesByAlignCondition = inflate(max(tMinABC(:, basisValid, cMask), [], 2, 'omitnan'));
+                tMaxValidAllBasesByAlignCondition = inflate(min(tMaxABC(:, basisValid, cMask), [], 2, 'omitnan'));
             end
         end
 
@@ -1966,7 +1983,7 @@ classdef PopulationTrajectorySet
             % store the resulting tdca
             pset.warnIfNoArgOut(nargout);
 
-            prog = ProgressBar(pset.nDataSources, 'Grouping trials in data sources');
+            prog = pset.ProgressBar(pset.nDataSources, 'Grouping trials in data sources');
             conditionDescriptor = pset.conditionDescriptor;
             for iSrc = 1:pset.nDataSources
                 pset.dataSources{iSrc} = pset.dataSources{iSrc}.setConditionDescriptor(conditionDescriptor);
@@ -2031,7 +2048,7 @@ classdef PopulationTrajectorySet
 
             % align all data sources to the FIRST alignDescriptor
             % since we have to hold onto one anyway
-            prog = ProgressBar(pset.nDataSources, 'Aligning data sources to each alignDescriptor');
+            prog = pset.ProgressBar(pset.nDataSources, 'Aligning data sources to each alignDescriptor');
             dataSources = pset.dataSources;
             nDataSources = pset.nDataSources;
             alignDescriptorSet = pset.alignDescriptorSet;
@@ -2155,7 +2172,7 @@ classdef PopulationTrajectorySet
             end
 
             if pset.hasDataByTrial
-                prog = ProgressBar(pset.nBases, 'Slicing dataByTrial');
+                prog = pset.ProgressBar(pset.nBases, 'Slicing dataByTrial');
                 tvecCell = pset.tvecDataByTrial;
                 for iBasis = 1:pset.nBases
                     prog.update(iBasis);
@@ -2271,7 +2288,7 @@ classdef PopulationTrajectorySet
             pset.conditionDescriptor.appearanceFn = fn;
 
             % this is for convenience / avoiding confusion
-            prog = ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
+            prog = pset.ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
             for iSrc = 1:pset.nDataSources
                 pset.dataSources{iSrc} = pset.dataSources{iSrc}.setConditionAppearanceFn(fn);
                 prog.update(iSrc);
@@ -2296,7 +2313,7 @@ classdef PopulationTrajectorySet
             pset.interAlignGaps = gaps;
 
             % this is for convenience / avoiding confusion
-            prog = ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
+            prog = pset.ProgressBar(pset.nDataSources, 'Updating condition appearanceFn in data sources');
             for iSrc = 1:pset.nDataSources
                 pset.dataSources{iSrc} = pset.dataSources{iSrc}.setInterAlignGap(gaps);
                 prog.update(iSrc);
@@ -2317,7 +2334,7 @@ classdef PopulationTrajectorySet
                 pset.alignDescriptorSet{alignInd}.setStartAppearance(varargin{:});
 
             % this is for convenience
-            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
             for iSrc = 1:pset.nDataSources
                 % update the align appearance but keep the active alignment 1
                 % to maintain consistency
@@ -2341,7 +2358,7 @@ classdef PopulationTrajectorySet
                 pset.alignDescriptorSet{alignInd}.setStopAppearance(varargin{:});
 
             % this is for convenience
-            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
             for iSrc = 1:pset.nDataSources
                 % update the align appearance but keep the active alignment 1
                 % to maintain consistency
@@ -2365,7 +2382,7 @@ classdef PopulationTrajectorySet
                 pset.alignDescriptorSet{alignInd}.setZeroAppearance(varargin{:});
 
             % this is for convenience
-            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
             for iSrc = 1:pset.nDataSources
                 % update the align appearance but keep the active alignment 1
                 % to maintain consistency
@@ -2389,7 +2406,7 @@ classdef PopulationTrajectorySet
                 pset.alignDescriptorSet{alignInd}.setMarkAppearance(varargin{:});
 
             % this is for convenience
-            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
             for iSrc = 1:pset.nDataSources
                 % update the align appearance but keep the active alignment 1
                 % to maintain consistency
@@ -2413,7 +2430,7 @@ classdef PopulationTrajectorySet
                 pset.alignDescriptorSet{alignInd}.setIntervalAppearance(varargin{:});
 
             % this is for convenience
-            prog = ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Updating align appearance in each data source');
             for iSrc = 1:pset.nDataSources
                 % update the align appearance but keep the active alignment 1
                 % to maintain consistency
@@ -2826,7 +2843,7 @@ classdef PopulationTrajectorySet
 
             isSpikeChannel = false(pset.nBases, 1);
 
-            prog = ProgressBar(pset.nBases, 'Extracting aligned data by basis');
+            prog = pset.ProgressBar(pset.nBases, 'Extracting aligned data by basis');
             for iBasis = 1:nBases
                 prog.update(iBasis);
                 % request the specified aligned analog channel from the
@@ -2932,7 +2949,7 @@ classdef PopulationTrajectorySet
             basisValid = pset.basisValidPermanent; % cant use valid here since it depends on dataNTrials
 
             hasSpikesByBasis = pset.trialHasSpikesMaskByBasis;
-            prog = ProgressBar(pset.nBases, 'Computing trial-counts by condition');
+            prog = pset.ProgressBar(pset.nBases, 'Computing trial-counts by condition');
             for iBasis = 1:pset.nBases
                 prog.update(iBasis);
                 if ~basisValid(iBasis), continue, end
@@ -2984,7 +3001,7 @@ classdef PopulationTrajectorySet
             temp = pset.tMinByTrial; %#ok<NASGU>
             temp = pset.dataNTrials; %#ok<NASGU>
 
-            prog = ProgressBar(pset.nBases, 'Computing trial-averaged time windows by basis/align/condition');
+            prog = pset.ProgressBar(pset.nBases, 'Computing trial-averaged time windows by basis/align/condition');
 
             basisValid = pset.basisValidPermanent; % don't use valid here to avoid infinite recursion.
             for iBasis = 1:pset.nBases
@@ -3083,13 +3100,13 @@ classdef PopulationTrajectorySet
             % condition include mask, since the others dont matter
 
             cMask = pset.conditionIncludeMask;
-            tMinForDataMean = makecol(nanmin(pset.tMinValidAllBasesByAlignCondition(:, cMask), [], 2));
-            tMaxForDataMean = makecol(nanmax(pset.tMaxValidAllBasesByAlignCondition(:, cMask), [], 2));
+            tMinForDataMean = makecol(min(pset.tMinValidAllBasesByAlignCondition(:, cMask), [], 2, 'omitnan'));
+            tMaxForDataMean = makecol(max(pset.tMaxValidAllBasesByAlignCondition(:, cMask), [], 2, 'omitnan'));
 
             alignInvalid = isnan(tMinForDataMean) | isnan(tMaxForDataMean);
             if any(alignInvalid)
                 warning('No valid time window is valid across all bases across all conditions for alignment %s. Use .explain to advise', ...
-                    TrialDataUtilities.String.strjoin(find(alignInvalid), ',')); %#ok<FNDSB>
+                    TrialDataUtilities.String.strjoin(string(find(alignInvalid)), ','));
             end
 
             nTimeByAlign = zerosvec(pset.nAlign);
@@ -3171,7 +3188,7 @@ classdef PopulationTrajectorySet
                 if alignInvalid(iAlign)
                     continue;
                 end
-                prog = ProgressBar(pset.nBases, 'Computing trial-averaged data for align %d', iAlign);
+                prog = pset.ProgressBar(pset.nBases, 'Computing trial-averaged data for align %d', iAlign);
 
                 basisHasNoValidTimepoints = falsevec(pset.nBases);
                 for iBasis = 1:pset.nBases
@@ -3317,7 +3334,7 @@ classdef PopulationTrajectorySet
 
             % copy the align summary data from each data source, which may
             % take time since it is typically computed on the fly
-            prog = ProgressBar(pset.nDataSources, 'Computing alignment summary statistics by data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Computing alignment summary statistics by data source');
             dataSources = pset.dataSources;
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
@@ -3335,7 +3352,7 @@ classdef PopulationTrajectorySet
             alignSummaryAggregated = cell(pset.nAlign, 1);
             alignSummaryData = pset.alignSummaryData;
             dsMask = unique(pset.basisAlignSummaryLookup(pset.basisValid));
-            prog = ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
+            prog = pset.ProgressBar(pset.nAlign, 'Computing aggregate alignment summary statistics');
             for iAlign = 1:pset.nAlign
                 prog.update(iAlign);
                 if ~any(dsMask)
@@ -3411,7 +3428,7 @@ classdef PopulationTrajectorySet
                     continue;
                 end
                 if nBases > 1
-                    prog = ProgressBar(nBases, 'Computing dataByTrial for align %d', iAlign);
+                    prog = pset.ProgressBar(nBases, 'Computing dataByTrial for align %d', iAlign);
                 end
                 for iBasis = 1:nBases
                     if nBases > 1
@@ -3466,7 +3483,7 @@ classdef PopulationTrajectorySet
             % a property worth storing.
             dataByTrial = pset.computeDataByTrialCommonTime();
             trialLists = pset.trialLists;
-            prog = ProgressBar(pset.nBases, 'Grouping dataByTrial into conditions');
+            prog = pset.ProgressBar(pset.nBases, 'Grouping dataByTrial into conditions');
 
             dataByTrialGrouped = cell(pset.nBases, pset.nAlign, pset.nConditions);
             nTrials = zeros(pset.nBases, pset.nAlign, pset.nConditions);
@@ -3518,7 +3535,7 @@ classdef PopulationTrajectorySet
 
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
             listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
-            prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
                 src = pset.dataSources{iSrc};
@@ -3568,7 +3585,7 @@ classdef PopulationTrajectorySet
 
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
             listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
-            prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
                 src = pset.dataSources{iSrc};
@@ -3616,7 +3633,7 @@ classdef PopulationTrajectorySet
 
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
             listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
-            prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
                 src = pset.dataSources{iSrc};
@@ -3665,7 +3682,7 @@ classdef PopulationTrajectorySet
             listByConditionCell = cell(pset.nBases, pset.nConditions, nRandomSamples);
             listByConditionCellOriginal = cell(pset.nBases, pset.nConditions);
 
-            prog = ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
+            prog = pset.ProgressBar(pset.nDataSources, 'Computing resampled from specified condition info by data source');
             for iSrc = 1:pset.nDataSources
                 prog.update(iSrc);
                 src = pset.dataSources{iSrc};
@@ -3721,7 +3738,7 @@ classdef PopulationTrajectorySet
             dataNTrialsRandomized = nan(nAlign, nBases, nConditions);
 
             for iAlign = 1:nAlign
-                prog = ProgressBar(pset.nBases, 'Computing re-conditioned trial-averaged data for align %d', iAlign);
+                prog = pset.ProgressBar(pset.nBases, 'Computing re-conditioned trial-averaged data for align %d', iAlign);
 
                 [dataMeanRandomized{iAlign}, dataSemRandomized{iAlign}] = deal(nan(nBases, nConditions, nTimeDataMean(iAlign), nRandomSamples));
 
@@ -3797,25 +3814,25 @@ classdef PopulationTrajectorySet
                             mat(:, nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
                             matOrig(:, nTrialsByTime < minTrialsByCondition(iCondition)) = NaN;
 
-                            m = nanmean(mat, 1);
+                            m = mean(mat, 1, 'omitnan');
 
                             if p.Results.translateToMaintainTotalVariance && numel(m) > 1
                                 % maintain at the same level of variance of the
                                 % original mean. when operating across
                                 % alignments, this means shifting the means
                                 % to match the original mean over time
-                                meanOrig = nanmean(nanmean(matOrig, 1));
-                                mu = nanmean(m);
+                                meanOrig = mean(mean(matOrig, 1, 'omitnan'), 'omitnan');
+                                mu = mean(m, 'omitnan');
                                 m = m - mu + meanOrig;
                             end
 
                             if p.Results.normalizeToMaintainTotalVariance && numel(m) > 1
                                 % maintain at the same level of variance of the
                                 % original mean.
-                                meanOrig = nanmean(matOrig, 1);
-                                mu = nanmean(m);
-                                vOrig = nanvar(meanOrig, 1);
-                                vThis = nanvar(m, 1);
+                                meanOrig = mean(matOrig, 1, 'omitnan');
+                                mu = mean(m, 'omitnan');
+                                vOrig = var(meanOrig, 1, 'omitnan');
+                                vThis = var(m, 1, 'omitnan');
 
                                 if vOrig ~= 0 && vThis ~= 0
                                     m = (m - mu) / sqrt(vThis / vOrig) + mu;
@@ -4400,10 +4417,10 @@ classdef PopulationTrajectorySet
         end
 
         function pset = setBasisNames(pset, basisNames)
-            assert(iscellstr(basisNames) && numel(basisNames) == pset.nBases);
+            assert((isstring(basisNames) || iscellstr(basisNames)) && numel(basisNames) == pset.nBases);
             pset.warnIfNoArgOut(nargout);
 
-            pset.basisNames = basisNames;
+            pset.basisNames = cellstr(basisNames);
         end
 
         function pset = setBasisNamesUsingFormatString(pset, prefix)
@@ -4761,7 +4778,7 @@ classdef PopulationTrajectorySet
 
         function snrByBasis = computeSnrByBasis(pset, varargin)
             semCTAbyN = pset.arrangeCTAbyN(varargin{:}, 'type', 'sem');
-            noiseByBasis = TensorUtils.squeezeDims(nanmax(semCTAbyN, [], 1), 1);
+            noiseByBasis = TensorUtils.squeezeDims(max(semCTAbyN, [], 1, 'omitnan'), 1);
             rangeByBasis = pset.computeRangeByBasis(varargin{:}, 'type', 'mean');
 
             snrByBasis = rangeByBasis ./ noiseByBasis;
@@ -4770,24 +4787,24 @@ classdef PopulationTrajectorySet
 
         function minByBasis = computeMinByBasis(pset, varargin)
             CTAbyN = pset.arrangeCTAbyN(varargin{:});
-            minByBasis = TensorUtils.squeezeDims(nanmin(CTAbyN, [], 1), 1);
+            minByBasis = TensorUtils.squeezeDims(min(CTAbyN, [], 1, 'omitnan'), 1);
             minByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(minByBasis, 1, ~pset.basisValid, NaN);
         end
 
         function maxByBasis = computeMaxByBasis(pset, varargin)
             CTAbyN = pset.arrangeCTAbyN(varargin{:});
-            maxByBasis = TensorUtils.squeezeDims(nanmax(CTAbyN, [], 1), 1);
+            maxByBasis = TensorUtils.squeezeDims(max(CTAbyN, [], 1, 'omitnan'), 1);
             maxByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(maxByBasis, 1, ~pset.basisValid, NaN);
         end
 
         function meanByBasis = computeMeanByBasis(pset, varargin)
             CTAbyN = pset.arrangeCTAbyN(varargin{:});
-            meanByBasis = TensorUtils.squeezeDims(nanmean(CTAbyN, 1), 1);
+            meanByBasis = TensorUtils.squeezeDims(mean(CTAbyN, 1, 'omitnan'), 1);
             meanByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(meanByBasis, 1, ~pset.basisValid, NaN);
         end
 
         function varByBasis = computeVarUncorrectedByBasis(pset, varargin)
-            varByBasis = TensorUtils.squeezeDims(nanvar(pset.arrangeCTAbyN(varargin{:}), 0, 1), 1);
+            varByBasis = TensorUtils.squeezeDims(var(pset.arrangeCTAbyN(varargin{:}), 0, 1, 'omitnan'), 1);
             varByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(varByBasis, 1, ~pset.basisValid, NaN);
         end
 
@@ -4796,9 +4813,9 @@ classdef PopulationTrajectorySet
             % pset.meanSubtractBases.computeTotalSSPerCTA
 
             ctaByN = pset.arrangeCTAbyN(varargin{:});
-            ctaByN_meanSub = bsxfun(@minus, ctaByN, nanmean(ctaByN, 1));
-            varPerCTAByBasis = nanmean(ctaByN_meanSub.^2, 1);
-            varPerCTA = squeeze(nansum(varPerCTAByBasis, 2));
+            ctaByN_meanSub = bsxfun(@minus, ctaByN, mean(ctaByN, 1, 'omitnan'));
+            varPerCTAByBasis = mean(ctaByN_meanSub.^2, 1, 'omitnan');
+            varPerCTA = squeeze(sum(varPerCTAByBasis, 2, 'omitnan'));
         end
 
         function ssq = computeTotalSS(pset, varargin)
@@ -4808,7 +4825,7 @@ classdef PopulationTrajectorySet
 
         function ssq = computeTotalSSPerCTA(pset, varargin)
             tensor = pset.arrangeCTAbyN(varargin{:});
-            ssq = squeeze(nansum(nanmean(tensor.^2, 1), 2));
+            ssq = squeeze(sum(mean(tensor.^2, 1, 'omitnan'), 2, 'omitnan'));
         end
 
         function ssqPer = computeTotalSSPerNCTA(pset, varargin)
@@ -4819,12 +4836,12 @@ classdef PopulationTrajectorySet
 
         function normByBasis = computeNormByBasis(pset, varargin)
             ctaByN = pset.arrangeCTAbyN(varargin{:});
-            normByBasis = TensorUtils.squeezeDims(nansum(ctaByN.^2, 1), 1);
+            normByBasis = TensorUtils.squeezeDims(sum(ctaByN.^2, 1, 'omitnan'), 1);
             normByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(normByBasis, 1, ~pset.basisValid, NaN);
         end
 
         function stdByBasis = computeStdByBasis(pset, varargin)
-            stdByBasis = TensorUtils.squeezeDims(nanstd(pset.arrangeCTAbyN(varargin{:}), 0, 1), 1);
+            stdByBasis = TensorUtils.squeezeDims(std(pset.arrangeCTAbyN(varargin{:}), 0, 1, 'omitnan'), 1);
             stdByBasis = TensorUtils.assignValueMaskedSelectionAlongDimension(stdByBasis, 1, ~pset.basisValid, NaN);
         end
 
@@ -6553,7 +6570,7 @@ classdef PopulationTrajectorySet
                 dataByAlign{iAlignIdx} = nan(nBases, pset.nTimeDataMean(iAlign), nConditions, maxTrials, nRepeats);
             end
 
-            prog = ProgressBar(nBases, p.Results.message);
+            prog = pset.ProgressBar(nBases, p.Results.message);
             for iBasisIdx = 1:nBases
                 prog.update(iBasisIdx);
                 iBasis = basisIdx(iBasisIdx);
