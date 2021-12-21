@@ -208,26 +208,60 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     info.spliceStart = info.joinIdxInPre+1 - p.Results.interpFitWindow - p.Results.interpIgnoreWindow;
     info.spliceStop = info.joinIdxInPre+1 + p.Results.interpFitWindow + p.Results.interpIgnoreWindow;
     
-    if showPlot
-        % plot traces and traces ends in red
-        plot3(dataPreProj(1, :), dataPreProj(2, :), dataPreProj(3, :), 'k.');
+    if showPlot 
+        
+        c = 1;
+        preColor = [0 0 0];
+        endColor = 'r';
+        startColor = 'g';
+        postColor = [0.5 0.5 0.5];
+        
+        clf
+        % plot pre-traces and pre trace ends in red
+        plot3(dataPreProj(1, :, c), dataPreProj(2, :, c), dataPreProj(3, :, c), '.', 'Color', preColor);
         hold on;
-        plot3(dataPreProj(1, end), dataPreProj(2, end), dataPreProj(3, end), 'ro', 'MarkerFaceColor', 'r');
-
-        plot3(dataPostProj(1, :), dataPostProj(2, :), dataPostProj(3, :), 'k.');
-        plot3(dataPostProj(1, 1), dataPostProj(2, 1), dataPostProj(3, 1), 'ro', 'MarkerFaceColor', 'r');
+        plot3(dataPreProj(1, info.joinIdxInPre(c), c), dataPreProj(2, info.joinIdxInPre(c), c), dataPreProj(3, info.joinIdxInPre(c), c), 'o', 'MarkerSize', 15, 'MarkerFaceColor', endColor, 'MarkerEdgeColor', endColor);
+        
+        % plot pre-traces and pre trace ends in red
+        plot3(dataPostProj(1, :, c), dataPostProj(2, :, c), dataPostProj(3, :, c), '.', 'Color', postColor);
+        plot3(dataPostProj(1, info.nextIdxInPost(c), c), dataPostProj(2, info.nextIdxInPost(c), c), dataPostProj(3, info.nextIdxInPost(c), c), 'o', 'MarkerSize', 15,  'MarkerFaceColor', startColor, 'MarkerEdgeColor', startColor);
 
         % plot last timepoints retained for splicing in green
-        plot3(dataPreProj(1, end), dataPreProj(2, end), dataPreProj(3, end), 'go', 'MarkerFaceColor', 'g');
-        plot3(dataPostProj(1, 1), dataPostProj(2, 1), dataPostProj(3, 1), 'go', 'MarkerFaceColor', 'g');
+        %plot3(dataPreProj(1, end, iC), dataPreProj(2, end, iC), dataPreProj(3, end, iC), 'go', 'MarkerFaceColor', 'g');
+        %plot3(dataPostProj(1, 1, iC), dataPostProj(2, 1, iC), dataPostProj(3, 1, iC), 'go', 'MarkerFaceColor', 'g');
+        
+        % smooth lines through the portion before and after splicing in light red (start) and light green (post)
+        dataPreProjSmooth = smoothTraces(dataPreProj);
+        dataPostProjSmooth = smoothTraces(dataPostProj);
+        plot3(dataPreProjSmooth(1, 1:info.joinIdxInPre(c), c), dataPreProjSmooth(2, 1:info.joinIdxInPre(c), c), dataPreProjSmooth(3, 1:info.joinIdxInPre(c), c), '-', 'LineWidth', 2, 'Color', [1 0.5 0.5]);
+        plot3(dataPostProjSmooth(1,info.nextIdxInPost(c):end, c), dataPostProjSmooth(2, info.nextIdxInPost(c):end, c), dataPostProjSmooth(3, info.nextIdxInPost(c):end, c), '-', 'LineWidth', 2, 'Color', [0.5 1 0.5]);
 
         % plot splice results
         dataSplicedProj = TensorUtils.linearCombinationAlongDimension(dataSpliced - mu, 1, coeff', 'replaceNaNWithZero', true);
-        plot3(dataSplicedProj(1, :), dataSplicedProj(2, :), dataSplicedProj(3, :), 'r');
+        plot3(dataSplicedProj(1, :, c), dataSplicedProj(2, :, c), dataSplicedProj(3, :, c), 'b');
 
+        xlabel('pc1'); ylabel('pc2'); zlabel('pc3');
+        tv = ThreeVector(gca);
         set(findall(gca, 'Type', 'line'), 'Clipping', 'off');
+        
+        figure();
+        ptstack(2, 1, cat(2, dataPreProj, dataPostProj))
+        xline(nPre);
+        
+        figure();
+        ptstack(2, 1, dataSplicedProj)
+        xline(info.joinIdxInPre(c));
     end
 
     dataSpliced = ipermute(dataSpliced, [basisDim, spliceDim, dimConditions]);
 
+end
+
+function in = smoothTraces(in)
+    % in is Bases x Time x conditions
+    for b = 1:size(in, 1)
+        for c = 1:size(in, 3)
+            in(b, :, c) = smooth(in(b, :, c), 9, 'sgolay');
+        end
+    end
 end
