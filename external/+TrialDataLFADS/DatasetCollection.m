@@ -41,9 +41,6 @@ classdef DatasetCollection < LFADS.DatasetCollection
         end
             
         function tdSet = loadTrialDataSet(dc, varargin)
-            % pierreSettingsEric
-            % db = LFADS_PierreExport.Database.loadDb();
-            
             p = inputParser();
             p.addOptional('reload', false, @islogical);
             p.addParameter('datasetIdx', 1:dc.nDatasets, @isvector);
