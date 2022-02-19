@@ -277,7 +277,7 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
             assert(~isnan(cd.nChannels), 'Number of channels not manually set for AnalogChannelGroupDescriptor');
             assert(all(TrialDataUtilities.Data.indexInRange(chidx, cd.nChannels)));
             cd.subChannelNames(chidx) = string(names);
-            if ~isempty(units)
+            if nargin > 3 && ~isempty(units)
                 cd.subChannelUnits(chidx) = string(units);
             end
         end

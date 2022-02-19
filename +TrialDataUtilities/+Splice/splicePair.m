@@ -115,8 +115,9 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     if p.Results.usePCA
         dataPCA = cat(2, dataPre, dataPost);
         if isempty(p.Results.pcaCoeff) || isempty(p.Results.pcaMeans)
+            nPCs = min(p.Results.nPCs, size(dataPCA, 1));
             sWarn = warning('off', 'stats:pca:ColRankDefX'); % we're not using tsquared
-            [coeff, ~, ~, ~, ~, mu] = TensorUtils.pcaAlongDim(dataPCA, 1, 'NumComponents', p.Results.nPCs);
+            [coeff, ~, ~, ~, ~, mu] = TensorUtils.pcaAlongDim(dataPCA, 1, 'NumComponents', nPCs);
             warning(sWarn);
         else
             coeff = p.Results.pcaCoeff;

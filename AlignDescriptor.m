@@ -1492,7 +1492,7 @@ classdef AlignDescriptor
             asPat = '(as)?\s*(?<label>[\w\s\d+\-\.\<\>\?]+)?';
             
             pat = [eventPat indexPat '\s*' offsetPat '\s*' asPat]; 
-            str = strtrim(str);
+            str = char(strtrim(str));
             info = regexp(str, pat, 'names', 'once');
 
             if isempty(info)

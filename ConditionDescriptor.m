@@ -1962,7 +1962,7 @@ classdef ConditionDescriptor
             else
                 iAttr = ci.nAttributes + 1;
             end
-            ci.attributeNames{iAttr} = name;
+            ci.attributeNames{iAttr} = char(name);
             ci.attributeUnits{iAttr} = p.Results.units;
             if isempty(valueList)
                 ci.attributeNumeric(iAttr) = p.Results.numeric;
@@ -2308,8 +2308,8 @@ classdef ConditionDescriptor
 
         function ci = sortWithinConditionsBy(ci, sortByList)
             ci.warnIfNoArgOut(nargout);
-            if ischar(sortByList)
-                sortByList = {sortByList};
+            if ischar(sortByList) || (isstring(sortByList) && isscalar(sortByList))
+                sortByList = {char(sortByList)};
             end
             assert(iscellstr(sortByList), 'sortByList must be string or cellstr');
 

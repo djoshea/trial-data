@@ -512,6 +512,7 @@ if ~p.Results.quick
     end
 
     hold off;
+    au.autoAxisXExtendToLimits = true;
     au.update();
 end
 

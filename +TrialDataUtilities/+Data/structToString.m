@@ -1,7 +1,10 @@
 function str = structToString(s, varargin)
     p = inputParser();
     p.addOptional('separator', ' ', @ischar);
+    
     p.addParameter('includeFieldNames', true, @islogical);
+    p.addParameter('fieldValueSeparator', "=", @isstringlike); % if includeFieldNames is true, e.g. Field=Value
+    
     p.addParameter('fieldNameSubstitutions', struct(), @isstruct); % for includeFieldNames = true or useFieldNameForBoolean, if a field is set, use that field's value as the string instead of the field name itself
     p.addParameter('useFieldNameForBoolean', true, @islogical); % if the value is true/false, then use the attribute name or ''
     p.addParameter('suffixByField', struct(), @isstruct);
@@ -13,6 +16,7 @@ function str = structToString(s, varargin)
     includeFieldNames = p.Results.includeFieldNames;
     suffixByField = p.Results.suffixByField;
     fieldNameSubstitutions = p.Results.fieldNameSubstitutions;
+    fieldValueSeparator = string(p.Results.fieldValueSeparator);
     
     fields = fieldnames(s);
     if isempty(fields)
@@ -37,7 +41,7 @@ function str = structToString(s, varargin)
         end
         
         if includeFieldNames
-            prefix = fldSub + "=";
+            prefix = fldSub + fieldValueSeparator;
         else
             prefix = "";
         end

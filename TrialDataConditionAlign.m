@@ -2594,8 +2594,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', []);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
-            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike);
 
             p.parse(varargin{:});
 
@@ -3638,6 +3638,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('normalizeCoefficientsByNumNonNaN', false, @islogical); % on a per-value basis, normalize the conditions by the number of conditions present at that time on the axis this enables nanmean like computations
 
             p.addParameter('applyScaling', true, @islogical);
+            
+            p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
+            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
             p.parse(varargin{:});
 
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName, ...
@@ -3661,7 +3664,14 @@ classdef TrialDataConditionAlign < TrialData
                 if p.Results.includePadding
                     [tMin, tMax] = td.getTimeStartStopEachTrialWithPadding();
                 else
-                    [tMin, tMax] = td.getTimeStartStopEachTrial();
+                    [tMin, tMax] = td.getTimeStartStopEachTrial(); 
+                end
+                % override with auto
+                if ~isempty(p.Results.tMin)
+                    tMin = p.Results.tMin;
+                end
+                if ~isempty(p.Results.tMax)
+                    tMax = p.Results.tMax;
                 end
 
                 % pad a bit forward or backwards depending on binning
@@ -3840,7 +3850,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -3968,6 +3978,9 @@ classdef TrialDataConditionAlign < TrialData
 
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
+            
+            p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -3983,7 +3996,8 @@ classdef TrialDataConditionAlign < TrialData
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
                 'assumeUniformSampling', true, ...
                 'minTrials', p.Results.minTrials, ...
-                'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid);
+                'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid, ...
+                'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
         end
 
         function [dataCell, tvec] = getAnalogChannelGroupAsTensorGrouped(td, nameCell, varargin)
@@ -6723,6 +6737,7 @@ classdef TrialDataConditionAlign < TrialData
 %             p.addParameter('spikeColor', 'k', @(x) true);
             p.addParameter('colorSpikesLikeCondition', false, @islogical);
             p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParameter('timeAxisTickBridgeExtendToLimits', true, @islogical);
             p.addParameter('tickHeight', 1, @isscalar);
             p.addParameter('tickWidth', 1, @isscalar);
             p.addParameter('tickAlpha', 1, @isscalar);
@@ -7118,7 +7133,8 @@ classdef TrialDataConditionAlign < TrialData
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
                     td.alignSummarySet{idxAlign}.setupTimeAutoAxis('axh', axh, 'which', 'x', ...
-                        'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign), 'showRanges', p.Results.showRanges);
+                        'style', p.Results.timeAxisStyle, 'tOffsetZero', tOffsetByAlign(iAlign), ...
+                        'showRanges', p.Results.showRanges, 'tickBridgeExtendToLimits', p.Results.timeAxisTickBridgeExtendToLimits);
                 end
             end
 
@@ -8000,6 +8016,7 @@ classdef TrialDataConditionAlign < TrialData
             % each condition
 
             p = inputParser();
+            p.addParameter('alignIdx', 1:td.nAlign, @(x) true);
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
@@ -8020,13 +8037,16 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('label', '', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
+            
+            alignIdx = p.Results.alignIdx;
+            nAlignUsed = numel(alignIdx);
 
             % loop over alignments and gather mean data
             % and slice each in time to capture only the non-nan region
-            [meanMat, semMat, tvecCell, stdMat, timeMask] = deal(cell(td.nAlign, 1));
-            for iAlign = 1:td.nAlign
+            [meanMat, semMat, tvecCell, stdMat, timeMask] = deal(cell(nAlignUsed, 1));
+            for iAlign = 1:nAlignUsed
                 [meanMat{iAlign}, semMat{iAlign}, tvecCell{iAlign}, stdMat{iAlign}] = ...
-                    td.useAlign(iAlign).getAnalogGroupMeans(name, 'minTrials', p.Results.minTrials, ...
+                    td.useAlign(alignIdx(iAlign)).getAnalogGroupMeans(name, 'minTrials', p.Results.minTrials, ...
                     'minTrialFraction', p.Results.minTrialFraction, ...
                     'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                     'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
@@ -8057,9 +8077,9 @@ classdef TrialDataConditionAlign < TrialData
 
 
             if ~isempty(p.Results.showRandomizedQuantiles)
-                quantileData = cell(td.nAlign, 1);
-                for iAlign = 1:td.nAlign
-                    quantileData{iAlign} = td.useAlign(iAlign).getAnalogGroupMeansRandomizedQuantiles(name, ...
+                quantileData = cell(nAlignUsed, 1);
+                for iAlign = 1:nAlignUsed
+                    quantileData{iAlign} = td.useAlign(alignIdx(iAlign)).getAnalogGroupMeansRandomizedQuantiles(name, ...
                         'quantiles', p.Results.showRandomizedQuantiles, ...
                          'minTrials', p.Results.minTrials, 'minTrialFraction', p.Results.minTrialFraction, ...
                         'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
@@ -8078,6 +8098,7 @@ classdef TrialDataConditionAlign < TrialData
                 'data', meanMat, 'dataError', errorMat, p.Unmatched, ...
                 'quantileData', quantileData, ...
                 'axisInfoX', 'time', 'axisInfoY', cd, 'labelY', p.Results.label, ...
+                'alignIdx', alignIdx, ...
                 p.Unmatched);
         end
 

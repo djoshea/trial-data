@@ -6,7 +6,7 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('timeReference', 0, @isscalar);
     p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-    p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+    p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp   
     p.addParameter('origDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x));

@@ -8,7 +8,7 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
     p.addParameter('timeReference', 0, @isscalar);
     p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-    p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp   
+    p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp   
     p.addParameter('uniformlySampled', false, @islogical); % can speed things up if you know it's arleady uniform
     p.addParameter('progress', false, @slogical);
     % these are used as a secondary guard to truncate data within tMin :

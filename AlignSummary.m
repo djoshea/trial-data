@@ -1057,6 +1057,7 @@ classdef AlignSummary
             p.addParameter('showIntervalLabels', true, @islogical);
             p.addParameter('showScaleBar', true, @islogical);
             p.addParameter('labelFirstMarkOnly', true, @islogical);
+            p.addParameter('tickBridgeExtendToLimits', true, @islogical); % for tick bridges
             p.addParameter('showIntervals', true, @islogical);
             p.addParameter('allowedRange', 0, @isscalar); % allowed size of min - max range before surrounding label with < >
             p.parse(varargin{:});
@@ -1067,6 +1068,7 @@ classdef AlignSummary
             tMax = p.Results.tMax;
             allowedRange = p.Results.allowedRange;
             showRanges = p.Results.showRanges;
+            extendToLimits = p.Results.tickBridgeExtendToLimits;
             axh = p.Results.axh;
             if isempty(axh), axh = gca; end
             
@@ -1116,12 +1118,12 @@ classdef AlignSummary
                     
                 case 'tickBridge'      
                     au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
-                        'zeroLabel', zeroLabelShort, ...
+                        'zeroLabel', zeroLabelShort, 'extendToLimits', extendToLimits, ...
                         'autoTicks', true);
                     
                 case 'tickBridgeStartStop'      
                     au.addAutoBridgeX('zero', xOffset, 'start', tMin, 'stop', tMax, ...
-                        'zeroLabel', zeroLabelShort, ...
+                        'zeroLabel', zeroLabelShort, 'extendToLimits', extendToLimits, ...
                         'autoTicks', false);
                     
                 case {'markerRange', 'marker'}

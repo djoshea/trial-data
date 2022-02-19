@@ -904,6 +904,7 @@ classdef TrialData
             p.addParameter('partitions', {}, @(x) isempty(x) || ischar(x) || iscellstr(x) || isstring(x));
             p.addParameter('loadAllPartitions', [], @(x) isempty(x) || islogical(x));
             p.addParameter('ignoreMissingPartitions', false, @islogical);
+            p.addParameter('objectName', "TrialData", @isstringlike);
             p.addParameter('validate', true, @islogical);
             p.addParameter('progress', true, @islogical);
             p.KeepUnmatched = true; % unmatched fields will match parameter values that were provided to load fast
@@ -920,6 +921,7 @@ classdef TrialData
                 loadAllPartitions = isempty(partitions);
             end
             progress = p.Results.progress;
+            obj_name = string(p.Results.objectName);
 
             if exist(location, 'file') == 2
                 ld = load(location);
@@ -938,7 +940,7 @@ classdef TrialData
                 td = loaded.td;
 
                 % load elements of data
-                msg = sprintf('Loading TrialData from %s', location);
+                msg = sprintf('Loading %s from %s', obj_name, location);
                 [data, partitionMeta, partialLoadMask] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
                     'message', msg, 'progress', progress, 'maxElements', p.Results.maxTrials, ...
                     'partitions', partitions, 'loadAllPartitions', loadAllPartitions, ...
@@ -2166,9 +2168,9 @@ classdef TrialData
             % Note: sub channels are not included. This is important for
             % resolving conflicts
 
-            if ischar(fields)
+            if ischar(fields) || (isstring(fields) && isscalar(fields))
                 wasCell = false;
-                fields = {fields};
+                fields = {char(fields)};
             else
                 wasCell = true;
             end
@@ -3119,7 +3121,7 @@ classdef TrialData
             p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -3496,17 +3498,19 @@ classdef TrialData
                 chIdx = 1:numel(chNames);
             end
 
+            td.channelDescriptorsByName.(groupName) = cdGroup.setSubChannelInfo(chIdx, chNames);
+            
             % drop the existing named channels
-            [oldNamedChannels, hasName] = td.listAnalogChannelsInGroupByColumn(groupName, chIdx);
-            if any(hasName)
-                td = td.dropChannels(oldNamedChannels(hasName));
-            end
-
-            for iCh = 1:numel(chNames)
-                % build a channel descriptor for the data
-                cd = cdGroup.buildIndividualSubChannel(chNames{iCh}, chIdx(iCh));
-                td = td.addChannel(cd, {}, 'ignoreDataFields', true);
-            end
+%             [oldNamedChannels, hasName] = td.listAnalogChannelsInGroupByColumn(groupName, chIdx);
+%             if any(hasName)
+%                 td = td.dropChannels(oldNamedChannels(hasName));
+%             end
+% 
+%             for iCh = 1:numel(chNames)
+%                 % build a channel descriptor for the data
+%                 cd = cdGroup.buildIndividualSubChannel(chNames{iCh}, chIdx(iCh));
+%                 td = td.addChannel(cd, {}, 'ignoreDataFields', true);
+%             end
         end
 
         function [groupNames, channelDescriptors, channelsByGroup] = listAnalogChannelGroups(td, varargin)
@@ -3709,63 +3713,85 @@ classdef TrialData
         end
 
         function groupName = getAnalogChannelGroupName(td, name)
+            name = string(name);
             td.assertHasChannel(name);
             cd = td.getChannelDescriptor(name);
-            if ~cd.isColumnOfSharedMatrix
-                groupName = "";
-            else
-                groupName = string(cd.primaryDataField);
+            groupName = strings(numel(name), 1);
+            for iN = 1:numel(name)
+                if ~cd(iN).isColumnOfSharedMatrix
+                    groupName(iN) = "";
+                else
+                    groupName(iN) = string(cd(iN).primaryDataField);
+                end
             end
         end
 
         function td = separateAnalogChannelFromGroup(td, name, varargin)
             p = inputParser();
             p.addParameter('separateTimeField', false, @islogical);
+            p.addParameter('filterColumnFromGroup', false, @islogical);
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
-            td.assertHasChannel(name);
+            names = string(name);
+            
+            groupNames = td.getAnalogChannelGroupName(names);
+            
+            for iN = 1:numel(names)
+                name = names(iN);
+                td.assertHasChannel(name);
+                groupName = groupNames(iN);
 
-            groupName = td.getAnalogChannelGroupName(name);
+                if isempty(groupName)
+                    % not in group
+                    return;
+                end
 
-            if isempty(groupName)
-                % not in group
-                return;
+                colIdx = td.getAnalogChannelColumnIdxInGroup(name);
+
+                group_cd = td.channelDescriptorsByName.(groupName);
+                cd = group_cd.buildIndividualSubChannel(colIdx);
+
+                % fetch current data without scaling
+                oldData = td.getAnalogRaw(name, 'applyScaling', false);
+
+                assert(~isfield(td.data, name), 'Issue with creating field %s already found in td.data', name);
+
+                if p.Results.separateTimeField
+                    newTimeField = matlab.lang.makeUniqueStrings([name '_time'], fieldnames(td.data));
+                    td.data = copyStructField(td.data, td.data, cd.timeField, newTimeField);
+                    cdNew = cd.separateFromColumnOfSharedMatrix(newTimeField);
+                else
+                    cdNew = cd.separateFromColumnOfSharedMatrix();
+                end
+
+                % we also need to copy the data field over, since we may
+                % only be updating valid trials
+
+                [td.data.(cdNew.primaryDataField)] = deal(oldData{:});
+
+                td.channelDescriptorsByName.(name) = cdNew;
+
+    %             % rename channels 
+    %             group_cd = group_cd.setSubChannelInfo(colIdx, chNames);
+    %             td.channelDescriptorsByName.(groupName) = group_cd;
+
+                % unset this sub channel name
+                td = td.setAnalogChannelGroupSubChannelNames(groupName, "", colIdx);
+
             end
-
-            cd = td.channelDescriptorsByName.(name);
-
-            % fetch current data without scaling
-            oldData = td.getAnalogRaw(name, 'applyScaling', false);
-
-            assert(~isfield(td.data, name), 'Issue with creating field %s already found in td.data', name);
-
-            if p.Results.separateTimeField
-                newTimeField = matlab.lang.makeUniqueStrings([name '_time'], fieldnames(td.data));
-                td.data = copyStructField(td.data, td.data, cd.timeField, newTimeField);
-                cdNew = cd.separateFromColumnOfSharedMatrix(newTimeField);
-            else
-                cdNew = cd.separateFromColumnOfSharedMatrix();
-            end
-
-            % we also need to copy the data field over, since we may
-            % only be updating valid trials
-
-            [td.data.(cdNew.primaryDataField)] = deal(oldData{:});
-
-            td.channelDescriptorsByName.(name) = cdNew;
-
-            if td.hasAnalogChannelGroup(groupName)
-                % if this were the last channel in the group, the group
-                % will no longer "exist"
-                td = td.removeUnnamedColumnsAnalogChannelGroup(groupName);
+            if p.Results.filterColumnFromGroup
+                groupNames = unique(groupNames);
+                for iN = 1:numel(groupNames)
+                    td = td.removeUnnamedColumnsAnalogChannelGroup(groupNames(iN));
+                end
             end
         end
 
         function td = removeUnnamedColumnsAnalogChannelGroup(td, groupName, varargin)
             td.warnIfNoArgOut(nargout);
             [~, colIdx] = td.listAnalogChannelsInGroup(groupName);
-            td = td.filterColumnsAnalChannelGroup(groupName, colIdx, varargin{:});
+            td = td.filterColumnsAnalogChannelGroup(groupName, colIdx, varargin{:});
         end
 
         function td = removeColumnsFromAnalogChannelGroup(td, groupName, removeColIdx, varargin)
@@ -3791,6 +3817,12 @@ classdef TrialData
             progress = p.Results.progress;
             
             cd = td.getChannelDescriptor(groupName);
+            
+            if isempty(colIdx)
+                debug('Dropping analog channel group %s', groupName);
+                td = td.dropChannel(groupName);
+                return;
+            end
 
             if progress, prog = ProgressBar(td.nTrials, 'Filtering columns of analog channel group %s', groupName); end
             for t = 1:td.nTrials
@@ -3808,7 +3840,10 @@ classdef TrialData
             td = td.postDataChange(groupName);
         end
 
-        function td = separateAnalogChannelsIntoSeparateGroup(td, names, newGroupName)
+        function td = separateAnalogChannelsIntoSeparateGroup(td, names, newGroupName, varargin)
+            p = inputParser();
+            p.addParameter('filterColumnFromGroup', false, @islogical);
+            p.parse(varargin{:});
             td.warnIfNoArgOut(nargout);
             assert(td.checkAnalogChannelsInSameGroup(names), 'All channels must be part of a group already');
 
@@ -3848,20 +3883,23 @@ classdef TrialData
             newCdGroup = cdGroup.rename(newGroupName, false); % leave time field alone
             td = td.addChannel(newCdGroup, 'ignoreDataFields', true, 'ignoreExisting', true);
 
+            % remove existing names from the old group
+            td = td.setAnalogChannelGroupSubChannelNames(groupName, repmat("", numel(names), 1), colIdx);
+            
             % update the channel descriptors to point to the new group
-            for c = 1:numel(names)
-                cd = td.channelDescriptorsByName.(names{c});
-                cd.primaryDataField = newGroupName;
-                cd.primaryDataFieldColumnIndex = c;
-                td.channelDescriptorsByName.(names{c}) = cd;
-            end
+%             for c = 1:numel(names)
+%                 cd = td.channelDescriptorsByName.(names{c});
+%                 cd.primaryDataField = newGroupName;
+%                 cd.primaryDataFieldColumnIndex = c;
+%                 td.channelDescriptorsByName.(names{c}) = cd;
+%             end
 
             % clear out the old channel
             if ~strcmp(groupName, newGroupName)
                 if isempty(setdiff(chAll, names))
                     % no need for old field
                     td.data = rmfield(td.data, groupName);
-                else
+                elseif p.Results.filterColumnFromGroup
                     % clean out the unused columns from the old field
                     td = td.removeUnnamedColumnsAnalogChannelGroup(groupName);
                 end
