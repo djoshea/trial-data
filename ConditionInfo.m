@@ -904,7 +904,7 @@ classdef ConditionInfo < ConditionDescriptor
             idx = ci.getAttributeIdx(name);
             values = ci.values(:, idx);
             if ci.attributeAsVector(idx)
-                if iscellstr(values)
+                if iscell(values) && (ischar(values{1}) || isstring(values{1}))
                     values = string(values);
                 else
                     values = cat(1, values{:});

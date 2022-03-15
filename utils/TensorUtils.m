@@ -2350,7 +2350,10 @@ classdef TensorUtils
             % and se_i be the standard error of the mean s_i = std_i / sqrt(n_i).
             % then in projecting through W, variances add:
             % se^2 = (w_1 se_1)^2 + (w2 se_2)^2 + ...
-            % se - sqrt(w_1^2 se_1^2 + w2^2 se_2^2 + ... )
+            % se = sqrt(w_1^2 se_1^2 + w2^2 se_2^2 + ... )
+            %
+            % so if projecting original data T x D dimensions into K dimensional subspace via P (K x D), the sem
+            % of the projected bases would be sem_proj = addInQuadratureAlongDimension(data
 
             p = inputParser();
             p.addParameter('replaceNaNWithZero', false, @islogical); % ignore NaNs by replacing them with zero

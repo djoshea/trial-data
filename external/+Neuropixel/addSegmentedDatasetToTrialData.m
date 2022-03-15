@@ -55,7 +55,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
             else
                 data = seg.spike_times_ms_rel_start(:, clusterInds);
             end
-        elseif include_cutoff
+        elseif inecvclude_cutoff
             data = seg.cutoff_spike_times_ms_rel_start(:, clusterInds);
         else
             error('Either valid (include_valid==true) or cutoff (include_cutoff) spikes must be included');

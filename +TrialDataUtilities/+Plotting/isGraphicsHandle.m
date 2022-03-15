@@ -1,4 +1,4 @@
-function mask = isGraphicHandle(h)
+function mask = isGraphicsHandle(h)
     if isobject(h)
         mask = isgraphics(h);
     else

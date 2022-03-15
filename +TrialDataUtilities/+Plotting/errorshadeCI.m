@@ -4,6 +4,7 @@ function [hl, hs] = errorshadeCI(x, ym, yCI, color, varargin)
     p = inputParser();
     p.addParameter('axh', [], @(x) true);
     p.addParameter('showLine', true, @islogical);
+    p.addParameter('LineWidth', 1, @isscalar);
     p.addParameter('lineArgs', {}, @iscell);
     p.addParameter('lineAlpha', 1, @isscalar);
     p.addParameter('DisplayName', "", @isstringlike);
@@ -30,9 +31,9 @@ function [hl, hs] = errorshadeCI(x, ym, yCI, color, varargin)
     end
     
     if p.Results.showLine
-        hl = plot(x, ym, 'Color', color, 'Parent', axh, p.Results.lineArgs{:}, 'DisplayName', p.Results.DisplayName);
+        hl = plot(x, ym, 'Color', color, 'Parent', axh, 'LineWidth', p.Results.LineWidth, ...
+            p.Results.lineArgs{:}, 'DisplayName', p.Results.DisplayName);
         TrialDataUtilities.Plotting.setLineOpacity(hl, p.Results.lineAlpha);
-        hl = [];
     end
     
     if ~washolding

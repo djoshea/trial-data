@@ -209,7 +209,7 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         end
 
         function subChannelNames = get.subChannelNames(cd)
-            subChannelNames = cd.getSubChannelNames();
+            subChannelNames = cd.listNamedSubChannels();
         end
 
         function cd = inferAttributesFromData(cd, varargin)

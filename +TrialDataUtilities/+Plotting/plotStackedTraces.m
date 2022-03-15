@@ -415,7 +415,7 @@ if ~p.Results.quick
                 if commonDataUnits
                     dataUnits = u{1};
                 end
-            elseif isempty(dataUnits) || ischar(dataUnits)
+            elseif isempty(dataUnits) || ischar(dataUnits) || isstring(dataUnits)
                 commonDataUnits = true;
             else
                 commonDataUnits = false;

@@ -7393,7 +7393,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('intervalShowOnAxis', true, @islogical);
             p.addParameter('intervalAlpha', 1, @isscalar);
 
-            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @isstringlike);
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
 
