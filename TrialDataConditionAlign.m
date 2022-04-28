@@ -1931,6 +1931,16 @@ classdef TrialDataConditionAlign < TrialData
             td = td.postUpdateAlignInfo();
         end
 
+        function td = alignRoundTimes(td, timeDelta)
+            td.warnIfNoArgOut(nargout);
+            if isempty(timeDelta)
+                td.alignInfoActive = td.alignInfoActive.noRound();
+            else
+                td.alignInfoActive = td.alignInfoActive.round(timeDelta);
+            end
+            td = td.postUpdateAlignInfo();
+        end
+
         % filter trials that are valid based on AlignInfo
         function td = filterValidTrialsAlignInfo(td, varargin)
             td.warnIfNoArgOut(nargout);
