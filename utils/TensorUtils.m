@@ -388,8 +388,9 @@ classdef TensorUtils
             if nargin < 3
                 ndims = max(numel(sz), max(dims));
             end
-            allDims = 1:ndims;
-            other = TensorUtils.makerow(setdiff(allDims, dims));
+            mask = true(1, ndims);
+            mask(dims) = false;
+            other = find(mask);
         end
 
         function d = firstNonSingletonDim(t)
@@ -2304,8 +2305,13 @@ classdef TensorUtils
             
             if p.Results.normalizeNonZeroCoefficientsByNumNonNaN
                 assert(~p.Results.normalizeCoefficientsByNumNonNaN);
-                nNonZeroMat = (weightsNewByOld ~= 0) * ~nanMask; % same size as reweightMat, counts number of non-zero weightsOld aligned with non-nan tpMat values
-                reweightMat = reweightMat ./ nNonZeroMat;
+                if nnz(nanMask) > 0
+                    nNonZeroMat = (weightsNewByOld ~= 0) * ~nanMask; % same size as reweightMat, counts number of non-zero weightsOld aligned with non-nan tpMat values
+                    reweightMat = reweightMat ./ nNonZeroMat;
+                else
+                    nNonZeroVec = sum(weightsNewByOld ~= 0, 2);
+                    reweightMat = reweightMat ./ nNonZeroVec;
+                end
             end
 
             if p.Results.addToOriginal
@@ -2416,7 +2422,6 @@ classdef TensorUtils
             % if dims is a vector of dimensions, then mask must be a cell,
             % in which case the assignment is
             % in(..., mask{1}, ..., mask{2}, ...) = value
-            %
 
             if ~exist('value', 'var')
                 if iscell(in)
