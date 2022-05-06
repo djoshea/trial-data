@@ -5917,6 +5917,7 @@ classdef TrialData
             %  waveforms
             p = inputParser();
             p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('isScaled', true, @islogical); % time data is coming in scaled according to timescaling
             p.addParameter('waveforms', [], @iscell);
             p.addParameter('blankingRegions', {}, @(x) isempty(x) || iscell(x)); % nTrials x 1 cell of nIntervals x 2 matrices
             p.addParameter('storeBlankingRegions', true, @islogical); % actually mark the blanking regions so that they will
@@ -5945,10 +5946,25 @@ classdef TrialData
             if cd.nChannels == 1
                 times = makecol(times);
             end
-            if iscell(times)
-                times = cellfun(@plus, times, repmat(num2cell(offsets), 1, cd.nChannels), 'UniformOutput', false);
+
+            isScaled = p.Results.isScaled;
+            nativeClass = TrialDataUtilities.Data.getCellElementClass(times);
+%             signedClass = TrialDataUtilities.Data.getSignedDataType(nativeClass);
+
+            if isScaled
+                timeScaling = 1;
             else
-                times = times + offsets;
+                timeScaling = cd.timeScaling;
+            end
+            if iscell(times)
+                for i = 1:td.nTrials
+                    for j = 1:cd.nChannels
+                        times{i, j} = times{i, j} + cast(offsets(i) / timeScaling, nativeClass);
+                    end
+                end
+                %times = cellfun(@plus, times, repmat(num2cell(offsets), 1, cd.nChannels), 'UniformOutput', false);
+            else
+                times = times + cast(offsets / timeScaling, nativeClass);
             end
 
             channelData = {times};
@@ -6382,15 +6398,17 @@ classdef TrialData
             end
         end
 
-        function timesCell = getRawSpikeTimes(td, unitNames, varargin)
+        function [timesCell, timeScaling] = getRawSpikeTimes(td, unitNames, varargin)
             % timesCell is nTrials x nUnits (if unitNames is cellstr)
             % if combine is true, all spikes will be interleaved
+            % timeScaling is useful when applyScaling is false
             p = inputParser();
             p.addParameter('combine', false, @islogical);
+            p.addParameter('applyScaling', true, @islogical);
             p.addParameter('slice', [], @(x) true); % for subselecting units from array
             p.parse(varargin{:});
 
-            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName] = td.getSpikeChannelMultiAccessInfo(unitNames, 'times', p.Results.slice);
+            [fieldList, fieldIsArray, colIdxEachField, assignIdxEachField, nColumnsPerName, cdsByField] = td.getSpikeChannelMultiAccessInfo(unitNames, 'times', p.Results.slice);
             nUnits = sum(nColumnsPerName);
             nFields = numel(fieldList);
             timesCellByUnit = cell(td.nTrials, nUnits);
@@ -6420,14 +6438,25 @@ classdef TrialData
             else
                 timesCell = timesCellByUnit;
             end
+
+            assert(numel(unique([cdsByField.timeScaling])) == 1, 'Time scaling of spike fields must match');
+            if p.Results.applyScaling
+                % do scaling and convert to double
+                impl = cdsByField(1).getImpl();
+                timesCell = impl.convertDataCellOnAccess(1, timesCell);
+                timeScaling = 1;
+            else
+                % leave as is and pass scaling along
+                timeScaling = cdsByField(1).timeScaling;
+            end
         end
 
-        function timesCell = getSpikeTimes(td, unitNames, varargin)
-            timesCell = td.getSpikeTimesUnaligned(unitNames, varargin{:});
+        function [timesCell, timeScaling] = getSpikeTimes(td, unitNames, varargin)
+            [timesCell, timeScaling] = td.getSpikeTimesUnaligned(unitNames, varargin{:});
         end
 
-        function timesCell = getSpikeTimesUnaligned(td, unitNames, varargin)
-            timesCell = td.getRawSpikeTimes(unitNames, varargin{:});
+        function [timesCell, timeScaling] = getSpikeTimesUnaligned(td, unitNames, varargin)
+            [timesCell, timeScaling] = td.getRawSpikeTimes(unitNames, varargin{:});
             timesCell = td.replaceInvalidMaskWithValue(timesCell, []);
         end
 
@@ -6765,6 +6794,8 @@ classdef TrialData
             p.addOptional('units', @(x) isnumeric(x) && isvector(x));
             p.addOptional('spikes', {}, @(x) ismatrix(x) && iscell(x));
             p.addParameter('isAligned', true, @isscalar);
+            p.addParameter('timeScaling', 1, @isscalar);
+            p.addParameter('timeOriginalDataClass', '', @ischar);
             p.addParameter('waveforms', [], @iscell);
             p.addParameter('waveformsTime', [], @(x) isempty(x) || isvector(x)); % common time vector to be shared for ALL waveforms for this channel
             p.addParameter('waveformsField', sprintf('%s_waveforms', arrayName), @ischar);
@@ -6810,7 +6841,9 @@ classdef TrialData
                 spikes = cell(td.nTrials, nUnits);
             end
 
-            cd = SpikeArrayChannelDescriptor.build(arrayName, electrodes, units);
+            cd = SpikeArrayChannelDescriptor.build(arrayName, electrodes, units, ...
+                'timeScaling', p.Results.timeScaling, ...
+                'timeOriginalDataClass', p.Results.timeOriginalDataClass);
             cd.sortQuality = p.Results.sortQuality;
             cd.sortMethod = p.Results.sortMethod;
 
@@ -6823,8 +6856,17 @@ classdef TrialData
                 % consider it aligned to trial start
                 offsets = zerosvec(td.nTrials);
             end
-            offsets = repmat(offsets, 1, nUnits);
-            spikes = cellfun(@(x, y) makecol(x+y), spikes, num2cell(offsets), 'UniformOutput', false);
+
+            % this assumes spikes are unscaled, in memory format
+            mask_empty = cellfun(@isempty, spikes);
+            empty_insert = zeros(0, 1, cd.memoryClassByField{1});
+            spikes(mask_empty) = {empty_insert};
+
+            % need to convert and scale offsets 
+            impl = cd.getImpl();
+            offsets = impl.convertAccessDataSingleToMemory(1, offsets);
+            offsets_c = num2cell(repmat(offsets, 1, nUnits));
+            spikes = cellfun(@(x, y) makecol(x+y), spikes, offsets_c, 'UniformOutput', false);
 
             % convert nTrials x nUnits cell array to nTrials x 1 of 1 x
             % nUnits fields
@@ -7644,7 +7686,7 @@ classdef TrialData
             if ~p.Results.ignoreDataFields
                 % touch each of the value fields to make sure they exist
                 for iF = 1:cd.nFields
-                    missing = cd.missingValueByField{iF};
+                    missing = cd.missingValueByFieldMemory{iF};
                     if ~isfield(td.data, cd.dataFields{iF}) || ~cd.isShareableByField(iF)
                         % clear if it's missing, or if its there but not
                         % shared, since we're overwriting it
@@ -8035,7 +8077,7 @@ classdef TrialData
             nFields = numel(dataFields);
             for iF = 1:nFields
                 if ~fieldMask(iF), continue; end
-                val = cd.missingValueByField{iF};
+                val = cd.missingValueByFieldMemory{iF};
                 td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataFields{iF}, val, updateMask);
                 %                 for iT = 1:td.nTrials
                 %                     td.data(iT).() = val;

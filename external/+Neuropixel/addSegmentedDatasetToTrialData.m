@@ -13,6 +13,9 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     p.addParameter('addHasDataParam', true, @islogical);
     p.addParameter('include_valid', true, @islogical);
     p.addParameter('include_cutoff', false, @islogical);
+
+    p.addParameter('convertToMs', true, @islogical); % if true, spike times converted to ms, if false, left as samples to be scaled dynamically by TrialData
+
     p.parse(varargin{:});
 
     td = td.reset();
@@ -36,6 +39,7 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
     
     include_valid = p.Results.include_valid;
     include_cutoff = p.Results.include_cutoff;
+    convertToMs = p.Results.convertToMs;
     
     cluster_mask = ismember(seg.cluster_groups(clusterInds), cluster_groups_keep);
     if any(cluster_mask)
@@ -47,24 +51,46 @@ function td = addSegmentedDatasetToTrialData(td, seg, varargin)
         % name as array#unit# since electrode isn't meaningful
         units = seg.cluster_ids(clusterInds);
         electrodes = nan(size(units));
+        
         if include_valid
             if include_cutoff
-                data_valid = seg.spike_times_ms_rel_start(:, clusterInds);
-                data_cutoff = seg.cutoff_spike_times_ms_rel_start(:, clusterInds);
+                if convertToMs
+                    data_valid = seg.spike_times_ms_rel_start(:, clusterInds);
+                    data_cutoff = seg.cutoff_spike_times_ms_rel_start(:, clusterInds);
+                else
+                    data_valid = seg.spike_times_rel_start(:, clusterInds);
+                    data_cutoff = seg.cutoff_spike_times_rel_start(:, clusterInds);
+                end
                 data = cellfun(@(x1, x2) sort(cat(1, x1, x2)), data_valid, data_cutoff);
+            else
+                if convertToMs
+                    data = seg.spike_times_ms_rel_start(:, clusterInds);
+                else
+                    data = seg.spike_times_rel_start(:, clusterInds);
+                end
+            end
+        elseif include_cutoff
+            if convertToMs
+                data = seg.cutoff_spike_times_ms_rel_start(:, clusterInds);
             else
                 data = seg.spike_times_ms_rel_start(:, clusterInds);
             end
-        elseif inecvclude_cutoff
-            data = seg.cutoff_spike_times_ms_rel_start(:, clusterInds);
         else
             error('Either valid (include_valid==true) or cutoff (include_cutoff) spikes must be included');
         end
-        
+
         % data is now referenced to trial_start, not to "TimeZero", so we pass it in as isAligned==true, 
         % so that this offset is handled for us automatically
         arrayName = p.Results.arrayPrefix;
-        td = td.addSpikeArrayChannel(arrayName, electrodes, units, data, 'isAligned', true, 'raw', true);
+
+        if convertToMs
+            td = td.addSpikeArrayChannel(arrayName, electrodes, units, data, 'isAligned', true, 'raw', true);
+        else
+            scalingToMs = 1000 / seg.fsAP;
+            data = cellfun(@uint32, data, 'UniformOutput', false);
+            td = td.addSpikeArrayChannel(arrayName, electrodes, units, data, 'isAligned', true, 'raw', true, ...
+                'timeScaling', scalingToMs, 'timeOriginalDataClass', 'uint32');
+        end
 
         % add metadata
         td = td.setChannelMetaKey(arrayName, 'kilosort_pathLeaf', seg.dataset.pathLeaf);

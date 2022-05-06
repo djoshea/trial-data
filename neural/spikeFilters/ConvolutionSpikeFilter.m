@@ -170,6 +170,7 @@ classdef ConvolutionSpikeFilter < SpikeFilter
         function [rateCell, timeCell, poissonCountMultipliers] = subclassFilterSpikeTrains(sf, spikeCell, tWindowByTrial, multiplierToSpikesPerSec, varargin)
             p = inputParser();
             p.addParameter('useTimeDelta', true, @islogical);
+            p.addParameter('preserveNativeScaling', 0, @isscalar); 
             p.parse(varargin{:});
             
             if p.Results.useTimeDelta
@@ -185,6 +186,17 @@ classdef ConvolutionSpikeFilter < SpikeFilter
                 timeCell = cell(size(spikeCell, 1), 0);
                 poissonCountMultipliers = zeros(0, 1);
                 return;
+            end
+
+            % if preserveNativeScaling is 0, spikeCell is in ms, nothing changes
+            % if > 0, spikeCell * preserveNativeScaling is in ms, and we do the histogramming in the native class
+            % to ensure accuracy
+            preserveNativeScaling = p.Results.preserveNativeScaling;
+            nativeClass = TrialDataUtilities.Data.getCellElementClass(spikeCell);
+            if preserveNativeScaling > 0
+                timeScaling = preserveNativeScaling;
+            else
+                timeScaling = 1;
             end
             
             filt = sf.filter;
@@ -215,6 +227,14 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             [timeLabels, tbinsForHistcByTrial] = sf.binAlignmentMode.generateMultipleBinnedTimeVectors(...
                  tMinByTrial+window(1), tMaxByTrial+window(2), sf.binWidthMs); %#ok<ASGLU> % timeLabels is useful for debugging
                 
+            if preserveNativeScaling
+                % convert tbins to native scaling
+                nTrials = size(tbinsForHistcByTrial, 1);
+                for i = 1:nTrials
+                    tbinsForHistcByTrial{i} = cast(tbinsForHistcByTrial{i} / timeScaling, nativeClass);
+                end
+            end
+
             % then construct timeCell, which contains time vector without the extra samples
             % needed for the convolution, but WTIH the potential extra
             % samples needed for the input to resampling from binWidthMs to
@@ -247,8 +267,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
                 rateCell{i} = zeros(nTimeThis, nUnits); 
                 for j = 1:nUnits
                     if ~isempty(spikeCell{i, j})
-                        countsPad = histc(spikeCell{i, j}, tbinsForHistcByTrial{i}); % we drop the last bin from this since histc returns an last edge bin == last edge which we don't need
-                        rateCell{i}(:, j) = makecol(conv(countsPad(1:end-1), filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
+                        countsPad = histcounts(spikeCell{i, j}, tbinsForHistcByTrial{i}); % we drop the last bin from this since histc returns an last edge bin == last edge which we don't need
+                        rateCell{i}(:, j) = makecol(conv(countsPad, filt, 'valid') * multiplierToSpikesPerSec / sf.binWidthMs);
                     elseif ~isnan(tMinByTrial(i))
                         % put in zeros
                         rateCell{i}(:, j) = zeros(nTimeThis, 1);

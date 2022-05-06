@@ -2314,7 +2314,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            function indLast = getReadjustedBoundariesShiftToNext(time_cell)
+            function indLast = getReadjustedBoundariesShiftToNext(time_cell, timeScaling)
                 % indLast is the last index that belongs in trial, indLast+1:end will go to next trial
                 if ~iscell(time_cell)
                     time_cell = num2cell(time_cell);
@@ -2323,7 +2323,7 @@ classdef TrialDataConditionAlign < TrialData
                 indLast = nan(nTrials, nC);
                 for iF = 1:nTrials
                     for iC = 1:nC
-                        mask = time_cell{iF, iC} <= new_trialEnd(iF);
+                        mask = double(time_cell{iF, iC}) * timeScaling <= new_trialEnd(iF);
                         if any(mask)
                             indLast(iF, iC) = find(mask, 1, 'last');
                         else
@@ -2333,7 +2333,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
             
-            function indFirst = getReadjustedBoundariesShiftToPrev(time_cell)
+            function indFirst = getReadjustedBoundariesShiftToPrev(time_cell, timeScaling)
                 % indFirst is first valid index that belongs in trial, 1:indFirst-1 will go to previous trial
                 if ~iscell(time_cell)
                     time_cell = num2cell(time_cell);
@@ -2342,7 +2342,7 @@ classdef TrialDataConditionAlign < TrialData
                 indFirst = nan(nTrials, nC);
                 for iF = 1:nTrials
                     for iC = 1:nC
-                        mask = time_cell{iF, iC} >= new_trialStart(iF);
+                        mask = double(time_cell{iF, iC}) * timeScaling >= new_trialStart(iF);
                         if any(mask)
                             indFirst(iF, iC) = find(mask, 1, 'first');
                         else
@@ -2404,7 +2404,13 @@ classdef TrialDataConditionAlign < TrialData
                 if cd.hasBlankingRegions, associated_fields(end+1) = string(cd.blankingRegionsField); end %#ok<AGROW>
                 if cd.hasSortQualityEachTrial, associated_fields(end+1) = string(cd.sortQualityEachTrialField); end %#ok<AGROW>
                 isArray = isa(cd, 'SpikeArrayChannelDescriptor');
-                adjust_boundary_internal(cd.dataFieldPrimary, associated_fields, isArray);
+                adjust_boundary_internal(cd.dataFieldPrimary, associated_fields, isArray, cd.timeScaling);
+
+                % update the data class to be signed
+                if ~strcmp(cd.timeOriginalDataClass, "")
+                    cd.timeOriginalDataClass = TrialDataUtilities.Data.getSignedDataType(cd.timeOriginalDataClass);
+                    td.channelDescriptorsByName.(ch) = cd;
+                end
             end
             if showProgress, prog.finish(); end
 
@@ -2425,12 +2431,18 @@ classdef TrialDataConditionAlign < TrialData
                 td = td.addEvent(trialSpliceEvent, ev_trialSplice, 'isAligned', false);
             end
 
-            function adjust_boundary_internal(timeField, associatedFields, eachTrialIsCell)
+            function adjust_boundary_internal(timeField, associatedFields, eachTrialIsCell, timeScaling)
+                if nargin < 4
+                    timeScaling = 1;
+                end
                 if eachTrialIsCell
                     time_data = cat(1, td.data.(timeField));
                 else
                     time_data = {td.data.(timeField)}';
                 end
+                nativeClass = TrialDataUtilities.Data.getCellElementClass(time_data);
+                signedClass = TrialDataUtilities.Data.getSignedDataType(nativeClass);
+
                 nA = numel(associatedFields);
                 associated_data = cell(nA, 1);
                 for iA = 1:nA
@@ -2450,7 +2462,7 @@ classdef TrialDataConditionAlign < TrialData
                     trialEnd_previous = NaN; % need to keep track of offset from trial end
 
                     %[~, ~, indLastEachTrial] = ai.getAlignedTimesMask(time_data, 'raw', true, 'singleTimepointTolerance', 0, 'edgeTolerance', 0);
-                    indLastEachTrial = getReadjustedBoundariesShiftToNext(time_data);
+                    indLastEachTrial = getReadjustedBoundariesShiftToNext(time_data, timeScaling);
                     for iT = 1:td.nTrials-1
                         trialStart_this = ev_trialStart(iT);
 
@@ -2476,7 +2488,10 @@ classdef TrialDataConditionAlign < TrialData
                                 else
                                     retainTime = time_data{iT, iC}(1:indLast, :);
                                 end
-                                time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, retainTime);
+
+%                                 time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, retainTime);
+                                time_data{iT, iC} = cast(cat(1, double(time_buffer{iC}) + double(-trialEnd_previous + trialStart_this - interTrialOffset)/timeScaling, double(retainTime)), signedClass);
+
                                 for iA = 1:nA
                                     if copyDataAcrossBoundary
                                         retainData = associated_data{iA}{iT, iC};
@@ -2508,7 +2523,7 @@ classdef TrialDataConditionAlign < TrialData
                     trialStart_next = NaN; % need to keep track of offset from trial end
 
                     %[~, indFirstEachTrial, ~] = ai.getAlignedTimesMask(time_data, 'raw', true, 'singleTimepointTolerance', 0, 'edgeTolerance', 0);
-                    indFirstEachTrial = getReadjustedBoundariesShiftToPrev(time_data);
+                    indFirstEachTrial = getReadjustedBoundariesShiftToPrev(time_data, timeScaling);
                     for iT = td.nTrials:-1:1
                         trialEnd_this = ev_trialEnd(iT);
 
@@ -2533,7 +2548,8 @@ classdef TrialDataConditionAlign < TrialData
                                     retainTime = time_data{iT, iC}(indFirst:end, :);
                                 end
                                 
-                                time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, retainTime, time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
+%                                 time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, retainTime, time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
+                                time_data{iT, iC} = cast(cat(1, double(retainTime), double(time_buffer{iC}) + double(-trialStart_next + trialEnd_this + interTrialOffset)/timeScaling), signedClass);
                                 for iA = 1:nA
                                     if copyDataAcrossBoundary
                                         retainData = associated_data{iA}{iT, iC};
@@ -5018,7 +5034,7 @@ classdef TrialDataConditionAlign < TrialData
     % Spike data related
     methods
         % return aligned unit spike times
-        function [timesCell] = getSpikeTimes(td, unitNames, varargin)
+        function [timesCell, timeScaling] = getSpikeTimes(td, unitNames, varargin)
             % nTrials x nUnits
             p = inputParser();
             p.addParameter('includePadding', false, @islogical);
@@ -5026,13 +5042,29 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('slice', [], @(x) true); % for subselecting units from array
             p.addParameter('combineAligns', false, @islogical);
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
+            p.addParameter('applyScaling', true, @islogical);
             p.parse(varargin{:});
 
-            timesCell = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine, 'slice', p.Results.slice);
-            
+            [timesCell, timeScaling] = getSpikeTimes@TrialData(td, unitNames, 'combine', p.Results.combine, ...
+                'slice', p.Results.slice, 'applyScaling', p.Results.applyScaling);
+            if p.Results.applyScaling
+                % convert everything to double and in ms
+                preserveNativeScaling = 0;
+                singleTimepointTolerance = 0;
+                edgeTolerance = 0;
+            else
+                % leave as is, requires multiply by timeScaling to get ms
+                preserveNativeScaling = timeScaling;
+                % with preserve native scaling, we can be a bit more precise about the edgeTolerance here
+                nativeClass = TrialDataUtilities.Data.getCellElementClass(timesCell);
+                edgeTolerance = double(ones(1, nativeClass)) * 1e-3;
+                singleTimepointTolerance = edgeTolerance;
+            end
+
             if ~p.Results.combineAligns
                 timesCell = td.alignInfoActive.getAlignedTimesCell(timesCell, p.Results.includePadding, ...
-                    'singleTimepointTolerance', 0, 'edgeTolerance', 0);
+                    'singleTimepointTolerance', singleTimepointTolerance, 'edgeTolerance', edgeTolerance, ...
+                    'preserveNativeScaling', preserveNativeScaling);
             else
                 alignIdx = p.Results.alignIdx;
                 nAlign = numel(alignIdx);
@@ -5041,7 +5073,8 @@ classdef TrialDataConditionAlign < TrialData
                 alignOffsets = td.getAlignPlottingTimeOffsets([], 'alignIdx', alignIdx); % use full windows of valid trials, not set by spikes
                 for iA = 1:nAlign
                     timesCellAlign(:, :, iA) = td.alignInfoSet{iA}.getAlignedTimesCell(timesCell, p.Results.includePadding, ...
-                    'singleTimepointTolerance', 0, 'edgeTolerance', 0);
+                    'singleTimepointTolerance', singleTimepointTolerance, 'edgeTolerance', edgeTolerance, ...
+                    'preserveNativeScaling', preserveNativeScaling);
                 end
                 
                 nTrials = size(timesCell, 1);
@@ -5438,12 +5471,15 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showProgress', true, @islogical);
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('useNativeScaling', false, @islogical);
             p.parse(varargin{:});
 
             sf = p.Results.spikeFilter;
             if isempty(sf)
                 sf = SpikeFilter.getDefaultFilter();
             end
+
+            useNativeScaling = p.Results.useNativeScaling;
 
             % Pad trial data alignment for spike filter
             td = td.padForSpikeFilter(sf);
@@ -5453,7 +5489,12 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             % critical to include the spike times in the padded window
-            spikeCell = td.getSpikeTimes(unitNames, 'includePadding', true, 'combine', p.Results.combine);
+            [spikeCell, timeScaling] = td.getSpikeTimes(unitNames, 'includePadding', true, 'combine', p.Results.combine, 'applyScaling', ~useNativeScaling);
+            if useNativeScaling
+                preserveNativeScaling = timeScaling;
+            else
+                preserveNativeScaling = 0;
+            end
             [tMinByTrialExcludingPadding, tMaxByTrialExcludingPadding] = td.alignInfoActive.getStartStopRelativeToZeroByTrial();
             [tMinByTrialWithPadding, tMaxByTrialWithPadding] = td.alignInfoActive.getStartStopRelativeToZeroByTrialWithPadding();
             
@@ -5468,7 +5509,8 @@ classdef TrialDataConditionAlign < TrialData
                 'tMinByTrialExcludingPadding', tMinByTrialExcludingPadding, ...
                 'tMaxByTrialExcludingPadding', tMaxByTrialExcludingPadding, ...
                 'tMin', p.Results.tMin, ...
-                'tMax', p.Results.tMax);
+                'tMax', p.Results.tMax, ...
+                'preserveNativeScaling', preserveNativeScaling);
             tvec = makecol(tvec);
 
             % now we need to nan out the regions affected by blanking
@@ -5576,6 +5618,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('assumePoissonStatistics', false, @islogical);
 
             p.addParameter('combine', false, @islogical);
+            p.addParameter('useNativeScaling', false, @islogical); % do computations within the native scaling of the spike times for precision
 
             % these are to enable this function to support multiple roles
             p.addParameter('eachAlign', false, @islogical);
@@ -5605,10 +5648,10 @@ classdef TrialDataConditionAlign < TrialData
             % pick the right function to call
             if p.Results.eachAlign
                  [rateCell, tvec, hasSpikesGrouped, whichAlign, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixGroupedEachAlign(unitNames, ...
-                     'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine, 'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
+                     'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine, 'tMin', p.Results.tMin, 'tMax', p.Results.tMax, 'useNativeScaling', p.Results.useNativeScaling);
             else
                 [rateCell, tvec, hasSpikesGrouped, poissonCountMultiplier] = td.getSpikeRateFilteredAsMatrixGrouped(unitNames, ...
-                    'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine, 'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
+                    'spikeFilter', p.Results.spikeFilter, 'combine', p.Results.combine, 'tMin', p.Results.tMin, 'tMax', p.Results.tMax, 'useNativeScaling', p.Results.useNativeScaling);
                 whichAlign = td.alignInfoActiveIdx * ones(size(tvec));
             end
 
@@ -6638,6 +6681,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
 
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
+            p.addParameter('useNativeScaling', false, @islogical);
             %p.addParameter('axisMarginLeft', 2.5, @isscalar);
             p.addParameter('axh', gca, @ishandle);
             p.KeepUnmatched = true;
@@ -6662,7 +6706,8 @@ classdef TrialDataConditionAlign < TrialData
                     'spikeFilter', sf, ...
                     'combine', true, ...
                     'removeZeroSpikeTrials', p.Results.removeZeroSpikeTrials, ...
-                    'subtractConditionDescriptor', p.Results.subtractConditionDescriptor);
+                    'subtractConditionDescriptor', p.Results.subtractConditionDescriptor, ...
+                    'useNativeScaling', p.Results.useNativeScaling);
 
                 if numel(tvecCell{iAlign}) > 1
                     [tvecTemp, meanMat{iAlign}, semMat{iAlign}, stdMat{iAlign}, timeMask{iAlign}] = ...

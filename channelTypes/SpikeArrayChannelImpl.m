@@ -9,6 +9,9 @@ classdef SpikeArrayChannelImpl < ChannelImpl
             % (impl.scaleFromLims -> impl.scaleToLims)
             cd = impl.cd;
             data = convertDataCellOnAccess@ChannelImpl(impl, fieldIdx, data);
+            if cd.timeScaling ~= 1 && fieldIdx == 1
+                data = ChannelImpl.scaleDataByScalar(data, cd.timeScaling);
+            end
             if cd.hasWaveforms && fieldIdx == 2
                 data = ChannelImpl.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
             end
@@ -17,6 +20,9 @@ classdef SpikeArrayChannelImpl < ChannelImpl
         function data = convertDataSingleOnAccess(impl, fieldIdx, data)
             cd = impl.cd;
             data = convertDataSingleOnAccess@ChannelImpl(impl, fieldIdx, data);
+            if cd.timeScaling ~= 1 && fieldIdx == 1
+                data = ChannelImpl.scaleDataByScalar(data, cd.timeScaling);
+            end
             if cd.hasWaveforms && fieldIdx == 2
                 data = ChannelImpl.scaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
             end
@@ -24,6 +30,9 @@ classdef SpikeArrayChannelImpl < ChannelImpl
 
         function data = convertAccessDataCellToMemory(impl, fieldIdx, data)
             cd = impl.cd;
+            if cd.timeScaling ~= 1 && fieldIdx == 1
+                data = ChannelImpl.unscaleDataByScalar(data, cd.timeScaling);
+            end
             if cd.hasWaveforms && fieldIdx == 2
                 data = ChannelImpl.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
             end
@@ -32,6 +41,9 @@ classdef SpikeArrayChannelImpl < ChannelImpl
 
         function data = convertAccessDataSingleToMemory(impl, fieldIdx, data)
             cd = impl.cd;
+            if cd.timeScaling ~= 1 && fieldIdx == 1
+                data = ChannelImpl.unscaleDataByScalar(data, cd.timeScaling);
+            end
             if cd.hasWaveforms && fieldIdx == 2
                 data = ChannelImpl.unscaleData(data, cd.waveformsScaleFromLims, cd.waveformsScaleToLims);
             end

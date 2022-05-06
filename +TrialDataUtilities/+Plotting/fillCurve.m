@@ -11,5 +11,5 @@ function h = fillCurve(x, y, args, patch_args)
     ypatch = [args.baseline; y; args.baseline];
 
     patch_args_c = namedargs2cell(patch_args);
-    patch(x, y, 'b', patch_args)
+    patch(xpatch, ypatch, 'b', patch_args_c{:})
 end

@@ -15,6 +15,9 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
         electrodes
         units
 
+        timeScaling = 1;
+        timeOriginalDataClass = '';
+
         waveformsField = '';
         waveformsUnits = '';
         waveformsScaleFromLims = [];
@@ -54,7 +57,7 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             cd.fieldIds = {'spikes'};
             cd.dataFields = {cd.name};
             cd.elementTypeByField = cd.CELL;
-            cd.originalDataClassByField = {''};
+            cd.originalDataClassByField = {cd.timeOriginalDataClass};
             cd.unitsByField = {''};
 
             if cd.hasWaveforms
@@ -221,11 +224,18 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             cd.elementTypeByField = cd.VECTOR;
         end
         
-        function vals = getMissingValueByField(cd)
-            vals = getMissingValueByField@ChannelDescriptor(cd);
-            accClasses = string(cd.accessClassByField);
+        function vals = getMissingValueByField(cd, inMemory)
+            if nargin < 2
+                inMemory = false;
+            end
+            vals = getMissingValueByField@ChannelDescriptor(cd, inMemory);
+            if inMemory
+                accClasses = string(cd.memoryClassByField);
+            else
+                accClasses = string(cd.accessClassByField);
+            end
             id = cd.lookupFieldId('spikes');
-            el = nan(0, 1, accClasses{id});
+            el = zeros(0, 1, accClasses{id});
             vals{id} = cell(1, cd.nChannels);
             [vals{id}{:}] = deal(el);
             if cd.hasWaveforms
@@ -234,6 +244,11 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
                 vals{id} = cell(1, cd.nChannels);
                 [vals{id}{:}] = deal(el);
             end 
+        end
+
+        function c = getAccessClassByField(cd)
+            c = getAccessClassByField@ChannelDescriptor(cd);
+            c{1} = 'double';
         end
     end
 
@@ -259,6 +274,8 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
             end
             
             args = {...
+                'timeScaling', cd.timeScaling, ...
+                'timeOriginalDataClass', cd.timeOriginalDataClass, ...
                 'waveformsField', cd.waveformsField, ...
                 'waveformsTime', cd.waveformsTime, ...
                 'waveformsUnits', cd.waveformsUnits, ...
@@ -337,8 +354,56 @@ classdef SpikeArrayChannelDescriptor < ChannelDescriptor
     end
 
     methods(Static)
-        function cd = build(name, electrodes, units)
+%         function cd = build(name, electrodes, units)
+%             cd = SpikeArrayChannelDescriptor(name, electrodes, units);
+%         end
+
+        function cd = build(name, electrodes, units, varargin)
+            p = inputParser();
+            p.addParameter('timeScaling', 1, @isscalar);
+            p.addParameter('timeOriginalDataClass', '', @ischar);
+            p.addParameter('waveformsField', '', @ischar);
+            p.addParameter('waveformsTime', [], @(x) isempty(x) || isvector(x));
+            p.addParameter('waveformsUnits', 'uV', @ischar);
+            p.addParameter('waveformsScaleFromLims', [], @(x) isvector(x) || isempty(x));
+            p.addParameter('waveformsScaleToLims', [], @(x) isvector(x) || isempty(x));
+            p.addParameter('waveformsOriginalDataClass', '', @ischar);
+            p.addParameter('waveformsNumChannels', 1, @isscalar);
+            p.addParameter('waveformsInfo', [], @(x) true); % used for spatial coordinates or offsets of the recorded waveforms
+            p.addParameter('sortQualityEachTrialField', '', @ischar);
+            p.addParameter('sortQuality', NaN, @isscalar)
+            p.addParameter('blankingRegionsField', '', @ischar);
+            p.addParameter('spikeThreshold', NaN, @isscalar);
+            p.addParameter('isColumnOfArray', false, @islogical);
+            p.addParameter('primaryDataFieldColumnIndex', 1, @isscalar);
+            p.parse(varargin{:});
+            
             cd = SpikeArrayChannelDescriptor(name, electrodes, units);
+            cd.timeScaling = p.Results.timeScaling;
+            cd.timeOriginalDataClass = p.Results.timeOriginalDataClass;
+            
+            if ~isempty(p.Results.waveformsField)
+                cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime, ...
+                    'units', p.Results.waveformsUnits, ...
+                    'scaleFromLims', p.Results.waveformsScaleFromLims, ...
+                    'scaleToLims', p.Results.waveformsScaleToLims, ...
+                    'dataClass', p.Results.waveformsOriginalDataClass, ...
+                    'waveformsNumChannels', p.Results.waveformsNumChannels, ...
+                    'waveformsInfo', p.Results.waveformsInfo);
+            end
+            
+            if ~isempty(p.Results.sortQualityEachTrialField)
+                cd = cd.addSortQualityEachTrialField(p.Results.sortQualityEachTrialField);
+            end
+            cd.sortQuality = p.Results.sortQuality;
+            
+            if ~isempty(p.Results.blankingRegionsField)
+                cd = cd.addBlankingRegionsField(p.Results.blankingRegionsField);
+            end
+            
+            cd.spikeThreshold = p.Results.spikeThreshold;
+
+            cd = cd.initialize();
         end
         
         function cd = buildFromSubChNames(subChNames)

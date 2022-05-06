@@ -1004,12 +1004,25 @@ classdef AlignInfo < AlignDescriptor
             p.addParameter('singleTimepointTolerance', NaN, @isscalar); % acceptable tolerance to take sample when start == stop, NaN --> 2 * sampling rate
             p.addParameter('edgeTolerance', NaN, @isscalar); % acceptable tolerance to be within the interval, NaN --> 1e-6 * sampling rate
             p.addParameter('raw', false, @islogical); % ignore current .valid and operate on all trials that are align valid
+            p.addParameter('preserveNativeScaling', 0, @isscalar); % if nonzero, this will be timeScaling to ms for the input data
             p.parse(varargin{:});
             request_raw = p.Results.raw;
             
             includePadding = p.Results.includePadding;
             singleTimepointTolerance = p.Results.singleTimepointTolerance;
             edgeTolerance = p.Results.edgeTolerance;
+            preserveNativeScaling = p.Results.preserveNativeScaling;
+            if preserveNativeScaling > 0
+                timeScaling = double(preserveNativeScaling);
+                nativeClass = TrialDataUtilities.Data.getCellElementClass(rawTimes);
+
+                % with preserve native scaling, we can be a bit more precise about the edgeTolerance here
+                if isnan(edgeTolerance)
+                    edgeTolerance = double(ones(1, nativeClass)) * 1e-3;
+                end
+            else
+                timeScaling = 1;
+            end
             
             if nargout > 3 || isnan(singleTimepointTolerance) || isnan(edgeTolerance)
                 sampleDelta = TrialData.computeDeltaFromTimes(rawTimes);
@@ -1073,7 +1086,8 @@ classdef AlignInfo < AlignDescriptor
                         else
                             raw = rawTimes(i, :)';
                         end
-                        raw = raw + offsets(i);
+
+                        raw = double(raw)*timeScaling + offsets(i);
                         rawMask = false(numel(raw), 1);
                         
                         if (stop(i) - start(i)) < edgeTolerance && (stop(i) - start(i)) > -edgeTolerance % second clause is just in case somehow stop ends up pre-start
@@ -1171,14 +1185,21 @@ classdef AlignInfo < AlignDescriptor
         % value and the closest sample in time will be taken provided it is
         % within singleTimepointTolerance of the provided value
         function [alignedTimes, rawTimesMask] = getAlignedTimesCell(ad, rawTimesCell, varargin)
-            
             p = inputParser();
             p.addOptional('includePadding', false, @islogical);
             p.addParameter('isAligned', false, @islogical); % true means times already are relative to zero
             p.addParameter('singleTimepointTolerance', NaN, @isscalar); % acceptable tolerance to take sample when start == stop, NaN --> 2 * sampling rate
             p.addParameter('edgeTolerance', NaN, @isscalar); % acceptable tolerance to be within the interval, NaN --> 1e-6 * sampling rate
+            p.addParameter('preserveNativeScaling', 0, @isscalar); % if nonzero, this will be the 
             p.parse(varargin{:});
-            
+            preserveNativeScaling = p.Results.preserveNativeScaling;
+
+            if preserveNativeScaling > 0
+                timeScaling = preserveNativeScaling;
+            else
+                timeScaling = 1;
+            end
+
             if isempty(rawTimesCell)
                 alignedTimes = rawTimesCell;
                 rawTimesMask = rawTimesCell;
@@ -1191,6 +1212,8 @@ classdef AlignInfo < AlignDescriptor
             else
                 offsets = zeros(ad.nTrials, 1);
             end
+            nativeClass = TrialDataUtilities.Data.getCellElementClass(rawTimesCell);
+            signedClass = TrialDataUtilities.Data.getSignedDataType(nativeClass);
             
             assert(size(rawTimesCell, 1) == ad.nTrials, 'Size must match nTrials');
             
@@ -1199,10 +1222,12 @@ classdef AlignInfo < AlignDescriptor
             rawTimesMask = ad.getAlignedTimesMask(rawTimesCell, p.Results);
             
             alignedTimes = cell(size(rawTimesCell));
+
             for i = 1:ad.nTrials
                 for j = 1:J
                     % subtract off the zero if needed
-                    alignedTimes{i,j} = rawTimesCell{i, j}(rawTimesMask{i, j}) - offsets(i);
+                    alignedTimes{i,j} = cast(rawTimesCell{i, j}(rawTimesMask{i, j}), signedClass) - ...
+                        cast(offsets(i) / timeScaling, signedClass);
                 end
             end
         end

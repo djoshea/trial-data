@@ -180,13 +180,14 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
             p.addParameter('tMaxByTrialExcludingPadding', [], @isvector);
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('preserveNativeScaling', 0, @isscalar);    
             p.parse(varargin{:});
             
             % calls checkOkay
             % don't do resampling within since we'll do it all at once
             % below, by setting useTimeDelta false
             [rateCell, timeCell, poissonCountMultipliers] = sf.filterSpikeTrainsWindowByTrial(spikeCell, tMinByTrial, tMaxByTrial, ...
-                multiplierToSpikesPerSec, 'useTimeDelta', false);
+                multiplierToSpikesPerSec, 'useTimeDelta', false, 'preserveNativeScaling', p.Results.preserveNativeScaling);
             
             % convert to matrix
             [rates, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(rateCell, timeCell, ...

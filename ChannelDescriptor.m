@@ -61,6 +61,7 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         % nFields x 1 arrays or cells
         collectAsCellByField
         missingValueByField
+        missingValueByFieldMemory
         isNumericScalarByField % true for logical as well
         isBooleanByField
         isStringByField
@@ -355,21 +356,37 @@ classdef ChannelDescriptor < matlab.mixin.Heterogeneous
         end
         
         function vals = get.missingValueByField(cd)
-            vals = cd.getMissingValueByField();
+            vals = cd.getMissingValueByField(false);
+        end
+
+        function vals = get.missingValueByFieldMemory(cd)
+            vals = cd.getMissingValueByField(true);
         end
         
-        function vals = getMissingValueByField(cd)
+        function vals = getMissingValueByField(cd, inMemory)
+            if nargin < 2
+                inMemory = false;
+            end
             missingVals = {false, NaN, [], [], string(missing), NaN, [], categorical(missing)};
             vals = missingVals(cd.elementTypeByField);
-            accClasses = string(cd.accessClassByField); % was memory class, changed to access class so that int types converted to single get filled as NaN
+            
+            if inMemory
+                accClasses = string(cd.memoryClassByField); % was memory class, changed to access class so that int types converted to single get filled as NaN
+            else
+                accClasses = string(cd.accessClassByField); % was memory class, changed to access class so that int types converted to single get filled as NaN
+            end
             for iF = 1:numel(vals)
                 if ismember(cd.elementTypeByField, [cd.VECTOR, cd.NUMERIC])
                     if ~cd.collectAsCellByField(iF)
-                        % replace [] with NaN since this will be collected as
-                        % matrix
-                        vals{iF} = nan(1, accClasses{iF});
+                        if ismember(accClasses{iF}, ["double", "single"])
+                            % replace [] with NaN since this will be collected as
+                            % matrix
+                            vals{iF} = nan(1, accClasses{iF});
+                        else
+                            vals{iF} = zeros(1, accClasses{iF});
+                        end
                     else
-                        vals{iF} = nan(0, 1, accClasses{iF});
+                        vals{iF} = zeros(0, 1, accClasses{iF});
                     end
                     
                 elseif cd.elementTypeByField(iF) == cd.SCALAR

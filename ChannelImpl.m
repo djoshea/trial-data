@@ -304,10 +304,10 @@ classdef ChannelImpl
             missingValue = cd.missingValueByField{iF};
 
             if iscell(data)
-                replace = cellfun(@(x) isempty(x) || (isscalar(x) && ismissing(x)), values);
+                replace = cellfun(@(x) isempty(x) || (isscalar(x) && ismissing(x)), data);
                 [data(replace)] = deal(missingValue);
             else
-                replace = isnan(values);
+                replace = isnan(data);
                 data(replace) = missingValue;
             end
         end
@@ -338,6 +338,28 @@ classdef ChannelImpl
                 else
                     data = cast(data, newClass);
                 end
+            end
+        end
+
+        function data = scaleDataByScalar(data, gain)
+            if isempty(gain)
+                return;
+            end
+            if iscell(data)
+                data = cellfun(@(d) d * gain, data, 'UniformOutput', false);
+            else
+                data = data * gain;
+            end
+        end
+
+        function data = unscaleDataByScalar(data, gain)
+            if isempty(gain)
+                return;
+            end
+            if iscell(data)
+                data = cellfun(@(d) d / gain, data, 'UniformOutput', false);
+            else
+                data = data / gain;
             end
         end
 

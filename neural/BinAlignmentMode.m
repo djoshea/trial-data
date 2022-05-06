@@ -119,8 +119,8 @@ classdef BinAlignmentMode < int32
             % tbinsValidMat and tvecLabel. This is for histc. Since histc returns 
             % an additional bin which captures values equal to the final
             % value, you should throw away the final bin returned by histc.
-            start = nanmin(starts);
-            stop = nanmax(stops);
+            start = min(starts, [], 'omitnan');
+            stop = max(stops, [], 'omitnan');
             [tvecLabelCell, tbinsForHistcCell] = mode.generateMultipleBinnedTimeVectors(start, stop, binWidth);
             tvecLabel = tvecLabelCell{1};
             tbinsForHistc = tbinsForHistcCell{1};

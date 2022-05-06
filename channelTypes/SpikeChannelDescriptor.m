@@ -13,6 +13,9 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
     end
 
     properties
+        timeScaling = 1;
+        timeOriginalDataClass = '';
+
         waveformsField = '';
         waveformsUnits = '';
         waveformsScaleFromLims = [];
@@ -55,7 +58,7 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd.dataFields = {cd.name};
             cd.fieldIds = {'spikes'};
             cd.elementTypeByField = cd.VECTOR;
-            cd.originalDataClassByField = {''};
+            cd.originalDataClassByField = {cd.timeOriginalDataClass};
             cd.unitsByField = {''};
 
             if cd.hasWaveforms
@@ -252,11 +255,18 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             cd.originalDataClassByField = {ChannelDescriptor.getCellElementClass(varargin{1})};
             cd.elementTypeByField = cd.VECTOR;
         end
+
+        function c = getAccessClassByField(cd)
+            c = getAccessClassByField@ChannelDescriptor(cd);
+            c{1} = 'double';
+        end
     end
 
     methods(Static)
         function cd = build(name, varargin)
             p = inputParser();
+            p.addParameter('timeScaling', 1, @isscalar);
+            p.addParameter('timeOriginalDataClass', '', @ischar);
             p.addParameter('waveformsField', '', @ischar);
             p.addParameter('waveformsTime', [], @(x) isempty(x) || isvector(x));
             p.addParameter('waveformsUnits', 'uV', @ischar);
@@ -274,6 +284,9 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             p.parse(varargin{:});
             
             cd = SpikeChannelDescriptor(name);
+            cd.timeScaling = p.Results.timeScaling;
+            cd.timeOriginalDataClass = p.Results.timeOriginalDataClass;
+            
             if ~isempty(p.Results.waveformsField)
                 cd = cd.addWaveformsField(p.Results.waveformsField, 'time', p.Results.waveformsTime, ...
                     'units', p.Results.waveformsUnits, ...
@@ -297,6 +310,8 @@ classdef SpikeChannelDescriptor < ChannelDescriptor
             
             cd.isColumnOfArray = p.Results.isColumnOfArray;
             cd.primaryDataFieldColumnIndex = p.Results.primaryDataFieldColumnIndex;
+
+            cd = cd.initialize();
         end
 
 %         function cd = buildFromUnitName(name)

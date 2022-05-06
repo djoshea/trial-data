@@ -1,12 +1,15 @@
- function cls = getCellElementClass(dataCell)
+function cls = getCellElementClass(dataCell, default)
+    if nargin < 2
+        default = 'double';
+    end
     if isempty(dataCell)
-        cls = 'double';
+        cls = default;
     elseif ~iscell(dataCell)
         cls = class(dataCell);
     else
         nonEmpty = ~cellfun(@isempty, dataCell);
         if ~any(nonEmpty)
-            cls = 'double'; % assume double if no values found
+            cls = default; % assume double if no values found
         else
             first = find(nonEmpty, 1);
             cls = class(dataCell{first});
