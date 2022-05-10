@@ -6615,11 +6615,16 @@ classdef TrialData
                 % trying this for spike arrays, will fail if empty on some
                 % trials, but this shouldn't be the cease
                 times = cat(1, td.data.(spikeField));
+                timeScaling = cd.timeScaling;
+                nativeClass = TrialDataUtilities.Data.getCellElementClass(times);
+                signedClass = TrialDataUtilities.Data.getSignedDataType(nativeClass);
+            
                 timesMask = cell(td.nTrials, nUnits);
 
                 for iT = 1:td.nTrials
                     for iV = 1:nUnits
-                        timesMask{iT, iV} = times{iT, iV} >= startTimes(iT) & times{iT, iV} <= stopTimes(iT);
+                        timesMask{iT, iV} = cast(times{iT, iV}, signedClass) >= cast(startTimes(iT) / timeScaling, signedClass) & ...
+                                            cast(times{iT, iV}, signedClass) <= cast(stopTimes(iT) / timeScaling, signedClass);
                     end
                 end
 

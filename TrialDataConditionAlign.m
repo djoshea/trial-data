@@ -2442,6 +2442,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
                 nativeClass = TrialDataUtilities.Data.getCellElementClass(time_data);
                 signedClass = TrialDataUtilities.Data.getSignedDataType(nativeClass);
+                toSignedClass = @(x) cast(x, signedClass);
 
                 nA = numel(associatedFields);
                 associated_data = cell(nA, 1);
@@ -2472,7 +2473,7 @@ classdef TrialDataConditionAlign < TrialData
                             % cache end values for next trial, incorporating offset from trialEnd_previous into negative offset relative to this trialStart
                             associated_empty = cellfun(@(assoc) isempty(assoc{iT, iC}), associated_data); % sometimes time will be non-empty but the values will be empty
                             if ~any(associated_empty)
-                                time_next{iC} = time_data{iT, iC}(indLast+1:end, :);
+                                time_next{iC} = toSignedClass(time_data{iT, iC}(indLast+1:end, :));
                                 for iA = 1:nA
                                     associated_next{iA, iC} = associated_data{iA}{iT, iC}(indLast+1:end, :, :, :, :, :, :, :, :, :);
                                 end
@@ -2484,13 +2485,13 @@ classdef TrialDataConditionAlign < TrialData
                                 % the start of this trial minus interTrialOffset
 
                                 if copyDataAcrossBoundary
-                                    retainTime = time_data{iT, iC};
+                                    retainTime = toSignedClass(time_data{iT, iC});
                                 else
-                                    retainTime = time_data{iT, iC}(1:indLast, :);
+                                    retainTime = toSignedClass(time_data{iT, iC}(1:indLast, :));
                                 end
 
 %                                 time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, retainTime);
-                                time_data{iT, iC} = cast(cat(1, double(time_buffer{iC}) + double(-trialEnd_previous + trialStart_this - interTrialOffset)/timeScaling, double(retainTime)), signedClass);
+                                time_data{iT, iC} = toSignedClass(cat(1, double(time_buffer{iC}) + double(-trialEnd_previous + trialStart_this - interTrialOffset)/timeScaling, double(retainTime)));
 
                                 for iA = 1:nA
                                     if copyDataAcrossBoundary
@@ -2502,7 +2503,7 @@ classdef TrialDataConditionAlign < TrialData
                                 end
                             elseif ~copyDataAcrossBoundary
                                 % no need to prepend, just slice off end
-                                time_data{iT, iC} = time_data{iT, iC}(1:indLast, :);
+                                time_data{iT, iC} = toSignedClass(time_data{iT, iC}(1:indLast, :));
                                 for iA = 1:nA
                                     associated_data{iA}{iT, iC} = associated_data{iA}{iT, iC}(1:indLast, :, :, :, :, :, :, :, :, :);
                                 end
@@ -2532,7 +2533,7 @@ classdef TrialDataConditionAlign < TrialData
                             % cache end values for next trial, incorporating offset from trialEnd_previous into negative offset relative to this trialStart
                             associated_empty = cellfun(@(assoc) isempty(assoc{iT, iC}), associated_data); % sometimes time will be non-empty but the values will be empty
                             if ~any(associated_empty)
-                                time_prev{iC} = time_data{iT, iC}(1:indFirst-1, :);
+                                time_prev{iC} = toSignedClass(time_data{iT, iC}(1:indFirst-1, :));
                                 for iA = 1:nA
                                     associated_prev{iA, iC} = associated_data{iA}{iT, iC}(1:indFirst-1, :, :, :, :, :, :, :, :, :);
                                 end
@@ -2543,13 +2544,13 @@ classdef TrialDataConditionAlign < TrialData
                                 % we assume that something that occurred at the start of the subsequent trial now occurs at
                                 % the end of this trial plus interTrialOffset
                                 if copyDataAcrossBoundary
-                                    retainTime = time_data{iT, iC};
+                                    retainTime = toSignedClass(time_data{iT, iC});
                                 else
-                                    retainTime = time_data{iT, iC}(indFirst:end, :);
+                                    retainTime = toSignedClass(time_data{iT, iC}(indFirst:end, :));
                                 end
                                 
 %                                 time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, retainTime, time_buffer{iC} - trialStart_next + trialEnd_this + interTrialOffset);
-                                time_data{iT, iC} = cast(cat(1, double(retainTime), double(time_buffer{iC}) + double(-trialStart_next + trialEnd_this + interTrialOffset)/timeScaling), signedClass);
+                                time_data{iT, iC} = toSignedClass(cat(1, double(retainTime), double(time_buffer{iC}) + double(-trialStart_next + trialEnd_this + interTrialOffset)/timeScaling));
                                 for iA = 1:nA
                                     if copyDataAcrossBoundary
                                         retainData = associated_data{iA}{iT, iC};
@@ -2561,7 +2562,7 @@ classdef TrialDataConditionAlign < TrialData
                                 
                             elseif ~copyDataAcrossBoundary
                                 % no need to postpend, just slice off beginning
-                                time_data{iT, iC} = time_data{iT, iC}(indFirst:end, :);
+                                time_data{iT, iC} = toSignedClass(time_data{iT, iC}(indFirst:end, :));
                                 for iA = 1:nA
                                     associated_data{iA}{iT, iC} = associated_data{iA}{iT, iC}(indFirst:end, :, :, :, :, :, :, :, :, :);
                                 end
