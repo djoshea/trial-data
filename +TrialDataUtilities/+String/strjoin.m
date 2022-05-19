@@ -16,6 +16,10 @@ function str = strjoin(strCell, join)
         join = ', ';
     end
 
+    if iscell(strCell) && ~iscellstr(strCell)
+        strCell = string(strCell);
+    end
+
     assert(isstring(strCell) || iscellstr(strCell));
     if isstring(strCell) || isstring(join)
         asString = true;

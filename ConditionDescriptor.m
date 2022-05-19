@@ -1485,7 +1485,7 @@ classdef ConditionDescriptor
             p.parse(varargin{:});
 
             ci.warnIfNoArgOut(nargout);
-            ci.axisLookupByAttributes(axesSpec);
+            ci.axisLookupByAttributes(axesSpec); % to check validity
 
             ci.appearanceColorByAttributesList = [];
             ci.appearanceColorByAttributesCmap = [];
@@ -1613,8 +1613,10 @@ classdef ConditionDescriptor
             elseif ~isempty(ci.appearanceColorByAxesList)
                 % color by axes
                 list = ci.appearanceColorByAxesList;
-
-                allAttr = [list{:}];
+                
+                idx = cellfun(@ci.axisLookupByAttributes, list);
+                allAttr = cat(1, ci.axisAttributes{idx});
+%                 allAttr = [list{:}];
 
                 % generate combinatorial list of axis value values
                 valueList = cell(numel(list), 1);
@@ -2598,8 +2600,8 @@ classdef ConditionDescriptor
                 values = {structToString(ci.conditions)};
             else
                 valueLists = ci.axisValueListsAsStrings;
-                values = TensorUtils.mapFromAxisLists(@(varargin) TrialDataUtilities.String.strjoin(varargin, separator),...
-                    valueLists, 'asCell', true);
+                values = string(TensorUtils.mapFromAxisLists(@(varargin) TrialDataUtilities.String.strjoin(varargin, separator),...
+                    valueLists, 'asCell', true));
             end
         end
 
