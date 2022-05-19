@@ -58,7 +58,7 @@ classdef TimeseriesComparisonStatistics
 
     methods(Static) % difference of means hypothesis testing
         function [pValTensor, tvec, conditionDescriptorSansAxis] = kruskalWallisAlongAxisVsTime(tdca, varargin)
-            % pValTensor will be T x size(other condition axes)
+            % pValTensor will be T x size(other condition axes) x neurons
             import(getPackageImportString);
             p = inputParser;
             p.KeepUnmatched = true;
@@ -117,7 +117,7 @@ classdef TimeseriesComparisonStatistics
 
             % will be T x size(other condition axes)
             [pValTensor, tvec, conditionDescriptorSansAxis] = TrialDataUtilities.Stats.TimeseriesComparisonStatistics.kruskalWallisAlongAxisVsTime(...
-                tdca, p.Unmatched);
+                tdca, 'axis', p.Results.axis, p.Unmatched);
             if isempty(tvec)
                 error('tvec parameter must be provided if data passed in as parameter');
             end
@@ -169,7 +169,7 @@ classdef TimeseriesComparisonStatistics
             dataAxisFirst = permute(data, dimPerm);
 %             nAlongAxis = size(dataAxisFirst, 1);
             sizeOtherAxes = TensorUtils.sizeOtherDims(dataAxisFirst, 1);
-            nOtherAxes = prod(sizeOtherAxes);
+            numelOtherAxes = prod(sizeOtherAxes);
 
             % in case tvec isn't specified, grab the first non-empty data
             % and determine the number of timepoints
@@ -179,17 +179,23 @@ classdef TimeseriesComparisonStatistics
 
             nArg = nargout - 1;
 %             nArg = nargout(fn);
-            [varargout{1:nArg}] = deal(nan([T, sizeOtherAxes, C]));
+            [varargout{1:nArg}] = deal(nan([T, numelOtherAxes, C]));
 
-            for iOtherAxes = 1:nOtherAxes
-                % nAlongAxis x 1
+            for iOtherAxes = 1:numelOtherAxes
+                % nAlongAxis x 1 { tRials x Time x Neurons }
                 dataThis = dataAxisFirst(:, iOtherAxes);
-                [argThis{1:nArg}] = fn(dataThis);
+                [argThis{1:nArg}] = fn(dataThis); % --> Time x Neurons
 
                 for iArg = 1:nArg
-                    argPerm = ipermute(argThis{iArg}, dimPerm); % reorient the way it was
-                    varargout{iArg}(:, iOtherAxes, :) = reshape(argPerm, [T 1 C]);
+                    % this is wrong as the output is already T x C
+%                     argPerm = ipermute(argThis{iArg}, dimPerm); % reorient the way it was
+                    varargout{iArg}(:, iOtherAxes, :) = permute(argThis{iArg}, [1 3 2]);
                 end
+            end
+
+            % re-expand other axes in place inside varargout
+            for iArg = 1:nArg
+                varargout{iArg} = reshape(varargout{iArg}, [T, sizeOtherAxes, C]);
             end
 
             if ~isempty(tdca)
