@@ -7,7 +7,7 @@ classdef TimeseriesComparisonStatistics
 
     methods(Static) % Effect size methods
         function [dprimeTensor, dprimeCI, tvec, conditionDescriptorSansAxis] = dPrimeAlongAxisVsTime(tdca, varargin)
-            import(getPackageImportString);
+            import TrialDataUtilities.Stats.TimeseriesComparisonStatistics
             p = inputParser;
             p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
@@ -23,7 +23,7 @@ classdef TimeseriesComparisonStatistics
         end
 
         function [gTensor, gCI, tvec, conditionDescriptorSansAxis] = hedgesGAlongAxisVsTime(tdca, varargin)
-            import(getPackageImportString);
+            import TrialDataUtilities.Stats.TimeseriesComparisonStatistics
             p = inputParser;
             p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
@@ -40,7 +40,7 @@ classdef TimeseriesComparisonStatistics
         end
 
         function [gTensor, gCI, tvec, conditionDescriptorSansAxis] = meanDifferenceAlongAxisVsTime(tdca, varargin)
-            import(getPackageImportString);
+            import TrialDataUtilities.Stats.TimeseriesComparisonStatistics
             p = inputParser;
             p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar); % 1-a defines confidence intervals
             p.KeepUnmatched = true;
@@ -59,7 +59,7 @@ classdef TimeseriesComparisonStatistics
     methods(Static) % difference of means hypothesis testing
         function [pValTensor, tvec, conditionDescriptorSansAxis] = kruskalWallisAlongAxisVsTime(tdca, varargin)
             % pValTensor will be T x size(other condition axes) x neurons
-            import(getPackageImportString);
+            import TrialDataUtilities.Stats.TimeseriesComparisonStatistics
             p = inputParser;
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -71,7 +71,7 @@ classdef TimeseriesComparisonStatistics
 
         function [pValTensor, tvec, conditionDescriptorSansAxis] = anovaAlongAxisVsTime(tdca, varargin)
             % pValTensor will be T x size(other condition axes)
-            import(getPackageImportString);
+            import TrialDataUtilities.Stats.TimeseriesComparisonStatistics
             p = inputParser;
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -84,7 +84,7 @@ classdef TimeseriesComparisonStatistics
 
     methods(Static) % find first time of effect size divergence above threshold
         function [crossTimes, gTensor, gCI, tvec, conditionDescriptorSansAxis] = findTimeHedgesGAboveThreshold(tdca, varargin)
-            import(getPackageImportString);
+            import TrialDataUtilities.Stats.TimeseriesComparisonStatistics
             p = inputParser();
             p.addParameter('thresh', 1, @isscalar);
             p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
@@ -106,7 +106,7 @@ classdef TimeseriesComparisonStatistics
         end
 
         function [crossTimes, pValTensor, tvec, conditionDescriptorSansAxis] = findTimeKruskalWallisSignificantAlongAxis(tdca, varargin)
-            import(getPackageImportString);
+            import TrialDataUtilities.Stats.TimeseriesComparisonStatistics
 
             p = inputParser();
             p.addParameter('alpha', TrialDataUtilities.Stats.TimeseriesComparisonStatistics.alphaDefault, @isscalar);
@@ -164,11 +164,11 @@ classdef TimeseriesComparisonStatistics
                 misc.tvec = p.Results.tvec;
             end
 
-            otherDims = TensorUtils.otherDims(size(data), axisIdx);
+            otherDims = TensorUtils.otherDims(tdca.conditionsSize, axisIdx); % we use tdca.conditionsSize to preserve trailing singleton condition axes
             dimPerm = [axisIdx, otherDims];
             dataAxisFirst = permute(data, dimPerm);
 %             nAlongAxis = size(dataAxisFirst, 1);
-            sizeOtherAxes = TensorUtils.sizeOtherDims(dataAxisFirst, 1);
+            sizeOtherAxes = TensorUtils.sizeOtherDims(dataAxisFirst, 1, numel(tdca.conditionsSize)); % last argument is important for trailing singleton condition axes
             numelOtherAxes = prod(sizeOtherAxes);
 
             % in case tvec isn't specified, grab the first non-empty data
@@ -211,9 +211,9 @@ classdef TimeseriesComparisonStatistics
     methods(Static)
         function [dprime, dprimeHigh, dprimeLow] = dprimeFn(alpha, inCell)
             assert(numel(inCell) == 2, 'd'' only supported for axes with 2 conditions');
-            delta = nanmean(inCell{1}, 1) - nanmean(inCell{2}, 1);
-            v1 = nanvar(inCell{1}, 0, 1);
-            v2 = nanvar(inCell{2}, 0, 1);
+            delta = mean(inCell{1}, 1, 'omitnan') - mean(inCell{2}, 1, 'omitnan');
+            v1 = var(inCell{1}, 0, 1, 'omitnan');
+            v2 = var(inCell{2}, 0, 1, 'omitnan');
             sd = sqrt(0.5 * (v1 + v2));
             dprime = delta ./ sd;
             n1 = sum(~isnan(inCell{1}), 1);

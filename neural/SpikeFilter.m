@@ -7,6 +7,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         timeDelta = 1; % sampling interval for the filtered output
         binAlignmentMode BinAlignmentMode = BinAlignmentMode.Centered;
         resampleMethod char = 'interp';
+        paddingMultiplier = 1;
     end
     
     methods % Get methods that allow subclasses to provide their own value overwriting
@@ -66,7 +67,7 @@ classdef SpikeFilter % < handle & matlab.mixin.Copyable
         % return a [pre post] window of padding that should be applied to
         % the trial-data object before filtering in order to provide
         % spiking data sufficient to fill the aligned time window
-        % post-filtering
+        % post-filtering. This should also respect the field .paddingMultiplier
         w = getPadWindow(sf)
 
         % spikeCell is nTrains x 1 cell array of time points

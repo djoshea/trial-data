@@ -15,9 +15,13 @@ classdef DoubleExponentialCausalSpikeFilter < ConvolutionSpikeFilter
     end
     
     methods
-%         function sf = DoubleExponentialCausalSpikeFilter(varargin)
-%         
-%         end
+        function sf = DoubleExponentialCausalSpikeFilter(varargin)
+            sf.binAlignmentMode = BinAlignmentMode.Causal;
+        end
+
+        function v = getBinAlignmentMode(~, ~)
+           v = BinAlignmentMode.Causal;
+        end
                
         % filter used for convolution, as an impulse response which may 
         % have acausal elements if indZero > 1

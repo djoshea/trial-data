@@ -1707,6 +1707,16 @@ classdef TrialDataConditionAlign < TrialData
             td = td.pad(sf.padWindow);
         end
 
+        function td = adjustStartStopAroundPadding(td)
+            % replace current padding with actual shifts in start and stop times
+            td.warnIfNoArgOut(nargout);
+            ai = td.alignInfoActive;
+            ai = ai.adjustStart('offset', ai.startOffset - ai.padWindow(1));
+            ai = ai.adjustStop('offset', ai.stopOffset + ai.padWindow(2));
+            ai = ai.pad(0, 0);
+            td = td.setAlignDescriptor(ai);
+        end
+
         function td = round(td, varargin)
             td.warnIfNoArgOut(nargout);
             for iAlign = 1:td.nAlign
@@ -2800,7 +2810,7 @@ classdef TrialDataConditionAlign < TrialData
             [data, tvec] = td.getAnalog(name, varargin{:});
             %nCh = td.getAnalogChannelGroupSize(name);
             means = nanvec(td.nTrials);
-            means(td.valid) = cellfun(@nanmean, data(td.valid));
+            means(td.valid) = cellfun(@(x) mean(x, 'omitnan'), data(td.valid));
         end
 
         function [meansCell, tvec] = getAnalogMeanOverTimeEachTrialGrouped(td, name, varargin)
@@ -2815,7 +2825,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function [means, tvec] = getAnalogMeanOverTimeEachTrialGroupMeansRandomized(td, name, varargin)
             [meansCell, tvec] = td.getAnalogMeanOverTimeEachTrialGroupedRandomized(name, varargin{:});
-            means = cellfun(@nanmean, meansCell);
+            means = cellfun(@(x) mean(x, 'omitnan'), meansCell);
         end
         
         function [meanMat, semMat, stdMat, nTrialsMat] = getAnalogMeanOverTimeEachTrialGroupMeans(td, name, varargin)
@@ -2852,7 +2862,7 @@ classdef TrialDataConditionAlign < TrialData
                 data = TensorUtils.clip(data, p.Results.clip, p.Results.replace);
             end
 
-            ssqByTrial = cellfun(@(x) nansum((x-nanmean(x)).^2), data(td.valid));
+            ssqByTrial = cellfun(@(x) sum((x-mean(x, 'omitnan')).^2, 'omitnan'), data(td.valid));
             countByTrial = cellfun(@(x) nnz(~isnan(x)), data(td.valid));
             rms = sqrt(ssqByTrial ./ countByTrial);
             rms = TensorUtils.inflateMaskedTensor(rms, 1, td.valid, NaN);
@@ -2862,7 +2872,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function rms = getAnalogRMS(td, name, varargin)
             [~, ssqByTrial, countByTrial] = td.getAnalogRMSEachTrial(name, varargin{:});
-            rms = sqrt(nansum(ssqByTrial, 1) ./ nansum(countByTrial, 1))';
+            rms = sqrt(sum(ssqByTrial, 1, 'omitnan') ./ sum(countByTrial, 1, 'omitnan'))';
         end
 
         function [mat, tvec] = getAnalogAsMatrix(td, name, varargin)
@@ -3570,8 +3580,8 @@ classdef TrialDataConditionAlign < TrialData
                     minTimePost = postTimes(1);
                     if p.Results.clearOverlappingTimesOutsideAlignWindow
                         % remove overlap from the old data
-                        maxTimeNew = nanmax(times{iT});
-                        minTimeNew = nanmin(times{iT});
+                        maxTimeNew = max(times{iT}, [], 'omitnan');
+                        minTimeNew = min(times{iT}, [], 'omitnan');
 
                         maskRemove = falsevec(numel(times{iT}));
                         maskRemove(1:first-1) = fullTimes{iT}(1:first-1) >= minTimeNew;
@@ -3799,9 +3809,9 @@ classdef TrialDataConditionAlign < TrialData
                 data = TensorUtils.clip(data, p.Results.clip, p.Results.replace);
             end
 
-            temp = cellfun(@(x) nansum((x-nanmean(x, 1)).^2, 1), data(td.valid), 'UniformOutput', false);
+            temp = cellfun(@(x) sum((x-mean(x, 1, 'omitnan')).^2, 1, 'omitnan'), data(td.valid), 'UniformOutput', false);
             ssqByTrial = cat(1, temp{:}); % nTrials x nChannels
-            temp = cellfun(@(x) nansum(~isnan(x), 1), data(td.valid), 'UniformOutput', false);
+            temp = cellfun(@(x) sum(~isnan(x), 1, 'omitnan'), data(td.valid), 'UniformOutput', false);
             countByTrial = cat(1, temp{:}); % nTrials x nChannels
             rms = sqrt(ssqByTrial ./ countByTrial);
             rms = TensorUtils.inflateMaskedTensor(rms, 1, td.valid, NaN);
@@ -3811,7 +3821,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function meanVal = getAnalogChannelGroupGlobalMeanOverTime(td, name, varargin)
             data = td.getAnalogChannelGroup(name, varargin{:});
-            sums = cellfun(@(x) nansum(x, 1), data, 'UniformOutput', false);
+            sums = cellfun(@(x) sum(x, 1, 'omitnan'), data, 'UniformOutput', false);
             totals = cellfun(@(x) sum(~isnan(x), 1), data, 'UniformOutput', false);
 
             meanVal = sum(cat(1, sums{:}), 1) ./ sum(cat(1, totals{:}), 1);
@@ -3819,7 +3829,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function rms = getAnalogChannelGroupRMS(td, name, varargin)
             [~, ssqByTrial, countByTrial] = td.getAnalogChannelGroupRMSEachTrial(name, varargin{:});
-            rms = sqrt(nansum(ssqByTrial, 1) ./ nansum(countByTrial, 1))';
+            rms = sqrt(sum(ssqByTrial, 1, 'omitnan') ./ sum(countByTrial, 1, 'omitnan'))';
         end
 
         function [dataCell, timeCell] = getAnalogMulti(td, name, varargin)
@@ -4175,7 +4185,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function means = getAnalogChannelGroupMeanOverTimeEachTrial(td, name, varargin)
             [data, ~] = td.getAnalogChannelGroup(name, varargin{:});
-            meansValid = cellfun(@(x) nanmean(x, 1), data(td.valid), 'UniformOutput', false);
+            meansValid = cellfun(@(x) mean(x, 1, 'omitnan'), data(td.valid), 'UniformOutput', false);
             means = TensorUtils.inflateMaskedTensor(cat(1, meansValid{:}), 1, td.valid, NaN);
         end
 
@@ -4245,7 +4255,7 @@ classdef TrialDataConditionAlign < TrialData
             end
 
             % check the values and convert to nTrials cellvec
-            if isnumeric(values) && isnumeric(values)
+            if isnumeric(values) %&& isnumeric(values)
                 % values must be nTrials x nTimes x nChannels
                 assert(size(values, 1) == sizeDim1Expected, 'Values as matrix must be nTrials (or nTrialsValid if ''dataSpansValidTrialsOnly'' set) along dimension 1');
 
@@ -4381,8 +4391,8 @@ classdef TrialDataConditionAlign < TrialData
                     minTimePost = postTimes(1);
                     if p.Results.clearOverlappingTimesOutsideAlignWindow
                         % remove overlap from the old data
-                        maxTimeNew = nanmax(times{iT});
-                        minTimeNew = nanmin(times{iT});
+                        maxTimeNew = max(times{iT}, [], 'omitnan');
+                        minTimeNew = min(times{iT}, [], 'omitnan');
 
                         maskRemove = falsevec(numel(times{iT}));
                         maskRemove(1:first-1) = fullTimes{iT}(1:first-1) >= minTimeNew;
@@ -4877,8 +4887,8 @@ classdef TrialDataConditionAlign < TrialData
             else
                 % 3D plot
                 dataZ = p.Results.dataZ;
-                if isempty(dataZ) || isempty(dataZ)
-                    error('Must provide dataZ and dataZ');
+                if isempty(dataX) || isempty(dataY)
+                    error('Must provide dataX and dataY');
                 end
 
                 h = TrialDataUtilities.Plotting.allocateGraphicsHandleVector(nConditionsUsed);
@@ -6408,7 +6418,7 @@ classdef TrialDataConditionAlign < TrialData
                 hold on;
 
                 if p.Results.showMean
-                    hMean(iU) = plot(waveTvec{iU}, nanmean(wavesMat, 1), '-', ...
+                    hMean(iU) = plot(waveTvec{iU}, mean(wavesMat, 1, 'omitnan'), '-', ...
                         'Color', colormap(iU, :), 'LineWidth', 2);
                 end
             end
@@ -6582,7 +6592,7 @@ classdef TrialDataConditionAlign < TrialData
             if p.Results.regexp
                 units = td.listSpikeChannelsMatchingRegex(units);
             else
-                units = td.listSpikeChannelsMatchingRegex(units);
+                units = td.listSpikeChannels(units);
             end
 
             % flatten search results
@@ -6657,8 +6667,8 @@ classdef TrialDataConditionAlign < TrialData
 
             [waveMean, waveStd] = deal(nan(nU, size(wavesMat, 2)));
             for iU = 1:nU
-                waveMean(iU, :) = nanmean(wavesMat(whichUnit == iU, :));
-                waveStd(iU, :) = nanstd(wavesMat(whichUnit == iU, :));
+                waveMean(iU, :) = mean(wavesMat(whichUnit == iU, :), 'omitnan');
+                waveStd(iU, :) = std(wavesMat(whichUnit == iU, :), 0, 'omitnan');
             end
         end
     end
@@ -6801,6 +6811,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('markAlpha', 0.5, @isscalar);
             p.addParameter('markTickWidth', 2, @isscalar);
             p.addParameter('showRanges', true, @islogical);
+            p.addParameter('includePadding', false, @islogical); % mostly used for debugging PSTH computation
 
             p.addParameter('intervalAlpha', 0.5, @isscalar);
             p.addParameter('intervalMinWidth', NaN, @isscalar); % if specified, draws intervals at least this wide to ensure visibility
@@ -6844,6 +6855,7 @@ classdef TrialDataConditionAlign < TrialData
 %             p.KeepUnmatched = true;
             p.parse(varargin{:});
             precomputedData = p.Results.precomputedData;
+            includePadding = p.Results.includePadding;
 
             if td.nTrialsValid == 0
                 error('No valid trials found');
@@ -6887,7 +6899,11 @@ classdef TrialDataConditionAlign < TrialData
                 for iAlign = 1:nAlignUsed
                     idxAlign = alignIdx(iAlign);
 
-                    [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
+                    if ~includePadding
+                        [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
+                    else
+                        [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrialWithPadding();
+                    end
                     mask = start <= stop;
                     timePointsCell{iAlign} = [start(mask); stop(mask)];
 
@@ -6906,7 +6922,7 @@ classdef TrialDataConditionAlign < TrialData
                     times = precomputedData.spikeTimesGroupedByConditionUnit;
                     times = times(conditionIdx, :);
                 else
-                    times = td.getSpikeTimesGroupedByConditionUnit(unitNames, 'combineAligns', true, 'alignIdx', alignIdx, 'combine', p.Results.combine); % nCond {nTrials x nUnits}
+                    times = td.getSpikeTimesGroupedByConditionUnit(unitNames, 'combineAligns', true, 'alignIdx', alignIdx, 'combine', p.Results.combine, 'includePadding', includePadding); % nCond {nTrials x nUnits}
                     times = times(conditionIdx, :);
                 end
 
@@ -6926,7 +6942,11 @@ classdef TrialDataConditionAlign < TrialData
                     % figure out time validity window for this alignment
                     % TODO might want to update this for the selected
                     % conditions only
-                    [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
+                    if ~includePadding
+                        [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrial();
+                    else
+                        [start, stop] = td.alignInfoSet{idxAlign}.getStartStopRelativeToZeroByTrialWithPadding();
+                    end
                     mask = start <= stop;
                     timePointsCell{iAlign} = [start(mask); stop(mask)];
 
@@ -6939,7 +6959,7 @@ classdef TrialDataConditionAlign < TrialData
                     end
                 end
             end
-            [tOffsetByAlign, tLimitsByAlign] = td.getAlignPlottingTimeOffsets([]);
+            [tOffsetByAlign, tLimitsByAlign] = td.getAlignPlottingTimeOffsets([], 'includePadding', p.Results.includePadding);
 
             % optionally filter out trials that have zero spikes
             listByCondition = td.listByCondition(conditionIdx);
@@ -7010,13 +7030,13 @@ classdef TrialDataConditionAlign < TrialData
                         if isempty(waves)
                             continue;
                         end
-                        maxW(iC, iU) = nanmax(waves(:));
-                        minW(iC, iU) = nanmin(waves(:));
+                        maxW(iC, iU) = max(waves(:), [], 'omitnan');
+                        minW(iC, iU) = min(waves(:), [], 'omitnan');
                     end
                 end
 
-                maxW = nanmax(maxW(:));
-                minW = nanmin(minW(:));
+                maxW = max(maxW(:), [], 'omitnan');
+                minW = min(minW(:), [], 'omitnan');
 
                 waves = cellfun(@(wc) cellfun(@(w) (w - minW) / (maxW - minW), wc, 'UniformOutput', false), waves, 'UniformOutput', false);
             end
@@ -7275,6 +7295,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p = inputParser();
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
+            p.addParameter('includePadding', false, @islogical);
             p.parse(varargin{:});
             
             % select alignment indices
@@ -7282,14 +7303,20 @@ classdef TrialDataConditionAlign < TrialData
             alignIdx = alignIdx(p.Results.alignIdx);
             nAlign = numel(alignIdx);
 
+            includePadding = p.Results.includePadding;
+
             % compute start/stop of each alignment
             [mins, maxs] = deal(nanvec(nAlign));
             if isempty(tvecCell)
                 % use min / max per align (full valid window)
                 for iAlign = 1:nAlign
-                    [mins_this, maxs_this] = td.alignInfoSet{alignIdx(iAlign)}.getStartStopRelativeToZeroByTrial();
-                    mins(iAlign) = nanmin(mins_this);
-                    maxs(iAlign) = nanmax(maxs_this);
+                    if ~includePadding
+                        [mins_this, maxs_this] = td.alignInfoSet{alignIdx(iAlign)}.getStartStopRelativeToZeroByTrial();
+                    else
+                        [mins_this, maxs_this] = td.alignInfoSet{alignIdx(iAlign)}.getStartStopRelativeToZeroByTrialWithPadding();
+                    end
+                    mins(iAlign) = min(mins_this, [], 'omitnan');
+                    maxs(iAlign) = max(maxs_this, [], 'omitnan');
                 end
             else
                 if ~iscell(tvecCell)
@@ -7298,13 +7325,13 @@ classdef TrialDataConditionAlign < TrialData
             
                 for iAlign = 1:nAlign
                     if iscell(tvecCell{iAlign}) && ~isempty(tvecCell{iAlign})
-                        mins(iAlign) = nanmin(cellfun(@nanminNanEmpty, tvecCell{iAlign}));
-                        maxs(iAlign) = nanmax(cellfun(@nanmaxNanEmpty, tvecCell{iAlign}));
+                        mins(iAlign) = min(cellfun(@nanminNanEmpty, tvecCell{iAlign}), [], 'omitnan');
+                        maxs(iAlign) = max(cellfun(@nanmaxNanEmpty, tvecCell{iAlign}), [], 'omitnan');
                     elseif isempty(tvecCell{iAlign})
                         error('Time cell for alignment %d is empty', iAlign);
                     else
-                        mins(iAlign) = nanmin(tvecCell{iAlign});
-                        maxs(iAlign) = nanmax(tvecCell{iAlign});
+                        mins(iAlign) = min(tvecCell{iAlign}, [], 'omitnan');
+                        maxs(iAlign) = max(tvecCell{iAlign}, [], 'omitnan');
                     end
                 end
             end
@@ -7346,7 +7373,7 @@ classdef TrialDataConditionAlign < TrialData
                 if isempty(v1)
                     r = NaN;
                 else
-                    r = nanmax(v1);
+                    r = max(v1, [], 'omitnan');
                 end
             end
         end

@@ -32,10 +32,18 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
     end
     
     x = makecol(x);
-    tx = makecol(tx);
-    ty = makecol(ty);
+    tx = double(makecol(tx));
+    ty = double(makecol(ty));
     timeDeltaX = median(diff(tx));
     timeDeltaY = median(diff(ty));
+
+    % resample only works with doubles, so upcast it here and convert it
+    % back later if needed
+    castDouble = ~isa(x, 'double');
+    if castDouble
+        clsX = class(x);
+        x = double(x);
+    end
     
     % figure out padding needed
     [P, Q] = rat(timeDeltaX / timeDeltaY);
@@ -43,7 +51,7 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
     
     % resample uses a filter length of 20*max(P,Q) inside, with some zero edges added in
     % we overdo the padding here so that we can truncate it later
-    pad = 24*maxPQ;
+    pad = double(24*maxPQ);
     
     % first fill in NaN tails
     [x, idxFirst, idxLast] = TrialDataUtilities.Data.infillNanEdgesWithLastSample(x);
@@ -70,14 +78,6 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
     
     tx = [tpre; tx; tpost]; 
     
-    % resample only works with doubles, so upcast it here and convert it
-    % back later if needed
-    castDouble = ~isa(x, 'double');
-    if castDouble
-        clsX = class(x);
-        x = double(x);
-    end
-
     % make into 2d matrix
     szX = size(x);
     x = x(:, :);

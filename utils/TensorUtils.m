@@ -350,9 +350,12 @@ classdef TensorUtils
             sz = arrayfun(@(d) szAll(d), dims);
         end
 
-        function sz = sizeOtherDims(t, excludeDims)
-            % sz = sizeOtherDims(t, excludeDims)
-            otherDims = TensorUtils.otherDims(size(t), excludeDims);
+        function sz = sizeOtherDims(t, excludeDims, nDims)
+            if nargin < 3
+                nDims = ndims(t);
+            end
+            sz = TensorUtils.sizeNDims(t, nDims);
+            otherDims = TensorUtils.otherDims(sz, excludeDims);
             sz = TensorUtils.sizeMultiDim(t, otherDims);
         end
 
@@ -2175,6 +2178,14 @@ classdef TensorUtils
             denoised = TensorUtils.linearCombinationAlongDimension(score, 2, coeff);
             % denoised is szBasisDim x prod(szOtherDims) --> szOrig
             denoised = TensorUtils.undoReshapeByConcatenatingDims(denoised, {otherDims, basisDims}, szOrig);
+        end
+
+        function denoised = projectInOutAlongDim(t, basisDim, decoderKByN)
+             assert(size(t, basisDim) == size(decoderKByN, 2), 'size(decoderKByN, 2) must match size(t, basisDim)');
+             encoderNbyK = pinv(decoderKByN);
+             denoiseMat = (encoderNbyK * decoderKByN);
+             mu = mean(t, basisDim);
+             denoised = TensorUtils.linearCombinationAlongDimension(t, basisDim, denoiseMat) + mu;
         end
     end
 

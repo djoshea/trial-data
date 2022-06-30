@@ -620,7 +620,7 @@ classdef AlignDescriptor
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
             p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
-            p.addParameter('as', '', @ischar);
+            p.addParameter('as', '', @isstringlike);
             p.addParameter('mark', false, @islogical);
             p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
@@ -652,13 +652,29 @@ classdef AlignDescriptor
             ad = ad.update();
         end
 
+        function ad = adjustStart(ad, varargin)
+            ad.warnIfNoArgOut(nargout);
+
+            p = inputParser;
+            p.addParameter('event', ad.startEvent, @isstringlike);
+            p.addParameter('offset', ad.startOffset, @isscalar);
+            p.addParameter('index', ad.startEventIndex, @(x) ischar(x) || isscalar(x));
+            p.addParameter('as', ad.startLabel, @isstringlike);
+            p.addParameter('mark', ad.startMark, @islogical);
+            p.addParameter('appear', ad.startAppear, @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParameter('color', [], @(x) true);
+            p.parse(varargin{:});
+
+            ad = ad.start(p.Results.event, p.Results.offset, rmfield(p.Results, ["event", "offset"]));
+        end
+
         function ad = stop(ad, eventName, varargin)
             ad.warnIfNoArgOut(nargout);
 
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
             p.addParameter('index', 1, @(x) ischar(x) || isscalar(x));
-            p.addParameter('as', '', @ischar);
+            p.addParameter('as', '', @isstringlike);
             p.addParameter('mark', false, @islogical);
             p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
@@ -685,6 +701,22 @@ classdef AlignDescriptor
             ad.stopDefault = true;
 
             ad = ad.update();
+        end
+
+        function ad = adjustStop(ad, varargin)
+            ad.warnIfNoArgOut(nargout);
+
+            p = inputParser;
+            p.addParameter('event', ad.stopEvent, @isstringlike);
+            p.addParameter('offset', ad.stopOffset, @isscalar);
+            p.addParameter('index', ad.stopEventIndex, @(x) ischar(x) || isscalar(x));
+            p.addParameter('as', ad.stopLabel, @isstringlike);
+            p.addParameter('mark', ad.stopMark, @islogical);
+            p.addParameter('appear', ad.stopAppear, @(x) isempty(x) || isa(x, 'AppearanceSpec'));
+            p.addParameter('color', [], @(x) true);
+            p.parse(varargin{:});
+
+            ad = ad.stop(p.Results.event, p.Results.offset, rmfield(p.Results, ["event", "offset"]));
         end
 
         function ad = pad(ad, pre, post, varargin)

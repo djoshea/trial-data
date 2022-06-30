@@ -132,8 +132,8 @@ classdef ConvolutionSpikeFilter < SpikeFilter
             % pre and post window are already in ms to accommodate the filter
             % then we accommodate both 
             bin = max(sf.binWidthMs, sf.timeDelta);
-            w = [sf.preWindow - sf.binAlignmentMode.getBinStartOffsetForBinWidth(bin), ...
-                sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(bin)];
+            w = [sf.paddingMultiplier * sf.preWindow  - sf.binAlignmentMode.getBinStartOffsetForBinWidth(bin), ...
+                 sf.paddingMultiplier * sf.postWindow + sf.binAlignmentMode.getBinStopOffsetForBinWidth(bin)];
         end
         
         function checkSettingsOkay(sf)
