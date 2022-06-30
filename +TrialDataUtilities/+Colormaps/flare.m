@@ -259,7 +259,7 @@ flare_lut = [ ...
     0.2975886, 0.1383403, 0.38552159; ...
     0.29408557, 0.13721193, 0.38442775 ];
 
-if nargin == 0
+if nargin == 0 || isempty(nColors)
     cmap = flare_lut;
 else
     cmap = TrialDataUtilities.Color.evalColorMapAt(flare_lut, linspace(0, 1, nColors));

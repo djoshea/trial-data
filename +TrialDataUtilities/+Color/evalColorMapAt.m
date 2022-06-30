@@ -1,12 +1,12 @@
 function ceval = evalColorMapAt(cmap, at, clim, colorspace)
-    if nargin < 4
+    if nargin < 4 || strcmp(colorspace, "")
         colorspace = 'luv'; % interpolation colorspace
     end
     
     if isa(cmap, 'function_handle')
         cmap = cmap(1000);
     end
-    if nargin < 3
+    if nargin < 3 || isempty(clim)
         clim = [min(at(:), [], 'omitnan') max(at(:), [], 'omitnan')];
     end
     

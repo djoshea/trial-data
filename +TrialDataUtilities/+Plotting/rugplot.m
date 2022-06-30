@@ -15,7 +15,7 @@ function h = rugplot(ticks, varargin)
 
     p = inputParser();
     p.addParameter('Color', [0 0.45 0.75], @isvector);
-    p.addParameter('side', 'top', @ischar);
+    p.addParameter('side', 'top', @isstringlike);
     p.addParameter('length', 0.01, @isscalar); % fraction of axis extents
     p.addParameter('LineWidth', 0.5, @isscalar);
     p.addParameter('offset', 0, @isscalar); % fraction of axis extents, + mean away from center of axis
@@ -33,10 +33,10 @@ function h = rugplot(ticks, varargin)
     xlfull = xlim;  
     expand = p.Results.expand_limits;
     
-    switch side
-        case {'top', 'bottom'}
+    switch string(side)
+        case {"top", "bottom"}
             full = ylfull;
-        case {'left', 'right'}
+        case {"left", "right"}
             full = xlfull;
         otherwise
             error('Unknown side');
@@ -45,7 +45,7 @@ function h = rugplot(ticks, varargin)
     
     offset = p.Results.offset;
        
-    switch side
+    switch char(side)
         case 'top'
             if expand
                 ylfull(2) = ylfull(2) + len;
