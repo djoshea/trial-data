@@ -1493,13 +1493,25 @@ classdef TensorUtils
 
         function [t, ndimOrig] = shiftdimToFirstDim(t, dim)
             ndimOrig = ndims(t);
-            if dim ~= 1
-                t = shiftdim(t, dim-1);
+            if isscalar(dim)
+                if dim ~= 1
+                    t = shiftdim(t, dim-1);
+                end
+            else
+                % shift the set of dims to be first
+                dim_order = [makerow(dim), TensorUtils.otherDims(size(t), dim)];
+                t = permute(t, dim_order);
             end
         end
 
         function t = unshiftdimToFirstDim(t, dim, ndimsOrig)
-            t = TensorUtils.unshiftdim(t, dim-1, ndimsOrig);
+            if isscalar(dim)
+                t = TensorUtils.unshiftdim(t, dim-1, ndimsOrig);
+            else
+                % multiple dims were shifted
+                dim_order = [makerow(dim), TensorUtils.otherDims(size(t), dim, ndimsOrig)];
+                t = ipermute(t, dim_order);
+            end
         end
     end
 
