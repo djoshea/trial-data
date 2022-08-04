@@ -16,7 +16,9 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     % resampling
     p.addParameter('tMinExcludingPadding', -Inf, @ismatrix);
     p.addParameter('tMaxExcludingPadding', Inf, @ismatrix);
+    p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time will ony be truncated to within tMin/tMax
     p.parse(varargin{:});
+
     
     progress = p.Results.progress;
     tMinExcludingPadding = TensorUtils.singletonExpandToSize(p.Results.tMinExcludingPadding, size(dataCell));
@@ -28,17 +30,29 @@ function [dataCell, timeCell] = resampleDataCellInTime(dataCell, timeCell, varar
     if progress, prog = ProgressBar(numel(dataCell), 'Resampling data'); end
     for iD = 1:numel(dataCell)
         if isempty(dataCell{iD}) || size(dataCell{iD}, 1) == 1, continue; end % test for empty or single-sample
+
+        if p.Results.expandToTimeMinMax
+            extra_args = {'tMinOutput', tMinExcludingPadding(iD), 'tMaxOutput', tMaxExcludingPadding(iD)};
+        else
+            extra_args = {};
+        end
+
         [d, t] = TrialDataUtilities.Data.resampleTensorInTime(dataCell{iD}, 1, timeCell{iD}, ...
             'origDelta', p.Results.origDelta, ...
             'timeDelta', p.Results.timeDelta, 'timeReference', p.Results.timeReference, ...
             'binAlignmentMode', p.Results.binAlignmentMode, ...
             'interpolateMethod', p.Results.interpolateMethod, ...
             'resampleMethod', p.Results.resampleMethod, ...
-            'uniformlySampled', p.Results.uniformlySampled);
+            'uniformlySampled', p.Results.uniformlySampled, ...
+            extra_args{:}); % this is new, not sure if correct
         
+        % if tmin and tmax are larger than the window.
         mask = t >= tMinExcludingPadding(iD) - tol & t <= tMaxExcludingPadding(iD) + tol;
-        dataCell{iD} = d(mask, :, :, :);
-        timeCell{iD} = t(mask);
+        this_data = d(mask, :, :, :);
+        this_time = t(mask);
+
+        dataCell{iD} = this_data;
+        timeCell{iD} = this_time;
         if progress, prog.update(iD); end
     end
     if progress, prog.finish(); end

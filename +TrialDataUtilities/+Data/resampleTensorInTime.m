@@ -8,8 +8,12 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
     p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp   
     p.addParameter('origDelta', [], @(x) isempty(x) || isscalar(x));
-    p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x));
-    p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x));
+    p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % min time for data valid
+    p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); % max time for data valid
+
+    p.addParameter('tMinOutput', [], @(x) isempty(x) || isscalar(x)); % min time for data that is output, if < tMin will be padded with NaNs 
+    p.addParameter('tMaxOutput', [], @(x) isempty(x) || isscalar(x)); % max time for data that is output, if > tMax will be padded with NaNs
+    
     p.addParameter('uniformlySampled', false, @islogical); % can speed things up if you know it's arleady uniform
     p.parse(varargin{:});
     
@@ -30,7 +34,7 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
    
     origDelta = p.Results.origDelta;
     if isempty(origDelta)
-        origDelta = nanmedian(diff(time));
+        origDelta = median(diff(time), 'omitnan');
     end
     if isempty(timeDelta)
         timeDelta = origDelta;
@@ -162,6 +166,42 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
     if ~strcmp(origClass, class(data))
         data = cast(data, origClass);
     end
+
+    tMinOutput = p.Results.tMinOutput;
+    tMaxOutput = p.Results.tMaxOutput;
+    output_specified = false;
+    if isempty(tMinOutput) || isnan(tMinOutput)
+        tMinOutput = tMin;
+    else
+        output_specified = true;
+    end
+    if isempty(tMaxOutput) || isnan(tMaxOutput)
+        tMaxOutput = tMax;
+    else
+        output_specified = true;
+    end
+    if output_specified
+        tMinOutput = TrialDataUtilities.Data.removeSmallTimeErrors(tMinOutput, timeDelta, timeReference);
+        tMaxOutput = TrialDataUtilities.Data.removeSmallTimeErrors(tMaxOutput, timeDelta, timeReference);
+%         assert(tMinOutput <= tMin);
+%         assert(tMaxOutput >= tMax);
+        [tMinOutput, tMaxOutput] = p.Results.binAlignmentMode.getTimeLimitsForRebinning(tMinOutput, tMaxOutput, origDelta, timeDelta, timeReference);
+        timeOutput = (tMinOutput:timeDelta:tMaxOutput)';
     
+        data_preExpand = data;
+        sz_out = size(data);
+        sz_out(1) = numel(timeOutput);
+        data = nan(sz_out, like=data_preExpand);
+
+        tol = timeDelta / 1000;
+        mask_take = timeNew >= tMinOutput - tol & timeNew <= tMaxOutput + tol;
+        data_preExpand = data_preExpand(mask_take, :, :, :, :);
+        timeNew = timeNew(mask_take);
+    
+        mask_assign = timeOutput >= timeNew(1) & timeOutput <= timeNew(end);
+        data(mask_assign, :, :, :, :, :) = data_preExpand;
+        timeNew = timeOutput;
+    end
+
     data = TensorUtils.unshiftdimToFirstDim(data, timeDim, nDimsOrig);
 end

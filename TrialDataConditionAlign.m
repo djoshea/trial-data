@@ -2633,7 +2633,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
             p.addParameter('interpolateMethod', 'linear', @isstringlike);
-
+            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
             p.parse(varargin{:});
 
             includePadding = p.Results.includePadding;
@@ -2697,7 +2697,7 @@ classdef TrialDataConditionAlign < TrialData
                 [data, time] = TrialDataUtilities.Data.resampleDataCellInTime(data, time, 'timeDelta', timeDelta, ...
                     'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
                     'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod, ...
-                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax);
+                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax, 'expandToTimeMinMax', p.Results.expandToTimeMinMax);
             else
                 [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, includePadding, ...
                     'singleTimepointTolerance', p.Results.singleTimepointTolerance);
@@ -2911,6 +2911,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
             
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
             p.parse(varargin{:});
@@ -2921,13 +2923,29 @@ classdef TrialDataConditionAlign < TrialData
                 'subtractTrialBaseline', p.Results.subtractTrialBaseline, ...
                 'subtractTrialBaselineAt', p.Results.subtractTrialBaselineAt, ...
                 'subtractConditionBaselineAt', p.Results.subtractConditionBaselineAt, ...
-                'includePadding', false, ...
+                'includePadding', p.Results.includePadding, ...
                 'includeEdgeBins', true, ...
                 'ensureUniformSampling', true, ...
                 'timeReference', 0, 'timeDelta', p.Results.timeDelta, ...
                 'binAlignmentMode', p.Results.binAlignmentMode, ...
                 'resampleMethod', p.Results.resampleMethod, ...
                 'interpolateMethod', p.Results.interpolateMethod);
+
+            tMin = p.Results.tMin;
+            tMax = p.Results.tMax;
+            if p.Results.expandToTimeMinMax
+                if p.Results.includePadding
+                    [tMin_, tMax_] = td.getTimeStartStopEachTrialWithPadding();
+                else
+                    [tMin_, tMax_] = td.getTimeStartStopEachTrial();
+                end
+                if isempty(tMin)
+                    tMin = min(tMin_);
+                end
+                if isempty(tMax)
+                    tMax = max(tMax_);
+                end
+            end
 
             % interpolate to common time vector
             % mat is nTrials x nTime
@@ -2936,7 +2954,7 @@ classdef TrialDataConditionAlign < TrialData
                 'minTrials', p.Results.minTrials, ...
                 'fixNonmonotonicTimes', false, ... % already ensured by uniform sampling
                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid, ...
-                'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
+                'tMin', tMin, 'tMax', tMax);
         end
 
         function [matCell, tvec] = getAnalogAsMatrixGrouped(td, name, varargin)
@@ -3678,6 +3696,7 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
             p.parse(varargin{:});
 
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName, ...
@@ -3719,7 +3738,8 @@ classdef TrialDataConditionAlign < TrialData
                 [data, time] = TrialDataUtilities.Data.resampleDataCellInTime(data, time, 'timeDelta', timeDelta, ...
                     'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
                     'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod,  ...
-                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax);
+                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax, ...
+                    'expandToTimeMinMax', p.Results.expandToTimeMinMax);
             else
                 [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, includePadding, ...
                     'singleTimepointTolerance', p.Results.singleTimepointTolerance);
@@ -3978,6 +3998,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('interpolateMethod', 'linear', @ischar);
             p.addParameter('assumeUniformSampling', false, @islogical);
 
+            p.addParameter('includePadding', false, @islogical);
+            p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -3998,12 +4022,34 @@ classdef TrialDataConditionAlign < TrialData
                 'includeEdgeBins', true, ...
                 'timeDelta', timeDelta, ...
                 'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
-                'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, p.Unmatched);
+                'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, ...
+                'includePadding', p.Results.includePadding, ...
+                'expandToTimeMinMax', p.Results.expandToTimeMinMax, p.Unmatched);
+            
+            tMin = p.Results.tMin;
+            tMax = p.Results.tMax;
+            if p.Results.expandToTimeMinMax
+                if p.Results.includePadding
+                    [tMin_, tMax_] = td.getTimeStartStopEachTrialWithPadding();
+                else
+                    [tMin_, tMax_] = td.getTimeStartStopEachTrial();
+                end
+                if isempty(tMin)
+                    tMin = tMin_;
+                end
+                if isempty(tMax)
+                    tMax = tMax_;
+                end
 
+                extra_args = {'tMin', min(tMin), 'tMax', max(tMax)};
+            else
+                extra_args = {};
+            end
+            
             % interpolate to common time vector, we can assume uniform
             % sampling since they've already been interpolated to timeDelta
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
-                'assumeUniformSampling', true);
+                'assumeUniformSampling', true, extra_args{:});
         end
 
         function [dataTensor, tvec] = getAnalogChannelGroupAsTensor(td, groupName, varargin)
@@ -4016,8 +4062,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
             
+            p.addParameter('includePadding', false, @islogical);
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); 
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -4027,14 +4075,30 @@ classdef TrialDataConditionAlign < TrialData
                 'includeEdgeBins', true, ...
                 'binAlignmentMode', p.Results.binAlignmentMode, ...
                 'resampleMethod', p.Results.resampleMethod, ...
-                'interpolateMethod', p.Results.interpolateMethod, p.Unmatched);
+                'interpolateMethod', p.Results.interpolateMethod, ...
+                'includePadding', p.Results.includePadding, p.Unmatched);
 
+            tMin = p.Results.tMin;
+            tMax = p.Results.tMax;
+            if p.Results.expandToTimeMinMax
+                if p.Results.includePadding
+                    [tMin_, tMax_] = td.getTimeStartStopEachTrialWithPadding();
+                else
+                    [tMin_, tMax_] = td.getTimeStartStopEachTrial();
+                end
+                if isempty(tMin)
+                    tMin = min(tMin_);
+                end
+                if isempty(tMax)
+                    tMax = max(tMax_);
+                end
+            end
             % interpolate to common time vector
             [dataTensor, tvec] = TrialDataUtilities.Data.embedTimeseriesInMatrix(dataCell, timeCell, ...
                 'assumeUniformSampling', true, ...
                 'minTrials', p.Results.minTrials, ...
                 'minTrialFraction', p.Results.minTrialFraction, 'trialValid', td.valid, ...
-                'tMin', p.Results.tMin, 'tMax', p.Results.tMax);
+                'tMin', min(tMin), 'tMax', max(tMax));
         end
 
         function [dataCell, tvec] = getAnalogChannelGroupAsTensorGrouped(td, nameCell, varargin)
