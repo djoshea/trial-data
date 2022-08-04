@@ -32,7 +32,7 @@ function [delays, aligned] = findDelaysMultiAnalogTensor(data,varargin)
 
     p = inputParser();
     p.addOptional('maxLag', floor(T / 2), @isscalar);
-    p.addParameter('alignTo', nanmean(x, 3), @isnumeric);
+    p.addParameter('alignTo', mean(x, 3, 'omitnan'), @isnumeric);
     p.KeepUnmatched = true;
     p.parse(varargin{:});
 

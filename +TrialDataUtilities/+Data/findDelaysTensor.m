@@ -41,16 +41,16 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
     
     p.addParameter('upsample', 1, @isscalar);
     p.addParameter('message', 'Aligning segments in time', @ischar);
+    p.addParameter('progress', true, @islogical);
     
-    
-    p.addParameter('alignTo', 'mean', @ischar);
+    p.addParameter('alignTo', 'mean', @isstringlike);
     p.addParameter('periodicMode', false, @islogical);
     
     % for nargout == 2, passed to removeDelaysTensor
     p.addParameter('fillMode', NaN, @(x) isscalar(x) || ischar(x));
     p.parse(varargin{:});
 
-    alignTo = p.Results.alignTo;
+    alignTo = char(p.Results.alignTo);
     maxLag = p.Results.maxLag;
     up = p.Results.upsample;
     
@@ -94,9 +94,13 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
     
     switch alignTo
         case 'mean'
-            ref = nanmean(data, 3);
+            ref = mean(data, 3, 'omitnan');
         case 'first'
             ref = data(:, :, 1, :);
+        case 'geometric_median'
+            ref = TrialDataUtilities.Data.geometric_median(data, 3, 2);
+        case 'medoid'
+            ref = TrialDataUtilities.Data.medoid(data, 3, 2);
         otherwise
             error('Unknown alignTo mode %s', alignTo);
     end
@@ -113,7 +117,9 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
     maxC = nan(1, 1, G, L);
     spuriousFound = 0;
     
-    prog = ProgressBar(L*G, p.Results.message);
+    if p.Results.progress
+        prog = ProgressBar(L*G, p.Results.message);
+    end
     for iL = 1:L
         x = data(:, :, :, iL); % T x C x G
         y = ref(:, :, :, iL); % T x C
@@ -131,7 +137,9 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
         % an odd number of rows).
 
         for g = 1:G
-            prog.update(G*(iL-1) + g);
+            if p.Results.progress
+                prog.update(G*(iL-1) + g);
+            end
         
             for c = 1:C
                 c_normalized(:,c,g) = absnanxcorrNorm(x(:,c,g), y(:,c), maxLag);
@@ -207,11 +215,10 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
                 end
             end
         end
-
-       
-       
     end
-    prog.finish();
+    if p.Results.progress
+        prog.finish();
+    end
 
     % Set to zeros estimated delays for which the normalized cross-correlation
     % values are below a given threshold (spurious peaks due to FFT roundoff
@@ -229,10 +236,10 @@ function [delays, aligned] = findDelaysTensor(data,varargin)
 end
 
 function c = absnanxcorrNorm(x, y, maxlag)
-    cxx = nansum(abs(x).^2);
-    cyy = nansum(abs(y).^2);
+    cxx = sum(abs(x).^2, 'omitnan');
+    cyy = sum(abs(y).^2, 'omitnan');
 
-    x = (x - nanmean(x)) / nanstd(x);
+    x = (x - mean(x, 'omitnan')) / std(x, 'omitnan');
     x(isnan(x)) = 0;
     
     c = xcorr(x, y, maxlag);
