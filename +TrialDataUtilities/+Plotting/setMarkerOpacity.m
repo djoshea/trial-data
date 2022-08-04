@@ -9,10 +9,10 @@ function setMarkerOpacity(s, faceAlpha, edgeAlpha)
         % old version, simply tag it as translucent for saveFigure to pick
         % up during SVG authoring
 
-        userdata = get(s(i),'UserData');
-        userdata.svg.MarkerFaceAlpha = faceAlpha;
-        userdata.svg.MarkerEdgeAlpha = edgeAlpha;
-        set(s(i),'UserData', userdata);
+%         userdata = get(s(i),'UserData');
+%         userdata.svg.MarkerFaceAlpha = faceAlpha;
+%         userdata.svg.MarkerEdgeAlpha = edgeAlpha;
+%         set(s(i),'UserData', userdata);
 
         if ~verLessThan('matlab', '8.4')
             mh = s.MarkerHandle;
