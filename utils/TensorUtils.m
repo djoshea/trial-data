@@ -456,7 +456,7 @@ classdef TensorUtils
 
             assert(~islogical(dims), 'Arguments out of order');
             if ~iscell(masks)
-                masks = {masks};
+                masks = {masks(:)};
             end
             keep_all = false(numel(masks), 1);
             for i = 1:numel(masks)
@@ -464,7 +464,7 @@ classdef TensorUtils
                     masks{i} = TensorUtils.vectorIndicesToMask(masks{i}, max(masks{i}));
                 end
                 
-                keep_all(i) = all(masks{i});
+                keep_all(i) = all(masks{i}(:));
             end
 
             assert(all(cellfun(@(x) islogical(x) && isvector(x), masks)), ...

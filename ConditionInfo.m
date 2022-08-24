@@ -983,7 +983,7 @@ classdef ConditionInfo < ConditionDescriptor
         function ci = selectTrials(ci, selector)
             ci.warnIfNoArgOut(nargout);
 
-            assert(isvector(selector), 'Selector must be vector of indices or vector mask');
+            assert(isempty(selector) || isvector(selector), 'Selector must be vector of indices or vector mask');
             % cache everything ahead of time because some are dynamically
             % computed from the others
 
