@@ -22,6 +22,7 @@ p.addParameter('edgeWidth', 1, @isscalar);
 p.addParameter('edgeAlpha', 0.6, @isscalar);
 p.addParameter('color', [0.1 0.1 0.1], @(x) isempty(x) || iscolor(x) || ismatrix(x));
 p.addParameter('alpha', 0.8, @isscalar);
+p.addParameter('filled', true, @islogical);
 p.addParameter('markerSize', 20, @isscalar);
 p.addParameter('errorLineWidth', 1, @isscalar);
 p.addParameter('errorLineAlpha', 0.8, @isscalar);
@@ -115,8 +116,14 @@ TrialDataUtilities.Plotting.hideInLegend(hError);
 %     'MarkerEdgeColor', p.Results.edgeColor);
 % TrialDataUtilities.Plotting.setMarkerOpacity(hPoints, p.Results.alpha, p.Results.edgeAlpha);
 
-hPoints = scatter(xData, yData, p.Results.markerSize, p.Results.color, 'filled', ...
-    'MarkerEdgeColor', p.Results.edgeColor, 'MarkerFaceAlpha', p.Results.alpha, 'MarkerEdgeAlpha', p.Results.edgeAlpha, 'Clipping', p.Results.Clipping, 'LineWidth', p.Results.edgeWidth);
+if p.Results.filled
+    fillArgs = {'filled', 'MarkerEdgeColor', p.Results.edgeColor};
+else
+    fillArgs = {'MarkerFaceColor', 'w'};
+end
+
+hPoints = scatter(xData, yData, p.Results.markerSize, p.Results.color, fillArgs{:}, ...
+    'MarkerFaceAlpha', p.Results.alpha, 'MarkerEdgeAlpha', p.Results.edgeAlpha, 'Clipping', p.Results.Clipping, 'LineWidth', p.Results.edgeWidth);
 
 end
 
