@@ -21,7 +21,7 @@ if iscell(time)
                     if numel(time{i}(mask)) == 1
                         timeDelta(i) = NaN; % 0 means single sample
                     else
-                        timeDelta(i) = nanmedian(diff(time{i}(mask))); % ignore the mask here
+                        timeDelta(i) = median(diff(time{i}(mask)), 1, 'omitnan'); % ignore the mask here
                     end
                 end
             end
@@ -29,12 +29,12 @@ if iscell(time)
     else
         for i = 1:numel(time)
             if ~isempty(data{i}) && ~isempty(time{i})
-                timeDelta(i) = nanmedian(diff(time{i})); % ignore the mask here
+                timeDelta(i) = median(diff(time{i}), 1, 'omitnan'); % ignore the mask here
             end
         end
     end
     
-    timeDelta = nanmedian(timeDelta, 1);
+    timeDelta = median(timeDelta, 1, 'omitnan');
     
 else
     % single time vector
@@ -43,8 +43,8 @@ else
         assert(ismatrix(data) && isvector(time));
         time = makecol(time);
         mask = ~all(isnan(data), 1);
-        timeDelta = nanmedian(diff(time(mask)));
+        timeDelta = median(diff(time(mask)), 1, 'omitnan');
     else
-        timeDelta = nanmedian(diff(time));
+        timeDelta = median(diff(time), 1, 'omitnan');
     end
 end

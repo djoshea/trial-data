@@ -123,12 +123,12 @@ function [tvec, tMinCell, tMaxCell, origDelta, indMin, indMax] = inferCommonTime
         % adjust so that it lies 
         tMinGlobal = TrialDataUtilities.Data.removeSmallTimeErrors(tMinForce, timeDelta, timeReference);
     else
-        tMinGlobal = nanmin(tMin(:));
+        tMinGlobal = min(tMin(:), [], 'omitnan');
     end
     if ~isempty(tMaxForce)
         tMaxGlobal = TrialDataUtilities.Data.removeSmallTimeErrors(tMaxForce, timeDelta, timeReference);
     else
-        tMaxGlobal = nanmax(tMax(:));
+        tMaxGlobal = max(tMax(:), [], 'omitnan');
     end
     if timeDelta == 0 && tMinGlobal == tMaxGlobal
         tvec = tMinGlobal;
