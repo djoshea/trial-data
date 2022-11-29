@@ -7,7 +7,7 @@ classdef SaveArrayIndividualized < handle
         % allowing individual elements to be loaded quickly
 
             p = inputParser();
-            p.addParameter('message', '', @ischar);
+            p.addParameter('message', '', @isstringlike);
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('partitionFieldLists', struct(), @isstruct);
             p.addParameter('partitionMeta', struct(), @isstruct);
@@ -177,7 +177,7 @@ classdef SaveArrayIndividualized < handle
         function [S, partitionMeta, partialLoadMask] = loadArray(locationName, varargin)
             p = inputParser();
             p.addParameter('progress', true, @islogical);
-            p.addParameter('message', '', @ischar);
+            p.addParameter('message', '', @isstringlike);
             p.addParameter('maxElements', Inf, @isscalar);
             p.addParameter('callbackFn', [], @(x) isempty(x) || isa(x, 'function_handle'));
             p.addParameter('partitions', {}, @(x) TrialDataUtilities.String.isstringlike(x));
@@ -547,6 +547,69 @@ classdef SaveArrayIndividualized < handle
                 end
             end
         end
+    
+        % general use meta, keyed by suffix with default suffix=""
+        function meta = loadMeta(locationName, varargin)
+            p = inputParser();
+            p.addParameter('suffix', "", @(x) TrialDataUtilities.String.isstringlike(x));
+            p.parse(varargin{:});
+            
+            locationName = TrialDataUtilities.Path.GetFullPath(locationName);
+            file = TrialDataUtilities.Data.SaveArrayIndividualized.generateMetaFileName(locationName, p.Results.suffix);
+                
+            if ~exist(file, 'file')
+                error('Could not find meta file %s\n', file);
+            else
+                loaded = load(file); % assumes less than 2 GB per element, but much faster
+                meta = loaded.meta;
+            end
+        end
+
+        function saveMeta(locationName, meta, varargin)
+            p = inputParser();
+            p.addParameter('suffix', "", @(x) TrialDataUtilities.String.isstringlike(x));
+            p.parse(varargin{:});
+            
+            locationName = TrialDataUtilities.Path.GetFullPath(locationName);
+            file = TrialDataUtilities.Data.SaveArrayIndividualized.generateMetaFileName(locationName, p.Results.suffix);
+                
+            TrialDataUtilities.Save.mkdirRecursive(locationName);
+            save(file, 'meta');
+        end
+    end
+
+    % numerical array tools
+    methods(Static)
+        function saveTensorSplit(locationName, S, varargin)
+            p = inputParser();
+            p.addParameter('dim', 1, @isscalar); % which dimension to split along
+            p.addParameter('elementsPerChunk', 1, @isscalar); % split elements into files with this many elements per file
+            p.KeepUnmatched = true;
+            p.parse(varargin{:});
+
+            dim = p.Results.dim;
+            nPer = p.Results.elementsPerChunk;
+            sz = size(S, dim);
+            nTotal = ceil(sz/nPer);
+            
+            nEach = repmat(nPer, nTotal, 1);
+            nEach(end) = sz - nPer * (nTotal - 1);
+
+            split = TensorUtils.splitAlongDimension(S, dim, nEach);
+
+            TrialDataUtilities.Data.SaveArrayIndividualized.saveArray(locationName, split, 'elementsPerChunk', 1, p.Unmatched);
+
+            meta.dim = dim;
+            meta.elementsPerChunk = nPer;
+            TrialDataUtilities.Data.SaveArrayIndividualized.saveMeta(locationName, meta, 'suffix', "tensorSplit");
+        end
+
+        function [S, partitionMeta, partialLoadMask] = loadTensorSplit(locationName, varargin)
+            [split, partitionMeta, partialLoadMask] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(locationName, varargin{:});
+            meta = TrialDataUtilities.Data.SaveArrayIndividualized.loadMeta(locationName, 'suffix', "tensorSplit");
+
+            S = cat(meta.dim, split{:});
+        end
     end
     
     methods(Static, Hidden)
@@ -597,6 +660,17 @@ classdef SaveArrayIndividualized < handle
         
         function fname = generatePartitionMetaFileName(locationName, partitionName)
             fname = fullfile(locationName, sprintf('partitionMeta_%s.mat', partitionName));
+        end
+
+        function fname = generateMetaFileName(locationName, suffix)
+            if nargin < 2
+                suffix = "";
+            end
+            if strcmp(suffix, "")
+                fname = fullfile(string(locationName), "meta.mat");
+            else
+                fname = fullfile(string(locationName), sprintf("meta_%s.mat", suffix));
+            end
         end
     end
 end

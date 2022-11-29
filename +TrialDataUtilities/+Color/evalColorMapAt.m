@@ -16,6 +16,8 @@ function ceval = evalColorMapAt(cmap, at, clim, colorspace)
     end
     
     N = size(cmap, 1);
+
+    was_nan = isnan(at);
     at = cast(at, 'like', cmap);
     at = clamp(at, clim(1), clim(2));
     
@@ -29,6 +31,8 @@ function ceval = evalColorMapAt(cmap, at, clim, colorspace)
     end
     
     ceval = max(min(ceval, 1), 0);
+
+    ceval(repmat(was_nan, [1 1 3])) = NaN;
 end
 
 function val = clamp(val, lo, hi)

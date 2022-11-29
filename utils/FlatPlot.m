@@ -28,20 +28,19 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
         xproj (1, 1) double
         xproj_epsilon (1, 1) double % xproj +/- some small epsilon towards the camera
         xproj_fn (1, 1) function_handle = @(v) v;
+        xproj_behind_fn (1, 1) function_handle = @(v, childorderfrac) v;
 
         yproj (1, 1) double
         yproj_epsilon (1, 1) double % yproj +/- some small epsilon towards the camera
         yproj_fn (1, 1) function_handle = @(v) v;
+        yproj_behind_fn (1, 1) function_handle = @(v, childorderfrac) v;
 
         zproj (1, 1) double
         zproj_epsilon (1, 1) double % zproj +/- some small epsilon towards the camera
         zproj_fn (1, 1) function_handle = @(v) v;
+        zproj_behind_fn (1, 1) function_handle = @(v, childorderfrac) v;
 
-        % projections
-%         h_xy (:, 1) 
-%         h_yz (:, 1) 
-%         h_xz (:, 1) 
-
+        % projected objects
         h_xy (:, 1) matlab.graphics.primitive.Data
         h_yz (:, 1) matlab.graphics.primitive.Data
         h_xz (:, 1) matlab.graphics.primitive.Data
@@ -86,7 +85,7 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
             obj.axh = axes("Parent", gcf);
             hold(obj.axh, 'on');
 
-            obj.axhOverlay = axes("Parent", gcf, 'Position', [0 0 1 1]);
+            obj.axhOverlay = axes("Parent", gcf, 'Position', [0 0 1 1], 'HitTest', 'off');
             axis(obj.axhOverlay, "off");
             uistack(obj.axhOverlay, 'top');
             obj.axhOverlay.Color = "none";
@@ -104,7 +103,7 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
 
             obj.updateProjectLocations();
 
-            % for each handle in h_tracked, generate a version 
+            % for each handle in h_tracked, generate projected shadows on the walls
             h_all = cat(1, obj.h_yz, obj.h_xz, obj.h_xy);
             if ~isempty(h_all)
                 mask = isvalid(h_all);
@@ -112,10 +111,20 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
             end
             
             nH = numel(obj.h_tracked);
+
+            % figure out how many will be flattened behind
+            behind = false(nH, 1);
+            for iH = 1:nH
+                behind(iH) = ismember(obj.h_tracked(iH).Type, "surface");
+            end
+            nBehind = nnz(behind);
+            frac_behind = zeros(nH, 1);
+            frac_behind(behind) = linspace(0, 1, nBehind);
+
             [h_yz, h_xz, h_xy] = deal(gobjects(nH, 1)); %#ok<*PROP> 
             for iH = 1:nH
                 h = obj.h_tracked(iH);
-                [h_yz(iH), h_xz(iH), h_xy(iH)] = obj.buildShadows(h);
+                [h_yz(iH), h_xz(iH), h_xy(iH)] = obj.buildShadows(h, frac_behind(iH));
             end
 
             obj.h_yz = h_yz;
@@ -140,118 +149,216 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
             Y = [ymid, ymid, yl, ymid, ymid]';
             Z = [repmat(zmid, 1, 4), zl]';
             [~, ~, depth] = obj.ds2figFromTransform(obj.axh, obj.matrixTransform, X, Y, Z);
-            bigeps = 1e6 * eps;
+%             bigeps = 1e6 * eps;
+%             bigeps = 0.4;
             lerp = @(v, slo, shi, dlo, dhi) (v - slo) ./ (shi - slo) .* (dhi - dlo) + dlo;
+
+
+            % a small positive unit along each axis
+            eps_gain = 1e-4;
+            xepsilon = (xl(2) - xl(1)) * eps_gain;
+            yepsilon = (yl(2) - yl(1)) * eps_gain;
+            zepsilon = (zl(2) - zl(1)) * eps_gain;
 
             if depth(2) > depth(1)
                 % xl(2) is closer
                 [xnear, xfar] = deal(xl(2), xl(1));
-                xepsilon = sign(xfar - xnear) * bigeps;
+                xtowards = xepsilon;
             else
+                % xl(1) is closer
                 [xnear, xfar] = deal(xl(1), xl(2));
-                xepsilon = sign(xnear - xfar) * bigeps;
+                xtowards = -xepsilon;
             end
             if depth(4) > depth(3)
+                % yl(2) is closer
                 [ynear, yfar] = deal(yl(2), yl(1));
-                yepsilon = sign(yfar - ynear) * bigeps;
+                ytowards = yepsilon;
             else
+                % yl(1) is closer
                 [ynear, yfar] = deal(yl(1), yl(2));
-                yepsilon = sign(ynear - yfar) * bigeps;
+                ytowards = -yepsilon;
             end
             if depth(6) > depth(5)
+                % zl(2) is closer
                 [znear, zfar] = deal(zl(2), zl(1));
-                zepsilon = sign(zfar - znear) * bigeps;
+                ztowards = zepsilon;
             else
+                % zl(1) is closer
                 [znear, zfar] = deal(zl(1), zl(2));
-                zepsilon = sign(znear - zfar) * bigeps;
+                ztowards = -zepsilon;
             end
 
+            % the projection functions below map coordinates within the axis limits into coordinates within epsilon of
+            % the projected-onto axis wall
+            % we also create proj_behind_fn which is used to project coordinates into a fixed slot based on the object child order
+
+            % we shift the projection origin into the center of the axis a bit to make room for the projection range
             if isnumeric(obj.XProjectLocation)
                 obj.xproj = obj.XProjectLocation;
             elseif strcmp(obj.XProjectLocation, "near")
-                obj.xproj = xnear;
+                obj.xproj = xnear - xtowards;
             elseif strcmp(obj.XProjectLocation, "far")
-                obj.xproj = xfar;
+                obj.xproj = xfar + 2.1*xtowards;
             else
                 warning("Invalid value for XProjectLocation");
-                obj.xproj = yfar;
+                obj.xproj = xfar + 2.1*xtowards;
             end
+            
+            % and then compress the entire axis range into 1 xepsilon of that range
+            % while preserving the same ordering along the axis
             obj.xproj_epsilon = obj.xproj + xepsilon;
             obj.xproj_fn = @(x) lerp(x, xl(1), xl(2), obj.xproj, obj.xproj_epsilon);
+            
+            % this places everything behind the projected stuff above, while maintaining the childorder
+            xproj_behind = obj.xproj - 1.1*xtowards;
+            obj.xproj_behind_fn = @(x, childorderfrac) ones(size(x))*xproj_behind - (1-childorderfrac) * xtowards;
             
             if isnumeric(obj.YProjectLocation)
                 obj.yproj = obj.YProjectLocation;
             elseif strcmp(obj.YProjectLocation, "near")
-                obj.yproj = ynear;
+                obj.yproj = ynear - ytowards;
             elseif strcmp(obj.YProjectLocation, "far")
-                obj.yproj = yfar;
+                obj.yproj = yfar + 2.1*ytowards;
             else
                 warning("Invalid value for YProjectLocation");
-                obj.yproj = yfar;
+                obj.yproj = yfar + 2.1*ytowards;
             end
             obj.yproj_epsilon = obj.yproj + yepsilon;
             obj.yproj_fn = @(y) lerp(y, yl(1), yl(2), obj.yproj, obj.yproj_epsilon);
 
+            yproj_behind = obj.yproj - 1.1*ytowards;
+            obj.yproj_behind_fn = @(y, childorderfrac) ones(size(y))*yproj_behind - (1-childorderfrac) * ytowards;
+
             if isnumeric(obj.ZProjectLocation)
                 obj.zproj = obj.ZProjectLocation;
             elseif strcmp(obj.ZProjectLocation, "near")
-                obj.zproj = znear;
+                obj.zproj = znear - ztowards;
             elseif strcmp(obj.ZProjectLocation, "far")
-                obj.zproj = zfar;
+                obj.zproj = zfar + 2.1*ztowards;
             else
                 warning("Invalid value for ZProjectLocation");
-                obj.zproj = zfar;
+                obj.zproj = zfar + 2.1*ztowards;
             end
             obj.zproj_epsilon = obj.zproj + zepsilon;
             obj.zproj_fn  = @(z) lerp(z, zl(1), zl(2), obj.zproj, obj.zproj_epsilon);
+
+            zproj_behind = obj.zproj - 1.1*ztowards;
+            obj.zproj_behind_fn = @(z, childorderfrac) ones(size(z))*zproj_behind - (1-childorderfrac) * ztowards;
 
             obj.lastXLim = xl;
             obj.lastYLim = yl;
             obj.lastZLim = zl;
         end
 
-        function [h_yz, h_xz, h_xy] = buildShadows(obj, h)
-            h_yz = obj.buildShadow(h, "x");
-            h_xz = obj.buildShadow(h, "y");
-            h_xy = obj.buildShadow(h, "z");
+        function [h_yz, h_xz, h_xy] = buildShadows(obj, h, childorderfrac)
+            h_yz = obj.buildShadow(h, "x", childorderfrac);
+            h_xz = obj.buildShadow(h, "y", childorderfrac);
+            h_xy = obj.buildShadow(h, "z", childorderfrac);
         end
 
-        function hproj = buildShadow(obj, h, flattenAxis)
+        function hproj = buildShadow(obj, h, flattenAxis, childorderfrac)
+            % this is the workhorse that draws specific objects on the side walls
             arguments
                 obj
                 h (1, 1) matlab.graphics.primitive.Data
                 flattenAxis (1, 1) string {mustBeMember(flattenAxis, ["x", "y", "z"])} 
+                childorderfrac (1, 1) double
             end
 
-            hproj = copyobj(h, obj.axh);
-           
-            % project points
-            switch flattenAxis
-                case "x"
-                    hproj.XData = obj.xproj_fn(h.XData);
+            switch h.Type
+                case 'surface'
+                    % special case, draw convex hull of projection as a filled patch
 
-                case "y"
-                    hproj.YData = obj.yproj_fn(h.YData);
-                
-                case "z"
-                    hproj.ZData = obj.zproj_fn(h.ZData);
+                    % project points
+                    switch flattenAxis
+                        case "x"
+                            pts = [h.YData(:), h.ZData(:)];
+                            inds = convhull(pts);
+
+                            x = obj.xproj_behind_fn(h.XData(inds), childorderfrac);
+                            y = pts(inds, 1);
+                            z = pts(inds, 2);
+                            
+                        case "y"
+                            pts = [h.XData(:), h.ZData(:)];
+                            inds = convhull(pts);
+
+                            x = pts(inds, 1);
+                            y = obj.yproj_behind_fn(h.YData(inds), childorderfrac);
+                            z = pts(inds, 2);
+                        
+                        case "z"
+                            pts = [h.XData(:), h.YData(:)];
+                            inds = convhull(pts);
+
+                            x = pts(inds, 1);
+                            y = pts(inds, 2);
+                            z = obj.zproj_behind_fn(h.ZData(inds), childorderfrac);
+                    end
+
+                    hproj = fill3(x, y, z, h.FaceColor, Parent=h.Parent, FaceLighting='none', BackFaceLighting='reverselit');
+
+                    % copy these props directly, we'll adjust below
+                    props = ["FaceAlpha", "EdgeColor", "EdgeAlpha", "AmbientStrength", "DiffuseStrength", "SpecularStrength"];
+                    for prop = props
+                        hproj.(prop) = h.(prop);
+                    end
+
+                otherwise
+
+                    hproj = copyobj(h, obj.axh);
+                   
+                    % project points
+                    switch flattenAxis
+                        case "x"
+                            hproj.XData = obj.xproj_fn(h.XData);
+        
+                        case "y"
+                            hproj.YData = obj.yproj_fn(h.YData);
+                        
+                        case "z"
+                            hproj.ZData = obj.zproj_fn(h.ZData) + 0.1;
+                    end
+
+                    % alter appearance
+                    adjustColor = @(color) FlatPlot.adjustColor(color, shiftL=obj.ProjectLuminanceShift, ...
+                        shiftC=obj.ProjectChromaShift, ...
+                        minL=obj.ProjectLuminanceMin, ...
+                        maxC=obj.ProjectChromaMax, ...
+                        alpha=obj.ProjectAlpha);
+                    
+                    props = ["Color", "CData", "FaceColor", "EdgeColor", "MarkerFaceColor", "MarkerEdgeColor"];
+                    for prop = props
+                        if isprop(hproj, prop)
+                            hproj.(prop) = adjustColor(hproj.(prop));
+                        end
+                    end
             end
 
-            hproj.Clipping = true;
-            
-            % alter appearance
-            adjustColor = @(color) FlatPlot.adjustColor(color, shiftL=obj.ProjectLuminanceShift, ...
-                shiftC=obj.ProjectChromaShift, ...
-                minL=obj.ProjectLuminanceMin, ...
-                maxC=obj.ProjectChromaMax, ...
-                alpha=obj.ProjectAlpha);
-            
-            props = ["Color", "CData", "FaceColor", "EdgeColor", "MarkerFaceColor", "MarkerEdgeColor"];
-            for prop = props
-                if isprop(hproj, prop)
-                    hproj.(prop) = adjustColor(hproj.(prop));
+            hproj.Clipping = false;
+
+            if isstruct(h.UserData) 
+                if isfield(h.UserData, "shadow_props")
+                    vals = h.UserData.shadow_props;
+                    props = string(fieldnames(vals))';
+                    for prop = props
+                        if isprop(hproj, prop)
+                            hproj.(prop) = vals.(prop);
+                        end
+                    end
+                end
+
+                if isfield(h.UserData, "shadow_props_" + flattenAxis)
+                    vals = h.UserData.("shadow_props_" + flattenAxis);
+                    props = string(fieldnames(vals))';
+                    for prop = props
+                        if isprop(hproj, prop)
+                            hproj.(prop) = vals.(prop);
+                        end
+                    end
                 end
             end
+
         end
 
         function addChild(obj, h)
@@ -260,7 +367,7 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
         end
     end
 
-    methods
+    methods % Callback handling
         function installCallbacks(obj)
             % these work faster than listening on xlim and ylim, but can
             % not update depending on how the axis limits are set
@@ -377,9 +484,13 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
         end
     end
 
-    methods
+    methods % client methods for addig to the plot
         function doUpdate(obj)
             obj.update();
+        end
+
+        function [Xf, Yf, Zf] = transform_ds2fig(obj, X, Y, Z)
+            [Xf, Yf, Zf] = obj.ds2figFromTransform(obj.axh, obj.matrixTransform, X, Y, Z);
         end
 
         function h = plot3(obj, varargin)
@@ -395,6 +506,40 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
         function h = scattercol(obj, X, varargin)
             h = obj.scatter3(X(:, 1), X(:, 2), X(:, 3), varargin{:});
             obj.addChild(h)
+        end
+
+        function h = covariance_ellipse(obj, X, args, surf_args)
+            arguments
+                obj
+                X (:, 3) double
+                args.confidence (1, 1) = 0.5;
+                args.factor = [];
+                args.n = 20;
+                surf_args.?matlab.graphics.primitive.Surface
+            end
+
+            mu = mean(X, 1, 'omitnan');
+            C = cov(X, 0, 'omitrows');
+            
+            % adapted from error_ellipse by AJ Johnson [ mathworks.com/matlabcentral/fileexchange/4705-error_ellipse ]          
+            [eigvec,eigval] = eig(C);
+            % Compute quantile for the desired percentile
+            if isempty(args.factor)
+                k = sqrt(chi2inv(args.confidence, 3)); % r is the number of dimensions (degrees of freedom)
+            else
+                k = args.factor;
+            end
+
+            [X,Y,Z] = ellipsoid(0,0,0,1,1,1, args.n);
+            XYZ = [X(:),Y(:),Z(:)]*sqrt(eigval)*eigvec';
+            
+            X(:) = k*XYZ(:,1)+mu(1);
+            Y(:) = k*XYZ(:,2)+mu(2);
+            Z(:) = k*XYZ(:,3)+mu(3);
+            
+            surf_args_c = namedargs2cell(surf_args);
+            h = surface(X,Y,Z, 'EdgeColor', 'none', 'FaceAlpha', 0.3, surf_args_c{:}, Parent=obj.axh);
+            obj.addChild(h);
         end
     end
 
@@ -838,7 +983,7 @@ classdef FlatPlot < matlab.graphics.chartcontainer.ChartContainer
 
                 args.alpha = 1;
             end
-            if ~isnumeric(rgb)
+            if ~isnumeric(rgb) || isempty(rgb)
                 return;
             end
 
