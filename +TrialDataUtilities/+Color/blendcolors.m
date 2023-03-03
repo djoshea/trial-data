@@ -1,7 +1,7 @@
 function cmap = blendcolors(colors, nOrEvalAt, varargin)
     p = inputParser();
-    p.addParameter('interpSpace', 'Luv', @ischar);
-    p.addParameter('inputSpace', 'rgb', @ischar);
+    p.addParameter('interpSpace', 'Luv', @isstringlike);
+    p.addParameter('inputSpace', 'rgb', @isttringlike);
     p.addParameter('locations', linspace(0, 1, size(colors, 1)), @isvector);
     p.addParameter('interval', [], @isvector);
     p.addParameter('forceEvalAt', false, @islogical);
