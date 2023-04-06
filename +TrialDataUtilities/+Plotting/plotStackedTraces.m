@@ -34,6 +34,7 @@ p.addParameter('colormapStacked', [], @(x) isempty(x) || isa(x, 'function_handle
 p.addParameter('maintainScaleSuperimposed', true, @islogical); % when superimposing multiple traces, keep the relative size and offset between the superimposed traces
 p.addParameter('labelPrefix', '', @isstringlike);
 p.addParameter('labels', {}, @(x) isempty(x) || isvector(x)); % labels over nTraces for the y axis
+p.addParameter('labelFontSize', NaN, @isscalar);
 p.addParameter('labelRotation', 0, @isvector);
 p.addParameter('labelsSuperimposed', {}, @isstringlike); % labels over the nSuperimposed traces, for clickable descriptions
 p.addParameter('labelInterpreter', 'none', @isstringlike);
@@ -172,7 +173,7 @@ if ~iscell(data)
         % trace(k) will be offset by spacing * k
         if p.Results.intercalate
             deltas = data_hi_scaling(:, 2:end, :) * p.Results.spacingFraction - data_lo_scaling(:, 1:end-1, :);
-            maxDeltas = max(deltas, [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
+            maxDeltas = max(deltas, [], [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
             traceOffsets = (nTraces-1:-1:0) * max(maxDeltas, [], 'omitnan');
         else
             rangesPadded = makerow(rangesNorm / p.Results.gain * (p.Results.spacingFraction));
@@ -187,7 +188,7 @@ if ~iscell(data)
             %   offset = max_t (traceN+1(t) * spacingFraction - traceN(t))
 
             deltas = data_hi_scaling(:, 2:end, :) * p.Results.spacingFraction - data_lo_scaling(:, 1:end-1, :);
-            maxDeltas = max(deltas, [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
+            maxDeltas = max(deltas, [], [1 3], 'omitnan') / p.Results.gain; % max over time and superimposed traces
             cs = fliplr(cumsum(fliplr(maxDeltas)));
             traceOffsets = [cs, 0];
         else 
@@ -267,7 +268,7 @@ else
 
     if p.Results.maintainScaleSuperimposed
         % subtract the min so each group trace has min at zero
-        minEachRow = nanmin(cellfun(@(data) double(nanminNanEmpty(data(:))), data), [], 2);
+        minEachRow = min(cellfun(@(data) double(nanminNanEmpty(data(:))), data), [], 2, 'omitnan');
         dataLowOrig = minEachRow;
         minCell = num2cell(repmat(minEachRow, 1, size(data, 2)));
         cellShift = cellfun(@(data, min) data - min, data, minCell, 'UniformOutput', false);
@@ -282,7 +283,7 @@ else
         end
     else
         % subtract the min so each trace has min at zero
-        dataLowOrig = nanmin(data, [], 1);
+        dataLowOrig = min(data, [], 1, 'omitnan');
         cellShift = cellfun(@(data) bsxfun(@minus, data, dataLowOrig), data, 'UniformOutput', false);
 
         if p.Results.normalize
@@ -367,7 +368,12 @@ if ~p.Results.quick
             colormapStacked = [0 0 0];
         end
         spans = [makerow(traceLows); makerow(traceHighs)];
-        au.addLabeledSpan('y', 'span', spans, 'label', labels, 'color', colormapStacked, ...
+        if isnan(p.Results.labelFontSize)
+            labelArgs = {};
+        else
+            labelArgs = {'fontSize', p.Results.labelFontSize};
+        end
+        au.addLabeledSpan('y', 'span', spans, 'label', labels, labelArgs{:}, 'color', colormapStacked, ...
             'rotation', p.Results.labelRotation, 'showSpanLines', p.Results.showSpanLines, 'interpreter', p.Results.labelInterpreter);
     end
 
