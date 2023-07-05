@@ -44,9 +44,10 @@ classdef ChannelImpl
                             % TODO address this
                             emptyMask = cellfun(@(x) isempty(x) || (isscalar(x) && ismissing(x)), data);
                             data(emptyMask) = {''};
+                            data = string(data);
                         end
                         assert(iscellstr(data) || isstring(data), 'String data field must be cellstr or string');
-                        data = string(data);
+                        
                         assert(isempty(data) || isvector(data));
 
                         % replace empty values with missing?

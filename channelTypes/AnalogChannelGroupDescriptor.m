@@ -3,8 +3,8 @@ classdef AnalogChannelGroupDescriptor < ChannelDescriptor
         scaleFromLims
         scaleToLims
         
-        subChannelNames string % nChannels x 1 cellstr of sub channel names
-        subChannelUnits string % nChannels x 1 cellstr of sub channel units
+        subChannelNames (:, 1) string % nChannels x 1 cellstr of sub channel names
+        subChannelUnits (:, 1) string % nChannels x 1 cellstr of sub channel units
         
         sampleSize % size of a single sample
         
