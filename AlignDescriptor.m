@@ -1700,16 +1700,16 @@ classdef AlignDescriptor
                 end
             end
             
-            tcprintf('inline', '  {bright blue}Start {purple}%s {darkGray}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
-            tcprintf('inline', '  {bright blue}Stop {purple}%s {darkGray}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
-            tcprintf('inline', '  {bright blue}Zero {purple}%s {darkGray}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
+            tcprintf('inline', '  {bright blue}Start {purple}%s {none}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
+            tcprintf('inline', '  {bright blue}Stop {purple}%s {none}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
+            tcprintf('inline', '  {bright blue}Zero {purple}%s {none}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
 
             for i = 1:length(ad.markEvents)
-                tcprintf('inline', '  {bright blue}Mark {purple}%s {darkGray}as {white}%s\n', ...
+                tcprintf('inline', '  {bright blue}Mark {purple}%s {none}as {white}%s\n', ...
                     ad.markUnabbreviatedLabels{i}, ad.markLabels{i}); 
             end
             for i = 1:size(ad.intervalEventsStart, 1)
-                tcprintf('inline', '  {bright blue}Interval {purple}%s{darkGray} as {white}%s\n', ...
+                tcprintf('inline', '  {bright blue}Interval {purple}%s{none} as {white}%s\n', ...
                     ad.intervalUnabbreviatedLabels{i}, ...
                     ad.intervalLabels{i}); 
                 % TODO add condition match description
@@ -1724,13 +1724,13 @@ classdef AlignDescriptor
                 tcprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});
             end     
                    
-            tcprintf('inline', '  {darkGray}outside trial mode {white}%s\n', ad.outsideOfTrialMode);
-            tcprintf('inline', '  {darkGray}minimum duration {white}%d\n', ad.minDuration);
+            tcprintf('inline', '  {green}outside trial mode {white}%s\n', ad.outsideOfTrialMode);
+            tcprintf('inline', '  {green}minimum duration {white}%d\n', ad.minDuration);
             if ad.roundTimes
-                tcprintf('inline', '  {darkGray}round times with min delta {white}%g\n', ad.minTimeDelta);
+                tcprintf('inline', '  {green}round times with min delta {white}%g\n', ad.minTimeDelta);
             end
             if ad.padPre ~= 0 || ad.padPost ~= 0
-                tcprintf('inline', '  {darkGray}pad %g pre, %g post\n', ad.padPre, ad.padPost);
+                tcprintf('inline', '  {green}pad %g pre, %g post\n', ad.padPre, ad.padPost);
             end
         end
 

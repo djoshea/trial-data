@@ -371,7 +371,7 @@ classdef ConditionDescriptor
                 tcprintf('inline', '  {bright blue}Sort: {purple}%s\n', TrialDataUtilities.String.strjoin(ci.attributeSortByList, ', '));
             end
             if ci.isResampledWithinConditions
-                tcprintf('inline', '  {bright red}Randomization active: {darkGray}(seed=%g) {none}Trials resampled within conditions\n', ci.randomSeed);
+                tcprintf('inline', '  {bright red}Randomization active: {green}(seed=%g) {none}Trials resampled within conditions\n', ci.randomSeed);
             end
 
         end
@@ -536,7 +536,7 @@ classdef ConditionDescriptor
                     randStr = [' ' randStr]; %#ok<AGROW>
                 end
                 if useColor
-                    desc{iX} = sprintf('{purple}%s {darkGray}(%d%s{bright red}%s%s{darkGray})', ...
+                    desc{iX} = sprintf('{purple}%s {green}(%d%s{bright red}%s%s{green})', ...
                         TrialDataUtilities.String.strjoin(attr, ' x '), nv, vlStr, filterStr, randStr);
                 else
                     desc{iX} = sprintf('%s (%d%s%s)', ...
@@ -1924,7 +1924,7 @@ classdef ConditionDescriptor
                     numericStr = '@';
                 end
 
-                if isempty(ci.attributeUnits{i})
+                if strlength(ci.attributeUnits{i}) == 0
                     unitStr = '';
                 else
                     unitStr = " in " + ci.attributeUnits(i);
@@ -1932,7 +1932,7 @@ classdef ConditionDescriptor
                 if ~useColor
                     desc{i} = sprintf('%s as %s (%s%s%s)%s', name, displayAs, numericStr, suffix, filterStr, unitStr);
                 else
-                    desc{i} = sprintf('{purple}%s {darkGray}(%s%s{bright red}%s{darkGray})%s', name, numericStr, suffix, filterStr, unitStr);
+                    desc{i} = sprintf('{purple}%s {green}(%s%s{bright red}%s{green})%s', name, numericStr, suffix, filterStr, unitStr);
                 end
             end
         end
