@@ -50,7 +50,8 @@ function nTimepointsOverlap = computeBestOverlap(dataPre, dataPost, minOverlap, 
         X = X(keep, :);
         Y = Y(keep, :);
         
-        % dist(x, y) is the distance between X(x) and Y(y)
+        % X and Y are (bases x maxOverlap time) ,  or (bases * conditions x maxOverlap time) if commonAcrossTrajectories
+        % dist(i, j) is the squared distance between X(:, i) and Y(:, j) (note transposed X and Y in call to pdist2 below)
         % dist is maxOverlap x maxOverlap
         dist = pdist2(X', Y', 'squaredeuclidean');
 

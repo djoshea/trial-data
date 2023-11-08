@@ -7360,6 +7360,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser();
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
             p.addParameter('includePadding', false, @islogical);
+            p.addParameter('alignTimeOffsets', [], @(x) isempty(x) || isvector(x));
             p.parse(varargin{:});
             
             % select alignment indices
@@ -7400,7 +7401,7 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
 
-            if isempty(td.manualAlignTimeOffsets)
+            if isempty(td.manualAlignTimeOffsets) && isempty(p.Results.alignTimeOffsets)
                 offsets = nan(nAlign, 1);
                 offsets(1) = 0;
                 currentOffset = 0;
@@ -7428,7 +7429,15 @@ classdef TrialDataConditionAlign < TrialData
                     offsets(iAlign) = currentOffset;
                 end
             else
-                offsets = td.manualAlignTimeOffsets(alignIdx);
+                if ~isempty(p.Results.alignTimeOffsets)
+                    offsets = p.Results.alignTimeOffsets;
+                    if numel(offsets) == nAlign - 1
+                        offsets = [0; offsets];
+                    end
+                    offsets = offsets(alignIdx);
+                else
+                    offsets = td.manualAlignTimeOffsets(alignIdx);
+                end
             end
 
             lims = [mins + offsets, maxs + offsets];
@@ -8141,10 +8150,11 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeAxisStyle', 'tickBridge', @isstringlike);
             p.addParameter('alignIdx', 1:td.nAlign, @(x) true);
             p.addParameter('retInfo', struct(), @isstruct);
+            p.addParameter('alignTimeOffsets', [], @isvector);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            alignTimeOffsets = td.getAlignPlottingTimeOffsets(p.Results.time, 'alignIdx', p.Results.alignIdx);
+            alignTimeOffsets = td.getAlignPlottingTimeOffsets(p.Results.time, 'alignIdx', p.Results.alignIdx, 'alignTimeOffsets', p.Results.alignTimeOffsets);
             res = rmfield(p.Results, 'timeAxisStyle');
             res.xAxisStyle = p.Results.timeAxisStyle;
             
@@ -8665,7 +8675,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('conditionDescriptor', [], @(x) isa(x, 'ConditionDescriptor'));
             p.addParameter('alignSummarySet', [], @iscell);
             p.addParameter('alignInfoActiveIdx', 1, @isscalar);
-            p.addParameter('alignTimeOffsets', [], @isvector);
+            p.addParameter('alignTimeOffsets', [], @(x) isempty(x) || isvector(x));
 
             p.addParameter('xOffset', 0, @isscalar);
             p.addParameter('yOffset', 0, @isscalar);
