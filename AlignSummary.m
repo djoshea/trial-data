@@ -354,7 +354,10 @@ classdef AlignSummary
             
             % fix value lists to their current values before converting to
             % condition descriptor
-            conditionInfo = conditionInfo.fixAllValueLists();
+            % this withValid step is probably not necessary as TDCA usually coordinates conditionInfo.manualInvalid
+            % to account for trials marked invalid by the alignInfo, but just in case.
+            valid = alignInfo.valid & conditionInfo.valid;
+            conditionInfo = conditionInfo.fixAllValueLists('withValid', valid);
             as.conditionDescriptor = ConditionDescriptor.fromConditionDescriptor(conditionInfo);
             
             % request aligned, ungrouped data for start/stop/marks/intervals

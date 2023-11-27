@@ -768,7 +768,7 @@ classdef ConditionInfo < ConditionDescriptor
         end
 
         function valueListByAxes = buildAxisValueLists(ci)
-            % uses ConditionDescriptor's implementation but deals with
+            % uses ConditionDescriptor's implementation but deals with valid trials
             valueListByAxes = buildAxisValueLists@ConditionDescriptor(ci);
             if ~ci.applied
                 return;
@@ -780,7 +780,7 @@ classdef ConditionInfo < ConditionDescriptor
             matchesFilters = ci.getAttributeMatchesOverTrials(valueList);
             validTrials(~matchesFilters) = false;
 
-            % and exclude trials with invalid trials on the *manually*
+            % and exclude trials with invalid values on the *manually*
             % specified axes
             for iX = 1:ci.nAxes
                 switch ci.axisValueListModes(iX)
@@ -844,8 +844,8 @@ classdef ConditionInfo < ConditionDescriptor
                         for iV = 1:nValues % loop over each value in value list
                             valsThis = valueStruct(iV).(fields{iF});
 
-                            if isempty(valsThis)
-                                % empty is a wildcard match
+                            if isempty(valsThis) && isnumeric(valsThis)
+                                % empty is a wildcard match, but only if it's numeric
                                 continue;
                             end
 
@@ -1350,10 +1350,23 @@ classdef ConditionInfo < ConditionDescriptor
             end
         end
 
-        function ci = fixAllValueLists(ci)
+        function ci = fixAllValueLists(ci, varargin)
+            p = inputParser();
+            p.addParameter('withValid', [], @(x) isempty(x) || isvector(x));
+            p.parse(varargin{:});
+            withValid = p.Results.withValid;
+
             ci.warnIfNoArgOut(nargout);
+
+            % we might want to provide this in order to keep the lists stationary if some trials are invalid by the alignment
+            % or marked invalid in TrialData manually
+            orig_manualInvalid = ci.manualInvalid;
+            ci.manualInvalid = ~withValid;
+
             ci = ci.fixAllAttributeValueLists();
             ci = ci.fixAllAxisValueLists();
+
+            ci.manualInvalid = orig_manualInvalid;
         end
     end
 
