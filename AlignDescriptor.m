@@ -558,7 +558,7 @@ classdef AlignDescriptor
             ad.zeroEvent = 'TrialStart';
 
             % either use named property value pairs or string syntax
-            if nargin == 1 && ischar(varargin{1})
+            if nargin == 1 && isstringlike(varargin{1})
                 ad = ad.parseDescriptionString(varargin{1});
             elseif nargin == 1 && isa(varargin{1}, 'AlignDescriptor')
                 ad = ad.copyFromAlignDescriptor(varargin{1});
@@ -920,8 +920,8 @@ classdef AlignDescriptor
             p = inputParser;
             p.addOptional('offset', 0, @(x) isnumeric(x) && isscalar(x));
             p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
-            p.addParameter('as', AlignDescriptor.AUTO, @ischar);
-            p.addParameter('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
+            p.addParameter('as', AlignDescriptor.AUTO, @isstringlike);
+            p.addParameter('color', [], @(x) isempty(x) || isstringlike(x) || isvector(x));
             p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
@@ -1333,6 +1333,7 @@ classdef AlignDescriptor
 
             ad.warnIfNoArgOut(nargout);
 
+            str = char(str);
             str = strtrim(str);
             [startStopZero, remain] = strtok(str, ',');
 

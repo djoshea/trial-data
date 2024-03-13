@@ -254,7 +254,7 @@ classdef TrialDataConditionAlign < TrialData
             % since this isn't computed on demand, a copy is needed
             c = td.odc.copy();
 
-            if ischar(eventsUpdate)
+            if isstringlike(eventsUpdate)
                 eventsUpdate = {eventsUpdate};
             end
 
@@ -884,7 +884,7 @@ classdef TrialDataConditionAlign < TrialData
             % for event channels, the first event occurrence time will be
             % used, relative to the current alignment zero.
 
-            if ischar(names)
+            if isstringlike(names)
                 wasChar = true;
                 names = {names};
             else
@@ -902,12 +902,12 @@ classdef TrialDataConditionAlign < TrialData
                 if isa(cd, 'EventChannelDescriptor')
                     % the event time will be referenced from the current
                     % zero event
-                    nameMod = matlab.lang.makeValidName(sprintf('%s_from_%s', name, td.alignInfoActive.zeroLabel));
+                    nameMod = matlab.lang.makeValidName(sprintf("%s_from_%s", name, td.alignInfoActive.zeroLabel));
                     values = td.getEventFirst(name);
 
                 elseif isa(cd, 'AnalogChannelDescriptor')
                     % take analog sample at zero time
-                    nameMod = matlab.lang.makeValidName(sprintf('%s_at_%s', name, td.alignInfoActive.zeroLabel));
+                    nameMod = matlab.lang.makeValidName(sprintf("%s_at_%s", name, td.alignInfoActive.zeroLabel));
                     values = td.getAnalogSample(name);
 
                 elseif isa(cd, 'ParamChannelDescriptor')
@@ -1094,7 +1094,7 @@ classdef TrialDataConditionAlign < TrialData
         function td = sortWithinConditionsBy(td, attrList, varargin)
             td.warnIfNoArgOut(nargout);
 
-            if ischar(attrList)
+            if isstringlike(attrList)
                 attrList = {attrList};
             end
 
@@ -1197,7 +1197,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = setAttributeValueListDisplayAs(td, attrName, displayAs)
             td.warnIfNoArgOut(nargout);
-            if ischar(attrName)
+            if isstringlike(attrName)
                 td = td.addAttribute(attrName);
             end
             td.conditionInfo = td.conditionInfo.setAttributeValueListDisplayAs(attrName, displayAs);
@@ -1551,8 +1551,8 @@ classdef TrialDataConditionAlign < TrialData
                 if iscell(ad)
                     error('Please provide alignDescriptors as successive arguments');
                 end
-                if ischar(ad) || isstring(ad)
-                    adSet{i} = AlignInfo(char(ad));
+                if isstringlike(ad)
+                    adSet{i} = AlignInfo(string(ad));
                 else
                     if isa(ad, 'AlignDescriptor')
                         % convert to AlignInfo
@@ -1752,9 +1752,9 @@ classdef TrialDataConditionAlign < TrialData
         function td = mark(td, eventStr, varargin)
             p = inputParser;
             p.addOptional('offset', 0, @isscalar);
-            p.addParameter('index', [], @(x) isempty(x) || ischar(x) || isscalar(x));
-            p.addParameter('as', AlignDescriptor.AUTO, @ischar);
-            p.addParameter('color', [], @(x) isempty(x) || ischar(x) || isvector(x));
+            p.addParameter('index', [], @(x) isempty(x) || isstringlike(x) || isscalar(x));
+            p.addParameter('as', AlignDescriptor.AUTO, @isstringlike);
+            p.addParameter('color', [], @(x) isempty(x) || isstringlike(x) || isvector(x));
             p.addParameter('appear', [], @(x) isempty(x) || isa(x, 'AppearanceSpec'));
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
@@ -1804,8 +1804,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('offsetStart', 0, @isscalar);
             p.addParameter('offsetStop', 0, @isscalar);
-            p.addParameter('indexStart', ':', @(x) ischar(x) || isscalar(x));
-            p.addParameter('indexStop', ':', @(x) ischar(x) || isscalar(x));
+            p.addParameter('indexStart', ':', @(x) isstringlike(x) || isscalar(x));
+            p.addParameter('indexStop', ':', @(x) isstringlike(x) || isscalar(x));
             p.addParameter('as', AlignDescriptor.AUTO, @isstringlike);
             p.addParameter('appear', AppearanceSpec(), @(x) isa(x, 'AppearanceSpec'));
             p.addParameter('color', [], @(x) true);
@@ -1841,8 +1841,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showOnData', true, @islogical);
             p.addParameter('showOnAxis', true, @islogical);
 
-            p.addParameter('eventStart', '', @ischar);
-            p.addParameter('eventStop', '', @ischar);
+            p.addParameter('eventStart', '', @isstringlike);
+            p.addParameter('eventStop', '', @isstringlike);
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
@@ -2615,8 +2615,8 @@ classdef TrialDataConditionAlign < TrialData
         function [data, time] = getAnalog(td, name, varargin)
             p = inputParser;
             p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || isscalar(x) || isstringlike(x) || isa(x, 'function_handle'))
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('includeEdgeBins', false, @islogical);
@@ -2739,7 +2739,7 @@ classdef TrialDataConditionAlign < TrialData
                 if isa(sub, 'function_handle')
                     % call it on each element of data
                     subValues = cellfun(sub, data);
-                elseif ischar(sub)
+                elseif isstringlike(sub)
                     % treat as parameter value
                     subValues = td.getParam(sub);
                 elseif isscalar(sub)
@@ -2900,13 +2900,13 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @(x) isscalar(x) || isempty(x));
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
 
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
 
-            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('interpolateMethod', 'linear', @isstringlike); % see interp1 for details
             p.addParameter('assumeUniformSampling', false, @islogical);
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
@@ -3178,9 +3178,9 @@ classdef TrialDataConditionAlign < TrialData
              % aligned time for each trial. Guaranteed to be scalar per
              % trial, i.e. vector over trials
              p = inputParser;
-             p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || ischar(x) || isa(x, 'function_handle'))
-             p.addParameter('subtractTrialBaselineAt', '', @ischar);
-             p.addParameter('subtractConditionBaselineAt', '', @ischar);
+             p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || isstringlike(x) || isa(x, 'function_handle'))
+             p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+             p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
              p.addParameter('singleTimepointTolerance', Inf, @isscalar);
              p.parse(varargin{:});
              if ~td.alignInfoActive.isStartStopEqual
@@ -3221,7 +3221,7 @@ classdef TrialDataConditionAlign < TrialData
                 if isa(sub, 'function_handle')
                     % call it on each element of data
                     subValues = arrayfun(sub, dataVec);
-                elseif ischar(sub)
+                elseif isstringlike(sub)
                     % treat as parameter value
                     subValues = td.getParam(sub);
                 elseif isscalar(sub)
@@ -3295,8 +3295,8 @@ classdef TrialDataConditionAlign < TrialData
             % in order to normalize appropriately
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
-            p.addParameter('interpolateMethod', 'linear', @ischar);
-            p.addParameter('resampleMethod', 'interp', @ischar); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike);
+            p.addParameter('resampleMethod', 'interp', @isstringlike); % valid modes are filter, average, repeat , interp
             p.addParameter('smoothing', NaN, @(x) isnan(x) || (isscalar(x) && mod(x, 2) == 1));
             p.addParameter('smoothingMs', NaN, @isscalar); %
             p.addParameter('differentiationOrder', 1, @isscalar);
@@ -3669,17 +3669,17 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('singleTimepointTolerance', Inf, @isscalar);
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('includeEdgeBins', false, @islogical);
-            p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || ischar(x) || isa(x, 'function_handle'))
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaseline', [], @(x) isempty(x) || isvector(x) || isstringlike(x) || isa(x, 'function_handle'))
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
 
             % if these are specified, the data for each trial will be resampled
             p.addParameter('ensureUniformSampling', false, @islogical);
             p.addParameter('timeDelta', []);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
-            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike);
 
             p.addParameter('sliceSelectSubChannels', {}, @(x) true);
             p.addParameter('slice', {}, @(x) true); % subscript args to slice the data from each sample
@@ -3862,9 +3862,7 @@ classdef TrialDataConditionAlign < TrialData
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
-            if ischar(name)
-                name = {name};
-            end
+            name = string(name);
             nChannels = numel(name);
 
             % apply subtractTrialBaseline, if its a cell, feed individually for each channel
@@ -3904,7 +3902,7 @@ classdef TrialDataConditionAlign < TrialData
 
             p = inputParser;
             p.addParameter('timeDelta', [], @(x) isempty(x) || isscalar(x));
-            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('interpolateMethod', 'linear', @isstringlike); % see interp1 for details
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
@@ -3994,8 +3992,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
-            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike);
             p.addParameter('assumeUniformSampling', false, @islogical);
 
             p.addParameter('includePadding', false, @islogical);
@@ -4056,8 +4054,8 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
-            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike);
 
             p.addParameter('minTrials', 0, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar);
@@ -4297,7 +4295,7 @@ classdef TrialDataConditionAlign < TrialData
             % (nTrials can be nTrialsValid if parameter
             % ''dataSpansValidTrialsOnly'' is true
             p = inputParser();
-            p.addOptional('times', [], @(x) ~ischar(x) && (iscell(x) || ismatrix(x)));
+            p.addOptional('times', [], @(x) ~isstringlike(x) && (iscell(x) || ismatrix(x)));
             p.addParameter('preserveContinuity', false, @islogical);
             p.addParameter('clearOverlappingTimesOutsideAlignWindow', false, @islogical);
             p.addParameter('keepScaling', false, @islogical);
@@ -4854,13 +4852,13 @@ classdef TrialDataConditionAlign < TrialData
             p.addRequired('dataY', @(x) isnumeric(x) || iscell(x));
             p.addOptional('dataZ', [], @(x) isnumeric(x) || iscell(x));
 
-            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoX', [], @(x) isempty(x) || isstringlike(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoY', [], @(x) isempty(x) || isstringlike(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoZ', [], @(x) isempty(x) || isstringlike(x) || isa(x, 'ChannelDescriptor'));
 
             p.addParameter('scaleBars', false, @islogical);
-            p.addParameter('axisStyleX', 'tickBridge', @ischar);
-            p.addParameter('axisStyleY', 'tickBridge', @ischar);
+            p.addParameter('axisStyleX', 'tickBridge', @isstringlike);
+            p.addParameter('axisStyleY', 'tickBridge', @isstringlike);
 
             p.addParameter('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParameter('plotOptions', {}, @(x) iscell(x));
@@ -5011,7 +5009,7 @@ classdef TrialDataConditionAlign < TrialData
             % list).
 
             p = inputParser();
-            p.addParameter('errorType', 'sem', @ischar);
+            p.addParameter('errorType', 'sem', @isstringlike);
             p.addParameter('LineWidth', 1, @isscalar);
             p.addParameter('connectMissing', false, @islogical);
             p.addParameter('xJitter', 0, @isscalar);
@@ -5387,7 +5385,7 @@ classdef TrialDataConditionAlign < TrialData
                 getSpikeBinnedCountsGroupMeans(td, varargin)
             % *Mat will be nConditions x T matrices
             p = inputParser();
-            p.addRequired('unitName', @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addRequired('unitName', @(x) isstringlike(x) || iscellstr(x) || isstring(x));
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
@@ -5438,7 +5436,7 @@ classdef TrialDataConditionAlign < TrialData
             % *Mat will be nConditions x T matrices
             import TrialDataUtilities.Data.nanMeanSemMinCount;
             p = inputParser();
-            p.addRequired('unitName', @ischar);
+            p.addRequired('unitName', @isstringlike);
             p.addParameter('minTrials', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('minTrialFraction', [], @(x) isempty(x) || isscalar(x)); % minimum trial count to average
             p.addParameter('removeZeroSpikeTrials', false, @islogical);
@@ -6146,7 +6144,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function plotTuningCurve(td, unitName, varargin)
             p = inputParser;
-            p.addParameter('errorType', 'sem', @ischar);
+            p.addParameter('errorType', 'sem', @isstringlike);
             p.addParameter('LineWidth', 1, @isscalar);
             p.KeepUnmatched = true;
             p.CaseSensitive = false;
@@ -6266,7 +6264,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = maskSpikeChannelSpikes(td, ch, mask, varargin)
             p = inputParser();
-            p.addParameter('keepRemovedSpikesAs', '', @ischar);
+            p.addParameter('keepRemovedSpikesAs', '', @isstringlike);
             p.parse(varargin{:});
 
             td.warnIfNoArgOut(nargout);
@@ -6866,7 +6864,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('spikeColorMap', def_cmap, @(x) true);
 %             p.addParameter('spikeColor', 'k', @(x) true);
             p.addParameter('colorSpikesLikeCondition', false, @islogical);
-            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @isstringlike);
             p.addParameter('timeAxisTickBridgeExtendToLimits', true, @islogical);
             p.addParameter('tickHeight', 1, @isscalar);
             p.addParameter('tickWidth', 1, @isscalar);
@@ -7520,13 +7518,13 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('yOffsetBetweenTrials', 0, @isscalar);
             p.addParameter('yOffsetBetweenConditions', [], @isscalar);
 
-            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoX', [], @(x) isempty(x) || isstringlike(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoY', [], @(x) isempty(x) || isstringlike(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoZ', [], @(x) isempty(x) || isstringlike(x) || isa(x, 'ChannelDescriptor'));
 
             p.addParameter('scaleBars', false, @islogical);
-            p.addParameter('axisStyleX', 'tickBridge', @ischar);
-            p.addParameter('axisStyleY', 'tickBridge', @ischar);
+            p.addParameter('axisStyleX', 'tickBridge', @isstringlike);
+            p.addParameter('axisStyleY', 'tickBridge', @isstringlike);
 
             p.addParameter('conditionIdx', 1:td.nConditions, @isnumeric);
             p.addParameter('alignIdx', [], @isnumeric);
@@ -7553,7 +7551,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('useThreeVector', true, @islogical);
             p.addParameter('useTranslucentMark3d', false, @islogical);
 
-            p.addParameter('sortOrderMode', 'byTrial', @ischar); % byTrial, byCondition
+            p.addParameter('sortOrderMode', 'byTrial', @isstringlike); % byTrial, byCondition
 
             p.addParameter('quick', false, @islogical);
             p.addParameter('clickable', false, @islogical); % make interactive and clickable
@@ -7811,7 +7809,7 @@ classdef TrialDataConditionAlign < TrialData
                                 tOffset = timeOffsetByAlign(iAlign);
                                 yOffset = yOffsets(iTrial);
 
-                                if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
+                                if isstringlike(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                                     xvec = dvec;
                                     yvec = tvec;
                                 else
@@ -7958,7 +7956,7 @@ classdef TrialDataConditionAlign < TrialData
 %                 axisStyleZ = 'label';
             end
             if D == 1
-                if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
+                if isstringlike(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                     % x is data, y is time
                     if ~isempty(p.Results.axisInfoX)
                         TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...
@@ -8052,14 +8050,14 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupedEachTrial(td, name, varargin)
             p = inputParser;
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.addParameter('ensureUniformSampling', false, @islogical);
             p.addParameter('timeDelta', []);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
-            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike);
 
             p.KeepUnmatched = true;
             p.parse(varargin{:});
@@ -8086,13 +8084,13 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupedEachTrial2D(td, name1, name2, varargin)
             p = inputParser;
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.addParameter('timeDelta', []);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
-            p.addParameter('interpolateMethod', 'linear', @ischar);
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -8108,8 +8106,8 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupedEachTrial2DvsTime(td, name1, name2, varargin)
             p = inputParser;
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -8124,8 +8122,8 @@ classdef TrialDataConditionAlign < TrialData
         function plotAnalogGroupedEachTrial3D(td, name1, name2, name3, varargin)
             p = inputParser;
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -8177,8 +8175,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('timeDelta', [], @isscalar);
             p.addParameter('timeReference', 0, @isscalar);
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
-            p.addParameter('resampleMethod', 'filter', @ischar); % valid modes are filter, average, repeat , interp
-            p.addParameter('interpolateMethod', 'linear', @ischar); % see interp1 for details
+            p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
+            p.addParameter('interpolateMethod', 'linear', @isstringlike); % see interp1 for details
             p.addParameter('assumeUniformSampling', false, @islogical);
 
             p.addParameter('minTrials', 1, @isscalar);
@@ -8187,11 +8185,11 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('showSem', true, @islogical);
             p.addParameter('showRandomizedQuantiles', [], @(x) isempty(x) || isvector(x));
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.addParameter('subtractConditionDescriptor', [], @(x) isempty(x) || isa(x, 'ConditionDescriptor'));
 
-            p.addParameter('label', '', @ischar);
+            p.addParameter('label', '', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             
@@ -8267,8 +8265,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', 1, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -8300,8 +8298,8 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrials', 1, @isscalar);
             p.addParameter('minTrialFraction', 0, @isscalar); % minimum fraction of trials required for average
             p.addParameter('subtractTrialBaseline', [], @(x) true);
-            p.addParameter('subtractTrialBaselineAt', '', @ischar);
-            p.addParameter('subtractConditionBaselineAt', '', @ischar);
+            p.addParameter('subtractTrialBaselineAt', '', @isstringlike);
+            p.addParameter('subtractConditionBaselineAt', '', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -8426,7 +8424,7 @@ classdef TrialDataConditionAlign < TrialData
     methods
         function plotSingleTrialAnalogChannels(td, varargin)
             p = inputParser();
-            p.addOptional('channels', td.listAnalogChannels(), @(x) ischar(x) || iscellstr(x) || isstring(x));
+            p.addOptional('channels', td.listAnalogChannels(), @(x) isstringlike(x) || iscellstr(x) || isstring(x));
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
             p.addParameter('trialIdx', [], @isvector); % selection into all trials
             p.addParameter('normalize', true, @islogical);
@@ -8434,7 +8432,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('quick', false, @islogical);
             p.addParameter('commonTime', false, @islogical);
             p.addParameter('channelLabels', {}, @iscellstr);
-            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @isstringlike);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -8492,9 +8490,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('trialIdx', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x))); % selection into all trials
             p.addParameter('validTrialIdx', [], @isvector); % selection into valid trials
             p.addParameter('arrayNames', [], @isstringlike);
-            p.addParameter('unitNames', [], @(x) ischar(x) || isstring(x) || iscellstr(x));
+            p.addParameter('unitNames', [], @(x) isstringlike(x));
             p.addParameter('alignIdx', 1:td.nAlign, @isvector);
-            p.addParameter('timeAxisStyle', 'tickBridge', @ischar);
+            p.addParameter('timeAxisStyle', 'tickBridge', @isstringlike);
             p.addParameter('tickHeight', 1, @isscalar);
 %             % if true, draw spike waveforms instead of ticks
             p.addParameter('drawSpikeWaveforms', false, @islogical);
@@ -8681,19 +8679,19 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('yOffset', 0, @isscalar);
             p.addParameter('zOffset', 0, @isscalar);
 
-            p.addParameter('axisInfoX', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoY', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
-            p.addParameter('axisInfoZ', [], @(x) isempty(x) || ischar(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoX', [], @(x) isempty(x) || isstringlike(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoY', [], @(x) isempty(x) || isstringlike(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
+            p.addParameter('axisInfoZ', [], @(x) isempty(x) || isstringlike(x) || isstruct(x) || isa(x, 'ChannelDescriptor'));
 
-            p.addParameter('labelX', '', @ischar);
-            p.addParameter('labelY', '', @ischar);
-            p.addParameter('labelZ', '', @ischar);
+            p.addParameter('labelX', '', @isstringlike);
+            p.addParameter('labelY', '', @isstringlike);
+            p.addParameter('labelZ', '', @isstringlike);
 
             p.addParameter('scaleBars', false, @islogical);
-            p.addParameter('axisStyleX', 'tickBridge', @ischar);
-            p.addParameter('axisStyleY', 'tickBridge', @ischar);
+            p.addParameter('axisStyleX', 'tickBridge', @isstringlike);
+            p.addParameter('axisStyleY', 'tickBridge', @isstringlike);
 
-            p.addParameter('style', 'line', @ischar); % line, stairs
+            p.addParameter('style', 'line', @isstringlike); % line, stairs
             p.addParameter('binAlignmentMode', BinAlignmentMode.Acausal, @(x) isa(x, 'BinAlignmentMode')); % used for stairs style to draw the staircase appropriately
             p.addParameter('binWidth', 0, @isscalar); % used for stairs to draw the staircase appropriately
 
@@ -9015,7 +9013,7 @@ classdef TrialDataConditionAlign < TrialData
             % setup non-time axes
             if ~p.Results.quick
                 if D == 1
-                    if ischar(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
+                    if isstringlike(p.Results.axisInfoY) && strcmp(p.Results.axisInfoY, 'time')
                         % x is data, y is time
                         if ~isempty(p.Results.axisInfoX)
                             TrialDataUtilities.Plotting.setupAxisForChannel(p.Results.axisInfoX, ...

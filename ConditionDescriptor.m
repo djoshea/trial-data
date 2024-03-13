@@ -62,7 +62,7 @@ classdef ConditionDescriptor
     end
 
     properties
-        description = '';
+        description (1, 1) string = "";
 
         % updates cache on set
 
@@ -75,7 +75,7 @@ classdef ConditionDescriptor
         appearanceFn; % function which takes struct('attrName1', attrVal1, 'attrName2', attrVal2)
                       % and returns struct('color', 'k', 'lineWidth', 2, ...);
 
-        logicalNotPrefix = 'Non-';
+        logicalNotPrefix (1, 1) string = "Non-";
         includeUnits = true;
     end
 
@@ -98,17 +98,17 @@ classdef ConditionDescriptor
         appearanceLineWidthByAxesMap
 
         % A x 1 : by attribute
-        attributeNames = {}; % A x 1 cell array : list of attributes for each dimension
+        attributeNames (:, 1) string = strings(0, 1); % A x 1 cell array : list of attributes for each dimension
 %         attributeRequestAs = {}; % A x 1 cell array : list of names by which each attribute should be requested corresponding to attributeNames
         attributeDisplayAsManual = {}; % .attributeName = attribute display name for attributeName,
 
         axisAttributes % G x 1 cell : each is cellstr of attributes utilized along that grouping axis
 
-        attributeSortByList = {}; % cellstr of attribute names (or '-attribute') specifying how to sort trials within each condition list
+        attributeSortByList (:, 1) string = strings(0, 1); % cellstr of attribute names (or '-attribute') specifying how to sort trials within each condition list
     end
 
     properties(SetAccess=protected, Hidden)
-        attributeUnits = {}; % A x 1 cellstr array of units associated with each attribute, used for generating names
+        attributeUnits (:, 1) string = strings(0, 1); % A x 1 cellstr array of units associated with each attribute, used for generating names
         attributeNumeric = []; % A x 1 logical array : is this attribute a numeric value?
         attributeAsVector = []; % A x 1 logical array : is this attribute collectible as a vector
         attributeValueListsManual = {}; % A x 1 cell array of permitted values (or cells of values) for this attribute
@@ -121,8 +121,8 @@ classdef ConditionDescriptor
         axisValueListsManual % G x 1 cell of cells: each contains a struct specifying an attribute specification for each element along the axis
         axisValueListsOccupiedOnly % G x 1 logical indicating whether to constrain the combinatorial valueList to only occupied elements (with > 0 trials)
 
-        axisValueListsAsStringsManual = {}; % G x 1 array of cellstr which define manual settings for axisValueListsAsStrings
-        axisValueListsAsStringsShortManual = {}; % G x 1 array of cells which define manual settings for axisValueListsAsStringsShort
+        axisValueListsAsStringsManual (:, 1) cell = {}; % G x 1 array of cellstr which define manual settings for axisValueListsAsStrings
+        axisValueListsAsStringsShortManual (:, 1) cell = {}; % G x 1 array of cells which define manual settings for axisValueListsAsStringsShort
 
         axisRandomizeModes % G x 1 numeric of constants beginning with Axis* (see below)
         axisRandomizeWithReplacement % G x 1 logical indicating whether ot not to use replacement
@@ -489,10 +489,10 @@ classdef ConditionDescriptor
         end
 
         function names = get.axisNames(ci)
-            names = cellvec(ci.nAxes);
+            names = strings(ci.nAxes, 1);
             for iX = 1:ci.nAxes
-                attr = ci.axisAttributes{iX};
-                names{iX} = TrialDataUtilities.String.strjoin(attr, ' x ');
+                attr = string(ci.axisAttributes{iX});
+                names(iX) = TrialDataUtilities.String.strjoin(attr, " x ");
             end
         end
 
@@ -502,13 +502,12 @@ classdef ConditionDescriptor
 
         function str = get.randomizationDescription(ci)
             isRand = ci.axisRandomizeModes ~= ci.AxisOriginal;
-            axisModeStr = cellfun(@(name, mode) sprintf('%s %s', name, mode), ...
-                ci.axisNames(isRand), ci.axisRandomizeModesAsStrings(isRand), ...
-                'UniformOutput', false);
+            axisModeStr = cellfun(@(name, mode) sprintf("%s %s", name, mode), ...
+                ci.axisNames(isRand), ci.axisRandomizeModesAsStrings(isRand));
             if ci.isResampledWithinConditions
-                axisModeStr{end+1} = 'trials resampled within conditions';
+                axisModeStr(end+1) = "trials resampled within conditions";
             end
-            str = TrialDataUtilities.String.strjoin(axisModeStr, ', ');
+            str = TrialDataUtilities.String.strjoin(axisModeStr, ", ");
         end
 
         function desc = generateAxisDescriptions(ci, useColor)
@@ -621,9 +620,8 @@ classdef ConditionDescriptor
             ci.axisAttributes{idx} = makecol(attr);
             ci.axisAttributes = makecol(ci.axisAttributes);
             ci.axisValueListsManual{idx} = valueList;
-            ci.axisValueListsAsStringsManual{idx} = {};
-            ci.axisValueListsAsStringsManual{idx} = {};
-            ci.axisValueListsAsStringsShortManual{idx} = {};
+            ci.axisValueListsAsStringsManual{idx} = strings(0, 1);
+            ci.axisValueListsAsStringsShortManual{idx} = strings(0, 1);
             ci.axisRandomizeModes(idx) = ci.AxisOriginal;
             ci.axisRandomizeWithReplacement(idx) = false;
             ci.axisRandomizeResampleFromList{idx} = [];
@@ -982,15 +980,15 @@ classdef ConditionDescriptor
                 return;
             end
 
-            if ischar(attr)
-                attr = {attr};
+            if isstringlike(attr)
+                % this is a spec for a single axis, we need to wrap it in a cell,
+                % to support multi-axis lookup
+                attr = {string(attr)};
             end
-            if iscellstr(attr)
-                attr = {attr};
-            end
+            
             for iAttr = 1:numel(attr)
-                if ~iscell(attr{iAttr})
-                    attr{iAttr} = attr(iAttr);
+                if ~isstring(attr{iAttr})
+                    attr{iAttr} = string(attr{iAttr});
                 end
             end
 
@@ -1954,8 +1952,8 @@ classdef ConditionDescriptor
             p.addParameter('asVector', false, @islogical);
             p.parse(name, varargin{:});
             valueList = p.Results.valueList;
-            if isstring(valueList)
-                valueList = cellstr(valueList);
+            if iscellstr(valueList) %#ok<ISCLSTR>
+                valueList = string(valueList);
             end
 
             [tf, iAttr] = ci.hasAttribute(name);
@@ -1964,8 +1962,8 @@ classdef ConditionDescriptor
             else
                 iAttr = ci.nAttributes + 1;
             end
-            ci.attributeNames{iAttr} = char(name);
-            ci.attributeUnits{iAttr} = p.Results.units;
+            ci.attributeNames(iAttr) = string(name);
+            ci.attributeUnits(iAttr) = string(p.Results.units);
             if isempty(valueList)
                 ci.attributeNumeric(iAttr) = p.Results.numeric;
             else
@@ -3023,10 +3021,13 @@ classdef ConditionDescriptor
                 if nConditions > 37
                     cmap = jet(nConditions);
                 else
-                    cmap = cat(1, TrialDataUtilities.Color.cbrewer('qual', 'Set1'), ...
-                        TrialDataUtilities.Color.cbrewer('qual', 'Paired'), ...
-                        TrialDataUtilities.Color.cbrewer('qual', 'Accent'), ...
-                        TrialDataUtilities.Color.cbrewer('qual', 'Dark2'));
+                    % cmap = Glasbey.create_palette(nConditions, grid_space="JCh", chroma_bounds=[10 70], lightness_bounds=[20 80]);
+                    % cmap = get_palette('batlow', nConditions);
+                    cmap = TrialDataUtilities.Colormaps.linspecer(nConditions);
+                    % cmap = cat(1, TrialDataUtilities.Color.cbrewer('qual', 'Set1'), ...
+                    %     TrialDataUtilities.Color.cbrewer('qual', 'Paired'), ...
+                    %     TrialDataUtilities.Color.cbrewer('qual', 'Accent'), ...
+                    %     TrialDataUtilities.Color.cbrewer('qual', 'Dark2'));
                 end
             end
 
@@ -3110,7 +3111,7 @@ classdef ConditionDescriptor
 
         function cd = createManualWithSize(sz, varargin)
             p = inputParser();
-            p.addParameter('axisNames', {}, @iscellstr);
+            p.addParameter('axisNames', {}, @isstringlike);
             p.addParameter('valuesAlongAxes', {}, @iscell);
             p.parse(varargin{:});
 
@@ -3120,12 +3121,12 @@ classdef ConditionDescriptor
 
             if isempty(p.Results.axisNames)
                 if nAxes == 1
-                    axisNames = {'condition'};
+                    axisNames = "condition";
                 else
-                    axisNames = arrayfun(@(i) sprintf('a%d', i), (1:nAxes)', 'UniformOutput', false);
+                    axisNames = arrayfun(@(i) sprintf("a%d", i), (1:nAxes)');
                 end
             else
-                axisNames = p.Results.axisNames;
+                axisNames = string(p.Results.axisNames);
             end
             if isempty(p.Results.valuesAlongAxes)
                 valuesAlongAxes = cell(nAxes, 1);
@@ -3137,7 +3138,7 @@ classdef ConditionDescriptor
             end
 
             for iA = 1:nAxes
-                cd = cd.addAttribute(axisNames{iA}, 'valueList', valuesAlongAxes{iA});
+                cd = cd.addAttribute(axisNames(iA), 'valueList', valuesAlongAxes{iA});
             end
             cd = cd.groupBy(axisNames{:});
             cd = cd.fixAllAxisValueLists();

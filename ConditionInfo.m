@@ -1143,7 +1143,7 @@ classdef ConditionInfo < ConditionDescriptor
                 % since we won't be requesting them
                 p = inputParser;
                 p.KeepUnmatched = true;
-                p.addParameter('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x) || iscategorical(x) || isstring(x));
+                p.addParameter('values', {}, @(x) islogical(x) || isnumeric(x) || iscell(x) || iscategorical(x) || isstringlike(x));
                 p.parse(varargin{:});
 
                 if ismember('values', p.UsingDefaults)
@@ -1162,9 +1162,9 @@ classdef ConditionInfo < ConditionDescriptor
                 % critical to update attribute numeric here!
 
                 % TODO fix this to deal with string arrays correctly
-%                 if isstring(vals)
-%                     vals = cellstr(vals);
-%                 end
+                if iscellstr(vals)
+                    vals = string(vals);
+                end
                 if iscell(vals)
                     ci.attributeNumeric(iAttr) = false;
                     ci.attributeAsVector(iAttr) = false;
