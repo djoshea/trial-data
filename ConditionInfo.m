@@ -1046,10 +1046,10 @@ classdef ConditionInfo < ConditionDescriptor
 
                 % fetch other details as well, units, and numeric status
                 for iA = 1:ci.nAttributes
-                    ci.attributeUnits{iA} = td.getChannelUnitsPrimary(ci.attributeNames{iA});
-                    ci = ci.setAttributeNumeric(iA, td.isChannelNumericScalar(ci.attributeNames{iA}));
+                    ci.attributeUnits(iA) = td.getChannelUnitsPrimary(ci.attributeNames(iA));
+                    ci = ci.setAttributeNumeric(iA, td.isChannelNumericScalar(ci.attributeNames(iA)));
                     % TODO change this back to isChannelScalar
-                    ci = ci.setAttributeAsVector(iA, td.isChannelVectorizable(ci.attributeNames{iA}));
+                    ci = ci.setAttributeAsVector(iA, td.isChannelVectorizable(ci.attributeNames(iA)));
 %                     ci.attributeNumeric(iA) = td.isChannelScalar(ci.attributeNames{iA});
                 end
 

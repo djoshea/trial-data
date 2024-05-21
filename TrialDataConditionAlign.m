@@ -254,9 +254,7 @@ classdef TrialDataConditionAlign < TrialData
             % since this isn't computed on demand, a copy is needed
             c = td.odc.copy();
 
-            if isstringlike(eventsUpdate)
-                eventsUpdate = {eventsUpdate};
-            end
+            eventsUpdate = string(eventsUpdate);
 
             if isempty(td.odc.eventCounts) || isempty(td.odc.eventData)
                 % hasn't been computed yet, no need to update
