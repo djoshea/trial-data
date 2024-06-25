@@ -67,7 +67,7 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     p.addParameter('joinBeforeWithin', NaN, @isnumeric); % indices to search into the post trajectory to find the splice point
     
     % for spline interpolation
-    p.addParameter('interpolateMethod', 'spline', @ischar);
+    p.addParameter('interpolateMethod', 'spline', @isstringlike);
     p.addParameter('interpIgnoreWindow', 15, @isscalar); % ignore these last points around the trjaectories when fitting the spline
     p.addParameter('interpFitWindow', 30, @isscalar); % include these last points as waypoints for the splines, should be bigger than splineIgnore since splineIgnore will be cut out of the middle of this time window pre and post
     
@@ -185,21 +185,21 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
         info.idxFromPost(info.joinIdxInPre(c)+1:end, c) = info.nextIdxInPost(c) : nPost;
     end
     
-    opts.interpolateMethod = p.Results.interpolateMethod;
+    opts.interpolateMethod = string(p.Results.interpolateMethod);
     opts.interpIgnoreWindow = p.Results.interpIgnoreWindow;
     opts.interpFitWindow = p.Results.interpFitWindow;
     
     % do smooth interpolation at the join
-    if strcmp(p.Results.interpolateMethod, 'spline')
+    if strcmp(p.Results.interpolateMethod, "spline")
         dataSpliced = TrialDataUtilities.Splice.interpolateSpline(dataCat, info.joinIdxInPre+1, ...
             p.Results.interpFitWindow, p.Results.interpIgnoreWindow, 'showPlot', showPlot);
 
-    elseif ismember(p.Results.interpolateMethod, {'linear', 'nearest', 'next', 'previous', 'cspline', 'pchip', 'pchip', 'cubic', 'v5cubic'})
+    elseif ismember(char(p.Results.interpolateMethod), {'linear', 'nearest', 'next', 'previous', 'cspline', 'pchip', 'pchip', 'cubic', 'v5cubic'})
         % do linear interpolation
         dataSpliced = TrialDataUtilities.Splice.interpolateLinear(dataCat, info.joinIdxInPre+1, ...
             p.Results.interpolateMethod, p.Results.interpFitWindow, p.Results.interpIgnoreWindow, ...
             'showPlot', showPlot);
-    elseif ismember(p.Results.interpolateMethod, {'', 'none'})
+    elseif ismember(char(p.Results.interpolateMethod), {'', 'none'})
         % do simple concatenation
         dataSpliced = dataCat;
     else

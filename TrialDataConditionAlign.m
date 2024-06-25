@@ -3083,7 +3083,7 @@ classdef TrialDataConditionAlign < TrialData
             else
                 nC = 1;
             end
-            [dCell, tvec, alignIdx] = td.getAnalogAsTensorGroupedEachAlign(name, p.Unmatched);
+            [dCell, tvec, alignIdx] = td.getAnalogAsMatrixGroupedEachAlign(name, p.Unmatched);
             [meanMat, semMat, nTrialsMat, stdMat] = deal(nan(td.nConditions, numel(tvec), nC));
             for iC = 1:td.nConditions
                 if ~isempty(dCell{iC})
@@ -8151,8 +8151,8 @@ classdef TrialDataConditionAlign < TrialData
             p.parse(varargin{:});
 
             alignTimeOffsets = td.getAlignPlottingTimeOffsets(p.Results.time, 'alignIdx', p.Results.alignIdx, 'alignTimeOffsets', p.Results.alignTimeOffsets);
-            res = rmfield(p.Results, 'timeAxisStyle');
-            res.xAxisStyle = p.Results.timeAxisStyle;
+            % res = rmfield(p.Results, 'timeAxisStyle');
+            % res.axisStyleX = p.Results.timeAxisStyle;
             
             retInfo = TrialDataConditionAlign.plotConditionAlignedAnalogDataGroupMeans(D, p.Results, p.Unmatched, ...
                 'conditionDescriptor', td.conditionInfo, ...
