@@ -350,6 +350,17 @@ classdef TensorUtils
             sz = arrayfun(@(d) szAll(d), dims);
         end
 
+        function varargout = sizeMultiDimIndiv(t, dims)
+            % sz = sizeMultiDim(t, dims) : sz(i) = size(t, dims(i))
+            szAll = TensorUtils.expandSizeToNDims(size(t), max(dims));
+            sz = arrayfun(@(d) szAll(d), dims);
+            assert(nargout == numel(sz));
+            varargout = cell(numel(sz), 1);
+            for i = 1:numel(sz)
+                varargout{i} = sz(i);
+            end
+        end
+
         function sz = sizeOtherDims(t, excludeDims, nDims)
             if nargin < 3
                 nDims = ndims(t);
@@ -1418,6 +1429,16 @@ classdef TensorUtils
             end
         end
 
+        function out = permuteDimSubset(in, dims)
+            % like permute, but assumes that all other dims not listed in dims should kept in place
+            all_dims = 1:ndims(in);
+            moved = ismember(all_dims, dims);
+            
+            pdims = all_dims;
+            pdims(moved) = dims;
+
+            out = permute(in, pdims);
+        end
     end
 
     methods(Static) % Slice orienting and repmat
