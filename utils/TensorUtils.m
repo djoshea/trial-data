@@ -811,7 +811,7 @@ classdef TensorUtils
         end
 
         function sel = selectAlongDimensionWithNaNs(t, dim, select, varargin)
-            assert(numel(dim) == 1, 'Must be single dimension');
+            assert(isscalar(dim), 'Must be single dimension');
             nanMask = isnan(select(:));
             selNoNan = TensorUtils.selectAlongDimension(t, dim, select(~nanMask), varargin{:});
             sel = TensorUtils.inflateMaskedTensor(selNoNan, dim, ~nanMask);
