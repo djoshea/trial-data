@@ -1146,8 +1146,8 @@ classdef TensorUtils
         end
 
         function [out, which] = catWhichIgnoreEmpty(dim, varargin)
-            % works like cat, but returns a vector indicating which of the
-            % inputs each element of out came from
+            % works like cat, but ignores any empty entries in varargin
+            % e.g. catWhichInflateEmpty(dim, ones(2, 5, 6), ones(2, 0, 6), ones(2, 5, 6)) --> size will be (4, 5, 6)
 
             isEmpty = cellfun(@isempty, varargin);
             out = cat(dim, varargin{~isEmpty});
@@ -1163,6 +1163,32 @@ classdef TensorUtils
                 % index into the original varargin
                 which = TensorUtils.indicesIntoMaskToOriginalIndices(whichMasked, ~isEmpty);
             end
+        end
+
+        function [out, which] = catWhichInflateEmpty(dim, varargin)
+            % works like cat, but inflates any empty entries in varargin along other dims
+            % e.g. catWhichInflateEmpty(dim, ones(2, 5, 6), ones(2, 0, 6), ones(2, 5, 6)) --> size will be (6, 5, 6)
+
+            nA = numel(varargin);
+            for iA = 1:nA
+                this = varargin{iA};
+                if ~isempty(this)
+                    sz = size(this);
+                    like = this;
+                    break;
+                end
+            end
+
+            for iA = 1:nA
+                this = varargin{iA};
+                if isempty(this)
+                    szThis = sz;
+                    szThis(dim) = size(this, dim);
+                    varargin{iA} = zeros(szThis, like=like);
+                end
+            end
+                
+            [out, which] = TensorUtils.catWhich(dim, varargin{:});
         end
         
         function out = catFillMissingSliceWhereEmpty(dim, varargin)
