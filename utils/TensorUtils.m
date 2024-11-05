@@ -1310,10 +1310,15 @@ classdef TensorUtils
                     % temporary storage of the columns of
                     % labelsByDimOut{iDimOut}, before concatenation
                     labelsThisOut = TensorUtils.cellvec(numel(dimsFromIn));
-                    subsCell = TensorUtils.cellvec(numel(dimsFromIn));
-
-                    % get subscripts for each element in the dimsFromIn slice
-                    [subsCell{1:numel(dimsFromIn)}] = ind2sub(szIn(dimsFromIn), 1:szOut(iDimOut));
+                    
+                    % get subscripts for each element in the dimsFromIn slice (appending 1 to szIn in case dimsFromIn is scalar
+                    if isscalar(dimsFromIn)
+                        subsCell = TensorUtils.cellvec(1);
+                        [subsCell{1}, ~] = ind2sub([szIn(dimsFromIn) 1], 1:szOut(iDimOut));
+                    else
+                        subsCell = TensorUtils.cellvec(numel(dimsFromIn));                        
+                        [subsCell{1:numel(dimsFromIn)}] = ind2sub([szIn(dimsFromIn)], 1:szOut(iDimOut));
+                    end
                     for iDimFromIn = 1:numel(dimsFromIn)
                         % check whether it's a correctly sized row vector and convert to
                         % column vector
@@ -1503,7 +1508,7 @@ classdef TensorUtils
             % out = orientSliceAlongSameDimsAs(slice, refSlice)
             % orient slice such that it has the same shape as refSlice
             spanDim = find(size(refSlice) > 1);
-            if ~isempty(spanDim);
+            if ~isempty(spanDim)
                 out = TensorUtils.orientSliceAlongDims(slice, spanDim);
             else
                 out = slice;
