@@ -50,6 +50,7 @@ p.addParameter('showDataRanges', false, @(x) islogical(x) || ischar(x)); % show 
 p.addParameter('showSpanLines', true, @islogical);
 p.addParameter('dataRangeFormat', '%.4g', @ischar);
 p.addParameter('baseline', [], @(x) true);
+p.addParameter('baselineStyle', "-", @isstringlike);
 p.addParameter('quick', false, @islogical);
 % p.addParameter('lineStyle', '-', @ischar);
 p.KeepUnmatched = true;
@@ -153,6 +154,8 @@ if ~iscell(data)
 
     rangesOrig = max(data_hi_scaling, [], rangeDims, 'omitnan');
 
+    data_origins = -minEachGroup;
+
     if p.Results.normalize
         norms = rangesOrig;
         data = data ./ norms;
@@ -160,6 +163,7 @@ if ~iscell(data)
         data_hi = data_hi ./ norms;
         data_lo_scaling = data_lo_scaling ./ norms;
         data_hi_scaling = data_hi_scaling ./ norms;
+        data_origins = data_origins ./ norms;
     else
         norms = onesvec(nTraces);
     end
@@ -200,6 +204,7 @@ if ~iscell(data)
 
     % time x stack x superimposed
     data = data + traceOffsets;
+    data_origins = data_origins + traceOffsets;
     data_lo = data_lo + traceOffsets;
     data_hi = data_hi + traceOffsets;
 
@@ -324,6 +329,13 @@ else
                 'MarkerFaceColor', color, 'MarkerEdgeColor', color, p.Unmatched);
             hold on;
         end
+    end
+end
+
+if ~isempty(p.Results.baseline)
+    baseline = p.Results.baseline;
+    for iT = 1:nTraces
+        yline(baseline + data_origins(iT), p.Results.baselineStyle, "", Color=[0.5 0.5 0.5]);
     end
 end
 
