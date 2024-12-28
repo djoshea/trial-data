@@ -142,13 +142,13 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
     % first, we compute the best amount of temporal overlap of the edges of
     % the trajectories, unless specified as input
     if isempty(p.Results.nTimepointsOverlap)
+        nTimepointsOverlap_auto = true;
         nTimepointsOverlap = TrialDataUtilities.Splice.computeBestOverlap(dataPreProj, dataPostProj, ...
             p.Results.minOverlap, p.Results.maxOverlap, 'commonAcrossTrajectories', p.Results.commonOverlapAcrossTrajectories, 'showPlot', showPlot);
     else
+        nTimepointsOverlap_auto = false;
         nTimepointsOverlap = p.Results.nTimepointsOverlap;
     end
-    opts.nTimepointsOverlap = nTimepointsOverlap; % C
-    info.nTimepointsOverlap = nTimepointsOverlap;
     opts.commonOverlapAcrossTrajectories = p.Results.commonOverlapAcrossTrajectories;
         
     if isempty(joinIdxInPre) || isempty(nextIdxInPost)
@@ -165,7 +165,22 @@ function [dataSpliced, info, opts] = splicePair(dataPre, dataPost, varargin)
         szPre = TensorUtils.sizeNDims(dataPre, 3);
         opts.joinIdxInPre = TensorUtils.scalarExpandToSize(joinIdxInPre, szPre(3:end));
         opts.nextIdxInPost = TensorUtils.scalarExpandToSize(nextIdxInPost, szPre(3:end));
+
+        nOverPre = nPre - opts.joinIdxInPre;
+        nOverPost = opts.nextIdxInPost - 1;
+            
+        if ~nTimepointsOverlap_auto
+            % check nTimepointsOverlap and joinIdxInPre / nextIdxInPost are compatible
+            assert(all(nOverPre + nOverPost == nTimepointsOverlap), "Specified nTimepointsOverlap inconsistent with specified joinIdxInPre, nextIdxInPost");
+        else
+            % replace nTimepointsOverlap with computed value
+            nTimepointsOverlap = nOverPre(1) + nOverPost(1); % must be same for all entries
+            assert(all(nTimepointsOverlap == nTimepointsOverlap(1)), "Specified joinIdxInPre and nextIdxInPost induce differing nTimepointsOverlap across conditions");
+        end
     end
+    opts.nTimepointsOverlap = nTimepointsOverlap; % C
+    info.nTimepointsOverlap = nTimepointsOverlap;
+    
     info.joinIdxInPre = opts.joinIdxInPre;
     info.nextIdxInPost = opts.nextIdxInPost;
     opts.commonJoinAcrossTrajectories = p.Results.commonJoinAcrossTrajectories;
