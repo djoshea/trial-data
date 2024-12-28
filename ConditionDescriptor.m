@@ -337,23 +337,23 @@ classdef ConditionDescriptor
                 occupiedConditionsStr = '';
             end
             if any(~ci.conditionIncludeMask)
-                tcprintf('inline', '{yellow}%s: {none}%d conditions%s, {bright red}%d selected\n', ...
+                TrialData.cprintf('inline', '{yellow}%s: {none}%d conditions%s, {bright red}%d selected\n', ...
                     class(ci), ci.nConditions, occupiedConditionsStr, nnz(ci.conditionIncludeMask));
             else
-                tcprintf('inline', '{yellow}%s: {none}%d conditions%s\n', ...
+                TrialData.cprintf('inline', '{yellow}%s: {none}%d conditions%s\n', ...
                     class(ci), ci.nConditions, occupiedConditionsStr);
             end
 
-            tcprintf('inline', '  {bright blue}Attributes:\n');
+            TrialData.cprintf('inline', '  {bright blue}Attributes:\n');
             attrDesc = ci.generateAttributeDescriptions(true);
             for i = 1:ci.nAttributes
-                tcprintf('inline', '    %s: {white}%s\n', attrDesc{i}, ...
+                TrialData.cprintf('inline', '    %s: {white}%s\n', attrDesc{i}, ...
                     tcprintfEscape(TrialDataUtilities.String.strjoin(ci.attributeValueListsAsStrings{i}, ', ')));
             end
             axisDesc = ci.generateAxisDescriptions(true);
-            tcprintf('inline', '  {bright blue}Axes:\n');
+            TrialData.cprintf('inline', '  {bright blue}Axes:\n');
             for i = 1:ci.nAxes
-                tcprintf('inline', '    %s: {white}%s\n', axisDesc{i}, ...
+                TrialData.cprintf('inline', '    %s: {white}%s\n', axisDesc{i}, ...
                     tcprintfEscape(TrialDataUtilities.String.strjoin(ci.axisValueListsAsStringsShort{i}, ', ')));
             end
 
@@ -364,14 +364,14 @@ classdef ConditionDescriptor
                 else
                     s = 'axes';
                 end
-                tcprintf('inline', '  {bright red}%d %s with randomization applied\n', nRandom, s);
+                TrialData.cprintf('inline', '  {bright red}%d %s with randomization applied\n', nRandom, s);
             end
 
             if ~isempty(ci.attributeSortByList)
-                tcprintf('inline', '  {bright blue}Sort: {purple}%s\n', TrialDataUtilities.String.strjoin(ci.attributeSortByList, ', '));
+                TrialData.cprintf('inline', '  {bright blue}Sort: {purple}%s\n', TrialDataUtilities.String.strjoin(ci.attributeSortByList, ', '));
             end
             if ci.isResampledWithinConditions
-                tcprintf('inline', '  {bright red}Randomization active: {green}(seed=%g) {none}Trials resampled within conditions\n', ci.randomSeed);
+                TrialData.cprintf('inline', '  {bright red}Randomization active: {green}(seed=%g) {none}Trials resampled within conditions\n', ci.randomSeed);
             end
 
         end
@@ -390,7 +390,7 @@ classdef ConditionDescriptor
                 filterStr = sprintf('filtering by %s', strjoin(attrFilter));
             end
 
-            tcprintf('inline', '{yellow}%s: {none}%s, %s\n', ...
+            TrialData.cprintf('inline', '{yellow}%s: {none}%s, %s\n', ...
                 class(ci), axisStr, filterStr);
         end
 

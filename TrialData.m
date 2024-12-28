@@ -358,10 +358,10 @@ classdef TrialData
                         if ~chd.required
                             % fill in missing values for optional channels but
                             % issue a warning
-                            tcprintf('inline', '{yellow}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
+                            TrialData.cprintf('inline', '{cyan}Warning: {none}Missing optional channel {light blue}%s {none}fields {purple}%s\n', ...
                                 chd.describe(), TrialDataUtilities.String.strjoin(missing{iChannel}, ', '));
                         else
-                            tcprintf('inline', '{yellow}Warning: {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
+                            TrialData.cprintf('inline', '{cyan}Warning: {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
                                 chd.describe(), TrialDataUtilities.String.strjoin(missing{iChannel}, ', '));
                         end
                     end
@@ -375,7 +375,7 @@ classdef TrialData
                 missing = missing(~ok);
                 chDescs = chDescs(~ok);
                 for i = 1:length(missing)
-                    tcprintf('inline', '{red}Error:   {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
+                    TrialData.cprintf('inline', '{red}Error:   {none}Missing required channel {light blue}%s {none}fields {purple}%s\n', ...
                         chDescs{i}, TrialDataUtilities.String.strjoin(missing{i}, ', '));
                 end
                 error('Required channel data fields not provided by getChannelData');
@@ -1197,17 +1197,23 @@ classdef TrialData
     end
 
     % printing and display utilities
+    methods(Static)
+        function cprintf(~, varargin)
+            hcprintf(varargin{:});
+        end
+    end
     methods
+        
         function printDescriptionShort(td)
             if td.nTrialsValid < td.nTrials
-                tcprintf('inline', '{yellow}%s: {none}%d trials {bright red}(%d valid){none}, %d permanently invalid, with %d channels\n', ...
+                TrialData.cprintf('inline', '{cyan}%s: {none}%d trials {bright red}(%d valid){none}, %d permanently invalid, with %d channels\n', ...
                     class(td), td.nTrials, td.nTrialsValid, td.nTrialsPermanentlyInvalid, td.nChannels);
             else
-                tcprintf('inline', '{yellow}%s: {none}%d trials (%d valid) with %d channels\n', ...
+                TrialData.cprintf('inline', '{cyan}%s: {none}%d trials (%d valid) with %d channels\n', ...
                     class(td), td.nTrials, td.nTrialsValid, td.nChannels);
             end
             if ~isempty(td.datasetName)
-                tcprintf('inline', '{yellow}Dataset: {none}%s\n', td.datasetName);
+                TrialData.cprintf('inline', '{cyan}Dataset: {none}%s\n', td.datasetName);
             end
         end
 
@@ -1224,14 +1230,14 @@ classdef TrialData
             [imgChannels, ~, imgGroupChannels] = td.listImageChannels();
 
 
-            tcprintf('inline', '{yellow}Param: {none}%s\n', TrialDataUtilities.String.strjoin(paramChannelsNotInGroup, ', '));
+            TrialData.cprintf('inline', '{cyan}Param: {none}%s\n', TrialDataUtilities.String.strjoin(paramChannelsNotInGroup, ', '));
             printDisplayGroups(paramDisplayGroups, paramChannelsByGroup);
-            tcprintf('inline', '{yellow}Event: {none}%s\n', TrialDataUtilities.String.strjoin(eventChannelsNotInGroup, ', '));
+            TrialData.cprintf('inline', '{cyan}Event: {none}%s\n', TrialDataUtilities.String.strjoin(eventChannelsNotInGroup, ', '));
             printDisplayGroups(eventDisplayGroups, eventChannelsByGroup);
-            tcprintf('inline', '{yellow}Analog: {none}%s\n', TrialDataUtilities.String.strjoin(analogCh, ', '));
+            TrialData.cprintf('inline', '{cyan}Analog: {none}%s\n', TrialDataUtilities.String.strjoin(analogCh, ', '));
             printAnalogGroups(groups, groupChannels);
 
-            str = '{yellow}Spike: {none}';
+            str = '{cyan}Spike: ';
 
             % display spike channel arrays
             arrays = td.listExplicitSpikeArrays();
@@ -1252,7 +1258,7 @@ classdef TrialData
             else
                 str = [str, ' '];
             end
-            tcprintf('inline', str);
+            TrialData.cprintf('inline', str);
             str = '';
 
             % display spike channels indicating waveforms
@@ -1268,18 +1274,18 @@ classdef TrialData
                     str = [str, ', ']; %#ok<AGROW>
                 end
             end
-            tcprintf('inline', str);
+            TrialData.cprintf('inline', str);
 
-            tcprintf('inline', '\n{yellow}Continuous Neural: {none}%s\n', TrialDataUtilities.String.strjoin(continuousCh, ', '));
+            TrialData.cprintf('inline', '\n{cyan}Continuous Neural: {none}%s\n', TrialDataUtilities.String.strjoin(continuousCh, ', '));
             printAnalogGroups(contGroups, contGroupChannels, false);
 
-            tcprintf('inline', '{yellow}Image: {none}\n');
+            TrialData.cprintf('inline', '{cyan}Image: {none}\n');
             printAnalogGroups(imgChannels, imgGroupChannels);
 
             function printDisplayGroups(groups, groupChannels)
                 for iG = 1:numel(groups)
                     sz = numel(groupChannels{iG});
-                    tcprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
+                    TrialData.cprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
                         TrialDataUtilities.String.strjoin(string(sz), ','), ...
                         TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                 end
@@ -1298,7 +1304,7 @@ classdef TrialData
                 for iG = 1:numel(groups)
                     if groupsNamedMask(iG)
                         sz = td.getAnalogChannelGroupSize(groups{iG});
-                        tcprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
+                        TrialData.cprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
                             TrialDataUtilities.String.strjoin(string(sz), ','), ...
                             TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                     end
@@ -1318,7 +1324,7 @@ classdef TrialData
                                 TrialDataUtilities.String.strjoin(string(sz), ','), commaStr)]; %#ok<AGROW>
                         end
                     end
-                    tcprintf('inline', gstr);
+                    TrialData.cprintf('inline', gstr);
                 end
             end
         end

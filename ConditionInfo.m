@@ -370,7 +370,7 @@ classdef ConditionInfo < ConditionDescriptor
                     % old method, take first. new method, take max since membership can be real-valued now
                     % ind = find(membership(iT, :), 1, 'first');
                     [~, ind] = max(membership(iT, :)); % zero already ruled out above
-                    [subs{:}] = ind2sub(sz, ind);
+                    [subs{:}] = ind2sub([sz 1], ind);
                     subsMat(iT, :) = cell2mat(subs);
                 end
             else
@@ -622,7 +622,7 @@ classdef ConditionInfo < ConditionDescriptor
 
             validStr = sprintf('(%d valid)', nnz(ci.computedValid));
 
-            tcprintf('inline', '{yellow}%s: {none}%s, %s %s\n', ...
+            TrialData.cprintf('inline', '{yellow}%s: {none}%s, %s %s\n', ...
                 class(ci), axisStr, filterStr, validStr);
         end
 

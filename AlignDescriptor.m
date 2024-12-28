@@ -1674,10 +1674,10 @@ classdef AlignDescriptor
         function printOneLineDescription(ad)
             desc = ad.getStartStopZeroPadDescription();
             if ~ad.nameDefault
-                tcprintf('inline', '{yellow}%s: {bright blue}%s : {none}%s\n', class(ad), ad.name, desc);
+                TrialData.cprintf('inline', '{yellow}%s: {bright blue}%s : {none}%s\n', class(ad), ad.name, desc);
             else
                 % name will just match desc, so don't print it twice
-                tcprintf('inline', '{yellow}%s: {none}%s\n', class(ad), desc);
+                TrialData.cprintf('inline', '{yellow}%s: {none}%s\n', class(ad), desc);
             end
         end
         
@@ -1688,50 +1688,50 @@ classdef AlignDescriptor
             
             if ~ad.nameDefault
                 if p.Results.active
-                    tcprintf('inline', '{yellow}%s: {white}%s {red}(active)\n', class(ad), ad.name);
+                    TrialData.cprintf('inline', '{yellow}%s: {white}%s {red}(active)\n', class(ad), ad.name);
                 else
-                    tcprintf('inline', '{yellow}%s: {white}%s\n', class(ad), ad.name);
+                    TrialData.cprintf('inline', '{yellow}%s: {white}%s\n', class(ad), ad.name);
                 end
             else
                 % name will just match desc, so don't print it twice
                 if p.Results.active
-                    tcprintf('inline', '{yellow}%s: {red}(active)\n', class(ad));
+                    TrialData.cprintf('inline', '{yellow}%s: {red}(active)\n', class(ad));
                 else
-                    tcprintf('inline', '{yellow}%s:\n', class(ad));
+                    TrialData.cprintf('inline', '{yellow}%s:\n', class(ad));
                 end
             end
             
-            tcprintf('inline', '  {bright blue}Start {purple}%s {none}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
-            tcprintf('inline', '  {bright blue}Stop {purple}%s {none}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
-            tcprintf('inline', '  {bright blue}Zero {purple}%s {none}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
+            TrialData.cprintf('inline', '  {bright blue}Start {purple}%s {none}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
+            TrialData.cprintf('inline', '  {bright blue}Stop {purple}%s {none}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
+            TrialData.cprintf('inline', '  {bright blue}Zero {purple}%s {none}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
 
             for i = 1:length(ad.markEvents)
-                tcprintf('inline', '  {bright blue}Mark {purple}%s {none}as {white}%s\n', ...
+                TrialData.cprintf('inline', '  {bright blue}Mark {purple}%s {none}as {white}%s\n', ...
                     ad.markUnabbreviatedLabels{i}, ad.markLabels{i}); 
             end
             for i = 1:size(ad.intervalEventsStart, 1)
-                tcprintf('inline', '  {bright blue}Interval {purple}%s{none} as {white}%s\n', ...
+                TrialData.cprintf('inline', '  {bright blue}Interval {purple}%s{none} as {white}%s\n', ...
                     ad.intervalUnabbreviatedLabels{i}, ...
                     ad.intervalLabels{i}); 
                 % TODO add condition match description
             end
             for i = 1:length(ad.truncateBeforeEvents)
-                tcprintf('inline', '  {bright blue}Truncate before {purple}%s\n', ad.truncateBeforeUnabbreviatedLabels{i});
+                TrialData.cprintf('inline', '  {bright blue}Truncate before {purple}%s\n', ad.truncateBeforeUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.truncateAfterEvents)
-                tcprintf('inline', '  {bright blue}Truncate after {purple}%s\n', ad.truncateAfterUnabbreviatedLabels{i});
+                TrialData.cprintf('inline', '  {bright blue}Truncate after {purple}%s\n', ad.truncateAfterUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.invalidateEvents)
-                tcprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});
+                TrialData.cprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});
             end     
                    
-            tcprintf('inline', '  {green}outside trial mode {white}%s\n', ad.outsideOfTrialMode);
-            tcprintf('inline', '  {green}minimum duration {white}%d\n', ad.minDuration);
+            TrialData.cprintf('inline', '  {green}outside trial mode {white}%s\n', ad.outsideOfTrialMode);
+            TrialData.cprintf('inline', '  {green}minimum duration {white}%d\n', ad.minDuration);
             if ad.roundTimes
-                tcprintf('inline', '  {green}round times with min delta {white}%g\n', ad.minTimeDelta);
+                TrialData.cprintf('inline', '  {green}round times with min delta {white}%g\n', ad.minTimeDelta);
             end
             if ad.padPre ~= 0 || ad.padPost ~= 0
-                tcprintf('inline', '  {green}pad %g pre, %g post\n', ad.padPre, ad.padPost);
+                TrialData.cprintf('inline', '  {green}pad %g pre, %g post\n', ad.padPre, ad.padPost);
             end
         end
 
