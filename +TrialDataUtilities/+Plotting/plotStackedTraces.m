@@ -51,6 +51,7 @@ p.addParameter('showSpanLines', true, @islogical);
 p.addParameter('dataRangeFormat', '%.4g', @ischar);
 p.addParameter('baseline', [], @(x) true);
 p.addParameter('baselineStyle', "-", @isstringlike);
+p.addParameter('baselineColor', [0.5 0.5 0.5], @(x) true);
 p.addParameter('quick', false, @islogical);
 % p.addParameter('lineStyle', '-', @ischar);
 p.KeepUnmatched = true;
@@ -335,7 +336,7 @@ end
 if ~isempty(p.Results.baseline)
     baseline = p.Results.baseline;
     for iT = 1:nTraces
-        yline(baseline + data_origins(iT), p.Results.baselineStyle, "", Color=[0.5 0.5 0.5]);
+        yline(baseline + data_origins(iT), p.Results.baselineStyle, "", Color=p.Results.baselineColor);
     end
 end
 
