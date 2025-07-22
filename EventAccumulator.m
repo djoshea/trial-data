@@ -229,6 +229,7 @@ classdef EventAccumulator
             nA = numel(args);
             delta = cellfun(@(ag) ag(1).delta, args);
             assert(all(delta == delta(1)), 'Deltas must match');
+            delta = delta(1);
             
             rows = cellfun(@(ag) size(ag, 1), args);
             cols = cellfun(@(ag) size(ag, 2), args);
@@ -243,7 +244,15 @@ classdef EventAccumulator
                     argMask = rows >= i & cols >= j;
                     binlo = cellfun(@(ag) ag(i,j).bins(1), args(argMask), 'ErrorHandler', @(varargin) NaN);
                     binhi = cellfun(@(ag) ag(i,j).bins(end), args(argMask), 'ErrorHandler', @(varargin) NaN);
-                    bins = (min(binlo):delta:max(binhi))';
+                    minlo = min(binlo, [], 'omitnan');
+                    maxhi = max(binhi, [], 'omitnan');
+
+                    if isnan(minlo) || isnan(maxhi)
+                        % no valid bins across any of the inputs
+                        bins = NaN;
+                    else
+                        bins = (minlo:delta:maxhi)';
+                    end
 
                     counts = zeros(size(bins));
                     for iA = 1:nA
@@ -256,7 +265,7 @@ classdef EventAccumulator
                     out(i,j) = EventAccumulator();
                     out(i,j).bins = bins;
                     out(i,j).counts = counts;
-                    out(i,j).delta = delta(1);
+                    out(i,j).delta = delta;
                 end
             end
         end

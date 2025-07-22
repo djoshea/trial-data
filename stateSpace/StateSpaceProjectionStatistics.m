@@ -1788,7 +1788,7 @@ classdef StateSpaceProjectionStatistics
             p.addParameter('axesCombineSpecificMarginalizations', {}, @(x) true);
             p.addParameter('axesCombineAllMarginalizations', {}, @(x) isempty(x) || iscell(x));
             p.addParameter('combineAxesWithTime', true, @(x) islogical(x) || iscell(x));
-            p.addParameter('axisNames', {}, @iscellstr);
+            p.addParameter('axisNames', {}, @isstringlike);
             p.parse(varargin{:});
 
             axesCombineSpecificMarginalizations = p.Results.axesCombineSpecificMarginalizations;
@@ -1843,7 +1843,7 @@ classdef StateSpaceProjectionStatistics
                 covariateNames = arrayfun(@(i) sprintf('Axis %d', i), ...
                     1:numel(axisAttributeSets), 'UniformOutput', false);
             else
-                covariateNames = p.Results.axisNames;
+                covariateNames = cellstr(p.Results.axisNames);
                 assert(numel(covariateNames) >= nDims, 'Provided covariateNames needs at least %d entries', nDims);
             end
             covariateNames = makecol(covariateNames);
