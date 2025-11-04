@@ -1462,7 +1462,8 @@ classdef TensorUtils
 
         function out = permuteDimSubset(in, dims)
             % like permute, but assumes that all other dims not listed in dims should kept in place
-            all_dims = 1:ndims(in);
+            max_dim = max(max(dims), ndims(in));
+            all_dims = 1:max_dim;
             moved = ismember(all_dims, dims);
             
             pdims = all_dims;

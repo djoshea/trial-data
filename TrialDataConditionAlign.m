@@ -2189,6 +2189,10 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('extendToIncludeRelTrialStart', [], @(x) isempty(x) || isvector(x)); 
             p.addParameter('copyDataAcrossBoundary', false, @isscalar);
             p.addParameter('ignoreEvents', false, @(x) islogical(x) || isstringlike(x));
+            p.addParameter('override_TrialStart', [], @(x) isempty(x) || isvector(x));  % if specified, essentially treats this as TrialStart instead of what is written into the td
+            p.addParameter('override_TrialEnd', [], @(x) isempty(x) || isvector(x));  % if specified, essentially treats this as TrialStart instead of what is written into the td
+           
+ 
             p.parse(varargin{:});
             interTrialOffset = p.Results.interTrialOffset;
             trialSpliceEvent = p.Results.trialSpliceEvent;
@@ -2211,8 +2215,16 @@ classdef TrialDataConditionAlign < TrialData
             % gather all events up front
             ai = td.alignInfoActive;
 %             align_valid = ai.computedValid;
-            ev_trialStart = td.getEventRawFirst('TrialStart');
-            ev_trialEnd = td.getEventRawFirst('TrialEnd');
+            if isempty(p.Results.override_TrialStart)
+                ev_trialStart = td.getEventRawFirst('TrialStart');
+            else
+                ev_trialStart = p.Results.override_TrialStart;
+            end
+            if isempty(p.Results.override_TrialEnd)
+                ev_trialEnd = td.getEventRawFirst('TrialEnd');
+            else
+                ev_trialEnd = p.Results.override_TrialStart;
+            end
             align_trialStart = ai.timeInfo.start;
             align_trialEnd = ai.timeInfo.stop;
 
@@ -2485,6 +2497,10 @@ classdef TrialDataConditionAlign < TrialData
                                 for iA = 1:nA
                                     associated_next{iA, iC} = associated_data{iA}{iT, iC}(indLast+1:end, :, :, :, :, :, :, :, :, :);
                                 end
+                            else
+                                % no associated data found, so clear the buffer for the next trial
+                                % NOTE: this implies we explicitly disallow carrying data two or more trials ahead
+                                time_next{iC} = toSignedClass(time_data{iT, iC}([], :));
                             end
 
                             if ~isempty(time_buffer{iC})
@@ -2498,7 +2514,7 @@ classdef TrialDataConditionAlign < TrialData
                                     retainTime = toSignedClass(time_data{iT, iC}(1:indLast, :));
                                 end
 
-%                                 time_data{iT, iC} = TrialDataUtilities.Data.catPromoteNumeric(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, retainTime);
+%                                  = TrialDataUtilities.Data.catPromoteNumeric(1, time_buffer{iC} - trialEnd_previous + trialStart_this - interTrialOffset, retainTime);
                                 time_data{iT, iC} = toSignedClass(cat(1, double(time_buffer{iC}) + double(-trialEnd_previous + trialStart_this - interTrialOffset)/timeScaling, double(retainTime)));
 
                                 for iA = 1:nA
@@ -2545,6 +2561,10 @@ classdef TrialDataConditionAlign < TrialData
                                 for iA = 1:nA
                                     associated_prev{iA, iC} = associated_data{iA}{iT, iC}(1:indFirst-1, :, :, :, :, :, :, :, :, :);
                                 end
+                            else
+                                % no associated data found, so clear the buffer for the prev trial
+                                % NOTE: this implies we explicitly disallow carrying data two or more trials behind
+                                time_prev{iC} = toSignedClass(time_data{iT, iC}([], :));
                             end
 
                             if ~isempty(time_buffer{iC})

@@ -907,6 +907,7 @@ classdef TrialData
             p.addParameter('objectName', "TrialData", @isstringlike);
             p.addParameter('validate', true, @islogical);
             p.addParameter('progress', true, @islogical);
+            p.addParameter('useParallel', ~isempty(gcp('nocreate')), @islogical);
             p.KeepUnmatched = true; % unmatched fields will match parameter values that were provided to load fast
             p.parse(varargin{:});
             
@@ -927,7 +928,7 @@ classdef TrialData
                 ld = load(location);
                 if isfield(ld, 'td')
                     td = ld.td;
-                elseif numel(fieldnames(ld)) == 1
+                elseif isscalar(fieldnames(ld))
                     fld = fieldnames(ld);
                     td = ld.(fld{1});
                 else
@@ -943,7 +944,7 @@ classdef TrialData
                 msg = sprintf('Loading %s from %s', obj_name, escapePathForPrint(location));
                 [data, partitionMeta, partialLoadMask] = TrialDataUtilities.Data.SaveArrayIndividualized.loadArray(location, ...
                     'message', msg, 'progress', progress, 'maxElements', p.Results.maxTrials, ...
-                    'partitions', partitions, 'loadAllPartitions', loadAllPartitions, ...
+                    'partitions', partitions, 'loadAllPartitions', loadAllPartitions, 'use_parallel', p.Results.useParallel, ...
                     'ignoreMissingPartitions', p.Results.ignoreMissingPartitions, 'partialLoadSpec', p.Unmatched);
                 td.data = TensorUtils.inflateMaskedTensor(makecol(data), 1, partialLoadMask); % we'll select the partially loaded trials later, but for now needs to be numel(td.data) == nTrials (full)
 
@@ -3220,7 +3221,7 @@ classdef TrialData
             p.addParameter('subChannelNames', [], @(x) isstring(x) || iscellstr(x));
             p.addParameter('subChannelUnits', [], @(x) isempty(x) || isstring(x) || iscellstr(x));
             p.addParameter('sampleSize', [], @(x) isempty(x) || isvector(x));
-            p.addParameter('timeField', '', @ischar);
+            p.addParameter('timeField', '', @isstringlike);
             p.addParameter('units', '', @isstringlike);
             p.addParameter('unitsByChannel', {}, @(x) isempty(x) || iscellstr(x) || isstring(x));
             p.addParameter('isContinuousNeural', false, @islogical); % shortcut for making LFP channels since they're subclassed
@@ -3246,7 +3247,7 @@ classdef TrialData
                 timeField = times;
                 times = [];
             else
-                timeField = p.Results.timeField;
+                timeField = char(p.Results.timeField);
             end
 
             if td.hasChannel(groupName)
@@ -4280,6 +4281,7 @@ classdef TrialData
             p.KeepUnmatched = false;
             p.parse(varargin{:});
             times = makecol(p.Results.times);
+            raw = p.Results.raw;
 
             mask = TensorUtils.vectorIndicesToMask(makecol(p.Results.updateMask), td.nTrials);
             if ~p.Results.raw % don't update invalid trials
@@ -4334,14 +4336,18 @@ classdef TrialData
                     % trim the timestamps to TrialStart:TrialEnd since
                     % that's what we expect to receive back
                     updateTimes = false;
-                    td = td.trimAnalogChannelGroupToTrialStartEnd(groupName);
+                    td = td.trimAnalogChannelGroupToTrialStartEnd(groupName, clearInvalidTrials = ~raw);
                 else
                     updateTimes = true;
                 end
 
                 % pass along the current times since the data is coming in with the
                 % existing alignment
-                times = td.getAnalogChannelGroupTime(groupName);
+                if raw
+                    times = td.getAnalogChannelGroupTimeRaw(groupName);
+                else
+                    times = td.getAnalogChannelGroupTime(groupName);
+                end
             end
 
             % check that times have same length as data
@@ -4421,9 +4427,9 @@ classdef TrialData
 %             prog.finish();
         end
 
-        function td = trimAnalogChannelGroupToTrialStartEnd(td, names)
+        function td = trimAnalogChannelGroupToTrialStartEnd(td, names, varargin)
             td.warnIfNoArgOut(nargout);
-            td = td.trimAnalogChannelGroupRaw(names); % defaults to trial start / end
+            td = td.trimAnalogChannelGroupRaw(names, varargin{:}); % defaults to trial start / end
         end
 
         function td = trimAnalogChannelGroupRaw(td, groupNames, varargin)
@@ -4434,12 +4440,12 @@ classdef TrialData
 
             if ~isempty(timeFields)
                 timeFields = unique(timeFields);
-                prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
+                %prog = ProgressBar(numel(timeFields), 'Trimming analog channels');
                 for i = 1:numel(timeFields)
-                    prog.update(i, 'Trimming analog channels with time field %s', timeFields{i});
+                 %   prog.update(i, 'Trimming analog channels with time field %s', timeFields{i});
                     td = td.trimAnalogChannelTimeFieldAndReferencingChannelsRaw(timeFields{i}, varargin{:});
                 end
-                prog.finish();
+                %prog.finish();
             end
         end
 
@@ -4469,8 +4475,8 @@ classdef TrialData
             % delete time points outside of a certain start stop interval
             % defaults to TrialStart:TrialStop
             p = inputParser();
-            p.addOptional('startTimes', {}, @isvector);
-            p.addOptional('stopTimes', {}, @isvector);
+            p.addParameter('startTimes', {}, @isvector);
+            p.addParameter('stopTimes', {}, @isvector);
             p.addParameter('clearInvalidTrials', true, @islogical);
             p.parse(varargin{:});
 
@@ -5220,7 +5226,8 @@ classdef TrialData
 
         function [td, fieldsUpdated] = setEvent(td, name, times, varargin)
             p = inputParser();
-            p.addOptional('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('isAligned', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
+            p.addParameter('updateValidOnly', true, @islogical); % time vectors reflect the current 0 or should be considered relative to TrialStart?
             p.addParameter('deferPostDataChange', false, @islogical);
             p.parse(varargin{:});
 
@@ -5252,7 +5259,8 @@ classdef TrialData
             end
             times = cellfun(@(x) makecol(sort(x)), times, 'UniformOutput', false);
 
-            [td, ~, fieldsUpdated] = td.setChannelData(name, {times}, 'deferPostDataChange', p.Results.deferPostDataChange);
+            [td, ~, fieldsUpdated] = td.setChannelData(name, {times}, 'deferPostDataChange', p.Results.deferPostDataChange, ...
+                'updateValidOnly', p.Results.updateValidOnly);
         end
 
         function td = addOrSetEvent(td, name, times, varargin)
@@ -8236,7 +8244,7 @@ classdef TrialData
                     % normal field
                     vals = valueCell{iF};
                     if ~iscell(vals)
-                        vals = TensorUtils.splitAlongDimension(vals, 1);
+                        vals = TensorUtils.splitAlongDimension(makecol(vals), 1);
                     end
                     td.data = TrialDataUtilities.Data.assignIntoStructArray(td.data, dataFields{iF}, TensorUtils.selectAlongDimension(vals, 1, updateMask), updateMask);
 

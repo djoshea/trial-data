@@ -189,13 +189,14 @@ classdef PopulationTrajectorySetBuilder
         
         function pset = fromMultipleTrialData(tdCell, varargin)
             p = inputParser();
-            p.addOptional('channelNames', {}, @(x) isempty(x) || iscell(x));
+            p.addOptional('channelNames', {}, @(x) isempty(x) || iscell(x) || ischar(x));
             p.addParameter('spikeFilter', [], @(x) isempty(x) || isa(x, 'SpikeFilter'));
             p.parse(varargin{:});
             
             % if only tdCell is provided, all spiking units in each td will
             % be used
             pset = PopulationTrajectorySet();
+            nSources = numel(tdCell);
             %pset.datasetName = td.datasetName;
             
             channelNamesBySource = p.Results.channelNames;
@@ -205,7 +206,7 @@ classdef PopulationTrajectorySetBuilder
                 end
             end
 
-            nSources = numel(tdCell);
+            
             iBasis = 1;
             for i = 1:nSources
                 if ~isa(tdCell{i}, 'TrialDataConditionAlign')
@@ -246,7 +247,7 @@ classdef PopulationTrajectorySetBuilder
             end
             
             % check that all tdCell have same timeUnitsPerSecond
-            assert(numel(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))) == 1, ...
+            assert(isscalar(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))), ...
                 'All data sources must have identical timeUnitsPerSecond');
             
             pset.timeUnitName = tdCell{1}.timeUnitName;
@@ -315,7 +316,7 @@ classdef PopulationTrajectorySetBuilder
             end
             
             % check that all tdCell have same timeUnitsPerSecond
-            assert(numel(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))) == 1, ...
+            assert(isscalar(unique(cellfun(@(td) td.timeUnitsPerSecond, tdCell))), ...
                 'All data sources must have identical timeUnitsPerSecond');
             
             pset.timeUnitName = tdCell{1}.timeUnitName;
@@ -598,7 +599,7 @@ classdef PopulationTrajectorySetBuilder
         end
         
         function pset = concatenatePopulationTrajectorySets(psetCell)
-            if numel(psetCell) == 1
+            if isscalar(psetCell)
                 pset = psetCell{1};
                 return;
             end
@@ -632,7 +633,7 @@ classdef PopulationTrajectorySetBuilder
             nBasesTotal = sum(cellfun(@(pset) pset.nBases, psetCell));
             
             if simultaneous
-                bld.dataSources = pset.dataSource;
+                bld.dataSources = psetCell{1}.dataSource;
                 bld.basisDataSourceIdx = ones(nBasesTotal, 1);
             else
                 vals = getFn('dataSources');
