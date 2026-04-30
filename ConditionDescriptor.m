@@ -344,14 +344,14 @@ classdef ConditionDescriptor
                     class(ci), ci.nConditions, occupiedConditionsStr);
             end
 
-            TrialData.cprintf('inline', '  {bright blue}Attributes:\n');
+            TrialData.cprintf('inline', '  {#5599ff}Attributes:\n');
             attrDesc = ci.generateAttributeDescriptions(true);
             for i = 1:ci.nAttributes
                 TrialData.cprintf('inline', '    %s: {white}%s\n', attrDesc{i}, ...
                     tcprintfEscape(TrialDataUtilities.String.strjoin(ci.attributeValueListsAsStrings{i}, ', ')));
             end
             axisDesc = ci.generateAxisDescriptions(true);
-            TrialData.cprintf('inline', '  {bright blue}Axes:\n');
+            TrialData.cprintf('inline', '  {5599ff}Axes:\n');
             for i = 1:ci.nAxes
                 TrialData.cprintf('inline', '    %s: {white}%s\n', axisDesc{i}, ...
                     tcprintfEscape(TrialDataUtilities.String.strjoin(ci.axisValueListsAsStringsShort{i}, ', ')));
@@ -368,7 +368,7 @@ classdef ConditionDescriptor
             end
 
             if ~isempty(ci.attributeSortByList)
-                TrialData.cprintf('inline', '  {bright blue}Sort: {purple}%s\n', TrialDataUtilities.String.strjoin(ci.attributeSortByList, ', '));
+                TrialData.cprintf('inline', '  {5599ff}Sort: {purple}%s\n', TrialDataUtilities.String.strjoin(ci.attributeSortByList, ', '));
             end
             if ci.isResampledWithinConditions
                 TrialData.cprintf('inline', '  {bright red}Randomization active: {green}(seed=%g) {none}Trials resampled within conditions\n', ci.randomSeed);
@@ -535,7 +535,7 @@ classdef ConditionDescriptor
                     randStr = [' ' randStr]; %#ok<AGROW>
                 end
                 if useColor
-                    desc{iX} = sprintf('{purple}%s {green}(%d%s{bright red}%s%s{green})', ...
+                    desc{iX} = sprintf('{white}%s {none}(%d%s{orange}%s%s{none})', ...
                         TrialDataUtilities.String.strjoin(attr, ' x '), nv, vlStr, filterStr, randStr);
                 else
                     desc{iX} = sprintf('%s (%d%s%s)', ...
@@ -1930,7 +1930,7 @@ classdef ConditionDescriptor
                 if ~useColor
                     desc{i} = sprintf('%s as %s (%s%s%s)%s', name, displayAs, numericStr, suffix, filterStr, unitStr);
                 else
-                    desc{i} = sprintf('{purple}%s {green}(%s%s{bright red}%s{green})%s', name, numericStr, suffix, filterStr, unitStr);
+                    desc{i} = sprintf('{white}%s {none}(%s%s{orange}%s{none})%s', name, numericStr, suffix, filterStr, unitStr);
                 end
             end
         end

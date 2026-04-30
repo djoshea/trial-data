@@ -1674,7 +1674,7 @@ classdef AlignDescriptor
         function printOneLineDescription(ad)
             desc = ad.getStartStopZeroPadDescription();
             if ~ad.nameDefault
-                TrialData.cprintf('inline', '{yellow}%s: {bright blue}%s : {none}%s\n', class(ad), ad.name, desc);
+                TrialData.cprintf('inline', '{yellow}%s: {5599ff}%s : {none}%s\n', class(ad), ad.name, desc);
             else
                 % name will just match desc, so don't print it twice
                 TrialData.cprintf('inline', '{yellow}%s: {none}%s\n', class(ad), desc);
@@ -1695,34 +1695,34 @@ classdef AlignDescriptor
             else
                 % name will just match desc, so don't print it twice
                 if p.Results.active
-                    TrialData.cprintf('inline', '{yellow}%s: {red}(active)\n', class(ad));
+                    TrialData.cprintf('inline', '{yellow}%s: {bright red}(active)\n', class(ad));
                 else
                     TrialData.cprintf('inline', '{yellow}%s:\n', class(ad));
                 end
             end
             
-            TrialData.cprintf('inline', '  {bright blue}Start {purple}%s {none}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
-            TrialData.cprintf('inline', '  {bright blue}Stop {purple}%s {none}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
-            TrialData.cprintf('inline', '  {bright blue}Zero {purple}%s {none}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
+            TrialData.cprintf('inline', '  {5599ff}Start {white}%s {none}as {white}%s\n', ad.startUnabbreviatedLabel, ad.startLabel);
+            TrialData.cprintf('inline', '  {5599ff}Stop {white}%s {none}as {white}%s\n', ad.stopUnabbreviatedLabel, ad.stopLabel);
+            TrialData.cprintf('inline', '  {5599ff}Zero {white}%s {none}as {white}%s\n', ad.zeroUnabbreviatedLabel, ad.zeroLabel);
 
             for i = 1:length(ad.markEvents)
-                TrialData.cprintf('inline', '  {bright blue}Mark {purple}%s {none}as {white}%s\n', ...
+                TrialData.cprintf('inline', '  {5599ff}Mark {white}%s {none}as {white}%s\n', ...
                     ad.markUnabbreviatedLabels{i}, ad.markLabels{i}); 
             end
             for i = 1:size(ad.intervalEventsStart, 1)
-                TrialData.cprintf('inline', '  {bright blue}Interval {purple}%s{none} as {white}%s\n', ...
+                TrialData.cprintf('inline', '  {5599ff}Interval {white}%s{none} as {white}%s\n', ...
                     ad.intervalUnabbreviatedLabels{i}, ...
                     ad.intervalLabels{i}); 
                 % TODO add condition match description
             end
             for i = 1:length(ad.truncateBeforeEvents)
-                TrialData.cprintf('inline', '  {bright blue}Truncate before {purple}%s\n', ad.truncateBeforeUnabbreviatedLabels{i});
+                TrialData.cprintf('inline', '  {5599ff}Truncate before {white}%s\n', ad.truncateBeforeUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.truncateAfterEvents)
-                TrialData.cprintf('inline', '  {bright blue}Truncate after {purple}%s\n', ad.truncateAfterUnabbreviatedLabels{i});
+                TrialData.cprintf('inline', '  {5599ff}Truncate after {white}%s\n', ad.truncateAfterUnabbreviatedLabels{i});
             end
             for i = 1:length(ad.invalidateEvents)
-                TrialData.cprintf('inline', '  {bright blue}Invalidate overlap {purple}%s\n', ad.invalidateUnabbreviatedLabels{i});
+                TrialData.cprintf('inline', '  {5599ff}Invalidate overlap {white}%s\n', ad.invalidateUnabbreviatedLabels{i});
             end     
                    
             TrialData.cprintf('inline', '  {green}outside trial mode {white}%s\n', ad.outsideOfTrialMode);

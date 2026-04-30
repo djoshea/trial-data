@@ -27,7 +27,7 @@ function map = convertColorsToMatrix(colors)
         end
 
         if ~hasAlpha
-            map = map(:, 1:3);
+            map = ediap(:, 1:3);
         end
 
     elseif ismatrix(colors)

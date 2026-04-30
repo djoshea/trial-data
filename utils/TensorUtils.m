@@ -61,6 +61,21 @@ classdef TensorUtils
 
     end
 
+    methods(Static) % Standard argument processing
+        function args = catCellArgs(varargin)
+            argsToCat = cell(numel(varargin), 1);
+            for iA = 1:numel(varargin)
+                a = varargin{iA};
+                if iscell(a)
+                    argsToCat{iA} = makecol(a(:));
+                else
+                    argsToCat{iA} = {a};
+                end
+            end
+            args = cat(1, argsToCat{:});
+            args = cat(1, args{:});
+        end
+    end
 
     methods(Static) % Mapping, construction via callback
         function varargout = mapToSizeFromSubs(sz, varargin)
@@ -481,7 +496,7 @@ classdef TensorUtils
             assert(all(cellfun(@(x) islogical(x) && isvector(x), masks)), ...
                 'Mask must be (cell of) logical vectors. Use vectorIndicesToMask to convert.');
 
-            if numel(masks) == 1
+            if isscalar(masks)
                 masks = repmat(masks, numel(dims), 1);
             end
             assert(numel(masks) == numel(dims), 'Number of dimensions must match number of masks provided');
@@ -1048,6 +1063,37 @@ classdef TensorUtils
             nd = max(cellfun(@ndims, varargin));
             dims = 1:nd;
             paddedCell = TensorUtils.expandToSameSizeAlongDims(dims, varargin{:});
+        end
+
+        function v = insertDim(v, dim)
+            % inserts a length 1 dimension just before axis 
+            if nargin < 2
+                
+                dim = 1;
+            end
+            sz = size(v);
+            sz = [sz(1:dim-1), 1, sz(dim:end)];
+            v = reshape(v, sz);
+        end
+
+        function out = stackFirst(varargin)
+            % like numpy.stack, include a new axis for each input array and
+            % concatenate along axis 1
+            args = TensorUtils.catCellArgs(varargin);
+            in = cellfun(@TensorUtils.insertDim, args, UniformOutput=false);
+            out = cat(1, in{:});
+        end
+
+        function out = stackLast(varargin)
+            % like numpy.stack, include a new axis for each input array and
+            % concatenate along axis 1
+            args = TensorUtils.catCellArgs(varargin);
+            if iscolumn(args{1})
+                dim = 2;
+            else
+                dim = ndims(args{1}) + 1;
+            end
+            out = cat(dim, args{:});
         end
 
         function out = catPad(dim, varargin)

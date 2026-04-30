@@ -23,7 +23,7 @@ classdef ProjRegressionPTStoPTS < StateSpaceProjection
             p = inputParser;
             p.addParameter('regressMeanSubtractedData', true, @islogical);
             p.addParameter('target', [], @(x) isa(x, 'PopulationTrajectorySet'));
-            p.addParameter('basisNameProjStem', 'pre dict_', @ischar);
+            p.addParameter('basisNameProjStem', 'predict_', @ischar);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
             unmatched = p.Unmatched;

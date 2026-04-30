@@ -1249,7 +1249,7 @@ classdef TrialData
                 else
                     wavesStr = '';
                 end
-                str = [str, sprintf('{bright blue}%s{none} (%d on %d electrodes){bright blue}%s', arrays{iA}, cd.nChannels, cd.nElectrodes, wavesStr)]; %#ok<AGROW>
+                str = [str, sprintf('{5599ff}%s{none} (%d on %d electrodes){5599ff}%s', arrays{iA}, cd.nChannels, cd.nElectrodes, wavesStr)]; %#ok<AGROW>
                 if iA < numel(arrays)
                     str = [str, ', ']; %#ok<AGROW>
                 end
@@ -1269,7 +1269,7 @@ classdef TrialData
                 if ~hasWaves(iS)
                     str = [str, spikeCh{iS}]; %#ok<AGROW>
                 else
-                    str = [str, spikeCh{iS}, '{bright blue}+w{none}']; %#ok<AGROW>
+                    str = [str, spikeCh{iS}, '{5599ff}+w{none}']; %#ok<AGROW>
                 end
                 if iS < numel(spikeCh)
                     str = [str, ', ']; %#ok<AGROW>
@@ -1286,7 +1286,7 @@ classdef TrialData
             function printDisplayGroups(groups, groupChannels)
                 for iG = 1:numel(groups)
                     sz = numel(groupChannels{iG});
-                    TrialData.cprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
+                    TrialData.cprintf('inline', '  {5599ff}%s{none} (%s): %s\n', groups{iG}, ...
                         TrialDataUtilities.String.strjoin(string(sz), ','), ...
                         TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                 end
@@ -1305,7 +1305,7 @@ classdef TrialData
                 for iG = 1:numel(groups)
                     if groupsNamedMask(iG)
                         sz = td.getAnalogChannelGroupSize(groups{iG});
-                        TrialData.cprintf('inline', '  {bright blue}%s{none} (%s): %s\n', groups{iG}, ...
+                        TrialData.cprintf('inline', '  {5599ff}%s{none} (%s): %s\n', groups{iG}, ...
                             TrialDataUtilities.String.strjoin(string(sz), ','), ...
                             TrialDataUtilities.String.strjoin(groupChannels{iG}, ', '));
                     end
@@ -1321,7 +1321,7 @@ classdef TrialData
                                 commaStr = [' ' newline];
                             end
                             sz = td.getAnalogChannelGroupSize(groups{iG});
-                            gstr = [gstr, sprintf('{bright blue}%s {none}(%s)%s', groups{iG}, ...
+                            gstr = [gstr, sprintf('{5599ff}%s {none}(%s)%s', groups{iG}, ...
                                 TrialDataUtilities.String.strjoin(string(sz), ','), commaStr)]; %#ok<AGROW>
                         end
                     end

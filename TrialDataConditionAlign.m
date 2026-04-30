@@ -1749,7 +1749,7 @@ classdef TrialDataConditionAlign < TrialData
 
         function td = mark(td, eventStr, varargin)
             p = inputParser;
-            p.addOptional('offset', 0, @isscalar);
+            p.addParameter('offset', 0, @isscalar);
             p.addParameter('index', [], @(x) isempty(x) || isstringlike(x) || isscalar(x));
             p.addParameter('as', AlignDescriptor.AUTO, @isstringlike);
             p.addParameter('color', [], @(x) isempty(x) || isstringlike(x) || isvector(x));
