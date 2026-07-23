@@ -623,6 +623,9 @@ classdef TensorUtils
 
             sz = TensorUtils.expandScalarSize(sz);
 
+            mask = all(~isnan(mat), 2);
+            mat = mat(mask, :);
+
             ndims = length(sz);
             % DO NOT UNCOMMENT. THIS WILL BREAK THINGS SINCE SZ CAN HAVE
             % SZ(1) == 1.
@@ -632,6 +635,10 @@ classdef TensorUtils
             subsCell = arrayfun(@(dim) mat(:, dim), 1:ndims, 'UniformOutput', false);
 
             inds = sub2ind(sz, subsCell{:});
+
+            if any(~mask)
+                inds = TensorUtils.inflateMaskedTensor(inds, 1, mask, NaN);
+            end
         end
     end
 
