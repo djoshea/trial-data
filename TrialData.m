@@ -5414,12 +5414,13 @@ classdef TrialData
                 p.Unmatched);
         end
 
-        function td = addVectorParamAccessAsMatrix(td, name, varargin)
+        function td = addVectorParam(td, name, varargin)
             td.warnIfNoArgOut(nargout);
 
             p = inputParser();
             p.addOptional('values', {}, @(x) isempty(x) || ismatrix(x) || iscell(x));
             p.addParameter('units', '', @ischar);
+            p.addParameter('accessAsMatrix', false, @islogical);
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -5429,13 +5430,21 @@ classdef TrialData
             else
                 dataClass = class(values);
             end
-            cd = ParamChannelDescriptor.buildVectorParamAccessAsMatrix(name, dataClass, p.Results.units);
+            if p.Results.accessAsMatrix
+                cd = ParamChannelDescriptor.buildVectorParamAccessAsMatrix(name, dataClass, p.Results.units);
+            else
+                cd = ParamChannelDescriptor.buildVectorParam(name, dataClass, p.Results.units);
+            end
 
             if isnumeric(values)
                 values = TensorUtils.splitAlongDimension(values, 1);
             end
-            td = td.addParam(name, values, 'channelDescriptor', cd, ...
-                p.Unmatched);
+            td = td.addParam(name, values, 'channelDescriptor', cd, p.Unmatched);
+        end
+
+        function td = addVectorParamAccessAsMatrix(td, name, varargin)
+            td.warnIfNoArgOut(nargout);
+            td = td.addVectorParam(name, varargin{:}, 'accessAsMatrix', true);
         end
 
         function td = addOrUpdateScalarParam(td, name, vals, varargin)
