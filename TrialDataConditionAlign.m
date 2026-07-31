@@ -2651,7 +2651,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('binAlignmentMode', BinAlignmentMode.Centered, @(x) isa(x, 'BinAlignmentMode'));
             p.addParameter('resampleMethod', 'filter', @isstringlike); % valid modes are filter, average, repeat , interp
             p.addParameter('interpolateMethod', 'linear', @isstringlike);
-            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
+            p.addParameter('expandToTimeMinMax', 'auto', @(x) islogical(x) || isstringlike(x)); % 'auto' = true under IGNORE alignment, else false. true: tvec spans the align window start/stop, NaN where empty. false: tvec spans only where data exist
             p.parse(varargin{:});
 
             includePadding = p.Results.includePadding;
@@ -2715,7 +2715,7 @@ classdef TrialDataConditionAlign < TrialData
                 [data, time] = TrialDataUtilities.Data.resampleDataCellInTime(data, time, 'timeDelta', timeDelta, ...
                     'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
                     'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod, ...
-                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax, 'expandToTimeMinMax', p.Results.expandToTimeMinMax);
+                    'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax, 'expandToTimeMinMax', td.resolveExpandToTimeMinMax(p.Results.expandToTimeMinMax));
             else
                 [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, includePadding, ...
                     'singleTimepointTolerance', p.Results.singleTimepointTolerance);
@@ -2893,6 +2893,20 @@ classdef TrialDataConditionAlign < TrialData
             rms = sqrt(sum(ssqByTrial, 1, 'omitnan') ./ sum(countByTrial, 1, 'omitnan'))';
         end
 
+        function tf = resolveExpandToTimeMinMax(td, val)
+            % Resolve the expandToTimeMinMax parameter of the analog accessors. A logical passes through.
+            % The 'auto' sentinel becomes true under an IGNORE alignment (span the full nominal window,
+            % leaving NaN outside the data) and false under TRUNCATE/INVALIDATE (span only where data exist).
+            if islogical(val)
+                tf = val;
+            elseif strcmp(val, 'auto')
+                tf = strcmp(td.alignInfoActive.outsideOfTrialMode, AlignDescriptor.IGNORE);
+            else
+                error('TrialDataConditionAlign:invalidExpandToTimeMinMax', ...
+                    'expandToTimeMinMax must be a logical or the string ''auto''');
+            end
+        end
+
         function [mat, tvec] = getAnalogAsMatrix(td, name, varargin)
             % return aligned analog channel, resampled and interpolated to
             % a uniformly spaced time vector around t=0 such that the
@@ -2930,9 +2944,9 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('minTrialFraction', 0, @isscalar);
             
             p.addParameter('includePadding', false, @islogical);
-            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
+            p.addParameter('expandToTimeMinMax', 'auto', @(x) islogical(x) || isstringlike(x)); % 'auto' = true under IGNORE alignment, else false. true: tvec spans the align window start/stop, NaN where empty. false: tvec spans only where data exist
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
-            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
+            p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x));
             p.parse(varargin{:});
 
             % build nTrials cell of data/time vectors, and have getAnalog
@@ -2951,7 +2965,11 @@ classdef TrialDataConditionAlign < TrialData
 
             tMin = p.Results.tMin;
             tMax = p.Results.tMax;
-            if p.Results.expandToTimeMinMax
+            % Resolve the 'auto' default by alignment mode: under IGNORE the alignment intends to keep the
+            % full nominal window, so span the align window start/stop (NaN outside the data) rather than
+            % shrinking to where analog samples exist. TRUNCATE/INVALIDATE clip to the trial, so leave false.
+            expandToTimeMinMax = td.resolveExpandToTimeMinMax(p.Results.expandToTimeMinMax);
+            if expandToTimeMinMax
                 if p.Results.includePadding
                     [tMin_, tMax_] = td.getTimeStartStopEachTrialWithPadding();
                 else
@@ -3714,7 +3732,7 @@ classdef TrialDataConditionAlign < TrialData
             
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
-            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
+            p.addParameter('expandToTimeMinMax', 'auto', @(x) islogical(x) || isstringlike(x)); % 'auto' = true under IGNORE alignment, else false. true: tvec spans the align window start/stop, NaN where empty. false: tvec spans only where data exist
             p.parse(varargin{:});
 
             [data, time] = getAnalogChannelGroup@TrialData(td, groupName, ...
@@ -3757,7 +3775,7 @@ classdef TrialDataConditionAlign < TrialData
                     'timeReference', p.Results.timeReference, 'binAlignmentMode', p.Results.binAlignmentMode, ...
                     'resampleMethod', p.Results.resampleMethod, 'interpolateMethod', p.Results.interpolateMethod,  ...
                     'tMinExcludingPadding', tMin, 'tMaxExcludingPadding', tMax, ...
-                    'expandToTimeMinMax', p.Results.expandToTimeMinMax);
+                    'expandToTimeMinMax', td.resolveExpandToTimeMinMax(p.Results.expandToTimeMinMax));
             else
                 [data, time] = td.alignInfoActive.getAlignedTimeseries(data, time, includePadding, ...
                     'singleTimepointTolerance', p.Results.singleTimepointTolerance);
@@ -4017,7 +4035,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); 
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
-            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
+            p.addParameter('expandToTimeMinMax', 'auto', @(x) islogical(x) || isstringlike(x)); % 'auto' = true under IGNORE alignment, else false. true: tvec spans the align window start/stop, NaN where empty. false: tvec spans only where data exist
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -4033,6 +4051,8 @@ classdef TrialDataConditionAlign < TrialData
                 end
             end
 
+            expandToTimeMinMax = td.resolveExpandToTimeMinMax(p.Results.expandToTimeMinMax);
+
             % build nTrials x nTime x nChannels cell of data/time vectors
             [dataCell, timeCell] = td.getAnalogMulti(names, ...
                 'includeEdgeBins', true, ...
@@ -4040,11 +4060,11 @@ classdef TrialDataConditionAlign < TrialData
                 'timeReference', p.Results.timeReference, 'interpolateMethod', p.Results.interpolateMethod, ...
                 'binAlignmentMode', p.Results.binAlignmentMode, 'resampleMethod', p.Results.resampleMethod, ...
                 'includePadding', p.Results.includePadding, ...
-                'expandToTimeMinMax', p.Results.expandToTimeMinMax, p.Unmatched);
+                'expandToTimeMinMax', expandToTimeMinMax, p.Unmatched);
             
             tMin = p.Results.tMin;
             tMax = p.Results.tMax;
-            if p.Results.expandToTimeMinMax
+            if expandToTimeMinMax
                 if p.Results.includePadding
                     [tMin_, tMax_] = td.getTimeStartStopEachTrialWithPadding();
                 else
@@ -4081,7 +4101,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('includePadding', false, @islogical);
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); 
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
-            p.addParameter('expandToTimeMinMax', false, @islogical); % if false, time vector will span time start stop even if no data is present
+            p.addParameter('expandToTimeMinMax', 'auto', @(x) islogical(x) || isstringlike(x)); % 'auto' = true under IGNORE alignment, else false. true: tvec spans the align window start/stop, NaN where empty. false: tvec spans only where data exist
             p.KeepUnmatched = true;
             p.parse(varargin{:});
 
@@ -4096,7 +4116,10 @@ classdef TrialDataConditionAlign < TrialData
 
             tMin = p.Results.tMin;
             tMax = p.Results.tMax;
-            if p.Results.expandToTimeMinMax
+            % Resolve the 'auto' default by alignment mode: under IGNORE span the align window start/stop
+            % (NaN outside the data); TRUNCATE/INVALIDATE clip to the trial, so leave false.
+            expandToTimeMinMax = td.resolveExpandToTimeMinMax(p.Results.expandToTimeMinMax);
+            if expandToTimeMinMax
                 if p.Results.includePadding
                     [tMin_, tMax_] = td.getTimeStartStopEachTrialWithPadding();
                 else
