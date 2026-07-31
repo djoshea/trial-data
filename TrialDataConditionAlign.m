@@ -5552,6 +5552,7 @@ classdef TrialDataConditionAlign < TrialData
             p = inputParser;
             p.addParameter('spikeFilter', SpikeFilter.getDefaultFilter(), @(x) isa(x, 'SpikeFilter'));
             p.addParameter('combine', false, @islogical);
+            p.addParameter('markNanOutsideTrial', true, @islogical); % NaN out bins outside each trial's data window (the out-of-trial overhang the filter 0-fills under IGNORE); no-op under TRUNCATE/INVALIDATE
             p.parse(varargin{:});
 
             sf = p.Results.spikeFilter;
@@ -5576,6 +5577,17 @@ classdef TrialDataConditionAlign < TrialData
             blankingIntervals = td.getSpikeBlankingRegions(unitName);
             [rateCell, timeCell] = TrialDataUtilities.SpikeData.markNanBlankedIntervals(...
                 blankingIntervals, rateCell, timeCell, 'padding', [sf.preWindow sf.postWindow]);
+
+            % NaN out regions outside each trial's true data window (the out-of-trial overhang the filter
+            % 0-fills under IGNORE); no-op under TRUNCATE/INVALIDATE. See getSpikeRateFilteredAsMatrix.
+            if p.Results.markNanOutsideTrial
+                [tStartTruncRel, tStopTruncRel] = td.alignInfoActive.getStartStopRelativeToZeroByTrialTruncated();
+                for iR = 1:numel(rateCell)
+                    if ~isnan(tStartTruncRel(iR)) && ~isempty(timeCell{iR})
+                        rateCell{iR}(timeCell{iR} < tStartTruncRel(iR) | timeCell{iR} > tStopTruncRel(iR), :) = NaN;
+                    end
+                end
+            end
         end
 
         function [rates, tvec, hasSpikes, poissonCountMultiplier] = getSpikeRateFilteredAsMatrix(td, unitNames, varargin)
@@ -5586,6 +5598,7 @@ classdef TrialDataConditionAlign < TrialData
             p.addParameter('tMin', [], @(x) isempty(x) || isscalar(x)); % manually dictate time boundaries if specified, otherwise auto
             p.addParameter('tMax', [], @(x) isempty(x) || isscalar(x)); 
             p.addParameter('useNativeScaling', false, @islogical);
+            p.addParameter('markNanOutsideTrial', true, @islogical); % NaN out bins outside each trial's data window (the out-of-trial overhang the filter 0-fills under IGNORE); no-op under TRUNCATE/INVALIDATE
             p.parse(varargin{:});
 
             sf = p.Results.spikeFilter;
@@ -5626,6 +5639,19 @@ classdef TrialDataConditionAlign < TrialData
                 'tMax', p.Results.tMax, ...
                 'preserveNativeScaling', preserveNativeScaling);
             tvec = makecol(tvec);
+
+            % NaN out the regions outside each trial's true data window. Under IGNORE the align window
+            % overhangs the trial and the filter 0-fills that overhang (fabricated zeros); mark it NaN so
+            % spikes are honest and match analog. No-op under TRUNCATE/INVALIDATE (truncated bounds ==
+            % align window). Uses the trial-clipped per-trial window, indexed 1:1 with the rate rows.
+            if p.Results.markNanOutsideTrial
+                [tStartTruncRel, tStopTruncRel] = td.alignInfoActive.getStartStopRelativeToZeroByTrialTruncated();
+                for iR = 1:size(rates, 1)
+                    if ~isnan(tStartTruncRel(iR))
+                        rates(iR, tvec < tStartTruncRel(iR) | tvec > tStopTruncRel(iR), :) = NaN;
+                    end
+                end
+            end
 
             % now we need to nan out the regions affected by blanking
 %             blankingIntervals = td.getSpikeBlankingRegions(unitNames, 'combine', p.Results.combine);
