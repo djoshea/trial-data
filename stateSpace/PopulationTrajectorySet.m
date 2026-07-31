@@ -2888,7 +2888,7 @@ classdef PopulationTrajectorySet
 
                     [tMinByTrial{iBasis, iAlign}, ...
                         tMaxByTrial{iBasis, iAlign}] = ...
-                        TrialDataUtilities.Data.getValidTimeExtents(tvec, dataByTrial{iBasis, iAlign});
+                        pset.getPerTrialLimitsHonoringOutsideOfTrialMode(iAlign, tvec, dataByTrial{iBasis, iAlign});
                 end
             end
             prog.finish();
@@ -2929,8 +2929,8 @@ classdef PopulationTrajectorySet
                 for iAlign = 1:nAlign
                     [tMinByTrial{iBasis, iAlign}, ...
                         tMaxByTrial{iBasis, iAlign}] = ...
-                        TrialDataUtilities.Data.getValidTimeExtents(...
-                            tvecCell{iBasis, iAlign}, dataByTrial{iBasis, iAlign});
+                        pset.getPerTrialLimitsHonoringOutsideOfTrialMode(...
+                            iAlign, tvecCell{iBasis, iAlign}, dataByTrial{iBasis, iAlign});
                 end
             end
 
@@ -2938,6 +2938,22 @@ classdef PopulationTrajectorySet
             c = pset.odc;
             c.tMinByTrial = tMinByTrial;
             c.tMaxByTrial = tMaxByTrial;
+        end
+
+        function [tMin, tMax] = getPerTrialLimitsHonoringOutsideOfTrialMode(pset, iAlign, tvec, data)
+            % Per-trial valid time extents for one (basis, align). Normally this is the non-NaN data
+            % extent (getValidTimeExtents), which effectively imposes TRUNCATE at the pset layer. But
+            % when this alignment's outsideOfTrialMode is IGNORE, the alignment intends to KEEP the
+            % full fixed window, so widen every trial that has any data to the full matrix (nominal)
+            % window [min(tvec), max(tvec)] -- the out-of-window edge bins stay NaN in the data and
+            % NaN-fill in dataMean via nanMeanSemMinCount (gated by minTrialsForTrialAveraging).
+            % All-NaN / empty trials keep NaN limits so the trial-count gate still excludes them.
+            [tMin, tMax] = TrialDataUtilities.Data.getValidTimeExtents(tvec, data);
+            if ~isempty(tvec) && strcmp(pset.alignDescriptorSet{iAlign}.outsideOfTrialMode, AlignDescriptor.IGNORE)
+                hasData = ~isnan(tMin);
+                tMin(hasData) = min(tvec);
+                tMax(hasData) = max(tvec);
+            end
         end
 
         function buildTrialLists(pset)
