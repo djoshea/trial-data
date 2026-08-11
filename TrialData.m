@@ -74,10 +74,10 @@ classdef TrialData
         function td = TrialData(varargin)
             p = inputParser();
             p.addOptional('buildFrom', [], @(x) isa(x, 'TrialData') || isa(x, 'TrialDataInterface'));
-            %             p.addParamValue('quiet', false, @islogical); % completely silent output
+            p.addParameter('quiet', false, @islogical); % completely silent output
             p.addParameter('suppressWarnings', false, @islogical); % don't warn about any minor issues
             p.parse(varargin{:});
-            %             quiet = p.Results.quiet;
+            quiet = p.Results.quiet;
 
             td = td.rebuildOnDemandCache();
 
@@ -91,10 +91,10 @@ classdef TrialData
 
             if isa(from, 'TrialData')
                 td = td.initializeFromTrialData(from, ...
-                    'suppressWarnings', suppressWarnings);
+                    'suppressWarnings', suppressWarnings, 'quiet', quiet);
             elseif isa(from, 'TrialDataInterface')
                 td = td.initializeFromTrialDataInterface(from, ...
-                    'suppressWarnings', suppressWarnings);
+                    'suppressWarnings', suppressWarnings, 'quiet', quiet);
             else
                 error('Unknown initializer');
             end
@@ -128,7 +128,9 @@ classdef TrialData
             p = inputParser();
             p.addRequired('trialDataInterface', @(tdi) isa(tdi, 'TrialDataInterface'));
             p.addParameter('suppressWarnings', false, @islogical);
+            p.addParameter('quiet', false, @islogical)
             p.parse(varargin{:});
+            quiet = p.Results.quiet;
             tdi = p.Results.trialDataInterface;
 
             % copy over basic details from the TrialDataInterface
@@ -171,7 +173,8 @@ classdef TrialData
 
             % validate and replace missing values, update data classes
             % inside channelDescriptors
-            [data, td.channelDescriptorsByName] = td.validateDataInternal(data, td.channelDescriptorsByName, 'suppressWarnings', p.Results.suppressWarnings);
+            [data, td.channelDescriptorsByName] = td.validateDataInternal(data, td.channelDescriptorsByName, ...
+                'suppressWarnings', p.Results.suppressWarnings, 'progress', ~quiet);
             td.data = makecol(data);
 
             td.manualValid = truevec(td.nTrials);
@@ -907,9 +910,13 @@ classdef TrialData
             p.addParameter('objectName', "TrialData", @isstringlike);
             p.addParameter('validate', true, @islogical);
             p.addParameter('progress', true, @islogical);
+            p.addParameter('quiet', false, @islogical);
             p.addParameter('useParallel', ~isempty(gcp('nocreate')), @islogical);
             p.KeepUnmatched = true; % unmatched fields will match parameter values that were provided to load fast
             p.parse(varargin{:});
+            quiet = p.Results.quiet;
+            progress = p.Results.progress;
+            if quiet, progress = false; end
             
             % strip extension
             %             [path, name, ext] = fileparts(location);
@@ -921,7 +928,6 @@ classdef TrialData
             if isempty(loadAllPartitions)
                 loadAllPartitions = isempty(partitions);
             end
-            progress = p.Results.progress;
             obj_name = string(p.Results.objectName);
 
             if exist(location, 'file') == 2
