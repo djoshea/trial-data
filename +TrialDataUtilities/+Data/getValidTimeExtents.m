@@ -44,7 +44,7 @@ else
     
     time = makecol(time);
     
-    mask = ~all(isnan(data), 1);
+    % mask = ~all(isnan(data), 1);
     
     for i = 1:size(data, 1)
         mask = ~isnan(data(i, :))' & time >= tMinExcludingPadding & time <= tMaxExcludingPadding;

@@ -756,7 +756,7 @@ classdef TrialData
             progress = p.Results.progress;
             
             if p.Results.validate
-                td = td.validateData();
+                td = td.validateData(progress=progress);
             end
             
             data = td.data;
