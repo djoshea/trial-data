@@ -1105,17 +1105,33 @@ classdef TrialDataConditionAlign < TrialData
         function td = sortWithinConditionsBy(td, attrList, varargin)
             td.warnIfNoArgOut(nargout);
 
-            if isstringlike(attrList)
-                attrList = {attrList};
-            end
+            % Accepts a char row, a scalar string, a cellstr or a string array. Normalize to a
+            % string array and index with () -- the previous isstringlike guard wrapped a
+            % cellstr or string array in another cell, so attrList{i} was the whole list.
+            attrList = string(attrList);
+            attrList = attrList(:);
 
+            % A leading '-' means sort descending. Strip it to look the attribute up, then put
+            % it back on the name addAttribute returns: that name may differ from the one passed
+            % in (event and analog channels get renamed to record how the scalar was taken), and
+            % ConditionDescriptor.sortWithinConditionsBy reads the '-' off the names it is
+            % given. Previously the '-' was stripped and never restored, so a descending sort
+            % silently became ascending.
             attrListModified = cellvec(numel(attrList));
             for i = 1:numel(attrList)
-                if strncmp(attrList{i}, '-', 1)
-                    [td, attrListModified{i}] = td.addAttribute(attrList{i}(2:end));
-                else
-                    [td, attrListModified{i}] = td.addAttribute(attrList{i});
+                name = attrList(i);
+                descending = startsWith(name, "-");
+                if descending
+                    name = extractAfter(name, 1);
                 end
+
+                [td, nameMod] = td.addAttribute(name);
+
+                if descending
+                    nameMod = "-" + nameMod;
+                end
+                % ConditionDescriptor.sortWithinConditionsBy asserts iscellstr, so hand it char.
+                attrListModified{i} = char(nameMod);
             end
 
             td.conditionInfo = td.conditionInfo.sortWithinConditionsBy(attrListModified, varargin{:});
