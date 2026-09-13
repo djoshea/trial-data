@@ -931,9 +931,27 @@ classdef TrialDataConditionAlign < TrialData
         function td = groupBy(td, varargin)
             td.warnIfNoArgOut(nargout);
 
-            % add any needed attributes to condition info
+            % Add any needed attributes to condition info.
+            %
+            % Each varargin{i} is one AXIS, and an axis may name a single attribute ('estim')
+            % or several to be combined ({'targetDirection', 'saveTagName'}). Flatten to
+            % individual names here, and add them one at a time: addAttribute guards with
+            % isstringlike, which is true for a cellstr or a string array, so handing it a list
+            % makes it wrap the whole list as though it were a single channel name. The name then
+            % reaches getParamRaw as a cell and fails in parseIndexedParamChannelName. Passing
+            % one scalar name per call sidesteps that without changing addAttribute's contract.
+            %
+            % The nesting is preserved for conditionInfo.groupBy below, which needs it -- that is
+            % what tells it the attributes belong to one axis rather than several.
             for i = 1:numel(varargin)
-                td = td.addAttribute(varargin{i});
+                % string() maps a char row to one scalar string, and a cellstr or string array
+                % to an array of names, so all three axis forms flatten the same way. Convert
+                % back to char before adding: addAttribute echoes the name into namesModified,
+                % and its callers previously always received char, so keep that unchanged.
+                axisNames = string(varargin{i});
+                for iN = 1:numel(axisNames)
+                    td = td.addAttribute(char(axisNames(iN)));
+                end
             end
 
             td.conditionInfo = td.conditionInfo.groupBy(varargin{:});
@@ -943,8 +961,14 @@ classdef TrialDataConditionAlign < TrialData
         function td = addAxis(td, attrList, varargin)
             td.warnIfNoArgOut(nargout);
 
-            % add any needed attributes to condition info
-            td = td.addAttribute(attrList);
+            % Add any needed attributes to condition info, one scalar name at a time. Same
+            % reasoning as groupBy above: attrList may be a cellstr or string array naming
+            % several attributes to combine into this one axis, and addAttribute's isstringlike
+            % guard would wrap that whole list as though it were a single channel name.
+            axisNames = string(attrList);
+            for iN = 1:numel(axisNames)
+                td = td.addAttribute(char(axisNames(iN)));
+            end
 
             td.conditionInfo = td.conditionInfo.addAxis(attrList, varargin{:});
             td = td.postUpdateConditionInfo();
