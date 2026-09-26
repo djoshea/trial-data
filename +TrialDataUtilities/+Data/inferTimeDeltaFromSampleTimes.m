@@ -29,7 +29,15 @@ if iscell(time)
     else
         for i = 1:numel(time)
             if ~isempty(data{i}) && ~isempty(time{i})
-                timeDelta(i) = median(diff(time{i}), 1, 'omitnan'); % ignore the mask here
+                if numel(time{i}) == 1
+                    % Single sample: diff is empty, and median of empty is empty, which will
+                    % not assign into a scalar slot. No interval can be inferred from one
+                    % sample, so NaN -- the same answer the ignoreNaNSamples branch above
+                    % already gives for this case. This branch simply never got the guard.
+                    timeDelta(i) = NaN;
+                else
+                    timeDelta(i) = median(diff(time{i}), 1, 'omitnan'); % ignore the mask here
+                end
             end
         end
     end

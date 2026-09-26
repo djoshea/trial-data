@@ -31,27 +31,37 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
         interpolateMode = 'linear';
     end
     
-    x = makecol(x);
-    tx = double(makecol(tx));
     ty = double(makecol(ty));
 
-    % A trial with no samples in the requested window is a legitimate input, not an error: it
-    % simply has no data there. resample() rejects an empty X, so answer directly with all-NaN
-    % on the requested output time base -- the same thing the NaN-edge invalidation at the end
-    % of this function produces for a trial that is only partially covered.
+    % FEWER THAN TWO SAMPLES CANNOT BE RESAMPLED, and that is a legitimate input rather than an
+    % error: the trial simply has no usable data in the requested window. Everything below is
+    % built on timeDeltaX = median(diff(tx)), which is NaN for a single sample and undefined for
+    % none, so the padding, the rat() ratio and the tpre/tpost construction all degenerate.
+    % Answer with all-NaN on the requested output time base -- the same thing the NaN-edge
+    % invalidation at the end of this function produces for a partially covered trial.
     %
-    % Without this, ONE such trial among many aborts the whole extraction. That mixed case is
+    % THIS MUST RUN BEFORE makecol(x). A single-timepoint segment of several channels arrives
+    % as 1 x nCh, and makecol treats any vector as a column, so it would transpose that into
+    % nCh x 1 -- silently reinterpreting channels as timepoints. Deciding here keeps the answer
+    % shaped [numel(ty), <channel dims>], which is what the caller expects; computing it from
+    % the transposed x returns nCh-by-1 and trips an assert further out in
+    % embedTimeseriesInMatrix.
+    %
+    % Without this, ONE such trial among many aborts the whole extraction. The mixed case is
     % new: with a stim-locked alignment the window sits a fixed distance from the data edge, so
-    % either every trial can supply it or none can, and the all-empty case is handled upstream.
-    % With a movement-locked alignment (Estim<Fam>AlignMovePosthocCommon) the distance varies
-    % per trial with RT, so a handful of trials come up empty while the rest are fine --
-    % measured 2 of 70 on EstimReach P20180609_A baselineLate.
-    if isempty(x) || isempty(tx)
+    % either every trial in a pool covers it or none does, and the all-empty case is handled
+    % upstream. With a movement-locked alignment (Estim<Fam>AlignMovePosthocCommon) the distance
+    % varies per trial with RT, so a handful come up short while the rest are fine -- measured
+    % 2 of 70 on EstimReach P20180609_A baselineLate, and a 1-sample segment on P20180609_C.
+    if isempty(x) || numel(tx) < 2
         szOut = size(x);
         szOut(1) = numel(ty);
         y = nan(szOut, 'like', x);
         return;
     end
+
+    x = makecol(x);
+    tx = double(makecol(tx));
 
     timeDeltaX = median(diff(tx));
     timeDeltaY = median(diff(ty));

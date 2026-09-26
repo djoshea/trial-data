@@ -203,8 +203,24 @@ function [mat, tvec] = embedTimeseriesInMatrix(dataCell, timeCell, varargin)
     end
     mat = nan([N, T, C, G], dclass); % we'll reshape this later, C is channels per matrix of dataCell, G is over columns of dataCell    
     
-    indPutStart = TrialDataUtilities.Stats.floortol((tMin - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
-    indPutStop  = TrialDataUtilities.Stats.floortol((tMax - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
+    if isempty(tMinGlobal)
+        % NO TRIAL HAS SAMPLES IN THIS WINDOW, so there is no common time vector: tvec is
+        % empty, T is 0, and mat above is already allocated N x 0 x C x G -- the correct
+        % all-NaN answer. The subtraction below would take a full-size tMin minus an empty
+        % tMinGlobal and error on the size mismatch.
+        %
+        % The insertion loop needs no special case: tMin and tMax are NaN for every trial
+        % here (verified on the captured inputs), so its own ~isnan(tMin) test skips them all.
+        % Only these two index arrays have to be kept the right shape.
+        %
+        % Reached when a pool's window falls outside every trial's data -- e.g. a window
+        % pinned to movement for a family whose trials all fall short of it.
+        indPutStart = nan(size(tMin));
+        indPutStop  = nan(size(tMax));
+    else
+        indPutStart = TrialDataUtilities.Stats.floortol((tMin - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
+        indPutStop  = TrialDataUtilities.Stats.floortol((tMax - tMinGlobal) / timeDelta, timeDelta/1000) + 1;
+    end
     
     % if specified, we can skip the resampling step which makes this quick
     uniformSampling = p.Results.assumeUniformSampling && all(timeDelta == origDelta);

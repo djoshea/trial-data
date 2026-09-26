@@ -66,7 +66,27 @@ function [data, timeNew] = resampleTensorInTime(data, timeDim, time, varargin)
         % single sample special case
         return;
     end
-    
+
+    % FEWER THAN TWO SAMPLES cannot be put on a uniform grid: the interp1 below needs at least
+    % two points, and a 1 x nCh slice is ambiguous with a vector, so interp1 reads the channels
+    % as timepoints and errors on the length mismatch. A trial with one sample (or none) in the
+    % requested window has no usable data there, and the answer is all-NaN over timeNew -- the
+    % same shape the resampling path is required to return by the assert below it.
+    %
+    % The single-sample guard above does NOT cover this: origDelta is the POOLED delta across
+    % all trials, so it is nonzero whenever one short trial sits among normal ones. That mixed
+    % case is what a movement-locked window produces, because the window sits at a distance
+    % from each trial's data that varies with RT.
+    %
+    % Returned before the dim shift, as the guard above does, so the caller gets its original
+    % dimension order back.
+    if numel(time) < 2
+        szOut = size(data);
+        szOut(timeDim) = numel(timeNew);
+        data = nan(szOut, 'like', data);
+        return;
+    end
+
     data = TensorUtils.shiftdimToFirstDim(data, timeDim);
     deltaIsChanging = ~TrialDataUtilities.Stats.isequaltol(timeDelta, origDelta, origDelta / 1000);
     
