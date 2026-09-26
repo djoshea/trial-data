@@ -1268,6 +1268,265 @@ classdef TensorUtils
             end
         end
 
+        function [out, labelsByDimOut] = catCellContents(c, whichDims, varargin)
+            % [out, labelsByDimOut] = catCellContents(c, whichDims, ...)
+            %
+            % Concatenates the contents of cell array c into a single tensor,
+            % letting you place each axis of the cell array and each axis of the
+            % cell contents anywhere in the output, including merging several of
+            % them onto the same output axis.
+            %
+            % c is a cell array with size szOuter = A x B x ..., where every
+            % element is a tensor with the same size szInner = a x b x ....
+            %
+            % Axes are identified by a signed id, both sides numbered from 1:
+            %   outer axis k (k in 1:ndims(c))    has id  k
+            %   inner axis j (j in 1:nDimsInner)  has id -j
+            %
+            % whichDims is a cell vector with one entry per output axis, listing
+            % the axis ids that land on that output axis. Within an entry, the
+            % FIRST id listed varies fastest, the same convention used by
+            % reshapeByConcatenatingDims. Each axis may appear at most once. A
+            % non-cell whichDims is wrapped as a single entry, again matching
+            % reshapeByConcatenatingDims.
+            %
+            % e.g. c is 4 x 205 with contents 10 x 11, so the ids are
+            % 1 -> 4, 2 -> 205, -1 -> 10, -2 -> 11:
+            %   {1, 2, -1, -2}    -> out is 4 x 205 x 10 x 11
+            %   {[-1 1], [-2 2]}  -> out is 4*10 x 205*11 with the inner index
+            %        varying fastest, i.e. output axis 1 is 4 contiguous blocks
+            %        of 10, which is what cat(1, c{:}) would give you
+            %   {[1 -1], [2 -2]}  -> out is 4*10 x 205*11 interleaved instead,
+            %        i.e. the outer index varies fastest
+            %   {[1 2], [-1 -2]}  -> out is 4*205 x 10*11
+            %
+            % Axes omitted from whichDims are not concatenated. out is then a
+            % cell array whose dims are the output axes named by whichDims, and
+            % whose elements are tensors over the omitted axes, outer axes first
+            % and each side in ascending axis order.
+            %
+            % Ragged (non-uniformly sized) contents are rejected. Such an inner
+            % axis is only representable when it is merged onto an outer axis and
+            % its length depends solely on that outer axis's subscript; that case
+            % is not implemented here.
+            %
+            % Options:
+            %   nDimsInner: how many axes to treat the contents as having.
+            %     Defaults to ndims of the first non-empty element. Pass this to
+            %     keep trailing singleton inner axes, which size() cannot report.
+            %   innerSize: szInner directly rather than inferring it from the
+            %     contents. Required when c has no non-empty elements.
+            %   fillWith: scalar used to fill in empty ([]) elements of c, which
+            %     would otherwise be a size mismatch. e.g. NaN.
+            %   labelsByDimOuter, labelsByDimInner: per-axis labels in the format
+            %     described by reshapeByConcatenatingDims, defaulting to 1:len.
+            %     These build labelsByDimOut, one entry per output axis, so you
+            %     can recover which (outer, inner) subscripts each output index
+            %     came from. Essential for merged axes, where the output index no
+            %     longer means anything on its own.
+            %
+            % See also catCellContentsToDims, undoCatCellContents,
+            %   reshapeByConcatenatingDims
+
+            p = inputParser();
+            p.addParameter('nDimsInner', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('innerSize', [], @isnumeric);
+            p.addParameter('fillWith', [], @(x) isempty(x) || isscalar(x));
+            p.addParameter('labelsByDimOuter', {}, @iscell);
+            p.addParameter('labelsByDimInner', {}, @iscell);
+            p.parse(varargin{:});
+
+            assert(iscell(c), 'c must be a cell array');
+
+            nOuter = ndims(c);
+            szOuter = size(c);
+
+            % figure out szInner, from innerSize if given, else from the first non-empty element
+            szInner = TensorUtils.makerow(p.Results.innerSize);
+            nDimsInner = p.Results.nDimsInner;
+            if isempty(szInner)
+                idxFirst = find(~cellfun(@isempty, c), 1);
+                assert(~isempty(idxFirst), 'Cannot infer the size of the contents of c: it is empty or holds only empty elements. Pass innerSize.');
+                if isempty(nDimsInner)
+                    nDimsInner = ndims(c{idxFirst});
+                end
+                assert(nDimsInner >= ndims(c{idxFirst}), 'nDimsInner is %d but the contents of c have %d dims', nDimsInner, ndims(c{idxFirst}));
+                szInner = TensorUtils.sizeNDims(c{idxFirst}, nDimsInner);
+            else
+                if isempty(nDimsInner)
+                    nDimsInner = numel(szInner);
+                end
+                assert(numel(szInner) == nDimsInner, 'innerSize has %d entries but nDimsInner is %d', numel(szInner), nDimsInner);
+            end
+            assert(nDimsInner >= 1, 'nDimsInner must be at least 1');
+
+            % validate the contents, filling in empties first if asked to
+            fillWith = p.Results.fillWith;
+            for iC = 1:numel(c)
+                if isempty(c{iC}) && ~isempty(fillWith)
+                    c{iC} = repmat(fillWith, szInner);
+                    continue;
+                end
+                szThis = TensorUtils.sizeNDims(c{iC}, nDimsInner);
+                if ~isequal(szThis, szInner)
+                    subs = TensorUtils.ind2subAsMat(szOuter, iC);
+                    error('Contents of c are not uniformly sized: c{%s} is %s but expected %s. Ragged contents are not supported.', ...
+                        strjoin(arrayfun(@num2str, subs, 'UniformOutput', false), ','), mat2str(szThis), mat2str(szInner));
+                end
+            end
+
+            % cat would silently promote or truncate mixed classes, so catch it here
+            if ~isempty(c)
+                classes = unique(cellfun(@class, c(:), 'UniformOutput', false));
+                assert(numel(classes) == 1, 'Contents of c have mixed classes (%s), which cat would silently promote or truncate', strjoin(classes', ', '));
+            end
+
+            % stack the contents into one tensor. c{:} enumerates c in column-major
+            % order, which is exactly the order the trailing reshape expects.
+            stacked = cat(nDimsInner+1, c{:}); % a x b x ... x prod(szOuter)
+            stacked = reshape(stacked, [szInner szOuter]); % a x b x ... x prod(szOuter) -> a x b x ... x A x B x ...
+
+            % stacked is laid out inner axes first, so outer id k sits at nDimsInner+k
+            % while inner id -j sits at j
+            toInternal = @(s) abs(s) + nDimsInner * (s > 0); % signed axis id -> axis of stacked
+
+            if ~iscell(whichDims)
+                whichDims = {whichDims};
+            end
+            whichDims = TensorUtils.makecol(whichDims);
+            assert(~isempty(whichDims), 'whichDims must name at least one output axis');
+            allIds = [1:nOuter, -(1:nDimsInner)];
+            allSrc = cell2mat(cellfun(@(x) TensorUtils.makecol(x), whichDims, 'UniformOutput', false));
+            assert(all(allSrc ~= 0 & allSrc == round(allSrc) & allSrc <= nOuter & allSrc >= -nDimsInner), ...
+                'whichDims entries must be outer axis ids 1:%d or inner axis ids -1:-%d', nOuter, nDimsInner);
+            assert(numel(unique(allSrc)) == numel(allSrc), 'Each axis may appear at most once in whichDims');
+
+            % omitted axes become trailing output axes of their own, which we then
+            % peel back off into a cell array below
+            unassignedSrc = TensorUtils.makecol(allIds(~ismember(allIds, allSrc)));
+            whichDimsInternal = cellfun(@(g) toInternal(g), whichDims, 'UniformOutput', false);
+            if ~isempty(unassignedSrc)
+                whichDimsInternal = cat(1, whichDimsInternal, num2cell(toInternal(unassignedSrc)));
+            end
+
+            if nargout > 1
+                % labels for stacked, in its internal axis order: inner then outer
+                labelsByDimOuter = p.Results.labelsByDimOuter;
+                labelsByDimInner = p.Results.labelsByDimInner;
+                assert(numel(labelsByDimOuter) <= nOuter, 'labelsByDimOuter has more than ndims(c) == %d entries', nOuter);
+                assert(numel(labelsByDimInner) <= nDimsInner, 'labelsByDimInner has more than nDimsInner == %d entries', nDimsInner);
+
+                labelsOuterFull = arrayfun(@(k) TensorUtils.makecol(1:szOuter(k)), 1:nOuter, 'UniformOutput', false);
+                labelsOuterFull(1:numel(labelsByDimOuter)) = labelsByDimOuter;
+                labelsInnerFull = arrayfun(@(j) TensorUtils.makecol(1:szInner(j)), 1:nDimsInner, 'UniformOutput', false);
+                labelsInnerFull(1:numel(labelsByDimInner)) = labelsByDimInner;
+
+                [out, labelsByDimOut] = TensorUtils.reshapeByConcatenatingDims(stacked, whichDimsInternal, [labelsInnerFull, labelsOuterFull]);
+            else
+                out = TensorUtils.reshapeByConcatenatingDims(stacked, whichDimsInternal);
+            end
+
+            if ~isempty(unassignedSrc)
+                % the named output axes become the cell dims, the omitted axes stay inside
+                nOutNamed = numel(whichDims);
+                out = TensorUtils.regroupAlongDimension(out, 1:nOutNamed);
+                if nargout > 1
+                    labelsByDimOut = labelsByDimOut(1:nOutNamed);
+                end
+            end
+        end
+
+        function [out, labelsByDimOut] = catCellContentsToDims(c, outerDimsTo, innerDimsTo, varargin)
+            % [out, labelsByDimOut] = catCellContentsToDims(c, outerDimsTo, innerDimsTo, ...)
+            %
+            % Convenience wrapper on catCellContents that names, for each source
+            % axis, the OUTPUT axis it lands on, instead of listing source axes
+            % per output axis.
+            %
+            % outerDimsTo(k) is the output axis that outer axis k lands on and
+            % must have ndims(c) entries, so 2 for a cell vector. innerDimsTo(j)
+            % is the output axis that inner axis j lands on, and its length sets
+            % nDimsInner. Use NaN to leave an axis unassigned, in which case out
+            % is a cell array; see catCellContents.
+            %
+            % Where an outer and an inner axis share an output axis, the inner
+            % index varies fastest, i.e. the contents stay contiguous, matching
+            % cat. Where several outer or several inner axes share one, they are
+            % ordered by ascending axis number. Use catCellContents directly if
+            % you need a different order.
+            %
+            % e.g. c is 4 x 205 with contents 10 x 11:
+            %   outerDimsTo = [1 2], innerDimsTo = [3 4] -> out is 4 x 205 x 10 x 11
+            %   outerDimsTo = [1 2], innerDimsTo = [1 2] -> out is 4*10 x 205*11
+            %
+            % See also catCellContents, undoCatCellContents
+
+            assert(iscell(c), 'c must be a cell array');
+            nOuter = ndims(c);
+            outerDimsTo = TensorUtils.makerow(outerDimsTo);
+            innerDimsTo = TensorUtils.makerow(innerDimsTo);
+            assert(numel(outerDimsTo) == nOuter, 'outerDimsTo must have ndims(c) == %d entries', nOuter);
+            nDimsInner = numel(innerDimsTo);
+
+            % signed axis ids, as catCellContents identifies them
+            srcIds = [1:nOuter, -(1:nDimsInner)];
+            destBySrc = [outerDimsTo, innerDimsTo];
+            isInnerBySrc = [false(1, nOuter), true(1, nDimsInner)];
+
+            assigned = ~isnan(destBySrc);
+            nOut = max(destBySrc(assigned));
+            assert(~isempty(nOut), 'At least one axis must be assigned to an output axis');
+            assert(isequal(TensorUtils.makerow(unique(destBySrc(assigned))), 1:nOut), ...
+                'The output axes named by outerDimsTo and innerDimsTo must cover 1:%d with no gaps', nOut);
+
+            whichDims = TensorUtils.cellvec(nOut);
+            for iOut = 1:nOut
+                sel = assigned & destBySrc == iOut;
+                % inner axes listed first so the inner index varies fastest
+                whichDims{iOut} = [srcIds(sel & isInnerBySrc), srcIds(sel & ~isInnerBySrc)];
+            end
+
+            if nargout > 1
+                [out, labelsByDimOut] = TensorUtils.catCellContents(c, whichDims, 'nDimsInner', nDimsInner, varargin{:});
+            else
+                out = TensorUtils.catCellContents(c, whichDims, 'nDimsInner', nDimsInner, varargin{:});
+            end
+        end
+
+        function c = undoCatCellContents(t, whichDims, szOuter, szInner)
+            % c = undoCatCellContents(t, whichDims, szOuter, szInner)
+            %
+            % Inverts catCellContents, rebuilding the szOuter cell array whose
+            % elements are szInner tensors. whichDims must be the same spec used
+            % to build t, with axes identified the same way: outer axis k is k,
+            % inner axis j is -j. Every axis must have been assigned, so partial
+            % (cell array) outputs cannot be inverted.
+
+            assert(~iscell(t), 'undoCatCellContents cannot invert a partial (cell array) output of catCellContents');
+            szOuter = TensorUtils.makerow(szOuter);
+            szInner = TensorUtils.makerow(szInner);
+            nOuter = numel(szOuter);
+            nDimsInner = numel(szInner);
+
+            if ~iscell(whichDims)
+                whichDims = {whichDims};
+            end
+            whichDims = TensorUtils.makecol(whichDims);
+            allIds = [1:nOuter, -(1:nDimsInner)];
+            allSrc = cell2mat(cellfun(@(x) TensorUtils.makecol(x), whichDims, 'UniformOutput', false));
+            assert(numel(allSrc) == numel(allIds) && isempty(setxor(allSrc, allIds)), ...
+                'whichDims must assign every axis exactly once to be invertible');
+
+            toInternal = @(s) abs(s) + nDimsInner * (s > 0); % signed axis id -> axis of stacked
+            whichDimsInternal = cellfun(@(g) toInternal(g), whichDims, 'UniformOutput', false);
+
+            stacked = TensorUtils.undoReshapeByConcatenatingDims(t, whichDimsInternal, [szInner szOuter]); % -> a x b x ... x A x B x ...
+            stacked = reshape(stacked, [szInner prod(szOuter)]); % a x b x ... x A x B x ... -> a x b x ... x prod(szOuter)
+
+            c = TensorUtils.squeezeSelectEachAlongDimension(stacked, nDimsInner+1);
+            c = reshape(c, TensorUtils.expandScalarSize(szOuter));
+        end
+
         function [out, labelsByDimOut] = reshapeByConcatenatingDims(in, whichDims, labelsByDim)
             % reshapes a tensor by concatenating dims.
             % whichDims is a cell vector indicating which dimensions of in to
