@@ -34,6 +34,25 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
     x = makecol(x);
     tx = double(makecol(tx));
     ty = double(makecol(ty));
+
+    % A trial with no samples in the requested window is a legitimate input, not an error: it
+    % simply has no data there. resample() rejects an empty X, so answer directly with all-NaN
+    % on the requested output time base -- the same thing the NaN-edge invalidation at the end
+    % of this function produces for a trial that is only partially covered.
+    %
+    % Without this, ONE such trial among many aborts the whole extraction. That mixed case is
+    % new: with a stim-locked alignment the window sits a fixed distance from the data edge, so
+    % either every trial can supply it or none can, and the all-empty case is handled upstream.
+    % With a movement-locked alignment (Estim<Fam>AlignMovePosthocCommon) the distance varies
+    % per trial with RT, so a handful of trials come up empty while the rest are fine --
+    % measured 2 of 70 on EstimReach P20180609_A baselineLate.
+    if isempty(x) || isempty(tx)
+        szOut = size(x);
+        szOut(1) = numel(ty);
+        y = nan(szOut, 'like', x);
+        return;
+    end
+
     timeDeltaX = median(diff(tx));
     timeDeltaY = median(diff(ty));
 
@@ -83,6 +102,29 @@ function [y, ty] = resamplePadEdges(x, tx, ty, binAlignmentMode, interpolateMode
     x = x(:, :);
     colMask = ~all(isnan(x), 1);
     x = x(:, colMask);
+
+    % Every channel all-NaN over this window leaves x with zero columns, and resample() rejects
+    % an empty X. That is a legitimate input, not an error -- the trial simply has no data
+    % here -- and the answer is all-NaN on the output time base, which is exactly what the
+    % inflate below produces from a zero-column y. Short-circuit to it rather than resampling
+    % nothing.
+    %
+    % ONE such trial among many otherwise aborts the whole extraction. The mixed case is new:
+    % a stim-locked alignment puts the window a fixed distance from the data, so either every
+    % trial covers it or none does, and the all-empty case is handled upstream. A
+    % movement-locked alignment puts it at a per-trial-varying distance, so a few trials come
+    % up empty while the rest are fine -- measured 2 of 70 on EstimReach P20180609_A
+    % baselineLate under Estim<Fam>AlignMovePosthocCommon.
+    if ~any(colMask)
+        y = nan(numel(ty), 0, 'like', x);
+        if castDouble
+            y = cast(y, clsX);
+        end
+        y = TensorUtils.inflateMaskedTensor(y, 2, colMask);
+        y = reshape(y, [size(y, 1), szX(2:end)]);
+        return;
+    end
+
     [P, Q] = rat(timeDeltaX / timeDeltaY, timeDeltaY*0.001);
     timeDeltaY = timeDeltaX * Q / P; % this will be the actually realized sampling rate
     [y] = resample(x, P, Q);
